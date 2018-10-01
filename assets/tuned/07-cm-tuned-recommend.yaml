@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tuned-recommend
+  namespace: openshift-cluster-node-tuning
+data:
+  tuned-ocp-recommend: |
+    [openshift-control-plane,master]
+    /var/lib/tuned/ocp-node-labels.cfg=.*node-role.kubernetes.io/master=true
+
+    # No such label exists, TODO
+    [openshift-node-es,node-es]
+    /var/lib/tuned/ocp-node-labels.cfg=.*node-role.kubernetes.io/elasticsearch=true
+
+    [openshift-control-plane,node]
+    /var/lib/tuned/ocp-node-labels.cfg=.*node-role.kubernetes.io/infra=true
+
+    [openshift-node]
+    /var/lib/tuned/ocp-node-labels.cfg=.*

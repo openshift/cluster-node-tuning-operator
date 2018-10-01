@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cluster-node-tuning-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: cluster-node-tuning-operator
+  template:
+    metadata:
+      labels:
+        name: cluster-node-tuning-operator
+    spec:
+      serviceAccountName: cluster-node-tuning-operator
+      containers:
+        - name: cluster-node-tuning-operator
+          image: CLUSTER_NODE_TUNING_OPERATOR_IMAGE
+          ports:
+          - containerPort: 60000
+            name: metrics
+          command:
+          - cluster-node-tuning-operator
+          imagePullPolicy: Always
+          env:
+            - name: WATCH_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: OPERATOR_NAME
+              value: "cluster-node-tuning-operator"

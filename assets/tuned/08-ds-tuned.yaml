@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: tuned
+  namespace: openshift-cluster-node-tuning
+  labels:
+    openshift-app: tuned
+spec:
+  selector:
+    matchLabels:
+      openshift-app: tuned
+  template:
+    metadata:
+      labels:
+        openshift-app: tuned
+    spec:
+      serviceAccountName: tuned
+      automountServiceAccountToken: true
+      containers:
+      - command:
+        - /var/lib/tuned/bin/run
+        image: docker.io/jmencak/tuned-poc
+        imagePullPolicy: Always
+        name: tuned
+        resources: {}
+        securityContext:
+          privileged: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - name: etc-tuned-recommend
+          mountPath: /etc/tuned/recommend.d
+        - name: var-lib-tuned-profiles-data
+          mountPath: /var/lib/tuned/profiles-data
+        - name: sys
+          mountPath: /sys
+        env:
+          - name: OCP_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+      volumes:
+      - name: sys
+        hostPath:
+          path: /sys
+      - configMap:
+          items:
+          - key: tuned-ocp-recommend
+            path: 50-openshift.conf
+          name: tuned-recommend
+          optional: true
+        name: etc-tuned-recommend
+      - configMap:
+          items:
+          - key: tuned-profiles-data
+            path: tuned-profiles.yaml
+          name: tuned-profiles
+          optional: true
+        name: var-lib-tuned-profiles-data
+      dnsPolicy: ClusterFirst
+      hostNetwork: true
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
