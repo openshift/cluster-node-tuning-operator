@@ -11,7 +11,7 @@ data:
       include=${f:virt_check:virtual-guest:throughput-performance}
 
       [selinux]
-      avc_cache_threshold=65536
+      avc_cache_threshold=8192
 
       [net]
       nf_conntrack_hashsize=131072
@@ -20,7 +20,6 @@ data:
       net.ipv4.ip_forward=1
       kernel.pid_max=>131072
       net.netfilter.nf_conntrack_max=1048576
-      fs.inotify.max_user_watches=65536
       net.ipv4.neigh.default.gc_thresh1=8192
       net.ipv4.neigh.default.gc_thresh2=32768
       net.ipv4.neigh.default.gc_thresh3=65536
@@ -54,7 +53,7 @@ data:
 
       [sysctl]
       net.ipv4.tcp_fastopen=3
-      fs.inotify.max_user_watches=65000
+      fs.inotify.max_user_watches=65536
     openshift-node-es: |
       [main]
       summary=Optimize systems running ES on OpenShift nodes

@@ -39,6 +39,8 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: spec.nodeName
+          - name: RESYNC_PERIOD
+            value: "60"
       volumes:
       - name: sys
         hostPath:
