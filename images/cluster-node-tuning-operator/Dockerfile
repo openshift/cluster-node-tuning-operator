@@ -15,8 +15,6 @@ RUN yum remove -y golang make
 
 ENTRYPOINT ["/usr/bin/cluster-node-tuning-operator"]
 
-USER 1001
-
 LABEL io.k8s.display-name="OpenShift cluster-node-tuning-operator" \
       io.k8s.description="This is a component of OpenShift Container Platform and manages the lifecycle of node-level tuning." \
       maintainer="Jiri Mencak <jmencak@redhat.com>"

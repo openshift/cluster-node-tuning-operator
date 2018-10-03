@@ -4,6 +4,8 @@ import (
 	"context"
 	"runtime"
 	"time"
+        "os"
+        "strconv"
 
 	stub "github.com/openshift/cluster-node-tuning-operator/pkg/stub"
 	sdk "github.com/operator-framework/operator-sdk/pkg/sdk"
@@ -14,6 +16,10 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 )
 
+const (
+	resyncPeriodDefault int64 = 60
+)
+
 func printVersion() {
 	logrus.Infof("Go Version: %s", runtime.Version())
 	logrus.Infof("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH)
@@ -21,6 +27,7 @@ func printVersion() {
 }
 
 func main() {
+	var resyncPeriodDuration int64 = resyncPeriodDefault
 	printVersion()
 
 	sdk.ExposeMetricsPort()
@@ -31,7 +38,14 @@ func main() {
 	if err != nil {
 		logrus.Fatalf("failed to get watch namespace: %v", err)
 	}
-	resyncPeriod := time.Duration(5) * time.Second
+	if os.Getenv("RESYNC_PERIOD") != "" {
+		resyncPeriodDuration, err = strconv.ParseInt(os.Getenv("RESYNC_PERIOD"), 10, 64)
+		if err != nil {
+			logrus.Errorf("Cannot parse RESYNC_PERIOD (%s), using %d", os.Getenv("RESYNC_PERIOD"), resyncPeriodDefault)
+			resyncPeriodDuration = resyncPeriodDefault
+		}
+	}
+	resyncPeriod := time.Duration(resyncPeriodDuration) * time.Second
 	logrus.Infof("Watching %s, %s, %s, %d", resource, kind, namespace, resyncPeriod)
 	sdk.Watch(resource, kind, namespace, resyncPeriod)
 	sdk.Handle(stub.NewHandler())

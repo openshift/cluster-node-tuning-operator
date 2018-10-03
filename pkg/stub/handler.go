@@ -3,7 +3,6 @@ package stub
 import (
 	"context"
 	"fmt"
-	"log"
 
 	tunedv1alpha1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1alpha1"
 
@@ -11,6 +10,7 @@ import (
 
 	"github.com/operator-framework/operator-sdk/pkg/sdk"
 
+	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -45,7 +45,7 @@ func (h *Handler) syncTunedUpdate(tuned *tunedv1alpha1.Tuned) error {
 		if !errors.IsAlreadyExists(err) {
 			return fmt.Errorf("couldn't create tuned namespace: %v", err)
 		} else {
-			log.Printf("tuned namespace already exists")
+			logrus.Infof("tuned namespace already exists")
 		}
 	}
 
@@ -103,7 +103,7 @@ func (h *Handler) syncTunedUpdate(tuned *tunedv1alpha1.Tuned) error {
 		if !errors.IsAlreadyExists(err) {
 			return fmt.Errorf("couldn't create tuned daemonset: %v", err)
 		} else {
-			log.Printf("tuned daemonset already exists\n")
+			logrus.Infof("tuned daemonset already exists")
 		}
 	}
 
