@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
+	"os"
 	"runtime"
+	"strconv"
 	"time"
-        "os"
-        "strconv"
 
 	stub "github.com/openshift/cluster-node-tuning-operator/pkg/stub"
 	sdk "github.com/operator-framework/operator-sdk/pkg/sdk"

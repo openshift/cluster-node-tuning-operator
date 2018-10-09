@@ -28,12 +28,18 @@ spec:
         terminationMessagePath: /dev/termination-log
         terminationMessagePolicy: File
         volumeMounts:
-        - name: etc-tuned-recommend
-          mountPath: /etc/tuned/recommend.d
-        - name: var-lib-tuned-profiles-data
-          mountPath: /var/lib/tuned/profiles-data
-        - name: sys
-          mountPath: /sys
+        - mountPath: /etc/tuned/recommend.d
+          name: etc-tuned-recommend
+        - mountPath: /var/lib/tuned/profiles-data
+          name: var-lib-tuned-profiles-data
+        - mountPath: /sys
+          name: sys
+        - mountPath: /var/run/dbus
+          name: var-run-dbus
+          readOnly: true
+        - mountPath: /run/systemd/system
+          name: run-systemd-system
+          readOnly: true
         env:
           - name: OCP_NODE_NAME
             valueFrom:
@@ -42,9 +48,15 @@ spec:
           - name: RESYNC_PERIOD
             value: "60"
       volumes:
-      - name: sys
-        hostPath:
+      - hostPath:
           path: /sys
+        name: sys
+      - hostPath:
+          path: /var/run/dbus
+        name: var-run-dbus
+      - hostPath:
+          path: /run/systemd/system
+        name: run-systemd-system
       - configMap:
           items:
           - key: tuned-ocp-recommend
