@@ -6,7 +6,7 @@ BINDATA=pkg/manifests/bindata.go
 
 GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' -o -wholename './pkg/assets/bindata.go' -o -wholename './pkg/manifests/bindata.go' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
 
-DOCKERFILE=images/cluster-node-tuning-operator/Dockerfile
+DOCKERFILE=Dockerfile
 IMAGE_TAG=openshift/origin-cluster-node-tuning-operator
 IMAGE_REGISTRY=docker.io
 
