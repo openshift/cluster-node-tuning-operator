@@ -15,12 +15,11 @@ import (
 const (
 	TunedNamespace          = "assets/tuned/01-namespace.yaml"
 	TunedServiceAccount     = "assets/tuned/02-service-account.yaml"
-//	TunedSecurityContextConstraints = "assets/tuned/03-scc-tuned.yaml"
-	TunedClusterRole        = "assets/tuned/04-cluster-role.yaml"
-	TunedClusterRoleBinding = "assets/tuned/05-cluster-role-binding.yaml"
-	TunedConfigMapProfiles  = "assets/tuned/06-cm-tuned-profiles.yaml"
-	TunedConfigMapRecommend = "assets/tuned/07-cm-tuned-recommend.yaml"
-	TunedDaemonSet          = "assets/tuned/08-ds-tuned.yaml"
+	TunedClusterRole        = "assets/tuned/03-cluster-role.yaml"
+	TunedClusterRoleBinding = "assets/tuned/04-cluster-role-binding.yaml"
+	TunedConfigMapProfiles  = "assets/tuned/05-cm-tuned-profiles.yaml"
+	TunedConfigMapRecommend = "assets/tuned/06-cm-tuned-recommend.yaml"
+	TunedDaemonSet          = "assets/tuned/07-ds-tuned.yaml"
 )
 
 func MustAssetReader(asset string) io.Reader {
