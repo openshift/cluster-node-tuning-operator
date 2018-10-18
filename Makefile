@@ -54,6 +54,9 @@ else
 	docker build -t $(IMAGE_TAG) -f $(DOCKERFILE) .
 endif
 
+test:
+	go test ./cmd/... ./pkg/... -coverprofile cover.out
+
 local-image-push:
 	buildah push $(IMAGE_TAG) $(IMAGE_REGISTRY)/$(IMAGE_TAG)
 
