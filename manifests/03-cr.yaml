@@ -1,4 +1,5 @@
-apiVersion: "tuned.openshift.io/v1alpha1"
-kind: "Tuned"
+apiVersion: tuned.openshift.io/v1alpha1
+kind: Tuned
 metadata:
-  name: "default"
+  name: default
+  namespace: openshift-cluster-node-tuning-operator
