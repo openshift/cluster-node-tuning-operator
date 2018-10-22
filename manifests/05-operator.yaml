@@ -15,7 +15,7 @@ spec:
       serviceAccountName: cluster-node-tuning-operator
       containers:
         - name: cluster-node-tuning-operator
-          image: CLUSTER_NODE_TUNING_OPERATOR_IMAGE
+          image: registry.svc.ci.openshift.org/openshift/origin-v4.0:openshift-tuned
           ports:
           - containerPort: 60000
             name: metrics
