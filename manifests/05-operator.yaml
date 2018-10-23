@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: cluster-node-tuning-operator
+  namespace: openshift-cluster-node-tuning-operator
 spec:
   replicas: 1
   selector:
