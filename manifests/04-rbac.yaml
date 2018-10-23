@@ -4,6 +4,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: cluster-node-tuning-operator
+  namespace: openshift-cluster-node-tuning-operator
 
 ---
 
