@@ -25,6 +25,7 @@ build:
 # Using "-modtime 1" to make generate target deterministic. It sets all file time stamps to unix timestamp 1
 generate: $(GOBINDATA_BIN)
 	go-bindata -mode 420 -modtime 1 -pkg manifests -o $(BINDATA) manifests/... assets/...
+	gofmt -s -w $(BINDATA)
 
 $(GOBINDATA_BIN):
 	go get -u github.com/jteeuwen/go-bindata/...
@@ -49,7 +50,7 @@ clean:
 
 local-image:
 ifdef USE_BUILDAH
-	buildah bud -t $(IMAGE_TAG) -f $(DOCKERFILE) .
+	buildah bud $(BUILDAH_OPTS) -t $(IMAGE_TAG) -f $(DOCKERFILE) .
 else
 	docker build -t $(IMAGE_TAG) -f $(DOCKERFILE) .
 endif
@@ -58,6 +59,11 @@ test:
 	go test ./cmd/... ./pkg/... -coverprofile cover.out
 
 local-image-push:
-	buildah push $(IMAGE_TAG) $(IMAGE_REGISTRY)/$(IMAGE_TAG)
+ifdef USE_BUILDAH
+	buildah push $(BUILDAH_OPTS) $(IMAGE_TAG) $(IMAGE_REGISTRY)/$(IMAGE_TAG)
+else
+	docker tag $(IMAGE_TAG) $(IMAGE_REGISTRY)/$(IMAGE_TAG)
+	docker push $(IMAGE_REGISTRY)/$(IMAGE_TAG)
+endif
 
 .PHONY: all build generate verify verify-gofmt clean local-image local-image-push

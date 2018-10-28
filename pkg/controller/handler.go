@@ -1,4 +1,4 @@
-package stub
+package controller
 
 import (
 	"context"
@@ -11,6 +11,8 @@ import (
 	"github.com/operator-framework/operator-sdk/pkg/sdk"
 
 	"github.com/sirupsen/logrus"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -33,6 +35,12 @@ func (h *Handler) Handle(ctx context.Context, event sdk.Event) error {
 		return h.syncTunedUpdate(o)
 	}
 	return nil
+}
+
+func (h *Handler) syncDaemonSet(tuned *tunedv1alpha1.Tuned, sa *corev1.ServiceAccount) (*appsv1.DaemonSet, error) {
+	/* TODO: actual syncing, just generate it for the moment */
+	requiredDS := h.generateDaemonSet(sa)
+	return requiredDS, nil
 }
 
 func (h *Handler) syncTunedUpdate(tuned *tunedv1alpha1.Tuned) error {
@@ -94,7 +102,7 @@ func (h *Handler) syncTunedUpdate(tuned *tunedv1alpha1.Tuned) error {
 		return fmt.Errorf("couldn't create tuned recommend config map: %v", err)
 	}
 
-	ds, err := h.manifestFactory.TunedDaemonSet()
+	ds, err := h.syncDaemonSet(tuned, sa)
 	if err != nil {
 		return fmt.Errorf("couldn't build tuned daemonset: %v", err)
 	}

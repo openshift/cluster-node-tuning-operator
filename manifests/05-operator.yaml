@@ -16,7 +16,7 @@ spec:
       serviceAccountName: cluster-node-tuning-operator
       containers:
         - name: cluster-node-tuning-operator
-          image: registry.svc.ci.openshift.org/openshift/origin-v4.0:openshift-tuned
+          image: registry.svc.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuning-operator
           ports:
           - containerPort: 60000
             name: metrics
@@ -32,3 +32,5 @@ spec:
               value: "cluster-node-tuning-operator"
             - name: RESYNC_PERIOD
               value: "60"
+            - name: CLUSTER_NODE_TUNED_IMAGE
+              value: registry.svc.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuned

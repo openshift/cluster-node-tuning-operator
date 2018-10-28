@@ -5,4 +5,8 @@ spec:
   - name: cluster-node-tuning-operator
     from:
       kind: DockerImage
-      name: registry.svc.ci.openshift.org/openshift/origin-v4.0:openshift-tuned
+      name: registry.svc.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuning-operator
+  - name: cluster-node-tuned
+    from:
+      kind: DockerImage
+      name: registry.svc.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuned
