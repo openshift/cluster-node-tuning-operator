@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: tuned
+  namespace: openshift-cluster-node-tuning
+  labels:
+    openshift-app: tuned
+spec:
+  selector:
+    matchLabels:
+      openshift-app: tuned
+  template:
+    metadata:
+      labels:
+        openshift-app: tuned
+    spec:
+      serviceAccountName: tuned
+      automountServiceAccountToken: true
+      containers:
+      - command:
+        - /var/lib/tuned/bin/run
+        image: ${CLUSTER_NODE_TUNED_IMAGE}
+        imagePullPolicy: Always
+        name: tuned
+        resources: {}
+        securityContext:
+          privileged: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/tuned/recommend.d
+          name: etc-tuned-recommend
+        - mountPath: /var/lib/tuned/profiles-data
+          name: var-lib-tuned-profiles-data
+        - mountPath: /sys
+          name: sys
+        - mountPath: /var/run/dbus
+          name: var-run-dbus
+          readOnly: true
+        - mountPath: /run/systemd/system
+          name: run-systemd-system
+          readOnly: true
+        env:
+          - name: OCP_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: RESYNC_PERIOD
+            value: "60"
+      volumes:
+      - hostPath:
+          path: /sys
+        name: sys
+      - hostPath:
+          path: /var/run/dbus
+        name: var-run-dbus
+      - hostPath:
+          path: /run/systemd/system
+        name: run-systemd-system
+      - configMap:
+          items:
+          - key: tuned-ocp-recommend
+            path: 50-openshift.conf
+          name: tuned-recommend
+          optional: true
+        name: etc-tuned-recommend
+      - configMap:
+          items:
+          - key: tuned-profiles-data
+            path: tuned-profiles.yaml
+          name: tuned-profiles
+          optional: true
+        name: var-lib-tuned-profiles-data
+      dnsPolicy: ClusterFirst
+      hostNetwork: true
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      tolerations:
+      # tolerate all taints so that tuned is always present on all nodes
+      - operator: Exists
