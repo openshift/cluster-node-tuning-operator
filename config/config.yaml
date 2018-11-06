@@ -1,3 +1,0 @@
-apiVersion: tuned.openshift.io/v1alpha1
-kind: Tuned
-projectName: cluster-node-tuning-operator

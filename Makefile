@@ -1,7 +1,7 @@
 PACKAGE=github.com/openshift/cluster-node-tuning-operator
-MAIN_PACKAGE=$(PACKAGE)/cmd/cluster-node-tuning-operator
+MAIN_PACKAGE=$(PACKAGE)/cmd/manager
 
-BIN=$(lastword $(subst /, ,$(MAIN_PACKAGE)))
+BIN=$(lastword $(subst /, ,$(PACKAGE)))
 BINDATA=pkg/manifests/bindata.go
 
 GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
