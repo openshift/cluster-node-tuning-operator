@@ -4,7 +4,7 @@ MAIN_PACKAGE=$(PACKAGE)/cmd/cluster-node-tuning-operator
 BIN=$(lastword $(subst /, ,$(MAIN_PACKAGE)))
 BINDATA=pkg/manifests/bindata.go
 
-GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' -o -wholename './pkg/assets/bindata.go' -o -wholename './pkg/manifests/bindata.go' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
+GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
 
 DOCKERFILE=Dockerfile
 IMAGE_TAG=openshift/origin-cluster-node-tuning-operator
@@ -24,7 +24,7 @@ build:
 
 # Using "-modtime 1" to make generate target deterministic. It sets all file time stamps to unix timestamp 1
 generate: $(GOBINDATA_BIN)
-	go-bindata -mode 420 -modtime 1 -pkg manifests -o $(BINDATA) manifests/... assets/...
+	go-bindata -mode 420 -modtime 1 -pkg manifests -o $(BINDATA) assets/...
 	gofmt -s -w $(BINDATA)
 
 $(GOBINDATA_BIN):

@@ -3,13 +3,16 @@ package manifests
 import (
 	"bytes"
 	"io"
+	"os"
 
+	yamlv2 "gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	tunedv1alpha1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1alpha1"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -68,19 +71,38 @@ func (f *Factory) TunedClusterRoleBinding() (*rbacv1.ClusterRoleBinding, error) 
 	return crb, nil
 }
 
-func (f *Factory) TunedConfigMapProfiles() (*corev1.ConfigMap, error) {
+func (f *Factory) TunedConfigMapProfiles(tuned *tunedv1alpha1.Tuned) (*corev1.ConfigMap, error) {
 	cm, err := NewConfigMap(MustAssetReader(TunedConfigMapProfiles))
 	if err != nil {
 		return nil, err
 	}
 
+	if tuned.Spec.Profiles != nil {
+		m := make(map[string]string)
+		for _, v := range tuned.Spec.Profiles {
+			if v.Name != nil && v.Data != nil {
+				m[*v.Name] = *v.Data
+			}
+		}
+		tunedOcpProfiles, err := yamlv2.Marshal(&m)
+		if err != nil {
+			logrus.Fatalf("error: %v", err)
+		}
+
+		cm.Data["tuned-profiles-data"] = string(tunedOcpProfiles)
+	}
+
 	return cm, nil
 }
 
-func (f *Factory) TunedConfigMapRecommend() (*corev1.ConfigMap, error) {
+func (f *Factory) TunedConfigMapRecommend(tuned *tunedv1alpha1.Tuned) (*corev1.ConfigMap, error) {
 	cm, err := NewConfigMap(MustAssetReader(TunedConfigMapRecommend))
 	if err != nil {
 		return nil, err
+	}
+
+	if tuned.Spec.Recommend != nil {
+		cm.Data["tuned-ocp-recommend"] = *tuned.Spec.Recommend
 	}
 
 	return cm, nil
@@ -88,6 +110,9 @@ func (f *Factory) TunedConfigMapRecommend() (*corev1.ConfigMap, error) {
 
 func (f *Factory) TunedDaemonSet() (*appsv1.DaemonSet, error) {
 	ds, err := NewDaemonSet(MustAssetReader(TunedDaemonSet))
+	imageTuned := os.Getenv("CLUSTER_NODE_TUNED_IMAGE")
+	ds.Spec.Template.Spec.Containers[0].Image = imageTuned
+
 	if err != nil {
 		return nil, err
 	}

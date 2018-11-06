@@ -22,8 +22,15 @@ type Tuned struct {
 }
 
 type TunedSpec struct {
-	// Fill me
+	Profiles  []TunedProfile `json:"profiles"`
+	Recommend *string        `json:"recommend"`
 }
+
+type TunedProfile struct {
+	Name *string `json:"name"`
+	Data *string `json:"data"`
+}
+
 type TunedStatus struct {
 	// Fill me
 }
