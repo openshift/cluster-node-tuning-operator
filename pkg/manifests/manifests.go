@@ -2,8 +2,11 @@ package manifests
 
 import (
 	"bytes"
+	"fmt"
 	"io"
+	"log"
 	"os"
+	"sort"
 
 	yamlv2 "gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
@@ -12,10 +15,12 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	tunedv1alpha1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1alpha1"
-	"github.com/sirupsen/logrus"
 )
 
 const (
+	// Node labels file is a file with node labels in a pod with the tuned daemon
+	nodeLabelsFile = "/var/lib/tuned/ocp-node-labels.cfg"
+	// Assets
 	TunedNamespace          = "assets/tuned/01-namespace.yaml"
 	TunedServiceAccount     = "assets/tuned/02-service-account.yaml"
 	TunedClusterRole        = "assets/tuned/03-cluster-role.yaml"
@@ -86,7 +91,7 @@ func (f *Factory) TunedConfigMapProfiles(tuned *tunedv1alpha1.Tuned) (*corev1.Co
 		}
 		tunedOcpProfiles, err := yamlv2.Marshal(&m)
 		if err != nil {
-			logrus.Fatalf("error: %v", err)
+			log.Fatalf("error: %v", err)
 		}
 
 		cm.Data["tuned-profiles-data"] = string(tunedOcpProfiles)
@@ -102,7 +107,36 @@ func (f *Factory) TunedConfigMapRecommend(tuned *tunedv1alpha1.Tuned) (*corev1.C
 	}
 
 	if tuned.Spec.Recommend != nil {
-		cm.Data["tuned-ocp-recommend"] = *tuned.Spec.Recommend
+		recommendConf := ""
+		sort.Slice(tuned.Spec.Recommend, func(i, j int) bool {
+			if tuned.Spec.Recommend[i].Priority != nil && tuned.Spec.Recommend[j].Priority != nil {
+				return *tuned.Spec.Recommend[i].Priority < *tuned.Spec.Recommend[j].Priority
+			}
+			return false
+		})
+		i := 0
+		for _, r := range tuned.Spec.Recommend {
+			if r.Profile != nil {
+				recommendConf += fmt.Sprintf("[%s,%d]\n", *r.Profile, i)
+				recommendConf += nodeLabelsFile + "=.*"
+				if r.Label != nil {
+					if r.Label.Name != nil {
+						recommendConf += *r.Label.Name + "="
+						if r.Label.Value != nil {
+							recommendConf += *r.Label.Value
+						}
+					} else {
+						// label name wasn't specified, ignore it (profile catch-all)
+					}
+				}
+				recommendConf += "\n\n"
+			} else {
+				// no profile was specified, ignore this TunedRecommend struct
+			}
+			i++
+		}
+
+		cm.Data["tuned-ocp-recommend"] = recommendConf
 	}
 
 	return cm, nil
