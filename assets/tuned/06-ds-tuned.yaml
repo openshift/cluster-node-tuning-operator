@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: tuned
-  namespace: openshift-cluster-node-tuning
+  namespace: openshift-cluster-node-tuning-operator
   labels:
     openshift-app: tuned
 spec:

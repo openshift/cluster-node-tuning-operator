@@ -21,13 +21,12 @@ const (
 	// Node labels file is a file with node labels in a pod with the tuned daemon
 	nodeLabelsFile = "/var/lib/tuned/ocp-node-labels.cfg"
 	// Assets
-	TunedNamespace          = "assets/tuned/01-namespace.yaml"
-	TunedServiceAccount     = "assets/tuned/02-service-account.yaml"
-	TunedClusterRole        = "assets/tuned/03-cluster-role.yaml"
-	TunedClusterRoleBinding = "assets/tuned/04-cluster-role-binding.yaml"
-	TunedConfigMapProfiles  = "assets/tuned/05-cm-tuned-profiles.yaml"
-	TunedConfigMapRecommend = "assets/tuned/06-cm-tuned-recommend.yaml"
-	TunedDaemonSet          = "assets/tuned/07-ds-tuned.yaml"
+	TunedServiceAccount     = "assets/tuned/01-service-account.yaml"
+	TunedClusterRole        = "assets/tuned/02-cluster-role.yaml"
+	TunedClusterRoleBinding = "assets/tuned/03-cluster-role-binding.yaml"
+	TunedConfigMapProfiles  = "assets/tuned/04-cm-tuned-profiles.yaml"
+	TunedConfigMapRecommend = "assets/tuned/05-cm-tuned-recommend.yaml"
+	TunedDaemonSet          = "assets/tuned/06-ds-tuned.yaml"
 )
 
 func MustAssetReader(asset string) io.Reader {
@@ -42,14 +41,6 @@ type Factory struct {
 
 func NewFactory() *Factory {
 	return &Factory{}
-}
-
-func (f *Factory) TunedNamespace() (*corev1.Namespace, error) {
-	ns, err := NewNamespace(MustAssetReader(TunedNamespace))
-	if err != nil {
-		return nil, err
-	}
-	return ns, nil
 }
 
 func (f *Factory) TunedServiceAccount() (*corev1.ServiceAccount, error) {
@@ -199,14 +190,6 @@ func NewService(manifest io.Reader) (*corev1.Service, error) {
 		return nil, err
 	}
 	return &s, nil
-}
-
-func NewNamespace(manifest io.Reader) (*corev1.Namespace, error) {
-	ns := corev1.Namespace{}
-	if err := yaml.NewYAMLOrJSONDecoder(manifest, 100).Decode(&ns); err != nil {
-		return nil, err
-	}
-	return &ns, nil
 }
 
 func NewDeployment(manifest io.Reader) (*appsv1.Deployment, error) {
