@@ -8,7 +8,7 @@ GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/
 
 DOCKERFILE=Dockerfile
 IMAGE_TAG=openshift/origin-cluster-node-tuning-operator
-IMAGE_REGISTRY=docker.io
+IMAGE_REGISTRY=quay.io
 
 vpath bin/go-bindata $(GOPATH)
 GOBINDATA_BIN=bin/go-bindata
@@ -50,9 +50,9 @@ clean:
 
 local-image:
 ifdef USE_BUILDAH
-	buildah bud $(BUILDAH_OPTS) -t $(IMAGE_TAG) -f $(DOCKERFILE) .
+	buildah bud $(BUILDAH_OPTS) -t $(IMAGE_TAG) -f build/$(DOCKERFILE) .
 else
-	docker build -t $(IMAGE_TAG) -f $(DOCKERFILE) .
+	sudo docker build -t $(IMAGE_TAG) -f build/$(DOCKERFILE) .
 endif
 
 test:
@@ -62,8 +62,8 @@ local-image-push:
 ifdef USE_BUILDAH
 	buildah push $(BUILDAH_OPTS) $(IMAGE_TAG) $(IMAGE_REGISTRY)/$(IMAGE_TAG)
 else
-	docker tag $(IMAGE_TAG) $(IMAGE_REGISTRY)/$(IMAGE_TAG)
-	docker push $(IMAGE_REGISTRY)/$(IMAGE_TAG)
+	sudo docker tag $(IMAGE_TAG) $(IMAGE_REGISTRY)/$(IMAGE_TAG)
+	sudo docker push $(IMAGE_REGISTRY)/$(IMAGE_TAG)
 endif
 
 .PHONY: all build generate verify verify-gofmt clean local-image local-image-push
