@@ -69,16 +69,26 @@ spec:
       [sysctl]
       vm.max_map_count=262144
 
-  recommend: |
-    [openshift-control-plane,master]
-    /var/lib/tuned/ocp-node-labels.cfg=.*node-role.kubernetes.io/master=
+  recommend:
+  - profile: "openshift-control-plane"
+    priority: 10
+    label:
+      name: "node-role.kubernetes.io/master"
+      value: ""
 
+  - profile: "openshift-node-es"
+    priority: 20
     # No such label exists, TODO
-    [openshift-node-es,node-es]
-    /var/lib/tuned/ocp-node-labels.cfg=.*node-role.kubernetes.io/elasticsearch=
+    label: 
+      name: "node-role.kubernetes.io/elasticsearch"
+      value: ""
 
-    [openshift-control-plane,node]
-    /var/lib/tuned/ocp-node-labels.cfg=.*node-role.kubernetes.io/infra=
+  - profile: "openshift-control-plane"
+    priority: 30
+    label: 
+      name: "node-role.kubernetes.io/infra"
+      value: ""
 
-    [openshift-node]
-    /var/lib/tuned/ocp-node-labels.cfg=.*
+  # Catch-all to set the default "openshift-node" profile
+  - profile: "openshift-node"
+    priority: 40
