@@ -19,7 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -58,15 +57,14 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// TODO: Get secondary watch working
 	// Watch for changes to secondary resource DaemonSet and requeue the owner Tuned
-	//err = c.Watch(&source.Kind{Type: &appsv1.DaemonSet{}}, &handler.EnqueueRequestForOwner{
-	//	IsController: true,
-	//	OwnerType:    &tunedv1alpha1.Tuned{},
-	//})
-	//if err != nil {
-	//	return err
-	//}
+	err = c.Watch(&source.Kind{Type: &appsv1.DaemonSet{}}, &handler.EnqueueRequestForOwner{
+		IsController: true,
+		OwnerType:    &tunedv1alpha1.Tuned{},
+	})
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -82,33 +80,6 @@ type ReconcileTuned struct {
 	manifestFactory *manifests.Factory
 }
 
-func syncNamespace(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
-	log.Printf("syncNamespace()")
-	ns := &corev1.Namespace{}
-
-	nsManifest, err := r.manifestFactory.TunedNamespace()
-	if err != nil {
-		return fmt.Errorf("Couldn't build tuned Namespace: %v", err)
-	}
-	log.Printf("Built Namespace manifest for %s\n", nsManifest.Name)
-
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: nsManifest.Name, Namespace: ""}, ns)
-	if err != nil && errors.IsNotFound(err) {
-
-		controllerutil.SetControllerReference(tuned, nsManifest, r.scheme)
-		err = r.client.Create(context.TODO(), nsManifest)
-		if err != nil {
-			return fmt.Errorf("Couldn't create tuned Namespace: %v", err)
-		}
-		log.Printf("Created Namespace for %s\n", nsManifest.Name)
-	} else if err != nil {
-		log.Printf("Failed to get Namespace: %v\n", err)
-		return err
-	}
-
-	return nil
-}
-
 func syncServiceAccount(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
 	log.Printf("syncServiceAccount()")
 	saManifest, err := r.manifestFactory.TunedServiceAccount()
@@ -120,7 +91,6 @@ func syncServiceAccount(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
 	sa := &corev1.ServiceAccount{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Name: saManifest.Name, Namespace: saManifest.Namespace}, sa)
 	if err != nil && errors.IsNotFound(err) {
-		controllerutil.SetControllerReference(tuned, saManifest, r.scheme)
 		err = r.client.Create(context.TODO(), saManifest)
 		if err != nil {
 			return fmt.Errorf("Couldn't create tuned ServiceAccount: %v", err)
@@ -151,7 +121,6 @@ func syncClusterRole(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
 	cr := &rbacv1.ClusterRole{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Name: crManifest.Name, Namespace: ""}, cr)
 	if err != nil && errors.IsNotFound(err) {
-		controllerutil.SetControllerReference(tuned, crManifest, r.scheme)
 		err = r.client.Create(context.TODO(), crManifest)
 		if err != nil {
 			return fmt.Errorf("Couldn't create tuned ClusterRole: %v", err)
@@ -182,8 +151,6 @@ func syncClusterRoleBinding(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error
 	crb := &rbacv1.ClusterRoleBinding{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Name: crbManifest.Name, Namespace: ""}, crb)
 	if err != nil && errors.IsNotFound(err) {
-
-		controllerutil.SetControllerReference(tuned, crbManifest, r.scheme)
 		err = r.client.Create(context.TODO(), crbManifest)
 		if err != nil {
 			return fmt.Errorf("Couldn't create tuned ClusterRoleBinding: %v", err)
@@ -203,93 +170,30 @@ func syncClusterRoleBinding(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error
 	return nil
 }
 
-func syncClusterConfigMap(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
-	log.Printf("syncClusterConfigMapProfiles()")
-	cmProfiles, err := r.manifestFactory.TunedConfigMapProfiles(tuned)
+func syncClusterConfigMap(f func(tuned *tunedv1alpha1.Tuned) (*corev1.ConfigMap, error), r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
+	log.Printf("syncClusterConfigMap()")
+	cmManifest, err := f(tuned)
 	if err != nil {
-		return fmt.Errorf("Couldn't build tuned ConfigMapProfiles: %v", err)
+		return fmt.Errorf("Couldn't build tuned ConfigMap: %v", err)
 	}
-	log.Printf("Built ConfigMapProfiles manifest for %s/%s\n", cmProfiles.Namespace, cmProfiles.Name)
+	log.Printf("Built ConfigMap manifest for %s/%s\n", cmManifest.Namespace, cmManifest.Name)
 
 	cm := &corev1.ConfigMap{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: cmProfiles.Name, Namespace: cmProfiles.Namespace}, cm)
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: cmManifest.Name, Namespace: cmManifest.Namespace}, cm)
 	if err != nil && errors.IsNotFound(err) {
-		controllerutil.SetControllerReference(tuned, cmProfiles, r.scheme)
-		err = r.client.Create(context.TODO(), cmProfiles)
+		err = r.client.Create(context.TODO(), cmManifest)
 		if err != nil {
-			return fmt.Errorf("Couldn't create tuned ConfigMapProfiles: %v", err)
+			return fmt.Errorf("Couldn't create tuned ConfigMap: %v", err)
 		}
-		log.Printf("Created ConfigMapProfiles for %s/%s\n", cmProfiles.Namespace, cmProfiles.Name)
+		log.Printf("Created ConfigMap for %s/%s\n", cmManifest.Namespace, cmManifest.Name)
 	} else if err != nil {
-		log.Printf("Failed to get ConfigMapProfiles: %v\n", err)
+		log.Printf("Failed to get ConfigMap: %v\n", err)
 		return err
 	} else {
-		log.Printf("Tuned ConfigMapProfiles already exists, updating")
-		err = r.client.Update(context.TODO(), cmProfiles)
+		log.Printf("Tuned ConfigMap %s already exists, updating", cmManifest.Name)
+		err = r.client.Update(context.TODO(), cmManifest)
 		if err != nil {
-			return fmt.Errorf("Couldn't update tuned ConfigMapProfiles: %v", err)
-		}
-	}
-
-	return nil
-}
-
-func syncClusterConfigMapProfiles(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
-	log.Printf("syncClusterConfigMapProfiles()")
-	cmProfiles, err := r.manifestFactory.TunedConfigMapProfiles(tuned)
-	if err != nil {
-		return fmt.Errorf("Couldn't build tuned ConfigMapProfiles: %v", err)
-	}
-	log.Printf("Built ConfigMapProfiles manifest for %s/%s\n", cmProfiles.Namespace, cmProfiles.Name)
-
-	cm := &corev1.ConfigMap{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: cmProfiles.Name, Namespace: cmProfiles.Namespace}, cm)
-	if err != nil && errors.IsNotFound(err) {
-		controllerutil.SetControllerReference(tuned, cmProfiles, r.scheme)
-		err = r.client.Create(context.TODO(), cmProfiles)
-		if err != nil {
-			return fmt.Errorf("Couldn't create tuned ConfigMapProfiles: %v", err)
-		}
-		log.Printf("Created ConfigMapProfiles for %s/%s\n", cmProfiles.Namespace, cmProfiles.Name)
-	} else if err != nil {
-		log.Printf("Failed to get ConfigMapProfiles: %v\n", err)
-		return err
-	} else {
-		log.Printf("Tuned ConfigMapProfiles already exists, updating")
-		err = r.client.Update(context.TODO(), cmProfiles)
-		if err != nil {
-			return fmt.Errorf("Couldn't update tuned ConfigMapProfiles: %v", err)
-		}
-	}
-
-	return nil
-}
-
-func syncClusterConfigMapRecommend(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
-	log.Printf("syncClusterConfigMapRecommend()")
-	cmRecommend, err := r.manifestFactory.TunedConfigMapRecommend(tuned)
-	if err != nil {
-		return fmt.Errorf("Couldn't build tuned ConfigMapRecommend: %v", err)
-	}
-	log.Printf("Built ConfigMapRecommend manifest for %s/%s\n", cmRecommend.Namespace, cmRecommend.Name)
-
-	cm := &corev1.ConfigMap{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: cmRecommend.Name, Namespace: cmRecommend.Namespace}, cm)
-	if err != nil && errors.IsNotFound(err) {
-		controllerutil.SetControllerReference(tuned, cmRecommend, r.scheme)
-		err = r.client.Create(context.TODO(), cmRecommend)
-		if err != nil {
-			return fmt.Errorf("Couldn't create tuned ConfigMapRecommend: %v", err)
-		}
-		log.Printf("Created ConfigMapRecommend for %s/%s\n", cmRecommend.Namespace, cmRecommend.Name)
-	} else if err != nil {
-		log.Printf("Failed to get ConfigMapRecommend: %v\n", err)
-		return err
-	} else {
-		log.Printf("Tuned ConfigMapRecommend already exists, updating")
-		err = r.client.Update(context.TODO(), cmRecommend)
-		if err != nil {
-			return fmt.Errorf("Couldn't update tuned ConfigMapRecommend: %v", err)
+			return fmt.Errorf("Couldn't update tuned ConfigMap: %v", err)
 		}
 	}
 
@@ -311,7 +215,6 @@ func syncDaemonSet(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
 	daemonset := &appsv1.DaemonSet{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Name: dsManifest.Name, Namespace: dsManifest.Namespace}, daemonset)
 	if err != nil && errors.IsNotFound(err) {
-		controllerutil.SetControllerReference(tuned, dsManifest, r.scheme)
 		err = r.client.Create(context.TODO(), dsManifest)
 		if err != nil {
 			return fmt.Errorf("Couldn't create tuned DaemonSet: %v", err)
@@ -366,11 +269,6 @@ func (r *ReconcileTuned) Reconcile(request reconcile.Request) (reconcile.Result,
 		return reconcileResult, err
 	}
 
-	err = syncNamespace(r, tunedInstance)
-	if err != nil {
-		return reconcileResult, err
-	}
-
 	err = syncServiceAccount(r, tunedInstance)
 	if err != nil {
 		return reconcileResult, err
@@ -386,12 +284,12 @@ func (r *ReconcileTuned) Reconcile(request reconcile.Request) (reconcile.Result,
 		return reconcileResult, err
 	}
 
-	err = syncClusterConfigMapProfiles(r, tunedInstance)
+	err = syncClusterConfigMap(r.manifestFactory.TunedConfigMapProfiles, r, tunedInstance)
 	if err != nil {
 		return reconcileResult, err
 	}
 
-	err = syncClusterConfigMapRecommend(r, tunedInstance)
+	err = syncClusterConfigMap(r.manifestFactory.TunedConfigMapRecommend, r, tunedInstance)
 	if err != nil {
 		return reconcileResult, err
 	}

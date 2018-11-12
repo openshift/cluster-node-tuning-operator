@@ -5,10 +5,9 @@ metadata:
 roleRef:
   kind: ClusterRole
   name: cluster-node-tuning:tuned
-  namespace: openshift-cluster-node-tuning
 subjects:
 - kind: ServiceAccount
   name: tuned
-  namespace: openshift-cluster-node-tuning
+  namespace: openshift-cluster-node-tuning-operator
 userNames:
-- system:serviceaccount:openshift-cluster-node-tuning:tuned
+- system:serviceaccount:openshift-cluster-node-tuning-operator:tuned

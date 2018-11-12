@@ -50,9 +50,9 @@ clean:
 
 local-image:
 ifdef USE_BUILDAH
-	buildah bud $(BUILDAH_OPTS) -t $(IMAGE_TAG) -f build/$(DOCKERFILE) .
+	buildah bud $(BUILDAH_OPTS) -t $(IMAGE_TAG) -f $(DOCKERFILE) .
 else
-	sudo docker build -t $(IMAGE_TAG) -f build/$(DOCKERFILE) .
+	sudo docker build -t $(IMAGE_TAG) -f $(DOCKERFILE) .
 endif
 
 test:
