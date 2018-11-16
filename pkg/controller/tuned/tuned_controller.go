@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -92,7 +93,10 @@ func syncServiceAccount(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned ServiceAccount: %v", err)
 	}
-	log.Printf("Built ServiceAccount manifest for %s/%s\n", saManifest.Namespace, saManifest.Name)
+	err = controllerutil.SetControllerReference(tuned, saManifest, r.scheme)
+	if err != nil {
+		return fmt.Errorf("Couldn't set owner references to ServiceAccount: %v", err)
+	}
 
 	sa := &corev1.ServiceAccount{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: saManifest.Namespace, Name: saManifest.Name}, sa)
@@ -123,7 +127,10 @@ func syncClusterRole(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned ClusterRole: %v", err)
 	}
-	log.Printf("Built ClusterRole manifest for %s\n", crManifest.Name)
+	err = controllerutil.SetControllerReference(tuned, crManifest, r.scheme)
+	if err != nil {
+		return fmt.Errorf("Couldn't set owner references to ClusterRole: %v", err)
+	}
 
 	cr := &rbacv1.ClusterRole{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: "", Name: crManifest.Name}, cr)
@@ -154,7 +161,10 @@ func syncClusterRoleBinding(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned ClusterRoleBinding: %v", err)
 	}
-	log.Printf("Built ClusteRoleBinding manifest for %s\n", crbManifest.Name)
+	err = controllerutil.SetControllerReference(tuned, crbManifest, r.scheme)
+	if err != nil {
+		return fmt.Errorf("Couldn't set owner references to ClusterRoleBinding: %v", err)
+	}
 
 	crb := &rbacv1.ClusterRoleBinding{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: "", Name: crbManifest.Name}, crb)
@@ -185,7 +195,10 @@ func syncClusterConfigMap(f func(tuned *tunedv1alpha1.Tuned) (*corev1.ConfigMap,
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned ConfigMap: %v", err)
 	}
-	log.Printf("Built ConfigMap manifest for %s/%s\n", cmManifest.Namespace, cmManifest.Name)
+	err = controllerutil.SetControllerReference(tuned, cmManifest, r.scheme)
+	if err != nil {
+		return fmt.Errorf("Couldn't set owner references to ConfigMap: %v", err)
+	}
 
 	cm := &corev1.ConfigMap{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: cmManifest.Namespace, Name: cmManifest.Name}, cm)
@@ -216,7 +229,10 @@ func syncDaemonSet(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned DaemonSet: %v", err)
 	}
-	log.Printf("Built DaemonSet manifest for %s/%s\n", dsManifest.Namespace, dsManifest.Name)
+	err = controllerutil.SetControllerReference(tuned, dsManifest, r.scheme)
+	if err != nil {
+		return fmt.Errorf("Couldn't set owner references to DaemonSet: %v", err)
+	}
 
 	daemonset := &appsv1.DaemonSet{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: dsManifest.Namespace, Name: dsManifest.Name}, daemonset)
@@ -250,7 +266,6 @@ func createCustomResource(mgr manager.Manager) error {
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned CustomResource: %v", err)
 	}
-	log.Printf("Built CustomResource manifest for %s/%s\n", crManifest.Namespace, crManifest.Name)
 
 	err = client.Create(context.TODO(), crManifest)
 	if err != nil {
