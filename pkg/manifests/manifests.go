@@ -27,6 +27,7 @@ const (
 	TunedConfigMapProfiles  = "assets/tuned/04-cm-tuned-profiles.yaml"
 	TunedConfigMapRecommend = "assets/tuned/05-cm-tuned-recommend.yaml"
 	TunedDaemonSet          = "assets/tuned/06-ds-tuned.yaml"
+	TunedCustomResource     = "assets/tuned/07-cr-tuned.yaml"
 )
 
 func MustAssetReader(asset string) io.Reader {
@@ -112,9 +113,9 @@ func (f *Factory) TunedConfigMapRecommend(tuned *tunedv1alpha1.Tuned) (*corev1.C
 				recommendConf += nodeLabelsFile + "=.*"
 				if r.Label != nil {
 					if r.Label.Name != nil {
-						recommendConf += *r.Label.Name + "="
+						recommendConf += "\\b" + *r.Label.Name + "="
 						if r.Label.Value != nil {
-							recommendConf += *r.Label.Value
+							recommendConf += *r.Label.Value + "\\n"
 						}
 					} else {
 						// label name wasn't specified, ignore it (profile catch-all)
@@ -142,6 +143,14 @@ func (f *Factory) TunedDaemonSet() (*appsv1.DaemonSet, error) {
 		return nil, err
 	}
 	return ds, nil
+}
+
+func (f *Factory) TunedCustomResource() (*tunedv1alpha1.Tuned, error) {
+	cr, err := NewTuned(MustAssetReader(TunedCustomResource))
+	if err != nil {
+		return nil, err
+	}
+	return cr, nil
 }
 
 func NewServiceAccount(manifest io.Reader) (*corev1.ServiceAccount, error) {
@@ -182,22 +191,6 @@ func NewDaemonSet(manifest io.Reader) (*appsv1.DaemonSet, error) {
 		return nil, err
 	}
 	return &ds, nil
-}
-
-func NewService(manifest io.Reader) (*corev1.Service, error) {
-	s := corev1.Service{}
-	if err := yaml.NewYAMLOrJSONDecoder(manifest, 100).Decode(&s); err != nil {
-		return nil, err
-	}
-	return &s, nil
-}
-
-func NewDeployment(manifest io.Reader) (*appsv1.Deployment, error) {
-	o := appsv1.Deployment{}
-	if err := yaml.NewYAMLOrJSONDecoder(manifest, 100).Decode(&o); err != nil {
-		return nil, err
-	}
-	return &o, nil
 }
 
 func NewTuned(manifest io.Reader) (*tunedv1alpha1.Tuned, error) {

@@ -74,20 +74,17 @@ spec:
     priority: 10
     label:
       name: "node-role.kubernetes.io/master"
-      value: ""
 
   - profile: "openshift-node-es"
     priority: 20
     # No such label exists, TODO
     label: 
       name: "node-role.kubernetes.io/elasticsearch"
-      value: ""
 
   - profile: "openshift-control-plane"
     priority: 30
     label: 
       name: "node-role.kubernetes.io/infra"
-      value: ""
 
   # Catch-all to set the default "openshift-node" profile
   - profile: "openshift-node"

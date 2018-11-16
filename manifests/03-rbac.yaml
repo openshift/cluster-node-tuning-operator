@@ -16,7 +16,7 @@ metadata:
 rules:
 - apiGroups: ["tuned.openshift.io"]
   resources: ["tuneds"]
-  verbs: ["list","watch"]
+  verbs: ["create","list","watch"]
 - apiGroups: ["apps"]
   resources: ["daemonsets"]
   verbs: ["create","delete","list","update","watch"]
