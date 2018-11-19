@@ -4,7 +4,7 @@ metadata:
   name: default
   namespace: openshift-cluster-node-tuning-operator
 spec:
-  profiles:
+  profile:
   - name: "openshift"
     data: |
       [main]
@@ -60,6 +60,15 @@ spec:
       net.ipv4.tcp_fastopen=3
       fs.inotify.max_user_watches=65536
 
+  - name: "openshift-control-plane-es"
+    data: |
+      [main]
+      summary=Optimize systems running ES on OpenShift control-plane
+      include=openshift-control-plane
+
+      [sysctl]
+      vm.max_map_count=262144
+
   - name: "openshift-node-es"
     data: |
       [main]
@@ -70,22 +79,26 @@ spec:
       vm.max_map_count=262144
 
   recommend:
-  - profile: "openshift-control-plane"
+  - profile: "openshift-control-plane-es"
     priority: 10
-    label:
-      name: "node-role.kubernetes.io/master"
+    match:
+    - label: "tuned.openshift.io/elasticsearch"
+      type: "pod"
+      match:
+      - label: "node-role.kubernetes.io/master"
+      - label: "node-role.kubernetes.io/infra"
 
   - profile: "openshift-node-es"
     priority: 20
-    # No such label exists, TODO
-    label: 
-      name: "node-role.kubernetes.io/elasticsearch"
+    match:
+    - label: "tuned.openshift.io/elasticsearch"
+      type: "pod"
 
   - profile: "openshift-control-plane"
     priority: 30
-    label: 
-      name: "node-role.kubernetes.io/infra"
+    match:
+    - label: "node-role.kubernetes.io/master"
+    - label: "node-role.kubernetes.io/infra"
 
-  # Catch-all to set the default "openshift-node" profile
   - profile: "openshift-node"
     priority: 40

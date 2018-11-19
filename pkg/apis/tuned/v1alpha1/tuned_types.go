@@ -7,7 +7,7 @@ import (
 
 // TunedSpec defines the desired state of Tuned
 type TunedSpec struct {
-	Profiles  []TunedProfile   `json:"profiles"`
+	Profile   []TunedProfile   `json:"profile"`
 	Recommend []TunedRecommend `json:"recommend"`
 }
 
@@ -17,14 +17,16 @@ type TunedProfile struct {
 }
 
 type TunedRecommend struct {
-	Profile  *string     `json:"profile"`
-	Priority *uint64     `json:"priority"`
-	Label    *TunedLabel `json:"label"`
+	Profile  *string      `json:"profile"`
+	Priority *uint64      `json:"priority"`
+	Match    []TunedMatch `json:"match,omitempty"`
 }
 
-type TunedLabel struct {
-	Name  *string `json:"name"`
-	Value *string `json:"value"`
+type TunedMatch struct {
+	Label *string      `json:"label"`
+	Value *string      `json:"value,omitempty"`
+	Type  *string      `json:"type,omitempty"`
+	Match []TunedMatch `json:"match,omitempty"`
 }
 
 // TunedStatus defines the observed state of Tuned
