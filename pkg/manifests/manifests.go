@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strings"
 
 	yamlv2 "gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
@@ -20,6 +21,8 @@ import (
 const (
 	// Node labels file is a file with node labels in a pod with the tuned daemon
 	nodeLabelsFile = "/var/lib/tuned/ocp-node-labels.cfg"
+	// Pod labels file is a file with pod labels in a pod with the tuned daemon
+	podLabelsFile = "/var/lib/tuned/ocp-pod-labels.cfg"
 	// Assets
 	TunedServiceAccount     = "assets/tuned/01-service-account.yaml"
 	TunedClusterRole        = "assets/tuned/02-cluster-role.yaml"
@@ -29,6 +32,11 @@ const (
 	TunedDaemonSet          = "assets/tuned/06-ds-tuned.yaml"
 	TunedCustomResource     = "assets/tuned/07-cr-tuned.yaml"
 )
+
+type tunedRecommend struct {
+	Profile string
+	Data    string
+}
 
 func MustAssetReader(asset string) io.Reader {
 	return bytes.NewReader(MustAsset(asset))
@@ -74,9 +82,9 @@ func (f *Factory) TunedConfigMapProfiles(tuned *tunedv1alpha1.Tuned) (*corev1.Co
 		return nil, err
 	}
 
-	if tuned.Spec.Profiles != nil {
+	if tuned.Spec.Profile != nil {
 		m := make(map[string]string)
-		for _, v := range tuned.Spec.Profiles {
+		for _, v := range tuned.Spec.Profile {
 			if v.Name != nil && v.Data != nil {
 				m[*v.Name] = *v.Data
 			}
@@ -93,13 +101,13 @@ func (f *Factory) TunedConfigMapProfiles(tuned *tunedv1alpha1.Tuned) (*corev1.Co
 }
 
 func (f *Factory) TunedConfigMapRecommend(tuned *tunedv1alpha1.Tuned) (*corev1.ConfigMap, error) {
+	var sb strings.Builder
 	cm, err := NewConfigMap(MustAssetReader(TunedConfigMapRecommend))
 	if err != nil {
 		return nil, err
 	}
 
 	if tuned.Spec.Recommend != nil {
-		recommendConf := ""
 		sort.Slice(tuned.Spec.Recommend, func(i, j int) bool {
 			if tuned.Spec.Recommend[i].Priority != nil && tuned.Spec.Recommend[j].Priority != nil {
 				return *tuned.Spec.Recommend[i].Priority < *tuned.Spec.Recommend[j].Priority
@@ -107,28 +115,13 @@ func (f *Factory) TunedConfigMapRecommend(tuned *tunedv1alpha1.Tuned) (*corev1.C
 			return false
 		})
 		i := 0
+		// Walk through all the entire "recommend:" section
 		for _, r := range tuned.Spec.Recommend {
-			if r.Profile != nil {
-				recommendConf += fmt.Sprintf("[%s,%d]\n", *r.Profile, i)
-				recommendConf += nodeLabelsFile + "=.*"
-				if r.Label != nil {
-					if r.Label.Name != nil {
-						recommendConf += "\\b" + *r.Label.Name + "="
-						if r.Label.Value != nil {
-							recommendConf += *r.Label.Value + "\\n"
-						}
-					} else {
-						// label name wasn't specified, ignore it (profile catch-all)
-					}
-				}
-				recommendConf += "\n\n"
-			} else {
-				// no profile was specified, ignore this TunedRecommend struct
-			}
-			i++
+			aRecommend := recommendWalk(&r)
+			sb.WriteString(toRecommendConf(aRecommend, &i))
 		}
 
-		cm.Data["tuned-ocp-recommend"] = recommendConf
+		cm.Data["tuned-ocp-recommend"] = sb.String()
 	}
 
 	return cm, nil
@@ -199,4 +192,102 @@ func NewTuned(manifest io.Reader) (*tunedv1alpha1.Tuned, error) {
 		return nil, err
 	}
 	return &o, nil
+}
+
+func toRecommendLine(match *tunedv1alpha1.TunedMatch) string {
+	var (
+		sb         strings.Builder
+		labelsFile string
+	)
+	if match.Type != nil {
+		if *match.Type == "pod" {
+			labelsFile = podLabelsFile
+		} else {
+			log.Printf("Label type: %s unknown, using \"node\".", *match.Type)
+		}
+	} else {
+		// Label type not specified, use "node" type by default
+		labelsFile = nodeLabelsFile
+	}
+
+	sb.WriteString(labelsFile)
+	sb.WriteString("=.*")
+
+	if match.Label != nil {
+		sb.WriteString("\\b")
+		sb.WriteString(*match.Label)
+		sb.WriteString("=")
+		if match.Value != nil {
+			sb.WriteString(*match.Value)
+			sb.WriteString("\\n")
+		}
+	} else {
+		// label name wasn't specified, ignore it (profile catch-all)
+	}
+
+	return sb.String()
+}
+
+func toRecommendConf(recommend []tunedRecommend, i *int) string {
+	var sb strings.Builder
+
+	for _, r := range recommend {
+		fmt.Fprintf(&sb, "[%s,%d]\n", r.Profile, *i)
+		sb.WriteString(r.Data)
+		sb.WriteString("\n\n")
+		*i++
+	}
+
+	return sb.String()
+}
+
+func matchWalk(match *tunedv1alpha1.TunedMatch, p tunedRecommend) []tunedRecommend {
+	var (
+		sb         strings.Builder
+		aRecommend []tunedRecommend
+	)
+
+	if match.Label != nil {
+		for _, m := range match.Match {
+			sb.WriteString(p.Data)
+			if len(p.Data) > 0 {
+				sb.WriteString("\n")
+			}
+			sb.WriteString(toRecommendLine(&m))
+			if len(m.Match) == 0 {
+				// leaf node
+				aRecommend = append(aRecommend, tunedRecommend{Profile: p.Profile, Data: sb.String()})
+			} else {
+				aRecommend = append(aRecommend, matchWalk(&m, tunedRecommend{Profile: p.Profile, Data: sb.String()})...)
+			}
+			sb.Reset()
+		}
+	}
+
+	return aRecommend
+}
+
+func recommendWalk(r *tunedv1alpha1.TunedRecommend) []tunedRecommend {
+	var aRecommend []tunedRecommend
+
+	if r.Profile != nil {
+		if len(r.Match) == 0 {
+			// Empty catch-all profile with no node/pod labels
+			sRecommend := toRecommendLine(&tunedv1alpha1.TunedMatch{})
+			aRecommend = append(aRecommend, tunedRecommend{Profile: *r.Profile, Data: sRecommend})
+		}
+		for _, m := range r.Match {
+			sRecommend := toRecommendLine(&m)
+			if len(m.Match) == 0 {
+				// leaf node
+				aRecommend = append(aRecommend, tunedRecommend{Profile: *r.Profile, Data: sRecommend})
+			} else {
+				aRecommend = append(aRecommend, matchWalk(&m, tunedRecommend{Profile: *r.Profile, Data: sRecommend})...)
+			}
+		}
+	} else {
+		// no profile was specified, ignore this TunedRecommend struct
+	}
+
+	return aRecommend
 }
