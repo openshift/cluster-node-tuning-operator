@@ -67,18 +67,10 @@ func CheckAndGetCurrPkg() string {
 	if len(gopath) == 0 {
 		log.Fatalf("get current pkg failed: GOPATH env not set")
 	}
-	var goSrc string
-	cwdInGopath := false
-	wd := MustGetwd()
-	for _, path := range strings.Split(gopath, ":") {
-		goSrc = filepath.Join(path, SrcDir)
+	goSrc := filepath.Join(gopath, SrcDir)
 
-		if strings.HasPrefix(filepath.Dir(wd), goSrc) {
-			cwdInGopath = true
-			break
-		}
-	}
-	if !cwdInGopath {
+	wd := MustGetwd()
+	if !strings.HasPrefix(filepath.Dir(wd), goSrc) {
 		log.Fatalf("check current pkg failed: must run from gopath")
 	}
 	currPkg := strings.Replace(wd, goSrc+string(filepath.Separator), "", 1)
