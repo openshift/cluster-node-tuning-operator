@@ -34,9 +34,7 @@ func (s *Dockerfile) GetInput() (input.Input, error) {
 	return s.Input, nil
 }
 
-const dockerfileTmpl = `FROM alpine:3.8
-
-RUN apk upgrade --update --no-cache
+const dockerfileTmpl = `FROM alpine:3.6
 
 USER nobody
 
