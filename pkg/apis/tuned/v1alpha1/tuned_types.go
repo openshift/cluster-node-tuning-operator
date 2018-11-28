@@ -31,7 +31,9 @@ type TunedMatch struct {
 
 // TunedStatus defines the observed state of Tuned
 type TunedStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+	// The number of nodes that should be running the daemon pod and have one
+	// or more of the daemon pod running and ready.
+	NumberReady int32 `json:"numberReady"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

@@ -76,53 +76,57 @@ func (f *Factory) TunedClusterRoleBinding() (*rbacv1.ClusterRoleBinding, error) 
 	return crb, nil
 }
 
-func (f *Factory) TunedConfigMapProfiles(tuned *tunedv1alpha1.Tuned) (*corev1.ConfigMap, error) {
+func (f *Factory) TunedConfigMapProfiles(tunedArray []tunedv1alpha1.Tuned) (*corev1.ConfigMap, error) {
 	cm, err := NewConfigMap(MustAssetReader(TunedConfigMapProfiles))
 	if err != nil {
 		return nil, err
 	}
 
-	if tuned.Spec.Profile != nil {
-		m := make(map[string]string)
-		for _, v := range tuned.Spec.Profile {
-			if v.Name != nil && v.Data != nil {
-				m[*v.Name] = *v.Data
-			}
-		}
-		tunedOcpProfiles, err := yamlv2.Marshal(&m)
-		if err != nil {
-			log.Fatalf("error: %v", err)
-		}
-
-		cm.Data["tuned-profiles-data"] = string(tunedOcpProfiles)
+	m := map[string]string{}
+	for _, tuned := range tunedArray {
+		tunedConfigMapProfiles(&tuned, m)
 	}
+	tunedOcpProfiles, err := yamlv2.Marshal(&m)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
+
+	cm.Data["tuned-profiles-data"] = string(tunedOcpProfiles)
 
 	return cm, nil
 }
 
-func (f *Factory) TunedConfigMapRecommend(tuned *tunedv1alpha1.Tuned) (*corev1.ConfigMap, error) {
-	var sb strings.Builder
+func (f *Factory) TunedConfigMapRecommend(tunedArray []tunedv1alpha1.Tuned) (*corev1.ConfigMap, error) {
+	var (
+		sb            strings.Builder
+		aRecommendAll []tunedv1alpha1.TunedRecommend
+	)
 	cm, err := NewConfigMap(MustAssetReader(TunedConfigMapRecommend))
 	if err != nil {
 		return nil, err
 	}
 
-	if tuned.Spec.Recommend != nil {
-		sort.Slice(tuned.Spec.Recommend, func(i, j int) bool {
-			if tuned.Spec.Recommend[i].Priority != nil && tuned.Spec.Recommend[j].Priority != nil {
-				return *tuned.Spec.Recommend[i].Priority < *tuned.Spec.Recommend[j].Priority
-			}
-			return false
-		})
-		i := 0
-		// Walk through all the entire "recommend:" section
-		for _, r := range tuned.Spec.Recommend {
-			aRecommend := recommendWalk(&r)
-			sb.WriteString(toRecommendConf(aRecommend, &i))
+	for _, tuned := range tunedArray {
+		if tuned.Spec.Recommend != nil {
+			aRecommendAll = append(aRecommendAll, tuned.Spec.Recommend...)
 		}
-
-		cm.Data["tuned-ocp-recommend"] = sb.String()
 	}
+
+	sort.Slice(aRecommendAll, func(i, j int) bool {
+		if aRecommendAll[i].Priority != nil && aRecommendAll[j].Priority != nil {
+			return *aRecommendAll[i].Priority < *aRecommendAll[j].Priority
+		}
+		return false
+	})
+	i := 0
+	// Walk through the virtual "recommend:" section of all items in tunedArray sorted by priority
+	// and generate a "recommend" configuration for tuned
+	for _, r := range aRecommendAll {
+		aRecommend := recommendWalk(&r)
+		sb.WriteString(toRecommendConf(aRecommend, &i))
+	}
+
+	cm.Data["tuned-ocp-recommend"] = sb.String()
 
 	return cm, nil
 }
@@ -290,4 +294,17 @@ func recommendWalk(r *tunedv1alpha1.TunedRecommend) []tunedRecommend {
 	}
 
 	return aRecommend
+}
+
+func tunedConfigMapProfiles(tuned *tunedv1alpha1.Tuned, m map[string]string) {
+	if tuned.Spec.Profile != nil {
+		for _, v := range tuned.Spec.Profile {
+			if v.Name != nil && v.Data != nil {
+				if _, found := m[*v.Name]; found {
+					log.Printf("WARNING: Duplicate profile %s", *v.Name)
+				}
+				m[*v.Name] = *v.Data
+			}
+		}
+	}
 }

@@ -15,11 +15,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -69,7 +69,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 	createCustomResource(mgr)
 	if err != nil {
-		log.Printf("createCustomResource(): %v\n", err)
+		log.Printf("createCustomResource(): %v", err)
 		return err
 	}
 
@@ -93,20 +93,17 @@ func syncServiceAccount(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned ServiceAccount: %v", err)
 	}
-	err = controllerutil.SetControllerReference(tuned, saManifest, r.scheme)
-	if err != nil {
-		return fmt.Errorf("Couldn't set owner references to ServiceAccount: %v", err)
-	}
 
 	sa := &corev1.ServiceAccount{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: saManifest.Namespace, Name: saManifest.Name}, sa)
+	saManifest.SetOwnerReferences(addOwnerReference(&sa.ObjectMeta, tuned))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err = r.client.Create(context.TODO(), saManifest)
 			if err != nil {
 				return fmt.Errorf("Couldn't create tuned ServiceAccount: %v", err)
 			}
-			log.Printf("Created ServiceAccount for %s/%s\n", saManifest.Namespace, saManifest.Name)
+			log.Printf("Created ServiceAccount for %s/%s", saManifest.Namespace, saManifest.Name)
 		} else {
 			return fmt.Errorf("Failed to get ServiceAccount: %v\n", err)
 		}
@@ -127,20 +124,17 @@ func syncClusterRole(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned ClusterRole: %v", err)
 	}
-	err = controllerutil.SetControllerReference(tuned, crManifest, r.scheme)
-	if err != nil {
-		return fmt.Errorf("Couldn't set owner references to ClusterRole: %v", err)
-	}
 
 	cr := &rbacv1.ClusterRole{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: "", Name: crManifest.Name}, cr)
+	crManifest.SetOwnerReferences(addOwnerReference(&cr.ObjectMeta, tuned))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err = r.client.Create(context.TODO(), crManifest)
 			if err != nil {
 				return fmt.Errorf("Couldn't create tuned ClusterRole: %v", err)
 			}
-			log.Printf("Created ClusterRole for %s\n", crManifest.Name)
+			log.Printf("Created ClusterRole for %s", crManifest.Name)
 		} else {
 			return fmt.Errorf("Failed to get ClusterRole: %v\n", err)
 		}
@@ -161,22 +155,19 @@ func syncClusterRoleBinding(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned ClusterRoleBinding: %v", err)
 	}
-	err = controllerutil.SetControllerReference(tuned, crbManifest, r.scheme)
-	if err != nil {
-		return fmt.Errorf("Couldn't set owner references to ClusterRoleBinding: %v", err)
-	}
 
 	crb := &rbacv1.ClusterRoleBinding{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: "", Name: crbManifest.Name}, crb)
+	crbManifest.SetOwnerReferences(addOwnerReference(&crb.ObjectMeta, tuned))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err = r.client.Create(context.TODO(), crbManifest)
 			if err != nil {
 				return fmt.Errorf("Couldn't create tuned ClusterRoleBinding: %v", err)
 			}
-			log.Printf("Created ClusterRoleBinding for %s\n", crbManifest.Name)
+			log.Printf("Created ClusterRoleBinding for %s", crbManifest.Name)
 		} else {
-			return fmt.Errorf("Failed to get ClusterRoleBinding: %v\n", err)
+			return fmt.Errorf("Failed to get ClusterRoleBinding: %v", err)
 		}
 	} else {
 		log.Printf("Tuned ClusterRoleBinding already exists, updating")
@@ -189,26 +180,30 @@ func syncClusterRoleBinding(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error
 	return nil
 }
 
-func syncClusterConfigMap(f func(tuned *tunedv1alpha1.Tuned) (*corev1.ConfigMap, error), r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
+func syncClusterConfigMap(f func(tuned []tunedv1alpha1.Tuned) (*corev1.ConfigMap, error), r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
 	log.Printf("syncClusterConfigMap()")
-	cmManifest, err := f(tuned)
+	tunedList := &tunedv1alpha1.TunedList{}
+	listOps := &client.ListOptions{Namespace: tuned.Namespace}
+	err := r.client.List(context.TODO(), listOps, tunedList)
+	if err != nil {
+		return fmt.Errorf("Couldn't list Tuned: %v", err)
+	}
+
+	cmManifest, err := f(tunedList.Items)
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned ConfigMap: %v", err)
-	}
-	err = controllerutil.SetControllerReference(tuned, cmManifest, r.scheme)
-	if err != nil {
-		return fmt.Errorf("Couldn't set owner references to ConfigMap: %v", err)
 	}
 
 	cm := &corev1.ConfigMap{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: cmManifest.Namespace, Name: cmManifest.Name}, cm)
+	cmManifest.SetOwnerReferences(addOwnerReference(&cm.ObjectMeta, tuned))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err = r.client.Create(context.TODO(), cmManifest)
 			if err != nil {
 				return fmt.Errorf("Couldn't create tuned ConfigMap: %v", err)
 			}
-			log.Printf("Created ConfigMap for %s/%s\n", cmManifest.Namespace, cmManifest.Name)
+			log.Printf("Created ConfigMap for %s/%s", cmManifest.Namespace, cmManifest.Name)
 		} else {
 			return fmt.Errorf("Failed to get ConfigMap: %vn", err)
 		}
@@ -229,22 +224,19 @@ func syncDaemonSet(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned DaemonSet: %v", err)
 	}
-	err = controllerutil.SetControllerReference(tuned, dsManifest, r.scheme)
-	if err != nil {
-		return fmt.Errorf("Couldn't set owner references to DaemonSet: %v", err)
-	}
 
 	daemonset := &appsv1.DaemonSet{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: dsManifest.Namespace, Name: dsManifest.Name}, daemonset)
+	dsManifest.SetOwnerReferences(addOwnerReference(&daemonset.ObjectMeta, tuned))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err = r.client.Create(context.TODO(), dsManifest)
 			if err != nil {
 				return fmt.Errorf("Couldn't create tuned DaemonSet: %v", err)
 			}
-			log.Printf("Created DaemonSet for %s/%s\n", dsManifest.Namespace, dsManifest.Name)
+			log.Printf("Created DaemonSet for %s/%s", dsManifest.Namespace, dsManifest.Name)
 		} else {
-			return fmt.Errorf("Failed to get DaemonSet: %v\n", err)
+			return fmt.Errorf("Failed to get DaemonSet: %v", err)
 		}
 	} else {
 		log.Printf("Tuned DaemonSet already exists, updating")
@@ -255,6 +247,30 @@ func syncDaemonSet(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
 	}
 
 	return nil
+}
+
+func syncTunedStatus(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) (bool, error) {
+	log.Printf("syncTunedStatus()")
+
+	dsManifest, err := r.manifestFactory.TunedDaemonSet()
+
+	daemonset := &appsv1.DaemonSet{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: dsManifest.Namespace, Name: dsManifest.Name}, daemonset)
+
+	if tuned.Status.NumberReady != daemonset.Status.NumberReady {
+		tuned.Status.NumberReady = daemonset.Status.NumberReady
+		err = r.client.Update(context.TODO(), tuned)
+
+		if err != nil {
+			return false, fmt.Errorf("Failed to update tuned status: %v", err)
+		}
+	}
+
+	if daemonset.Status.NumberReady != daemonset.Status.DesiredNumberScheduled {
+		return true, nil
+	}
+
+	return false, nil
 }
 
 func createCustomResource(mgr manager.Manager) error {
@@ -278,15 +294,44 @@ func createCustomResource(mgr manager.Manager) error {
 	return nil
 }
 
+func addOwnerReference(meta *metav1.ObjectMeta, tuned *tunedv1alpha1.Tuned) []metav1.OwnerReference {
+	var isController bool
+	if tuned.Name == "default" {
+		isController = true
+	}
+
+	if meta.OwnerReferences == nil {
+		meta.OwnerReferences = []metav1.OwnerReference{}
+	} else {
+		for _, owner := range meta.OwnerReferences {
+			if owner.UID == tuned.UID {
+				// Owner reference already set
+				return meta.OwnerReferences
+			}
+		}
+	}
+
+	ownerReference := metav1.OwnerReference{
+		APIVersion: tunedv1alpha1.SchemeGroupVersion.String(),
+		Kind:       "Tuned",
+		Name:       tuned.Name,
+		UID:        tuned.UID,
+		Controller: &isController,
+	}
+
+	return append(meta.OwnerReferences, ownerReference)
+}
+
 // Reconcile reads that state of the cluster for a Tuned object and makes changes based on the state read
 // and what is in the Tuned.Spec
 // Note:
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileTuned) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+	var requeue bool
 	resyncPeriodDuration := resyncPeriodDefault
 
-	log.Printf("Reconciling Tuned %s/%s\n", request.Namespace, request.Name)
+	log.Printf("Reconciling Tuned %s/%s", request.Namespace, request.Name)
 
 	if os.Getenv("RESYNC_PERIOD") != "" {
 		var err error
@@ -303,12 +348,13 @@ func (r *ReconcileTuned) Reconcile(request reconcile.Request) (reconcile.Result,
 	tunedInstance := &tunedv1alpha1.Tuned{}
 	err := r.client.Get(context.TODO(), request.NamespacedName, tunedInstance)
 	if err != nil {
-		log.Printf("Couldn't get tunedInstance(): %v\n", err)
+		log.Printf("Couldn't get tunedInstance(): %v", err)
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
-			return reconcileResult, nil
+
+			return reconcile.Result{Requeue: false}, nil
 		}
 		// Error reading the object - requeue the request.
 		return reconcileResult, err
@@ -316,38 +362,47 @@ func (r *ReconcileTuned) Reconcile(request reconcile.Request) (reconcile.Result,
 
 	err = syncServiceAccount(r, tunedInstance)
 	if err != nil {
-		log.Printf("Couldn't syncServiceAccount(): %v\n", err)
+		log.Printf("Couldn't syncServiceAccount(): %v", err)
 		return reconcileResult, err
 	}
 
 	err = syncClusterRole(r, tunedInstance)
 	if err != nil {
-		log.Printf("Couldn't syncClusterRole(): %v\n", err)
+		log.Printf("Couldn't syncClusterRole(): %v", err)
 		return reconcileResult, err
 	}
 
 	err = syncClusterRoleBinding(r, tunedInstance)
 	if err != nil {
-		log.Printf("Couldn't syncClusterRoleBinding(): %v\n", err)
+		log.Printf("Couldn't syncClusterRoleBinding(): %v", err)
 		return reconcileResult, err
 	}
 
 	err = syncClusterConfigMap(r.manifestFactory.TunedConfigMapProfiles, r, tunedInstance)
 	if err != nil {
-		log.Printf("Couldn't syncClusterConfigMap(): %v\n", err)
+		log.Printf("Couldn't syncClusterConfigMap(): %v", err)
 		return reconcileResult, err
 	}
 
 	err = syncClusterConfigMap(r.manifestFactory.TunedConfigMapRecommend, r, tunedInstance)
 	if err != nil {
-		log.Printf("Couldn't syncClusterConfigMap(): %v\n", err)
+		log.Printf("Couldn't syncClusterConfigMap(): %v", err)
 		return reconcileResult, err
 	}
 
 	err = syncDaemonSet(r, tunedInstance)
 	if err != nil {
-		log.Printf("Couldn't syncDaemonSet(): %v\n", err)
+		log.Printf("Couldn't syncDaemonSet(): %v", err)
 		return reconcileResult, err
+	}
+
+	requeue, err = syncTunedStatus(r, tunedInstance)
+	if err != nil {
+		log.Printf("Couldn't syncTunedStatus(): %v", err)
+		return reconcileResult, err
+	} else if requeue {
+		log.Printf("Reconcile requeue due to syncTunedStatus()")
+		return reconcile.Result{Requeue: true}, nil
 	}
 
 	return reconcileResult, nil
