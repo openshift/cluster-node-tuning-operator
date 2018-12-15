@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"os"
 	"runtime"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/apis"
@@ -15,15 +16,30 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
 )
 
+const (
+	PNAME = "cluster-node-tuning-operator"
+)
+
+var (
+	version string // cluster-node-tuning-operator version
+	// Flags
+	boolVersion = flag.Bool("version", false, "show program version and exit")
+)
+
 func printVersion() {
 	log.Printf("Go Version: %s", runtime.Version())
 	log.Printf("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH)
 	log.Printf("operator-sdk Version: %v", sdkVersion.Version)
+	log.Printf("%s Version: %s", PNAME, version)
 }
 
 func main() {
 	printVersion()
 	flag.Parse()
+
+	if *boolVersion {
+		os.Exit(0)
+	}
 
 	namespace, err := k8sutil.GetWatchNamespace()
 	if err != nil {
