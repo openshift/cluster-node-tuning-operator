@@ -19,8 +19,8 @@ The daemons run on all nodes in the cluster, one per node.
 
 ## Deploying the node tuning operator
 
-The operator is deployed by applying the manifests in the operator's
-`/manifests` directory.  It automatically creates a default deployment
+The operator is deployed by applying the `*.yaml` manifests in the operator's
+`/manifests` directory in alphanumeric order.  It automatically creates a default deployment
 and custom resource
 ([CR](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/))
 for the tuned daemons.  The following shows the default CR created
