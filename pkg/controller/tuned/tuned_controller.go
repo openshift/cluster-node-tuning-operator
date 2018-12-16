@@ -67,7 +67,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	createCustomResource(mgr)
+	err = createCustomResource(mgr)
 	if err != nil {
 		log.Printf("createCustomResource(): %v", err)
 		return err
