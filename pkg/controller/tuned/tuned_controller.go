@@ -6,10 +6,13 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
+	operatorsv1alpha1 "github.com/openshift/api/operator/v1alpha1"
 	tunedv1alpha1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1alpha1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
+	"github.com/openshift/library-go/pkg/operator/v1alpha1helpers"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -252,15 +255,41 @@ func syncDaemonSet(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
 func syncTunedStatus(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) (bool, error) {
 	log.Printf("syncTunedStatus()")
 
-	dsManifest, err := r.manifestFactory.TunedDaemonSet()
+	availableCondition := operatorsv1alpha1.OperatorCondition{
+		Type:               operatorsv1alpha1.OperatorStatusTypeAvailable,
+		LastTransitionTime: metav1.NewTime(time.Now()),
+	}
 
+	dsManifest, err := r.manifestFactory.TunedDaemonSet()
 	daemonset := &appsv1.DaemonSet{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: dsManifest.Namespace, Name: dsManifest.Name}, daemonset)
+
+	available := true
+	unknown := false
+	msgs := []string{}
+	if daemonset != nil {
+		if daemonset.Status.NumberUnavailable > 0 {
+			available = false
+			msgs = append(msgs, fmt.Sprintf("DaemonSet %q has %d not ready pod(s).", daemonset.Name, daemonset.Status.NumberUnavailable))
+		}
+	} else {
+		unknown = true
+	}
+
+	switch {
+	case unknown:
+		availableCondition.Status = operatorsv1alpha1.ConditionUnknown
+	case available:
+		availableCondition.Status = operatorsv1alpha1.ConditionTrue
+	default:
+		availableCondition.Status = operatorsv1alpha1.ConditionFalse
+	}
+	availableCondition.Message = strings.Join(msgs, "\n")
+	v1alpha1helpers.SetOperatorCondition(&tuned.Status.Conditions, availableCondition)
 
 	if tuned.Status.NumberReady != daemonset.Status.NumberReady {
 		tuned.Status.NumberReady = daemonset.Status.NumberReady
 		err = r.client.Update(context.TODO(), tuned)
-
 		if err != nil {
 			return false, fmt.Errorf("Failed to update tuned status: %v", err)
 		}
