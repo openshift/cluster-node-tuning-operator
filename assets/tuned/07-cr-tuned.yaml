@@ -28,6 +28,10 @@ spec:
       net.ipv6.neigh.default.gc_thresh2=32768
       net.ipv6.neigh.default.gc_thresh3=65536
 
+      [sysfs]
+      /sys/module/nvme_core/parameters/io_timeout=4294967295
+      /sys/module/nvme_core/parameters/max_retries=10
+
   - name: "openshift-control-plane"
     data: |
       [main]
