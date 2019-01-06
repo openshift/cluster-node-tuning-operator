@@ -5,6 +5,7 @@ BIN=$(lastword $(subst /, ,$(PACKAGE)))
 BINDATA=pkg/manifests/bindata.go
 
 GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
+REV=$(shell git describe --long --tags --match='v*' --always --dirty)
 
 DOCKERFILE=Dockerfile
 IMAGE_TAG=openshift/origin-cluster-node-tuning-operator
@@ -15,7 +16,7 @@ GOBINDATA_BIN=bin/go-bindata
 
 ENVVAR=GOOS=linux CGO_ENABLED=0
 GOOS=linux
-GO_BUILD_RECIPE=GOOS=$(GOOS) go build -o $(BIN) $(MAIN_PACKAGE)
+GO_BUILD_RECIPE=GOOS=$(GOOS) go build -o $(BIN) -ldflags '-X main.version=$(REV)' $(MAIN_PACKAGE)
 
 all: generate build
 
@@ -44,6 +45,9 @@ else
 	@exit 1
 endif
 
+test:
+	go test ./cmd/... ./pkg/... -coverprofile cover.out
+
 clean:
 	go clean
 	rm -f $(BIN)
@@ -54,9 +58,6 @@ ifdef USE_BUILDAH
 else
 	sudo docker build -t $(IMAGE_TAG) -f $(DOCKERFILE) .
 endif
-
-test:
-	go test ./cmd/... ./pkg/... -coverprofile cover.out
 
 local-image-push:
 ifdef USE_BUILDAH
