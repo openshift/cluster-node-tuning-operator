@@ -72,6 +72,8 @@ spec:
           optional: true
         name: var-lib-tuned-profiles-data
       dnsPolicy: ClusterFirst
+      nodeSelector:
+        beta.kubernetes.io/os: linux
       hostNetwork: true
       restartPolicy: Always
       schedulerName: default-scheduler
