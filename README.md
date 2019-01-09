@@ -80,6 +80,8 @@ The `profile:` section lists tuned profiles and their names.
       # tuned_profile_n profile settings
 ```
 
+Refer to a list of
+(tuned plugins supported by the operator)[#supported-tuned-daemon-plugins].
 
 ### Recommended profiles
 
@@ -152,10 +154,10 @@ _true_, the node label also needs to be node-role.kubernetes.io/master
 _or_ node-role.kubernetes.io/infra.
 
 If the labels for the profile with priority 10 matched,
-openshift-control-plane-es profile is applied and no other profile is 
-considered.  If the node/pod label combination did not match, 
+openshift-control-plane-es profile is applied and no other profile is
+considered.  If the node/pod label combination did not match,
 the second highest priority profile (openshift-control-plane) is considered.
-This profile is applied if the containerized tuned pod runs on a node with 
+This profile is applied if the containerized tuned pod runs on a node with
 labels node-role.kubernetes.io/master _or_ node-role.kubernetes.io/infra.
 
 Finally, the profile `openshift-node` has the lowest priority of 30.
@@ -165,4 +167,31 @@ profile with higher priority matches on a given node.
 
 ### Supported tuned daemon plugins
 
-TODO
+Aside from the `[main]` section, the following
+[tuned plugins](https://github.com/redhat-performance/tuned/tree/master/tuned/plugins)
+are supported when using [custom profiles](#custom-tuning-specification) defined
+in the `profile:` section of the Tuned CR:
+
+* audio
+* cpu
+* disk
+* eeepc_she
+* modules
+* mounts
+* net
+* scheduler
+* scsi_host
+* selinux
+* sysctl
+* sysfs
+* usb
+* video
+* vm
+
+with the exception of dynamic tuning functionality provided by some of the plugins.
+
+The following Tuned plugins are currently not supported:
+
+* bootloader
+* script
+* systemd

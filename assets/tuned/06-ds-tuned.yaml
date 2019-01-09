@@ -40,6 +40,9 @@ spec:
         - mountPath: /run/systemd/system
           name: run-systemd-system
           readOnly: true
+        - mountPath: /lib/modules
+          name: lib-modules
+          readOnly: true
         env:
           - name: OCP_NODE_NAME
             valueFrom:
@@ -57,6 +60,9 @@ spec:
       - hostPath:
           path: /run/systemd/system
         name: run-systemd-system
+      - hostPath:
+          path: /lib/modules
+        name: lib-modules
       - configMap:
           items:
           - key: tuned-ocp-recommend
@@ -75,6 +81,7 @@ spec:
       nodeSelector:
         beta.kubernetes.io/os: linux
       hostNetwork: true
+      hostPID: true
       restartPolicy: Always
       schedulerName: default-scheduler
       securityContext: {}
