@@ -2,6 +2,7 @@
 package v1alpha1
 
 import (
+	operatorv1alpha1 "github.com/openshift/api/operator/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -34,6 +35,9 @@ type TunedStatus struct {
 	// The number of nodes that should be running the daemon pod and have one
 	// or more of the daemon pod running and ready.
 	NumberReady int32 `json:"numberReady"`
+
+	// Conditions is a list of conditions and their status.
+	Conditions []operatorv1alpha1.OperatorCondition `json:"conditions,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

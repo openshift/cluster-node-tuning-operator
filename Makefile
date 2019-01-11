@@ -31,6 +31,9 @@ generate: $(GOBINDATA_BIN)
 $(GOBINDATA_BIN):
 	go get -u github.com/jteeuwen/go-bindata/...
 
+test-e2e: generate
+	go test -v ./test/e2e/... -root $(PWD) -kubeconfig=$(KUBECONFIG) -globalMan manifests/02-crd.yaml
+
 verify:	verify-gofmt
 
 verify-gofmt:
@@ -67,4 +70,4 @@ else
 	sudo docker push $(IMAGE_REGISTRY)/$(IMAGE_TAG)
 endif
 
-.PHONY: all build generate verify verify-gofmt clean local-image local-image-push
+.PHONY: all build generate test-e2e verify verify-gofmt clean local-image local-image-push

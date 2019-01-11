@@ -252,10 +252,30 @@
   version = "1.0.1"
 
 [[projects]]
+  branch = "master"
+  digest = "1:33909eb34c979b2a3980987669713413317044afb224bba4bc7a372d8b6da0d5"
+  name = "github.com/openshift/api"
+  packages = [
+    "config/v1",
+    "operator/v1alpha1",
+  ]
+  pruneopts = "NT"
+  revision = "aab033bae2a129607f4fb277c3777b2eabb08601"
+
+[[projects]]
+  branch = "master"
+  digest = "1:be2df09f4e845d3d846c8143a943f4579e15277dbcd70282be2442229e318528"
+  name = "github.com/openshift/library-go"
+  packages = ["pkg/operator/v1alpha1helpers"]
+  pruneopts = "NT"
+  revision = "0f19d7d6215353efcd2e7c6e16f29a3da5a79c0b"
+
+[[projects]]
   digest = "1:666dc2656c38279fc6f75c1e85b699dcea119202937173acf86ae129b4c751aa"
   name = "github.com/operator-framework/operator-sdk"
   packages = [
     "pkg/k8sutil",
+    "pkg/test",
     "version",
   ]
   pruneopts = "NT"
@@ -492,6 +512,17 @@
   revision = "2d6f90ab1293a1fb871cf149423ebb72aa7423aa"
 
 [[projects]]
+  digest = "1:117a407949aaaad9f7fbe3da8d6c2055f2c223ac0cbebd39f47ff71899622a91"
+  name = "k8s.io/apiextensions-apiserver"
+  packages = [
+    "pkg/apis/apiextensions",
+    "pkg/apis/apiextensions/v1beta1",
+    "pkg/client/clientset/clientset/scheme",
+  ]
+  pruneopts = "NT"
+  revision = "408db4a50408e2149acbd657bceb2480c13cb0a4"
+
+[[projects]]
   digest = "1:b07bf863262aae765494d60f0d524483f211b29f9bb27d445a79c13af8676bf2"
   name = "k8s.io/apimachinery"
   packages = [
@@ -546,6 +577,7 @@
   name = "k8s.io/client-go"
   packages = [
     "discovery",
+    "discovery/cached",
     "dynamic",
     "kubernetes",
     "kubernetes/scheme",
@@ -696,7 +728,6 @@
     "pkg/client/apiutil",
     "pkg/client/config",
     "pkg/controller",
-    "pkg/controller/controllerutil",
     "pkg/event",
     "pkg/handler",
     "pkg/internal/controller",
@@ -725,7 +756,10 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "github.com/openshift/api/operator/v1alpha1",
+    "github.com/openshift/library-go/pkg/operator/v1alpha1helpers",
     "github.com/operator-framework/operator-sdk/pkg/k8sutil",
+    "github.com/operator-framework/operator-sdk/pkg/test",
     "github.com/operator-framework/operator-sdk/version",
     "gopkg.in/yaml.v2",
     "k8s.io/api/apps/v1",
@@ -736,6 +770,7 @@
     "k8s.io/apimachinery/pkg/runtime",
     "k8s.io/apimachinery/pkg/runtime/schema",
     "k8s.io/apimachinery/pkg/types",
+    "k8s.io/apimachinery/pkg/util/wait",
     "k8s.io/apimachinery/pkg/util/yaml",
     "k8s.io/client-go/plugin/pkg/client/auth/gcp",
     "k8s.io/code-generator/cmd/client-gen",
@@ -749,7 +784,6 @@
     "sigs.k8s.io/controller-runtime/pkg/client",
     "sigs.k8s.io/controller-runtime/pkg/client/config",
     "sigs.k8s.io/controller-runtime/pkg/controller",
-    "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil",
     "sigs.k8s.io/controller-runtime/pkg/handler",
     "sigs.k8s.io/controller-runtime/pkg/manager",
     "sigs.k8s.io/controller-runtime/pkg/reconcile",
