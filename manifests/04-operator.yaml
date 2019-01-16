@@ -29,6 +29,7 @@ spec:
           imagePullPolicy: Always
           resources:
             requests:
+              cpu: 10m
               memory: 20Mi
           env:
             - name: WATCH_NAMESPACE
