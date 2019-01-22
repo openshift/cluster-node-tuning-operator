@@ -4,15 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
-	"strconv"
-	"strings"
 	"time"
 
-	operatorsv1alpha1 "github.com/openshift/api/operator/v1alpha1"
+	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	tunedv1alpha1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1alpha1"
+	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
-	"github.com/openshift/library-go/pkg/operator/v1alpha1helpers"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -29,10 +26,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-const (
-	resyncPeriodDefault int64 = 600
-)
-
 // Add creates a new Tuned Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager) error {
@@ -44,6 +37,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return &ReconcileTuned{
 		client: mgr.GetClient(), scheme: mgr.GetScheme(),
 		manifestFactory: manifests.NewFactory(),
+		cfgv1client:     nil,
 	}
 }
 
@@ -88,9 +82,10 @@ type ReconcileTuned struct {
 	client          client.Client
 	scheme          *runtime.Scheme
 	manifestFactory *manifests.Factory
+	cfgv1client     *configv1client.ConfigV1Client
 }
 
-func syncServiceAccount(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
+func (r *ReconcileTuned) syncServiceAccount(tuned *tunedv1alpha1.Tuned) error {
 	log.Printf("syncServiceAccount()")
 	saManifest, err := r.manifestFactory.TunedServiceAccount()
 	if err != nil {
@@ -121,7 +116,7 @@ func syncServiceAccount(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
 	return nil
 }
 
-func syncClusterRole(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
+func (r *ReconcileTuned) syncClusterRole(tuned *tunedv1alpha1.Tuned) error {
 	log.Printf("syncClusterRole()")
 	crManifest, err := r.manifestFactory.TunedClusterRole()
 	if err != nil {
@@ -152,7 +147,7 @@ func syncClusterRole(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
 	return nil
 }
 
-func syncClusterRoleBinding(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
+func (r *ReconcileTuned) syncClusterRoleBinding(tuned *tunedv1alpha1.Tuned) error {
 	log.Printf("syncClusterRoleBinding()")
 	crbManifest, err := r.manifestFactory.TunedClusterRoleBinding()
 	if err != nil {
@@ -183,7 +178,7 @@ func syncClusterRoleBinding(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error
 	return nil
 }
 
-func syncClusterConfigMap(f func(tuned []tunedv1alpha1.Tuned) (*corev1.ConfigMap, error), r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
+func (r *ReconcileTuned) syncClusterConfigMap(f func(tuned []tunedv1alpha1.Tuned) (*corev1.ConfigMap, error), tuned *tunedv1alpha1.Tuned) error {
 	log.Printf("syncClusterConfigMap()")
 	tunedList := &tunedv1alpha1.TunedList{}
 	listOps := &client.ListOptions{Namespace: tuned.Namespace}
@@ -221,7 +216,7 @@ func syncClusterConfigMap(f func(tuned []tunedv1alpha1.Tuned) (*corev1.ConfigMap
 	return nil
 }
 
-func syncDaemonSet(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
+func (r *ReconcileTuned) syncDaemonSet(tuned *tunedv1alpha1.Tuned) error {
 	log.Printf("syncDaemonSet()")
 	dsManifest, err := r.manifestFactory.TunedDaemonSet()
 	if err != nil {
@@ -250,56 +245,6 @@ func syncDaemonSet(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) error {
 	}
 
 	return nil
-}
-
-func syncTunedStatus(r *ReconcileTuned, tuned *tunedv1alpha1.Tuned) (bool, error) {
-	log.Printf("syncTunedStatus()")
-
-	availableCondition := operatorsv1alpha1.OperatorCondition{
-		Type:               operatorsv1alpha1.OperatorStatusTypeAvailable,
-		LastTransitionTime: metav1.NewTime(time.Now()),
-	}
-
-	dsManifest, err := r.manifestFactory.TunedDaemonSet()
-	daemonset := &appsv1.DaemonSet{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: dsManifest.Namespace, Name: dsManifest.Name}, daemonset)
-
-	available := true
-	unknown := false
-	msgs := []string{}
-	if daemonset != nil {
-		if daemonset.Status.NumberUnavailable > 0 {
-			available = false
-			msgs = append(msgs, fmt.Sprintf("DaemonSet %q has %d not ready pod(s).", daemonset.Name, daemonset.Status.NumberUnavailable))
-		}
-	} else {
-		unknown = true
-	}
-
-	switch {
-	case unknown:
-		availableCondition.Status = operatorsv1alpha1.ConditionUnknown
-	case available:
-		availableCondition.Status = operatorsv1alpha1.ConditionTrue
-	default:
-		availableCondition.Status = operatorsv1alpha1.ConditionFalse
-	}
-	availableCondition.Message = strings.Join(msgs, "\n")
-	v1alpha1helpers.SetOperatorCondition(&tuned.Status.Conditions, availableCondition)
-
-	if tuned.Status.NumberReady != daemonset.Status.NumberReady {
-		tuned.Status.NumberReady = daemonset.Status.NumberReady
-		err = r.client.Update(context.TODO(), tuned)
-		if err != nil {
-			return false, fmt.Errorf("Failed to update tuned status: %v", err)
-		}
-	}
-
-	if daemonset.Status.NumberReady != daemonset.Status.DesiredNumberScheduled {
-		return true, nil
-	}
-
-	return false, nil
 }
 
 func createCustomResource(mgr manager.Manager) error {
@@ -358,18 +303,9 @@ func addOwnerReference(meta *metav1.ObjectMeta, tuned *tunedv1alpha1.Tuned) []me
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileTuned) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	var requeue bool
-	resyncPeriodDuration := resyncPeriodDefault
-
 	log.Printf("Reconciling Tuned %s/%s", request.Namespace, request.Name)
 
-	if os.Getenv("RESYNC_PERIOD") != "" {
-		var err error
-		resyncPeriodDuration, err = strconv.ParseInt(os.Getenv("RESYNC_PERIOD"), 10, 64)
-		if err != nil {
-			log.Printf("Cannot parse RESYNC_PERIOD (%s), using %d", os.Getenv("RESYNC_PERIOD"), resyncPeriodDefault)
-			resyncPeriodDuration = resyncPeriodDefault
-		}
-	}
+	resyncPeriodDuration := ntoconfig.ResyncPeriod()
 	reconcilePeriod := time.Duration(resyncPeriodDuration) * time.Second
 	reconcileResult := reconcile.Result{RequeueAfter: reconcilePeriod}
 
@@ -389,48 +325,48 @@ func (r *ReconcileTuned) Reconcile(request reconcile.Request) (reconcile.Result,
 		return reconcileResult, err
 	}
 
-	err = syncServiceAccount(r, tunedInstance)
+	err = r.syncServiceAccount(tunedInstance)
 	if err != nil {
 		log.Printf("Couldn't syncServiceAccount(): %v", err)
 		return reconcileResult, err
 	}
 
-	err = syncClusterRole(r, tunedInstance)
+	err = r.syncClusterRole(tunedInstance)
 	if err != nil {
 		log.Printf("Couldn't syncClusterRole(): %v", err)
 		return reconcileResult, err
 	}
 
-	err = syncClusterRoleBinding(r, tunedInstance)
+	err = r.syncClusterRoleBinding(tunedInstance)
 	if err != nil {
 		log.Printf("Couldn't syncClusterRoleBinding(): %v", err)
 		return reconcileResult, err
 	}
 
-	err = syncClusterConfigMap(r.manifestFactory.TunedConfigMapProfiles, r, tunedInstance)
+	err = r.syncClusterConfigMap(r.manifestFactory.TunedConfigMapProfiles, tunedInstance)
 	if err != nil {
 		log.Printf("Couldn't syncClusterConfigMap(): %v", err)
 		return reconcileResult, err
 	}
 
-	err = syncClusterConfigMap(r.manifestFactory.TunedConfigMapRecommend, r, tunedInstance)
+	err = r.syncClusterConfigMap(r.manifestFactory.TunedConfigMapRecommend, tunedInstance)
 	if err != nil {
 		log.Printf("Couldn't syncClusterConfigMap(): %v", err)
 		return reconcileResult, err
 	}
 
-	err = syncDaemonSet(r, tunedInstance)
+	err = r.syncDaemonSet(tunedInstance)
 	if err != nil {
 		log.Printf("Couldn't syncDaemonSet(): %v", err)
 		return reconcileResult, err
 	}
 
-	requeue, err = syncTunedStatus(r, tunedInstance)
+	requeue, err = r.syncOperatorStatus()
 	if err != nil {
-		log.Printf("Couldn't syncTunedStatus(): %v", err)
+		log.Printf("Couldn't syncOperatorStatus(): %v", err)
 		return reconcileResult, err
 	} else if requeue {
-		log.Printf("Reconcile requeue due to syncTunedStatus()")
+		log.Printf("Reconcile requeue due to syncOperatorStatus()")
 		return reconcile.Result{Requeue: true}, nil
 	}
 

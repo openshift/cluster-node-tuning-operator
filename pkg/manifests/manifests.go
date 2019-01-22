@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"sort"
 	"strings"
 
@@ -16,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	tunedv1alpha1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1alpha1"
+	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 )
 
 const (
@@ -133,7 +133,7 @@ func (f *Factory) TunedConfigMapRecommend(tunedArray []tunedv1alpha1.Tuned) (*co
 
 func (f *Factory) TunedDaemonSet() (*appsv1.DaemonSet, error) {
 	ds, err := NewDaemonSet(MustAssetReader(TunedDaemonSet))
-	imageTuned := os.Getenv("CLUSTER_NODE_TUNED_IMAGE")
+	imageTuned := ntoconfig.NodeTunedImage()
 	ds.Spec.Template.Spec.Containers[0].Image = imageTuned
 
 	if err != nil {

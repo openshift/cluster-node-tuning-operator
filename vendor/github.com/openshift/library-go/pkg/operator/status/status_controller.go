@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/diff"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
@@ -27,19 +28,23 @@ import (
 
 var workQueueKey = "instance"
 
-type OperatorStatusProvider interface {
-	Informer() cache.SharedIndexInformer
-	CurrentStatus() (operatorv1.OperatorStatus, error)
+type VersionGetter interface {
+	// SetVersion is a way to set the version for an operand.  It must be thread-safe
+	SetVersion(operandName, version string)
+	// GetVersion is way to get the versions for all operands.  It must be thread-safe and return an object that doesn't mutate
+	GetVersions() map[string]string
+	// VersionChangedChannel is a channel that will get an item whenever SetVersion has been called
+	VersionChangedChannel() <-chan struct{}
 }
 
 type StatusSyncer struct {
 	clusterOperatorName string
+	relatedObjects      []configv1.ObjectReference
 
-	// TODO use a generated client when it moves to openshift/api
+	versionGetter         VersionGetter
+	operatorClient        operatorv1helpers.OperatorClient
 	clusterOperatorClient configv1client.ClusterOperatorsGetter
 	eventRecorder         events.Recorder
-
-	operatorStatusProvider OperatorStatusProvider
 
 	// queue only ever has one item, but it has nice error handling backoff/retry semantics
 	queue workqueue.RateLimitingInterface
@@ -47,15 +52,19 @@ type StatusSyncer struct {
 
 func NewClusterOperatorStatusController(
 	name string,
+	relatedObjects []configv1.ObjectReference,
 	clusterOperatorClient configv1client.ClusterOperatorsGetter,
-	operatorStatusProvider OperatorStatusProvider,
+	operatorStatusProvider operatorv1helpers.OperatorClient,
+	versionGetter VersionGetter,
 	recorder events.Recorder,
 ) *StatusSyncer {
 	c := &StatusSyncer{
-		clusterOperatorName:    name,
-		clusterOperatorClient:  clusterOperatorClient,
-		operatorStatusProvider: operatorStatusProvider,
-		eventRecorder:          recorder,
+		clusterOperatorName:   name,
+		relatedObjects:        relatedObjects,
+		versionGetter:         versionGetter,
+		clusterOperatorClient: clusterOperatorClient,
+		operatorClient:        operatorStatusProvider,
+		eventRecorder:         recorder,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "StatusSyncer-"+name),
 	}
@@ -69,7 +78,7 @@ func NewClusterOperatorStatusController(
 // sync reacts to a change in prereqs by finding information that is required to match another value in the cluster. This
 // must be information that is logically "owned" by another component.
 func (c StatusSyncer) sync() error {
-	currentDetailedStatus, err := c.operatorStatusProvider.CurrentStatus()
+	_, currentDetailedStatus, _, err := c.operatorClient.GetOperatorState()
 	if apierrors.IsNotFound(err) {
 		glog.Infof("operator.status not found")
 		c.eventRecorder.Warningf("StatusNotFound", "Unable to determine current operator status for %s", c.clusterOperatorName)
@@ -92,7 +101,7 @@ func (c StatusSyncer) sync() error {
 			ObjectMeta: metav1.ObjectMeta{Name: c.clusterOperatorName},
 		}
 	}
-	clusterOperatorObj.Status.Conditions = nil
+	clusterOperatorObj.Status.RelatedObjects = c.relatedObjects
 
 	var failingConditions []operatorv1.OperatorCondition
 	for _, condition := range currentDetailedStatus.Conditions {
@@ -146,14 +155,15 @@ func (c StatusSyncer) sync() error {
 	if equality.Semantic.DeepEqual(clusterOperatorObj, originalClusterOperatorObj) {
 		return nil
 	}
-
-	glog.V(4).Infof("clusteroperator/%s set to %v", c.clusterOperatorName, runtime.EncodeOrDie(unstructured.UnstructuredJSONScheme, clusterOperatorObj))
+	originalJSON := runtime.EncodeOrDie(unstructured.UnstructuredJSONScheme, originalClusterOperatorObj)
+	newJSON := runtime.EncodeOrDie(unstructured.UnstructuredJSONScheme, clusterOperatorObj)
+	glog.V(2).Infof("clusteroperator/%s diff %v", c.clusterOperatorName, diff.StringDiff(originalJSON, newJSON))
 
 	if len(clusterOperatorObj.ResourceVersion) != 0 {
 		if _, updateErr := c.clusterOperatorClient.ClusterOperators().UpdateStatus(clusterOperatorObj); err != nil {
 			return updateErr
 		}
-		c.eventRecorder.Eventf("OperatorStatusChanged", "Status for operator %s changed: %s", c.clusterOperatorName, configv1helpers.GetStatusConditionDiff(originalClusterOperatorObj.Status.Conditions, clusterOperatorObj.Status.Conditions))
+		c.eventRecorder.Eventf("OperatorStatusChanged", "Status for operator %s changed: %s", c.clusterOperatorName, configv1helpers.GetStatusDiff(originalClusterOperatorObj.Status, clusterOperatorObj.Status))
 		return nil
 	}
 
@@ -185,10 +195,16 @@ func (c StatusSyncer) sync() error {
 		configv1helpers.RemoveStatusCondition(&freshOperatorConfig.Status.Conditions, configv1.OperatorFailing)
 	}
 
+	// TODO work out removal.  We don't always know the existing value, so removing early seems like a bad idea.  Perhaps a remove flag.
+	versions := c.versionGetter.GetVersions()
+	for operand, version := range versions {
+		operatorv1helpers.SetOperandVersion(&clusterOperatorObj.Status.Versions, configv1.OperandVersion{Name: operand, Version: version})
+	}
+
 	if _, updateErr := c.clusterOperatorClient.ClusterOperators().UpdateStatus(freshOperatorConfig); updateErr != nil {
 		return updateErr
 	}
-	c.eventRecorder.Eventf("OperatorStatusChanged", "Status for operator %s changed: %s", c.clusterOperatorName, configv1helpers.GetStatusConditionDiff(originalClusterOperatorObj.Status.Conditions, clusterOperatorObj.Status.Conditions))
+	c.eventRecorder.Eventf("OperatorStatusChanged", "Status for operator %s changed: %s", c.clusterOperatorName, configv1helpers.GetStatusDiff(originalClusterOperatorObj.Status, clusterOperatorObj.Status))
 
 	return nil
 }
@@ -210,10 +226,30 @@ func (c *StatusSyncer) Run(workers int, stopCh <-chan struct{}) {
 	glog.Infof("Starting StatusSyncer-" + c.clusterOperatorName)
 	defer glog.Infof("Shutting down StatusSyncer-" + c.clusterOperatorName)
 
+	// start watching for version changes
+	go c.watchVersionGetter(stopCh)
+
 	// doesn't matter what workers say, only start one.
 	go wait.Until(c.runWorker, time.Second, stopCh)
 
 	<-stopCh
+}
+
+func (c *StatusSyncer) watchVersionGetter(stopCh <-chan struct{}) {
+	defer utilruntime.HandleCrash()
+
+	versionCh := c.versionGetter.VersionChangedChannel()
+	// always kick at least once
+	c.queue.Add(workQueueKey)
+
+	for {
+		select {
+		case <-stopCh:
+			return
+		case <-versionCh:
+			c.queue.Add(workQueueKey)
+		}
+	}
 }
 
 func (c *StatusSyncer) runWorker() {

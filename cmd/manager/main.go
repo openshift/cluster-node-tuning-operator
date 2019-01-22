@@ -7,7 +7,9 @@ import (
 	"runtime"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/apis"
+	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/controller"
+	"github.com/openshift/cluster-node-tuning-operator/version"
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -16,12 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
 )
 
-const (
-	PNAME = "cluster-node-tuning-operator"
-)
-
 var (
-	version string // cluster-node-tuning-operator version
 	// Flags
 	boolVersion = flag.Bool("version", false, "show program version and exit")
 )
@@ -30,7 +27,7 @@ func printVersion() {
 	log.Printf("Go Version: %s", runtime.Version())
 	log.Printf("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH)
 	log.Printf("operator-sdk Version: %v", sdkVersion.Version)
-	log.Printf("%s Version: %s", PNAME, version)
+	log.Printf("%s Version: %s", ntoconfig.OperatorName(), version.Version)
 }
 
 func main() {

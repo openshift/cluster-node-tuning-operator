@@ -1,8 +1,11 @@
 package certrotation
 
 import (
+	"crypto/x509"
 	"fmt"
 	"time"
+
+	"github.com/golang/glog"
 
 	"github.com/openshift/library-go/pkg/operator/events"
 	corev1informers "k8s.io/client-go/informers/core/v1"
@@ -18,6 +21,8 @@ import (
 	"github.com/openshift/library-go/pkg/crypto"
 )
 
+// TargetRotation rotates a key and cert signed by a CA. It creates a new one when <RefreshPercentage>
+// of the lifetime of the old cert has passed, or if the common name of the CA changes.
 type TargetRotation struct {
 	Namespace         string
 	Name              string
@@ -42,7 +47,7 @@ type ServingRotation struct {
 	CertificateExtensionFn []crypto.CertificateExtensionFunc
 }
 
-func (c TargetRotation) ensureTargetCertKeyPair(signingCertKeyPair *crypto.CA) error {
+func (c TargetRotation) ensureTargetCertKeyPair(signingCertKeyPair *crypto.CA, caBundleCerts []*x509.Certificate) error {
 	// at this point our trust bundle has been updated.  We don't know for sure that consumers have updated, but that's why we have a second
 	// validity percentage.  We always check to see if we need to sign.  Often we are signing with an old key or we have no target
 	// and need to mint one
@@ -58,7 +63,7 @@ func (c TargetRotation) ensureTargetCertKeyPair(signingCertKeyPair *crypto.CA) e
 	}
 	targetCertKeyPairSecret.Type = corev1.SecretTypeTLS
 
-	if needNewTargetCertKeyPair(targetCertKeyPairSecret.Annotations, signingCertKeyPair, c.Validity, c.RefreshPercentage) {
+	if needNewTargetCertKeyPair(targetCertKeyPairSecret.Annotations, signingCertKeyPair, caBundleCerts, c.Validity, c.RefreshPercentage) {
 		c.EventRecorder.Eventf("TargetUpdateRequired", "%q in %q requires a new target cert/key pair", c.Name, c.Namespace)
 		if err := setTargetCertKeyPairSecret(targetCertKeyPairSecret, c.Validity, signingCertKeyPair, c.ClientRotation, c.ServingRotation); err != nil {
 			return err
@@ -80,16 +85,69 @@ func (c TargetRotation) ensureTargetCertKeyPair(signingCertKeyPair *crypto.CA) e
 	return nil
 }
 
-func needNewTargetCertKeyPair(annotations map[string]string, signer *crypto.CA, validity time.Duration, renewalPercentage float32) bool {
-	if needNewCertKeyPairForTime(annotations, validity, renewalPercentage) {
+func needNewTargetCertKeyPair(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, validity time.Duration, renewalPercentage float32) bool {
+	if needNewTargetCertKeyPairForTime(annotations, signer, validity, renewalPercentage) {
 		return true
 	}
+
+	// check the signer common name against all the common names in our ca bundle so we don't refresh early
 	signerCommonName := annotations[CertificateSignedBy]
 	if len(signerCommonName) == 0 {
 		return true
 	}
-	if signerCommonName != signer.Config.Certs[0].Subject.CommonName {
+	for _, caCert := range caBundleCerts {
+		if signerCommonName == caCert.Subject.CommonName {
+			return false
+		}
+	}
+
+	return true
+}
+
+// needNewTargetCertKeyPairForTime returns true when
+// 1. there is no targetcrtexpiry indicated in the annotation
+// 2. when the targetcertexpiry is malformed
+// 3. when now is after the targetcertexpiry
+// 4. when now is after timeToRotate(targetcertexpiry - targetValidity*(1-renewalPercentage) AND the signer has been valid
+//    for more than 10% of the "extra" time we renew the target
+//
+//in other words, we rotate if
+//
+//our old CA is gone from the bundle (then we are pretty late to the renewal party)
+//or the cert expired (then we are also pretty late)
+//or we are over the renewal percentage of the validity, but only if the new CA at least 10% into its age.
+//Maybe worth a go doc.
+//
+//So in general we need to see a signing CA at least aged 10% within 1-percentage of the cert validity.
+//
+//Hence, if the CAs are rotated too fast (like CA percentage around 10% or smaller), we will not hit the time to make use of the CA. Or if the cert renewal percentage is at 90%, there is not much time either.
+//
+//So with a cert percentage of 75% and equally long CA and cert validities at the worst case we start at 85% of the cert to renew, trying again every minute.
+func needNewTargetCertKeyPairForTime(annotations map[string]string, signer *crypto.CA, validity time.Duration, renewalPercentage float32) bool {
+	targetExpiry := annotations[CertificateExpiryAnnotation]
+	if len(targetExpiry) == 0 {
 		return true
+	}
+	certExpiry, err := time.Parse(time.RFC3339, targetExpiry)
+	if err != nil {
+		glog.Infof("bad expiry: %q", targetExpiry)
+		// just create a new one
+		return true
+	}
+
+	// If Certificate is past its validity, we may must generate new.
+	if time.Now().After(certExpiry) {
+		return true
+	}
+
+	// If Certificate is past its validity*renewpercent, we may have action to take. if the signer is old enough
+	renewalDuration := -1 * float32(validity) * (1 - renewalPercentage)
+	if time.Now().After(certExpiry.Add(time.Duration(renewalDuration))) {
+		// make sure the signer has been valid for more than 10% of the extra renewal time
+		timeToWaitForTrustRotation := -1 * renewalDuration / 10
+		if time.Now().After(signer.Config.Certs[0].NotBefore.Add(time.Duration(timeToWaitForTrustRotation))) {
+			return true
+		}
 	}
 
 	return false
@@ -107,12 +165,19 @@ func setTargetCertKeyPairSecret(targetCertKeyPairSecret *corev1.Secret, validity
 		targetCertKeyPairSecret.Data = map[string][]byte{}
 	}
 
+	// our annotation is based on our cert validity, so we want to make sure that we don't specify something past our signer
+	targetValidity := validity
+	remainingSignerValidity := signer.Config.Certs[0].NotAfter.Sub(time.Now())
+	if remainingSignerValidity < validity {
+		targetValidity = remainingSignerValidity
+	}
+
 	var certKeyPair *crypto.TLSCertificateConfig
 	var err error
 	if servingRotation != nil {
-		certKeyPair, err = signer.MakeServerCertForDuration(sets.NewString(servingRotation.Hostnames...), validity, servingRotation.CertificateExtensionFn...)
+		certKeyPair, err = signer.MakeServerCertForDuration(sets.NewString(servingRotation.Hostnames...), targetValidity, servingRotation.CertificateExtensionFn...)
 	} else {
-		certKeyPair, err = signer.MakeClientCertificateForDuration(clientRotation.UserInfo, validity)
+		certKeyPair, err = signer.MakeClientCertificateForDuration(clientRotation.UserInfo, targetValidity)
 	}
 	if err != nil {
 		return err

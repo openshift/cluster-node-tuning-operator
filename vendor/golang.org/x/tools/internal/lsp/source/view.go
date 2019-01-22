@@ -5,58 +5,46 @@
 package source
 
 import (
-	"fmt"
+	"context"
+	"go/ast"
 	"go/token"
-	"sync"
 
 	"golang.org/x/tools/go/packages"
-	"golang.org/x/tools/internal/lsp/protocol"
 )
 
-type View struct {
-	mu sync.Mutex // protects all mutable state of the view
-
-	Config *packages.Config
-
-	files map[protocol.DocumentURI]*File
+// View abstracts the underlying architecture of the package using the source
+// package. The view provides access to files and their contents, so the source
+// package does not directly access the file system.
+type View interface {
+	GetFile(ctx context.Context, uri URI) (File, error)
+	SetContent(ctx context.Context, uri URI, content []byte) (View, error)
+	FileSet() *token.FileSet
 }
 
-func NewView() *View {
-	return &View{
-		Config: &packages.Config{
-			Mode:  packages.LoadSyntax,
-			Fset:  token.NewFileSet(),
-			Tests: true,
-		},
-		files: make(map[protocol.DocumentURI]*File),
-	}
+// File represents a Go source file that has been type-checked. It is the input
+// to most of the exported functions in this package, as it wraps up the
+// building blocks for most queries. Users of the source package can abstract
+// the loading of packages into their own caching systems.
+type File interface {
+	GetAST() (*ast.File, error)
+	GetFileSet() (*token.FileSet, error)
+	GetPackage() (*packages.Package, error)
+	GetToken() (*token.File, error)
+	Read() ([]byte, error)
 }
 
-// GetFile returns a File for the given uri.
-// It will always succeed, adding the file to the managed set if needed.
-func (v *View) GetFile(uri protocol.DocumentURI) *File {
-	v.mu.Lock()
-	f, found := v.files[uri]
-	if !found {
-		f := &File{URI: uri}
-		v.files[f.URI] = f
-	}
-	v.mu.Unlock()
-	return f
+// Range represents a start and end position.
+// Because Range is based purely on two token.Pos entries, it is not self
+// contained. You need access to a token.FileSet to regain the file
+// information.
+type Range struct {
+	Start token.Pos
+	End   token.Pos
 }
 
-// TypeCheck type-checks the package for the given package path.
-func (v *View) TypeCheck(uri protocol.DocumentURI) (*packages.Package, error) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	path, err := FromURI(uri)
-	if err != nil {
-		return nil, err
-	}
-	pkgs, err := packages.Load(v.Config, fmt.Sprintf("file=%s", path))
-	if len(pkgs) == 0 {
-		return nil, err
-	}
-	pkg := pkgs[0]
-	return pkg, nil
+// TextEdit represents a change to a section of a document.
+// The text within the specified range should be replaced by the supplied new text.
+type TextEdit struct {
+	Range   Range
+	NewText string
 }
