@@ -3,12 +3,13 @@ package staticpod
 import (
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/staticpod/controller/monitoring"
+	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	"github.com/openshift/library-go/pkg/operator/staticpod/controller/backingresource"
-	"github.com/openshift/library-go/pkg/operator/staticpod/controller/common"
 	"github.com/openshift/library-go/pkg/operator/staticpod/controller/installer"
 	"github.com/openshift/library-go/pkg/operator/staticpod/controller/node"
 	"github.com/openshift/library-go/pkg/operator/staticpod/controller/revision"
@@ -34,7 +35,8 @@ type staticPodOperatorControllers struct {
 //    account.
 // 5. MonitoringResourceController - this creates the service monitor used by prometheus to scrape metrics.
 func NewControllers(targetNamespaceName, staticPodName string, command, revisionConfigMaps, revisionSecrets []string,
-	staticPodOperatorClient common.OperatorClient, kubeClient kubernetes.Interface, dynamicClient dynamic.Interface, kubeInformersNamespaceScoped,
+	staticPodOperatorClient v1helpers.StaticPodOperatorClient, configMapGetter corev1client.ConfigMapsGetter, secretGetter corev1client.SecretsGetter, kubeClient kubernetes.Interface, dynamicClient dynamic.Interface,
+	kubeInformersNamespaceScoped,
 	kubeInformersClusterScoped informers.SharedInformerFactory, eventRecorder events.Recorder) *staticPodOperatorControllers {
 	controller := &staticPodOperatorControllers{}
 
@@ -44,7 +46,8 @@ func NewControllers(targetNamespaceName, staticPodName string, command, revision
 		revisionSecrets,
 		kubeInformersNamespaceScoped,
 		staticPodOperatorClient,
-		kubeClient,
+		configMapGetter,
+		secretGetter,
 		eventRecorder,
 	)
 

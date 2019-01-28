@@ -1,3 +1,5 @@
+// +build e2e
+
 package e2e
 
 import (
@@ -5,9 +7,12 @@ import (
 	"testing"
 	"time"
 
-	openshiftapi "github.com/openshift/api/operator/v1alpha1"
+	configv1 "github.com/openshift/api/config/v1"
+	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/apis"
 	tuned "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1alpha1"
+	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
+	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	framework "github.com/operator-framework/operator-sdk/pkg/test"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -19,16 +24,28 @@ const (
 	apiTimeout        = 10 * time.Second
 )
 
-// TestTunedStatus checks to see if the Tuned CR has our available status
-func TestTunedStatus(t *testing.T) {
+func TestOperatorAvailable(t *testing.T) {
+	cfgv1client, err := ntoclient.GetCfgV1Client()
+	if cfgv1client == nil {
+		t.Errorf("failed to get a client: %v", err)
+	}
+
+	t.Log("=== Wait for tuned Cluster Operator to be available")
+	if err := waitForTunedOperatorAvailable(t, cfgv1client, deploymentTimeout); err != nil {
+		t.Errorf("failed to wait for tuned Cluster Operator to be available: %s", err)
+	}
+	t.Logf("tuned Cluster Operator is available")
+}
+
+func TestDefaultTunedExists(t *testing.T) {
 	ctx, client, ns := prepareTest(t)
 	defer ctx.Cleanup()
 
-	t.Log("=== Wait for TunedDeployment to be ready")
-	if err := waitForTunedDeploymentReady(t, client, deploymentTimeout); err != nil {
-		t.Errorf("failed to wait for TunedDeployment to get ready: %s", err)
+	t.Log("=== Wait for default Tuned CR to exist")
+	if err := waitForTunedCR(t, client, deploymentTimeout); err != nil {
+		t.Errorf("failed to wait for default Tuned CR to exist: %s", err)
 	}
-	t.Logf("tunedDeplyoment in %s is ready", ns)
+	t.Logf("tuned CR in %s/default exists", ns)
 }
 
 func prepareTest(t *testing.T) (ctx *framework.TestCtx, client framework.FrameworkClient, namespace string) {
@@ -51,7 +68,7 @@ func prepareTest(t *testing.T) (ctx *framework.TestCtx, client framework.Framewo
 	return ctx, framework.Global.Client, ns
 }
 
-func waitForTunedDeploymentReady(t *testing.T, client framework.FrameworkClient, timeout time.Duration) error {
+func waitForTunedCR(t *testing.T, client framework.FrameworkClient, timeout time.Duration) error {
 	cr := &tuned.Tuned{}
 	err := wait.PollImmediate(time.Second, timeout, func() (done bool, err error) {
 		ctx, cancel := testContext()
@@ -61,22 +78,39 @@ func waitForTunedDeploymentReady(t *testing.T, client framework.FrameworkClient,
 			return false, err
 		}
 
-		available := false
+		return true, nil
+	})
+	if err != nil {
+		t.Logf("failed to wait for default Tuned CR to exist")
+		t.Logf("last known version: %+v", cr)
+	}
 
-		for _, c := range cr.Status.Conditions {
-			switch c.Type {
-			case openshiftapi.OperatorStatusTypeAvailable:
-				available = c.Status == openshiftapi.ConditionTrue
+	return err
+}
+
+func waitForTunedOperatorAvailable(t *testing.T, cfgv1client *configv1client.ConfigV1Client, timeout time.Duration) error {
+	clusterOperatorName := ntoconfig.OperatorName()
+
+	co := &configv1.ClusterOperator{}
+
+	err := wait.PollImmediate(time.Second, timeout, func() (done bool, err error) {
+		co, err = cfgv1client.ClusterOperators().Get(clusterOperatorName, metav1.GetOptions{})
+		if err != nil {
+			return false, nil
+		}
+
+		for _, cond := range co.Status.Conditions {
+			if cond.Type == configv1.OperatorAvailable &&
+				cond.Status == configv1.ConditionTrue {
+				return true, nil
 			}
 		}
-		if available {
-			return true, nil
-		}
+
 		return false, nil
 	})
 	if err != nil {
-		t.Logf("failed to wait for TunedDeployment to get ready")
-		t.Logf("last known version: %+v", cr)
+		t.Logf("failed to wait for tuned Cluster Operator to be available")
+		t.Logf("last known version: %+v", co)
 	}
 
 	return err
