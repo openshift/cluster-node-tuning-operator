@@ -17,7 +17,7 @@ spec:
       nodeSelector:
         node-role.kubernetes.io/master: ""
       tolerations:
-      - operator: Exists      
+      - operator: Exists
       containers:
         - name: cluster-node-tuning-operator
           image: registry.svc.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuning-operator
@@ -26,21 +26,23 @@ spec:
             name: metrics
           command:
           - cluster-node-tuning-operator
+          args:
+          - "-v=1"
+          env:
+          - name: WATCH_NAMESPACE
+            value: ""
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: OPERATOR_NAME
+            value: "cluster-node-tuning-operator"
+          - name: RESYNC_PERIOD
+            value: "600"
+          - name: CLUSTER_NODE_TUNED_IMAGE
+            value: registry.svc.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuned
           imagePullPolicy: Always
           resources:
             requests:
               cpu: 10m
               memory: 20Mi
-          env:
-            - name: WATCH_NAMESPACE
-              value: ""
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: OPERATOR_NAME
-              value: "cluster-node-tuning-operator"
-            - name: RESYNC_PERIOD
-              value: "600"
-            - name: CLUSTER_NODE_TUNED_IMAGE
-              value: registry.svc.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuned

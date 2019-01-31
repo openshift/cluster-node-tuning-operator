@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"sort"
 	"strings"
 
@@ -14,6 +13,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
+	"github.com/golang/glog"
 	tunedv1alpha1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1alpha1"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 )
@@ -88,7 +88,7 @@ func (f *Factory) TunedConfigMapProfiles(tunedArray []tunedv1alpha1.Tuned) (*cor
 	}
 	tunedOcpProfiles, err := yamlv2.Marshal(&m)
 	if err != nil {
-		log.Fatalf("error: %v", err)
+		glog.Fatalf("error: %v", err)
 	}
 
 	cm.Data["tuned-profiles-data"] = string(tunedOcpProfiles)
@@ -207,7 +207,7 @@ func toRecommendLine(match *tunedv1alpha1.TunedMatch) string {
 		if *match.Type == "pod" {
 			labelsFile = podLabelsFile
 		} else {
-			log.Printf("Label type: %s unknown, using \"node\".", *match.Type)
+			glog.Errorf("Label type: %s unknown, using \"node\".", *match.Type)
 		}
 	} else {
 		// Label type not specified, use "node" type by default
@@ -301,7 +301,7 @@ func tunedConfigMapProfiles(tuned *tunedv1alpha1.Tuned, m map[string]string) {
 		for _, v := range tuned.Spec.Profile {
 			if v.Name != nil && v.Data != nil {
 				if _, found := m[*v.Name]; found {
-					log.Printf("WARNING: Duplicate profile %s", *v.Name)
+					glog.Warningf("WARNING: Duplicate profile %s", *v.Name)
 				}
 				m[*v.Name] = *v.Data
 			}
