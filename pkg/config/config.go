@@ -1,9 +1,10 @@
 package config
 
 import (
-	"log"
 	"os"
 	"strconv"
+
+	"github.com/golang/glog"
 )
 
 const (
@@ -43,7 +44,7 @@ func ResyncPeriod() int64 {
 		var err error
 		resyncPeriodDuration, err = strconv.ParseInt(resyncPeriodEnv, 10, 64)
 		if err != nil {
-			log.Printf("Cannot parse RESYNC_PERIOD (%s), using %d", resyncPeriodEnv, resyncPeriodDefault)
+			glog.Errorf("Cannot parse RESYNC_PERIOD (%s), using %d", resyncPeriodEnv, resyncPeriodDefault)
 			resyncPeriodDuration = resyncPeriodDefault
 		}
 	}

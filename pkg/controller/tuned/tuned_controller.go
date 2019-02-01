@@ -3,7 +3,6 @@ package tuned
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
@@ -11,6 +10,7 @@ import (
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 
+	"github.com/golang/glog"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -66,7 +66,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 	err = createCustomResource(mgr)
 	if err != nil {
-		log.Printf("createCustomResource(): %v", err)
+		glog.Errorf("createCustomResource(): %v", err)
 		return err
 	}
 
@@ -86,7 +86,7 @@ type ReconcileTuned struct {
 }
 
 func (r *ReconcileTuned) syncServiceAccount(tuned *tunedv1alpha1.Tuned) error {
-	log.Printf("syncServiceAccount()")
+	glog.V(1).Infof("syncServiceAccount()")
 	saManifest, err := r.manifestFactory.TunedServiceAccount()
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned ServiceAccount: %v", err)
@@ -101,12 +101,12 @@ func (r *ReconcileTuned) syncServiceAccount(tuned *tunedv1alpha1.Tuned) error {
 			if err != nil {
 				return fmt.Errorf("Couldn't create tuned ServiceAccount: %v", err)
 			}
-			log.Printf("Created ServiceAccount for %s/%s", saManifest.Namespace, saManifest.Name)
+			glog.V(2).Infof("Created ServiceAccount for %s/%s", saManifest.Namespace, saManifest.Name)
 		} else {
 			return fmt.Errorf("Failed to get ServiceAccount: %v\n", err)
 		}
 	} else {
-		log.Printf("Tuned ServiceAccount already exists, updating")
+		glog.V(2).Infof("Tuned ServiceAccount already exists, updating")
 		err = r.client.Update(context.TODO(), saManifest)
 		if err != nil {
 			return fmt.Errorf("Couldn't update tuned ServiceAccount: %v", err)
@@ -117,7 +117,7 @@ func (r *ReconcileTuned) syncServiceAccount(tuned *tunedv1alpha1.Tuned) error {
 }
 
 func (r *ReconcileTuned) syncClusterRole(tuned *tunedv1alpha1.Tuned) error {
-	log.Printf("syncClusterRole()")
+	glog.V(1).Infof("syncClusterRole()")
 	crManifest, err := r.manifestFactory.TunedClusterRole()
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned ClusterRole: %v", err)
@@ -132,12 +132,12 @@ func (r *ReconcileTuned) syncClusterRole(tuned *tunedv1alpha1.Tuned) error {
 			if err != nil {
 				return fmt.Errorf("Couldn't create tuned ClusterRole: %v", err)
 			}
-			log.Printf("Created ClusterRole for %s", crManifest.Name)
+			glog.V(2).Infof("Created ClusterRole for %s", crManifest.Name)
 		} else {
 			return fmt.Errorf("Failed to get ClusterRole: %v\n", err)
 		}
 	} else {
-		log.Printf("Tuned ClusterRole already exists, updating")
+		glog.V(2).Infof("Tuned ClusterRole already exists, updating")
 		err = r.client.Update(context.TODO(), crManifest)
 		if err != nil {
 			return fmt.Errorf("Couldn't update tuned ClusterRole: %v", err)
@@ -148,7 +148,7 @@ func (r *ReconcileTuned) syncClusterRole(tuned *tunedv1alpha1.Tuned) error {
 }
 
 func (r *ReconcileTuned) syncClusterRoleBinding(tuned *tunedv1alpha1.Tuned) error {
-	log.Printf("syncClusterRoleBinding()")
+	glog.V(1).Infof("syncClusterRoleBinding()")
 	crbManifest, err := r.manifestFactory.TunedClusterRoleBinding()
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned ClusterRoleBinding: %v", err)
@@ -163,12 +163,12 @@ func (r *ReconcileTuned) syncClusterRoleBinding(tuned *tunedv1alpha1.Tuned) erro
 			if err != nil {
 				return fmt.Errorf("Couldn't create tuned ClusterRoleBinding: %v", err)
 			}
-			log.Printf("Created ClusterRoleBinding for %s", crbManifest.Name)
+			glog.V(2).Infof("Created ClusterRoleBinding for %s", crbManifest.Name)
 		} else {
 			return fmt.Errorf("Failed to get ClusterRoleBinding: %v", err)
 		}
 	} else {
-		log.Printf("Tuned ClusterRoleBinding already exists, updating")
+		glog.V(2).Infof("Tuned ClusterRoleBinding already exists, updating")
 		err = r.client.Update(context.TODO(), crbManifest)
 		if err != nil {
 			return fmt.Errorf("Couldn't update tuned ClusterRoleBinding: %v", err)
@@ -179,7 +179,7 @@ func (r *ReconcileTuned) syncClusterRoleBinding(tuned *tunedv1alpha1.Tuned) erro
 }
 
 func (r *ReconcileTuned) syncClusterConfigMap(f func(tuned []tunedv1alpha1.Tuned) (*corev1.ConfigMap, error), tuned *tunedv1alpha1.Tuned) error {
-	log.Printf("syncClusterConfigMap()")
+	glog.V(1).Infof("syncClusterConfigMap()")
 	tunedList := &tunedv1alpha1.TunedList{}
 	listOps := &client.ListOptions{Namespace: tuned.Namespace}
 	err := r.client.List(context.TODO(), listOps, tunedList)
@@ -201,12 +201,12 @@ func (r *ReconcileTuned) syncClusterConfigMap(f func(tuned []tunedv1alpha1.Tuned
 			if err != nil {
 				return fmt.Errorf("Couldn't create tuned ConfigMap: %v", err)
 			}
-			log.Printf("Created ConfigMap for %s/%s", cmManifest.Namespace, cmManifest.Name)
+			glog.V(2).Infof("Created ConfigMap for %s/%s", cmManifest.Namespace, cmManifest.Name)
 		} else {
 			return fmt.Errorf("Failed to get ConfigMap: %vn", err)
 		}
 	} else {
-		log.Printf("Tuned ConfigMap %s already exists, updating", cmManifest.Name)
+		glog.V(2).Infof("Tuned ConfigMap %s already exists, updating", cmManifest.Name)
 		err = r.client.Update(context.TODO(), cmManifest)
 		if err != nil {
 			return fmt.Errorf("Couldn't update tuned ConfigMap: %v", err)
@@ -217,7 +217,7 @@ func (r *ReconcileTuned) syncClusterConfigMap(f func(tuned []tunedv1alpha1.Tuned
 }
 
 func (r *ReconcileTuned) syncDaemonSet(tuned *tunedv1alpha1.Tuned) error {
-	log.Printf("syncDaemonSet()")
+	glog.V(1).Infof("syncDaemonSet()")
 	dsManifest, err := r.manifestFactory.TunedDaemonSet()
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned DaemonSet: %v", err)
@@ -232,12 +232,12 @@ func (r *ReconcileTuned) syncDaemonSet(tuned *tunedv1alpha1.Tuned) error {
 			if err != nil {
 				return fmt.Errorf("Couldn't create tuned DaemonSet: %v", err)
 			}
-			log.Printf("Created DaemonSet for %s/%s", dsManifest.Namespace, dsManifest.Name)
+			glog.V(2).Infof("Created DaemonSet for %s/%s", dsManifest.Namespace, dsManifest.Name)
 		} else {
 			return fmt.Errorf("Failed to get DaemonSet: %v", err)
 		}
 	} else {
-		log.Printf("Tuned DaemonSet already exists, updating")
+		glog.V(2).Infof("Tuned DaemonSet already exists, updating")
 		err = r.client.Update(context.TODO(), dsManifest)
 		if err != nil {
 			return fmt.Errorf("Couldn't update tuned DaemonSet: %v", err)
@@ -260,7 +260,6 @@ func createCustomResource(mgr manager.Manager) error {
 	err = client.Create(context.TODO(), crManifest)
 	if err != nil {
 		if !errors.IsAlreadyExists(err) {
-			log.Printf("Couldn't create tuned CustomResource: %v", err)
 			return fmt.Errorf("Couldn't create tuned CustomResource: %v", err)
 		}
 	}
@@ -303,7 +302,7 @@ func addOwnerReference(meta *metav1.ObjectMeta, tuned *tunedv1alpha1.Tuned) []me
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileTuned) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	var requeue bool
-	log.Printf("Reconciling Tuned %s/%s", request.Namespace, request.Name)
+	glog.V(1).Infof("Reconciling Tuned %s/%s", request.Namespace, request.Name)
 
 	resyncPeriodDuration := ntoconfig.ResyncPeriod()
 	reconcilePeriod := time.Duration(resyncPeriodDuration) * time.Second
@@ -313,7 +312,7 @@ func (r *ReconcileTuned) Reconcile(request reconcile.Request) (reconcile.Result,
 	tunedInstance := &tunedv1alpha1.Tuned{}
 	err := r.client.Get(context.TODO(), request.NamespacedName, tunedInstance)
 	if err != nil {
-		log.Printf("Couldn't get tunedInstance(): %v", err)
+		glog.Errorf("Couldn't get tunedInstance(): %v", err)
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
@@ -327,46 +326,46 @@ func (r *ReconcileTuned) Reconcile(request reconcile.Request) (reconcile.Result,
 
 	err = r.syncServiceAccount(tunedInstance)
 	if err != nil {
-		log.Printf("Couldn't syncServiceAccount(): %v", err)
+		glog.Errorf("Couldn't syncServiceAccount(): %v", err)
 		return reconcileResult, err
 	}
 
 	err = r.syncClusterRole(tunedInstance)
 	if err != nil {
-		log.Printf("Couldn't syncClusterRole(): %v", err)
+		glog.Errorf("Couldn't syncClusterRole(): %v", err)
 		return reconcileResult, err
 	}
 
 	err = r.syncClusterRoleBinding(tunedInstance)
 	if err != nil {
-		log.Printf("Couldn't syncClusterRoleBinding(): %v", err)
+		glog.Errorf("Couldn't syncClusterRoleBinding(): %v", err)
 		return reconcileResult, err
 	}
 
 	err = r.syncClusterConfigMap(r.manifestFactory.TunedConfigMapProfiles, tunedInstance)
 	if err != nil {
-		log.Printf("Couldn't syncClusterConfigMap(): %v", err)
+		glog.Errorf("Couldn't syncClusterConfigMap(): %v", err)
 		return reconcileResult, err
 	}
 
 	err = r.syncClusterConfigMap(r.manifestFactory.TunedConfigMapRecommend, tunedInstance)
 	if err != nil {
-		log.Printf("Couldn't syncClusterConfigMap(): %v", err)
+		glog.Errorf("Couldn't syncClusterConfigMap(): %v", err)
 		return reconcileResult, err
 	}
 
 	err = r.syncDaemonSet(tunedInstance)
 	if err != nil {
-		log.Printf("Couldn't syncDaemonSet(): %v", err)
+		glog.Errorf("Couldn't syncDaemonSet(): %v", err)
 		return reconcileResult, err
 	}
 
 	requeue, err = r.syncOperatorStatus()
 	if err != nil {
-		log.Printf("Couldn't syncOperatorStatus(): %v", err)
+		glog.Errorf("Couldn't syncOperatorStatus(): %v", err)
 		return reconcileResult, err
 	} else if requeue {
-		log.Printf("Reconcile requeue due to syncOperatorStatus()")
+		glog.Errorf("Reconcile requeue due to syncOperatorStatus()")
 		return reconcile.Result{Requeue: true}, nil
 	}
 

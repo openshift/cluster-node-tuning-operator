@@ -3,8 +3,8 @@ package tuned
 import (
 	"context"
 	"fmt"
-	"log"
 
+	"github.com/golang/glog"
 	configv1 "github.com/openshift/api/config/v1"
 	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
@@ -22,7 +22,7 @@ import (
 func (r *ReconcileTuned) syncOperatorStatus() (bool, error) {
 	var requeue bool
 
-	log.Printf("syncOperatorStatus()")
+	glog.V(1).Infof("syncOperatorStatus()")
 
 	coState, err := r.getOrCreateOperatorStatus()
 	if err != nil {
