@@ -36,7 +36,7 @@ spec:
               fieldRef:
                 fieldPath: metadata.name
           - name: OPERATOR_NAME
-            value: "cluster-node-tuning-operator"
+            value: "cluster-node-tuning"
           - name: RESYNC_PERIOD
             value: "600"
           - name: CLUSTER_NODE_TUNED_IMAGE
