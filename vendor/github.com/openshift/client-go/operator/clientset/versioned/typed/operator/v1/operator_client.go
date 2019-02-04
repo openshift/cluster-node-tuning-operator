@@ -11,14 +11,30 @@ import (
 
 type OperatorV1Interface interface {
 	RESTClient() rest.Interface
+	AuthenticationsGetter
+	ConsolesGetter
+	EtcdsGetter
 	KubeAPIServersGetter
 	KubeControllerManagersGetter
 	OpenShiftAPIServersGetter
+	OpenShiftControllerManagersGetter
 }
 
 // OperatorV1Client is used to interact with features provided by the operator.openshift.io group.
 type OperatorV1Client struct {
 	restClient rest.Interface
+}
+
+func (c *OperatorV1Client) Authentications() AuthenticationInterface {
+	return newAuthentications(c)
+}
+
+func (c *OperatorV1Client) Consoles() ConsoleInterface {
+	return newConsoles(c)
+}
+
+func (c *OperatorV1Client) Etcds() EtcdInterface {
+	return newEtcds(c)
 }
 
 func (c *OperatorV1Client) KubeAPIServers() KubeAPIServerInterface {
@@ -31,6 +47,10 @@ func (c *OperatorV1Client) KubeControllerManagers() KubeControllerManagerInterfa
 
 func (c *OperatorV1Client) OpenShiftAPIServers() OpenShiftAPIServerInterface {
 	return newOpenShiftAPIServers(c)
+}
+
+func (c *OperatorV1Client) OpenShiftControllerManagers() OpenShiftControllerManagerInterface {
+	return newOpenShiftControllerManagers(c)
 }
 
 // NewForConfig creates a new OperatorV1Client for the given config.

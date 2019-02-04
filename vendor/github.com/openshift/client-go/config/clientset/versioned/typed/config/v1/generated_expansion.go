@@ -2,6 +2,8 @@
 
 package v1
 
+type APIServerExpansion interface{}
+
 type AuthenticationExpansion interface{}
 
 type BuildExpansion interface{}
@@ -13,6 +15,8 @@ type ClusterVersionExpansion interface{}
 type ConsoleExpansion interface{}
 
 type DNSExpansion interface{}
+
+type FeaturesExpansion interface{}
 
 type ImageExpansion interface{}
 

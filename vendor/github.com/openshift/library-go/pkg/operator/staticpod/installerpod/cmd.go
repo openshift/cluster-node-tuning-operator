@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/pflag"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -29,9 +30,11 @@ type InstallOptions struct {
 	Revision  string
 	Namespace string
 
-	PodConfigMapNamePrefix string
-	SecretNamePrefixes     []string
-	ConfigMapNamePrefixes  []string
+	PodConfigMapNamePrefix        string
+	SecretNamePrefixes            []string
+	OptionalSecretNamePrefixes    []string
+	ConfigMapNamePrefixes         []string
+	OptionalConfigMapNamePrefixes []string
 
 	ResourceDir    string
 	PodManifestDir string
@@ -75,6 +78,8 @@ func (o *InstallOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&o.PodConfigMapNamePrefix, "pod", o.PodConfigMapNamePrefix, "name of configmap that contains the pod to be created")
 	fs.StringSliceVar(&o.SecretNamePrefixes, "secrets", o.SecretNamePrefixes, "list of secret names to be included")
 	fs.StringSliceVar(&o.ConfigMapNamePrefixes, "configmaps", o.ConfigMapNamePrefixes, "list of configmaps to be included")
+	fs.StringSliceVar(&o.OptionalSecretNamePrefixes, "optional-secrets", o.OptionalSecretNamePrefixes, "list of optional secret names to be included")
+	fs.StringSliceVar(&o.OptionalConfigMapNamePrefixes, "optional-configmaps", o.OptionalConfigMapNamePrefixes, "list of optional configmaps to be included")
 	fs.StringVar(&o.ResourceDir, "resource-dir", o.ResourceDir, "directory for all files supporting the static pod manifest")
 	fs.StringVar(&o.PodManifestDir, "pod-manifest-dir", o.PodManifestDir, "directory for the static pod manifest")
 }
@@ -127,7 +132,20 @@ func (o *InstallOptions) copyContent() error {
 	// gather all secrets
 	secrets := []*corev1.Secret{}
 	for _, currPrefix := range o.SecretNamePrefixes {
+		glog.Infof("getting secrets/%s -n %s", o.nameFor(currPrefix), o.Namespace)
 		val, err := o.KubeClient.CoreV1().Secrets(o.Namespace).Get(o.nameFor(currPrefix), metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		secrets = append(secrets, val)
+	}
+	for _, currPrefix := range o.OptionalSecretNamePrefixes {
+		glog.Infof("getting optional secrets/%s -n %s", o.nameFor(currPrefix), o.Namespace)
+		val, err := o.KubeClient.CoreV1().Secrets(o.Namespace).Get(o.nameFor(currPrefix), metav1.GetOptions{})
+		if errors.IsNotFound(err) {
+			glog.Infof("missing optional secrets/%s -n %s", o.nameFor(currPrefix), o.Namespace)
+			continue
+		}
 		if err != nil {
 			return err
 		}
@@ -137,7 +155,20 @@ func (o *InstallOptions) copyContent() error {
 	// gather all configmaps
 	configmaps := []*corev1.ConfigMap{}
 	for _, currPrefix := range o.ConfigMapNamePrefixes {
+		glog.Infof("getting configmaps/%s -n %s", o.nameFor(currPrefix), o.Namespace)
 		val, err := o.KubeClient.CoreV1().ConfigMaps(o.Namespace).Get(o.nameFor(currPrefix), metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		configmaps = append(configmaps, val)
+	}
+	for _, currPrefix := range o.OptionalConfigMapNamePrefixes {
+		glog.Infof("getting optional configmaps/%s -n %s", o.nameFor(currPrefix), o.Namespace)
+		val, err := o.KubeClient.CoreV1().ConfigMaps(o.Namespace).Get(o.nameFor(currPrefix), metav1.GetOptions{})
+		if errors.IsNotFound(err) {
+			glog.Infof("missing optional configmaps/%s -n %s", o.nameFor(currPrefix), o.Namespace)
+			continue
+		}
 		if err != nil {
 			return err
 		}
@@ -145,6 +176,7 @@ func (o *InstallOptions) copyContent() error {
 	}
 
 	// gather pod
+	glog.Infof("getting pod configmaps/%s -n %s", o.nameFor(o.PodConfigMapNamePrefix), o.Namespace)
 	podConfigMap, err := o.KubeClient.CoreV1().ConfigMaps(o.Namespace).Get(o.nameFor(o.PodConfigMapNamePrefix), metav1.GetOptions{})
 	if err != nil {
 		return err
@@ -154,16 +186,19 @@ func (o *InstallOptions) copyContent() error {
 
 	// write secrets, configmaps, static pods
 	resourceDir := path.Join(o.ResourceDir, o.nameFor(o.PodConfigMapNamePrefix))
+	glog.Infof("creating dir %q", resourceDir)
 	if err := os.MkdirAll(resourceDir, 0755); err != nil {
 		return err
 	}
 	for _, secret := range secrets {
 		contentDir := path.Join(resourceDir, "secrets", o.prefixFor(secret.Name))
+		glog.Infof("creating dir %q", contentDir)
 		if err := os.MkdirAll(contentDir, 0755); err != nil {
 			return err
 		}
 		for filename, content := range secret.Data {
 			// TODO fix permissions
+			glog.Infof("writing secret file %q", path.Join(contentDir, filename))
 			if err := ioutil.WriteFile(path.Join(contentDir, filename), content, 0644); err != nil {
 				return err
 			}
@@ -171,10 +206,12 @@ func (o *InstallOptions) copyContent() error {
 	}
 	for _, configmap := range configmaps {
 		contentDir := path.Join(resourceDir, "configmaps", o.prefixFor(configmap.Name))
+		glog.Infof("creating dir %q", contentDir)
 		if err := os.MkdirAll(contentDir, 0755); err != nil {
 			return err
 		}
 		for filename, content := range configmap.Data {
+			glog.Infof("writing configmap file %q", path.Join(contentDir, filename))
 			if err := ioutil.WriteFile(path.Join(contentDir, filename), []byte(content), 0644); err != nil {
 				return err
 			}
@@ -186,9 +223,11 @@ func (o *InstallOptions) copyContent() error {
 	}
 
 	// copy static pod
+	glog.Infof("creating dir %q", o.PodManifestDir)
 	if err := os.MkdirAll(o.PodManifestDir, 0755); err != nil {
 		return err
 	}
+	glog.Infof("writing static pod %q", path.Join(o.PodManifestDir, podFileName))
 	if err := ioutil.WriteFile(path.Join(o.PodManifestDir, podFileName), []byte(podContent), 0644); err != nil {
 		return err
 	}

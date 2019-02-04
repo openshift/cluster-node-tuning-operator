@@ -22,7 +22,6 @@ package proxy
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -36,7 +35,10 @@ import (
 	k8sproxy "k8s.io/apimachinery/pkg/util/proxy"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/transport"
+	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
+
+var log = logf.Log.WithName("proxy")
 
 const (
 	// DefaultHostAcceptRE is the default value for which hosts to accept.
@@ -91,7 +93,8 @@ func MakeRegexpArray(str string) ([]*regexp.Regexp, error) {
 func MakeRegexpArrayOrDie(str string) []*regexp.Regexp {
 	result, err := MakeRegexpArray(str)
 	if err != nil {
-		log.Fatalf("error compiling re: %v", err)
+		log.Error(err, "Error compiling re")
+		os.Exit(1)
 	}
 	return result
 }
@@ -99,7 +102,7 @@ func MakeRegexpArrayOrDie(str string) []*regexp.Regexp {
 func matchesRegexp(str string, regexps []*regexp.Regexp) bool {
 	for _, re := range regexps {
 		if re.MatchString(str) {
-			log.Printf("%v matched %s", str, re)
+			log.Info("Matched found", "MatchString", str, "Regexp", re)
 			return true
 		}
 	}
@@ -139,13 +142,15 @@ func extractHost(header string) (host string) {
 func (f *FilterServer) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	host := extractHost(req.Host)
 	if f.accept(req.Method, req.URL.Path, host) {
-		log.Printf("Filter accepting %v %v %v", req.Method, req.URL.Path, host)
+		log.Info("Filter acception", "Request.Method", req.Method, "Request.URL", req.URL.Path, "Host", host)
 		f.delegate.ServeHTTP(rw, req)
 		return
 	}
-	log.Printf("Filter rejecting %v %v %v", req.Method, req.URL.Path, host)
+	log.Info("Filter rejection", "Request.Method", req.Method, "Request.URL", req.URL.Path, "Host", host)
 	rw.WriteHeader(http.StatusForbidden)
-	rw.Write([]byte("<h3>Unauthorized</h3>"))
+	if _, err := rw.Write([]byte("<h3>Unauthorized</h3>")); err != nil {
+		log.Error(err, "Failed to write response body")
+	}
 }
 
 // Server is a http.Handler which proxies Kubernetes APIs to remote API server.
@@ -156,7 +161,7 @@ type server struct {
 type responder struct{}
 
 func (r *responder) Error(w http.ResponseWriter, req *http.Request, err error) {
-	log.Printf("Error while proxying request: %v", err)
+	log.Error(err, "Error while proxying request")
 	http.Error(w, err.Error(), http.StatusInternalServerError)
 }
 
@@ -230,7 +235,9 @@ func (s *server) ListenUnix(path string) (net.Listener, error) {
 	// Remove any socket, stale or not, but fall through for other files
 	fi, err := os.Stat(path)
 	if err == nil && (fi.Mode()&os.ModeSocket) != 0 {
-		os.Remove(path)
+		if err := os.Remove(path); err != nil {
+			return nil, err
+		}
 	}
 	// Default to only user accessible socket, caller can open up later if desired
 	oldmask := syscall.Umask(0077)

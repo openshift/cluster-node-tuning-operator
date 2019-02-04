@@ -16,42 +16,44 @@ package controller
 
 import (
 	"fmt"
-	"log"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/operator-framework/operator-sdk/pkg/ansible/events"
 	"github.com/operator-framework/operator-sdk/pkg/ansible/runner"
+	"github.com/operator-framework/operator-sdk/pkg/predicate"
 
-	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	crthandler "sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
+var log = logf.Log.WithName("ansible-controller")
+
 // Options - options for your controller
 type Options struct {
-	EventHandlers   []events.EventHandler
-	LoggingLevel    events.LogLevel
-	Runner          runner.Runner
-	GVK             schema.GroupVersionKind
-	ReconcilePeriod time.Duration
+	EventHandlers           []events.EventHandler
+	LoggingLevel            events.LogLevel
+	Runner                  runner.Runner
+	GVK                     schema.GroupVersionKind
+	ReconcilePeriod         time.Duration
+	ManageStatus            bool
+	WatchDependentResources bool
 }
 
 // Add - Creates a new ansible operator controller and adds it to the manager
-func Add(mgr manager.Manager, options Options) {
-	logrus.Infof("Watching %s/%v, %s", options.GVK.Group, options.GVK.Version, options.GVK.Kind)
+func Add(mgr manager.Manager, options Options) *controller.Controller {
+	log.Info("Watching resource", "Options.Group", options.GVK.Group, "Options.Version", options.GVK.Version, "Options.Kind", options.GVK.Kind)
 	if options.EventHandlers == nil {
 		options.EventHandlers = []events.EventHandler{}
 	}
 	eventHandlers := append(options.EventHandlers, events.NewLoggingEventHandler(options.LoggingLevel))
-	if options.ReconcilePeriod == time.Duration(0) {
-		options.ReconcilePeriod = time.Minute
-	}
 
 	aor := &AnsibleOperatorReconciler{
 		Client:          mgr.GetClient(),
@@ -59,8 +61,16 @@ func Add(mgr manager.Manager, options Options) {
 		Runner:          options.Runner,
 		EventHandlers:   eventHandlers,
 		ReconcilePeriod: options.ReconcilePeriod,
+		ManageStatus:    options.ManageStatus,
 	}
 
+	if mgr.GetScheme().IsVersionRegistered(schema.GroupVersion{
+		Group:   options.GVK.Group,
+		Version: options.GVK.Version,
+	}) {
+		log.Info("Version already registered... skipping")
+		return nil
+	}
 	// Register the GVK with the schema
 	mgr.GetScheme().AddKnownTypeWithName(options.GVK, &unstructured.Unstructured{})
 	metav1.AddToGroupVersion(mgr.GetScheme(), schema.GroupVersion{
@@ -73,11 +83,14 @@ func Add(mgr manager.Manager, options Options) {
 		Reconciler: aor,
 	})
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err, "")
+		os.Exit(1)
 	}
 	u := &unstructured.Unstructured{}
 	u.SetGroupVersionKind(options.GVK)
-	if err := c.Watch(&source.Kind{Type: u}, &crthandler.EnqueueRequestForObject{}); err != nil {
-		log.Fatal(err)
+	if err := c.Watch(&source.Kind{Type: u}, &crthandler.EnqueueRequestForObject{}, predicate.GenerationChangedPredicate{}); err != nil {
+		log.Error(err, "")
+		os.Exit(1)
 	}
+	return &c
 }

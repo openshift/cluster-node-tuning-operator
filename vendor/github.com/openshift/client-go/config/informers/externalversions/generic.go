@@ -37,6 +37,8 @@ func (f *genericInformer) Lister() cache.GenericLister {
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
 	// Group=config.openshift.io, Version=v1
+	case v1.SchemeGroupVersion.WithResource("apiservers"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().APIServers().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("authentications"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().Authentications().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("builds"):
@@ -49,6 +51,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().Consoles().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("dnss"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().DNSs().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("features"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().Features().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("images"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().Images().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("infrastructures"):

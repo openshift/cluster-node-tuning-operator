@@ -21,8 +21,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/sirupsen/logrus"
+	"github.com/operator-framework/operator-sdk/internal/util/fileutil"
+
+	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
+
+var log = logf.Log.WithName("inputdir")
 
 // InputDir represents an input directory for ansible-runner.
 type InputDir struct {
@@ -39,7 +43,7 @@ func (i *InputDir) makeDirs() error {
 		fullPath := filepath.Join(i.Path, path)
 		err := os.MkdirAll(fullPath, os.ModePerm)
 		if err != nil {
-			logrus.Errorf("unable to create directory %v", fullPath)
+			log.Error(err, "Unable to create directory", "Path", fullPath)
 			return err
 		}
 	}
@@ -51,9 +55,17 @@ func (i *InputDir) addFile(path string, content []byte) error {
 	fullPath := filepath.Join(i.Path, path)
 	err := ioutil.WriteFile(fullPath, content, 0644)
 	if err != nil {
-		logrus.Errorf("unable to write file %v", fullPath)
+		log.Error(err, "Unable to write file", "Path", fullPath)
 	}
 	return err
+}
+
+// Stdout reads the stdout from the ansible artifact that corresponds to the
+// given ident and returns it as a string.
+func (i *InputDir) Stdout(ident string) (string, error) {
+	errorPath := filepath.Join(i.Path, "artifacts", ident, "stdout")
+	errorText, err := ioutil.ReadFile(errorPath)
+	return string(errorText), err
 }
 
 // Write commits the object's state to the filesystem at i.Path.
@@ -104,10 +116,14 @@ func (i *InputDir) Write() error {
 	if i.PlaybookPath != "" {
 		f, err := os.Open(i.PlaybookPath)
 		if err != nil {
-			logrus.Errorf("failed to open playbook file %v", i.PlaybookPath)
+			log.Error(err, "Failed to open playbook file", "Path", i.PlaybookPath)
 			return err
 		}
-		defer f.Close()
+		defer func() {
+			if err := f.Close(); err != nil && !fileutil.IsClosedError(err) {
+				log.Error(err, "Failed to close playbook file")
+			}
+		}()
 
 		playbookBytes, err := ioutil.ReadAll(f)
 		if err != nil {

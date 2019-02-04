@@ -30,7 +30,9 @@ spec:
           - "-v=1"
           env:
           - name: WATCH_NAMESPACE
-            value: ""
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
           - name: POD_NAME
             valueFrom:
               fieldRef:

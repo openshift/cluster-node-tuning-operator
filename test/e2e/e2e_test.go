@@ -73,7 +73,7 @@ func waitForTunedCR(t *testing.T, client framework.FrameworkClient, timeout time
 	err := wait.PollImmediate(time.Second, timeout, func() (done bool, err error) {
 		ctx, cancel := testContext()
 		defer cancel()
-		err = client.Get(ctx, types.NamespacedName{Name: "default", Namespace: "openshift-cluster-node-tuning-operator"}, cr)
+		err = client.Get(ctx, types.NamespacedName{Name: "default", Namespace: ntoconfig.OperatorNamespace()}, cr)
 		if err != nil {
 			return false, err
 		}
