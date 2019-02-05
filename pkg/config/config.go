@@ -9,7 +9,7 @@ import (
 
 const (
 	nodeTunedImageDefault string = "registry.svc.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuned"
-	operatorNameDefault   string = "cluster-node-tuning-operator"
+	operatorNameDefault   string = "cluster-node-tuning"
 	resyncPeriodDefault   int64  = 600
 )
 
