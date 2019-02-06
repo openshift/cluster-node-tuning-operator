@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	nodeTunedImageDefault string = "registry.svc.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuned"
-	operatorNameDefault   string = "cluster-node-tuning"
-	resyncPeriodDefault   int64  = 600
+	nodeTunedImageDefault    string = "registry.svc.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuned"
+	operatorNameDefault      string = "cluster-node-tuning"
+	operatorNamespaceDefault string = "openshift-cluster-node-tuning-operator"
+	resyncPeriodDefault      int64  = 600
 )
 
 // NodeTunedImage returns the operator's operand/tuned image path.
@@ -33,6 +34,17 @@ func OperatorName() string {
 	}
 
 	return operatorNameDefault
+}
+
+// OperatorName returns the operator namespace.
+func OperatorNamespace() string {
+	operatorNamespace := os.Getenv("WATCH_NAMESPACE")
+
+	if len(operatorNamespace) > 0 {
+		return operatorNamespace
+	}
+
+	return operatorNamespaceDefault
 }
 
 // ResyncPeriod returns the configured or default Reconcile period.

@@ -15,21 +15,26 @@
 package projutil
 
 import (
-	"log"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
-)
 
-const (
-	SrcDir          = "src"
-	gopkgToml       = "./Gopkg.toml"
-	buildDockerfile = "./build/Dockerfile"
+	"github.com/operator-framework/operator-sdk/pkg/scaffold"
+	"github.com/operator-framework/operator-sdk/pkg/scaffold/ansible"
+	"github.com/operator-framework/operator-sdk/pkg/scaffold/helm"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 )
 
 const (
 	GopathEnv = "GOPATH"
+	SrcDir    = "src"
 )
+
+var mainFile = filepath.Join(scaffold.ManagerDir, scaffold.CmdFile)
 
 // OperatorType - the type of operator
 type OperatorType = string
@@ -39,6 +44,10 @@ const (
 	OperatorTypeGo OperatorType = "go"
 	// OperatorTypeAnsible - ansible type of operator.
 	OperatorTypeAnsible OperatorType = "ansible"
+	// OperatorTypeHelm - helm type of operator.
+	OperatorTypeHelm OperatorType = "helm"
+	// OperatorTypeUnknown - unknown type of operator.
+	OperatorTypeUnknown OperatorType = "unknown"
 )
 
 // MustInProjectRoot checks if the current dir is the project root and returns the current repo's import path
@@ -46,33 +55,38 @@ const (
 func MustInProjectRoot() {
 	// if the current directory has the "./build/dockerfile" file, then it is safe to say
 	// we are at the project root.
-	_, err := os.Stat(buildDockerfile)
-	if err != nil && os.IsNotExist(err) {
-		log.Fatalf("must run command in project root dir: %v", err)
+	_, err := os.Stat(filepath.Join(scaffold.BuildDir, scaffold.DockerfileFile))
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Fatal("Must run command in project root dir: project structure requires ./build/Dockerfile")
+		}
+		log.Fatalf("Error while checking if current directory is the project root: (%v)", err)
+	}
+}
+
+func MustGoProjectCmd(cmd *cobra.Command) {
+	t := GetOperatorType()
+	switch t {
+	case OperatorTypeGo:
+	default:
+		log.Fatalf("'%s' can only be run for Go operators; %s does not exist.", cmd.CommandPath(), mainFile)
 	}
 }
 
 func MustGetwd() string {
 	wd, err := os.Getwd()
 	if err != nil {
-		log.Fatalf("failed to get working directory: (%v)", err)
+		log.Fatalf("Failed to get working directory: (%v)", err)
 	}
 	return wd
 }
 
-// CheckAndGetCurrPkg checks if this project's repository path is rooted under $GOPATH and returns the current directory's import path
+// CheckAndGetProjectGoPkg checks if this project's repository path is rooted under $GOPATH and returns the current directory's import path
 // e.g: "github.com/example-inc/app-operator"
-func CheckAndGetCurrPkg() string {
-	gopath := os.Getenv(GopathEnv)
-	if len(gopath) == 0 {
-		log.Fatalf("get current pkg failed: GOPATH env not set")
-	}
+func CheckAndGetProjectGoPkg() string {
+	gopath := SetGopath(GetGopath())
 	goSrc := filepath.Join(gopath, SrcDir)
-
 	wd := MustGetwd()
-	if !strings.HasPrefix(filepath.Dir(wd), goSrc) {
-		log.Fatalf("check current pkg failed: must run from gopath")
-	}
 	currPkg := strings.Replace(wd, goSrc+string(filepath.Separator), "", 1)
 	// strip any "/" prefix from the repo path.
 	return strings.TrimPrefix(currPkg, string(filepath.Separator))
@@ -82,10 +96,57 @@ func CheckAndGetCurrPkg() string {
 // This function should be called after verifying the user is in project root
 // e.g: "go", "ansible"
 func GetOperatorType() OperatorType {
-	// Assuming that if Gopkg.toml exists then this is a Go operator
-	_, err := os.Stat(gopkgToml)
-	if err != nil && os.IsNotExist(err) {
+	// Assuming that if main.go exists then this is a Go operator
+	if _, err := os.Stat(mainFile); err == nil {
+		return OperatorTypeGo
+	}
+	if stat, err := os.Stat(ansible.RolesDir); err == nil && stat.IsDir() {
 		return OperatorTypeAnsible
 	}
-	return OperatorTypeGo
+	if stat, err := os.Stat(helm.HelmChartsDir); err == nil && stat.IsDir() {
+		return OperatorTypeHelm
+	}
+	return OperatorTypeUnknown
+}
+
+// GetGopath gets GOPATH and makes sure it is set and non-empty.
+func GetGopath() string {
+	gopath, ok := os.LookupEnv(GopathEnv)
+	if !ok || len(gopath) == 0 {
+		log.Fatal("GOPATH env not set")
+	}
+	return gopath
+}
+
+// SetGopath sets GOPATH=currentGopath after processing a path list,
+// if any, then returns the set path.
+func SetGopath(currentGopath string) string {
+	var newGopath string
+	cwdInGopath := false
+	wd := MustGetwd()
+	for _, newGopath = range strings.Split(currentGopath, ":") {
+		if strings.HasPrefix(filepath.Dir(wd), newGopath) {
+			cwdInGopath = true
+			break
+		}
+	}
+	if !cwdInGopath {
+		log.Fatalf("Project not in $GOPATH")
+		return ""
+	}
+	if err := os.Setenv(GopathEnv, newGopath); err != nil {
+		log.Fatal(err)
+		return ""
+	}
+	return newGopath
+}
+
+func ExecCmd(cmd *exec.Cmd) error {
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("failed to exec %#v: %v", cmd.Args, err)
+	}
+	return nil
 }

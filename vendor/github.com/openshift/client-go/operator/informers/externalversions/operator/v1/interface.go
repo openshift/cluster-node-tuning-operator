@@ -8,12 +8,20 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
+	// Authentications returns a AuthenticationInformer.
+	Authentications() AuthenticationInformer
+	// Consoles returns a ConsoleInformer.
+	Consoles() ConsoleInformer
+	// Etcds returns a EtcdInformer.
+	Etcds() EtcdInformer
 	// KubeAPIServers returns a KubeAPIServerInformer.
 	KubeAPIServers() KubeAPIServerInformer
 	// KubeControllerManagers returns a KubeControllerManagerInformer.
 	KubeControllerManagers() KubeControllerManagerInformer
 	// OpenShiftAPIServers returns a OpenShiftAPIServerInformer.
 	OpenShiftAPIServers() OpenShiftAPIServerInformer
+	// OpenShiftControllerManagers returns a OpenShiftControllerManagerInformer.
+	OpenShiftControllerManagers() OpenShiftControllerManagerInformer
 }
 
 type version struct {
@@ -25,6 +33,21 @@ type version struct {
 // New returns a new Interface.
 func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakListOptions internalinterfaces.TweakListOptionsFunc) Interface {
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
+}
+
+// Authentications returns a AuthenticationInformer.
+func (v *version) Authentications() AuthenticationInformer {
+	return &authenticationInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// Consoles returns a ConsoleInformer.
+func (v *version) Consoles() ConsoleInformer {
+	return &consoleInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// Etcds returns a EtcdInformer.
+func (v *version) Etcds() EtcdInformer {
+	return &etcdInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // KubeAPIServers returns a KubeAPIServerInformer.
@@ -40,4 +63,9 @@ func (v *version) KubeControllerManagers() KubeControllerManagerInformer {
 // OpenShiftAPIServers returns a OpenShiftAPIServerInformer.
 func (v *version) OpenShiftAPIServers() OpenShiftAPIServerInformer {
 	return &openShiftAPIServerInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// OpenShiftControllerManagers returns a OpenShiftControllerManagerInformer.
+func (v *version) OpenShiftControllerManagers() OpenShiftControllerManagerInformer {
+	return &openShiftControllerManagerInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
