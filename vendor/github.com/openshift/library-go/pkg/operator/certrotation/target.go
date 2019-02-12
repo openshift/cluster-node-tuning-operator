@@ -202,7 +202,7 @@ func setTargetCertKeyPairSecret(targetCertKeyPairSecret *corev1.Secret, validity
 
 	case signerRotation != nil:
 		signerName := fmt.Sprintf("%s_@%d", signerRotation.SignerName, time.Now().Unix())
-		certKeyPair, err = crypto.MakeCAConfigForDuration(signerName, validity)
+		certKeyPair, err = crypto.MakeCAConfigForDuration(signerName, validity, signer)
 	}
 	if err != nil {
 		return err

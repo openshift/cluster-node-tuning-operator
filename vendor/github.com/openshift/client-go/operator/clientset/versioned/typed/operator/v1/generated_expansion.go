@@ -12,6 +12,10 @@ type KubeAPIServerExpansion interface{}
 
 type KubeControllerManagerExpansion interface{}
 
+type KubeSchedulerExpansion interface{}
+
 type OpenShiftAPIServerExpansion interface{}
 
 type OpenShiftControllerManagerExpansion interface{}
+
+type ServiceCAExpansion interface{}

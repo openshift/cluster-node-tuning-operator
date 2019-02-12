@@ -309,33 +309,33 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:e7ac5f8ab407a96d5ed2266a54f4a0930f16b0e5fcbaba5d54fe397d6bb0cd06"
+  digest = "1:a8e5a6fd638607768daa2871d761e72b1e1598160f9549a4b3ad15e25eec9aa6"
   name = "github.com/openshift/api"
   packages = [
     "config/v1",
     "operator/v1",
   ]
   pruneopts = "NT"
-  revision = "d67473e7f1907b74d1f27706260eecf0bc9f2a52"
+  revision = "8c839bc7ff62e38ad7656bf920e11e2664a44f6b"
 
 [[projects]]
   branch = "master"
-  digest = "1:96832785ccd4849bddf25000092cb245c7148b600ea8a0da3446354f0799fc34"
+  digest = "1:fd2167e64935d15d90ebc7f7e9c3823cb0410813a2f6950538554cc99efccc9d"
   name = "github.com/openshift/client-go"
   packages = [
     "config/clientset/versioned/scheme",
     "config/clientset/versioned/typed/config/v1",
   ]
   pruneopts = "NT"
-  revision = "5af2e329a3e8b7d536a508266e3ffb485cd849b0"
+  revision = "f8b9b0633d7fe283277fc35b437428aed9ec5464"
 
 [[projects]]
   branch = "master"
-  digest = "1:53947d3fd7db961eb5693010c7e75425a28ed333d44407d289adcf7636e462ae"
+  digest = "1:bb29489e3a4eeb400a1f55beb837239c787b432e8391d642d30fc9ce017fcf41"
   name = "github.com/openshift/library-go"
   packages = ["pkg/operator/v1helpers"]
   pruneopts = "NT"
-  revision = "28fcc8fa9009d38d2297d178a2d112f009a08d12"
+  revision = "b81912a34afc470eb8038e9ac40cf9a14b23be91"
 
 [[projects]]
   digest = "1:0b2dd5813eba320fd99869c1a5c4b54eb6950544259f2389c5b137be2168429a"

@@ -18,10 +18,14 @@ type Interface interface {
 	KubeAPIServers() KubeAPIServerInformer
 	// KubeControllerManagers returns a KubeControllerManagerInformer.
 	KubeControllerManagers() KubeControllerManagerInformer
+	// KubeSchedulers returns a KubeSchedulerInformer.
+	KubeSchedulers() KubeSchedulerInformer
 	// OpenShiftAPIServers returns a OpenShiftAPIServerInformer.
 	OpenShiftAPIServers() OpenShiftAPIServerInformer
 	// OpenShiftControllerManagers returns a OpenShiftControllerManagerInformer.
 	OpenShiftControllerManagers() OpenShiftControllerManagerInformer
+	// ServiceCAs returns a ServiceCAInformer.
+	ServiceCAs() ServiceCAInformer
 }
 
 type version struct {
@@ -60,6 +64,11 @@ func (v *version) KubeControllerManagers() KubeControllerManagerInformer {
 	return &kubeControllerManagerInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
+// KubeSchedulers returns a KubeSchedulerInformer.
+func (v *version) KubeSchedulers() KubeSchedulerInformer {
+	return &kubeSchedulerInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
 // OpenShiftAPIServers returns a OpenShiftAPIServerInformer.
 func (v *version) OpenShiftAPIServers() OpenShiftAPIServerInformer {
 	return &openShiftAPIServerInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
@@ -68,4 +77,9 @@ func (v *version) OpenShiftAPIServers() OpenShiftAPIServerInformer {
 // OpenShiftControllerManagers returns a OpenShiftControllerManagerInformer.
 func (v *version) OpenShiftControllerManagers() OpenShiftControllerManagerInformer {
 	return &openShiftControllerManagerInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// ServiceCAs returns a ServiceCAInformer.
+func (v *version) ServiceCAs() ServiceCAInformer {
+	return &serviceCAInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }

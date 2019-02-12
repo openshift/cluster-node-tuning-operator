@@ -32,12 +32,20 @@ func (c *FakeOperatorV1) KubeControllerManagers() v1.KubeControllerManagerInterf
 	return &FakeKubeControllerManagers{c}
 }
 
+func (c *FakeOperatorV1) KubeSchedulers() v1.KubeSchedulerInterface {
+	return &FakeKubeSchedulers{c}
+}
+
 func (c *FakeOperatorV1) OpenShiftAPIServers() v1.OpenShiftAPIServerInterface {
 	return &FakeOpenShiftAPIServers{c}
 }
 
 func (c *FakeOperatorV1) OpenShiftControllerManagers() v1.OpenShiftControllerManagerInterface {
 	return &FakeOpenShiftControllerManagers{c}
+}
+
+func (c *FakeOperatorV1) ServiceCAs() v1.ServiceCAInterface {
+	return &FakeServiceCAs{c}
 }
 
 // RESTClient returns a RESTClient that is used to communicate
