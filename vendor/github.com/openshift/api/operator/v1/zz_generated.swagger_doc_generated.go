@@ -302,4 +302,22 @@ func (KubeSchedulerSpec) SwaggerDoc() map[string]string {
 	return map_KubeSchedulerSpec
 }
 
+var map_ServiceCA = map[string]string{
+	"": "ServiceCA provides information to configure an operator to manage the service cert controllers",
+}
+
+func (ServiceCA) SwaggerDoc() map[string]string {
+	return map_ServiceCA
+}
+
+var map_ServiceCAList = map[string]string{
+	"":         "ServiceCAList is a collection of items",
+	"metadata": "Standard object's metadata.",
+	"items":    "Items contains the items",
+}
+
+func (ServiceCAList) SwaggerDoc() map[string]string {
+	return map_ServiceCAList
+}
+
 // AUTO-GENERATED FUNCTIONS END HERE

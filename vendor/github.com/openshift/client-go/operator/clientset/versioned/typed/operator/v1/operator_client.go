@@ -16,8 +16,10 @@ type OperatorV1Interface interface {
 	EtcdsGetter
 	KubeAPIServersGetter
 	KubeControllerManagersGetter
+	KubeSchedulersGetter
 	OpenShiftAPIServersGetter
 	OpenShiftControllerManagersGetter
+	ServiceCAsGetter
 }
 
 // OperatorV1Client is used to interact with features provided by the operator.openshift.io group.
@@ -45,12 +47,20 @@ func (c *OperatorV1Client) KubeControllerManagers() KubeControllerManagerInterfa
 	return newKubeControllerManagers(c)
 }
 
+func (c *OperatorV1Client) KubeSchedulers() KubeSchedulerInterface {
+	return newKubeSchedulers(c)
+}
+
 func (c *OperatorV1Client) OpenShiftAPIServers() OpenShiftAPIServerInterface {
 	return newOpenShiftAPIServers(c)
 }
 
 func (c *OperatorV1Client) OpenShiftControllerManagers() OpenShiftControllerManagerInterface {
 	return newOpenShiftControllerManagers(c)
+}
+
+func (c *OperatorV1Client) ServiceCAs() ServiceCAInterface {
+	return newServiceCAs(c)
 }
 
 // NewForConfig creates a new OperatorV1Client for the given config.

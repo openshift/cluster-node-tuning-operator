@@ -36,6 +36,13 @@ func (r *ReconcileTuned) syncOperatorStatus() (bool, error) {
 	oldConditions := coState.Status.Conditions
 	coState.Status.Conditions, requeue = computeStatusConditions(oldConditions, daemonset)
 	operatorv1helpers.SetOperandVersion(&coState.Status.Versions, configv1.OperandVersion{Name: ntoconfig.OperatorName(), Version: version.Version})
+	coState.Status.RelatedObjects = []configv1.ObjectReference{
+		{
+			Group:    "",
+			Resource: "namespaces",
+			Name:     dsManifest.Namespace,
+		},
+	}
 
 	if clusteroperator.ConditionsEqual(oldConditions, coState.Status.Conditions) {
 		return requeue, nil
