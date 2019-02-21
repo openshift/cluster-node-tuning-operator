@@ -10,7 +10,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/apis"
-	tuned "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1alpha1"
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	framework "github.com/operator-framework/operator-sdk/pkg/test"
@@ -49,10 +49,10 @@ func TestDefaultTunedExists(t *testing.T) {
 }
 
 func prepareTest(t *testing.T) (ctx *framework.TestCtx, client framework.FrameworkClient, namespace string) {
-	tunedList := &tuned.TunedList{
+	tunedList := &tunedv1.TunedList{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Tuned",
-			APIVersion: tuned.SchemeGroupVersion.String(),
+			APIVersion: tunedv1.SchemeGroupVersion.String(),
 		},
 	}
 	err := framework.AddToFrameworkScheme(apis.AddToScheme, tunedList)
@@ -69,7 +69,7 @@ func prepareTest(t *testing.T) (ctx *framework.TestCtx, client framework.Framewo
 }
 
 func waitForTunedCR(t *testing.T, client framework.FrameworkClient, timeout time.Duration) error {
-	cr := &tuned.Tuned{}
+	cr := &tunedv1.Tuned{}
 	err := wait.PollImmediate(time.Second, timeout, func() (done bool, err error) {
 		ctx, cancel := testContext()
 		defer cancel()

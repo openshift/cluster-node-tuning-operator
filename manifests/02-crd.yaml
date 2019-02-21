@@ -3,11 +3,21 @@ kind: CustomResourceDefinition
 metadata:
   name: tuneds.tuned.openshift.io
 spec:
+  # group name to use for REST API: /apis/<group>/<version>
   group: tuned.openshift.io
   names:
+    # kind is normally the CamelCased singular type. Your resource manifests use this.
     kind: Tuned
     listKind: TunedList
+    # plural name to be used in the URL: /apis/<group>/<version>/<plural>
     plural: tuneds
+    # singular name to be used as an alias on the CLI and for display
     singular: tuned
   scope: Namespaced
-  version: v1alpha1
+  # list of versions supported by this CustomResourceDefinition
+  versions:
+  - name: v1
+    # Each version can be enabled/disabled by Served flag.
+    served: true
+    # One and only one version must be marked as the storage version.
+    storage: true
