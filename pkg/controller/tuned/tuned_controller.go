@@ -6,7 +6,7 @@ import (
 	"time"
 
 	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
-	tunedv1alpha1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1alpha1"
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 
@@ -50,7 +50,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to primary resource Tuned
-	err = c.Watch(&source.Kind{Type: &tunedv1alpha1.Tuned{}}, &handler.EnqueueRequestForObject{})
+	err = c.Watch(&source.Kind{Type: &tunedv1.Tuned{}}, &handler.EnqueueRequestForObject{})
 	if err != nil {
 		return err
 	}
@@ -58,7 +58,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	// Watch for changes to secondary resource DaemonSet and requeue the owner Tuned
 	err = c.Watch(&source.Kind{Type: &appsv1.DaemonSet{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
-		OwnerType:    &tunedv1alpha1.Tuned{},
+		OwnerType:    &tunedv1.Tuned{},
 	})
 	if err != nil {
 		return err
@@ -85,7 +85,7 @@ type ReconcileTuned struct {
 	cfgv1client     *configv1client.ConfigV1Client
 }
 
-func (r *ReconcileTuned) syncServiceAccount(tuned *tunedv1alpha1.Tuned) error {
+func (r *ReconcileTuned) syncServiceAccount(tuned *tunedv1.Tuned) error {
 	glog.V(1).Infof("syncServiceAccount()")
 	saManifest, err := r.manifestFactory.TunedServiceAccount()
 	if err != nil {
@@ -116,7 +116,7 @@ func (r *ReconcileTuned) syncServiceAccount(tuned *tunedv1alpha1.Tuned) error {
 	return nil
 }
 
-func (r *ReconcileTuned) syncClusterRole(tuned *tunedv1alpha1.Tuned) error {
+func (r *ReconcileTuned) syncClusterRole(tuned *tunedv1.Tuned) error {
 	glog.V(1).Infof("syncClusterRole()")
 	crManifest, err := r.manifestFactory.TunedClusterRole()
 	if err != nil {
@@ -147,7 +147,7 @@ func (r *ReconcileTuned) syncClusterRole(tuned *tunedv1alpha1.Tuned) error {
 	return nil
 }
 
-func (r *ReconcileTuned) syncClusterRoleBinding(tuned *tunedv1alpha1.Tuned) error {
+func (r *ReconcileTuned) syncClusterRoleBinding(tuned *tunedv1.Tuned) error {
 	glog.V(1).Infof("syncClusterRoleBinding()")
 	crbManifest, err := r.manifestFactory.TunedClusterRoleBinding()
 	if err != nil {
@@ -178,9 +178,9 @@ func (r *ReconcileTuned) syncClusterRoleBinding(tuned *tunedv1alpha1.Tuned) erro
 	return nil
 }
 
-func (r *ReconcileTuned) syncClusterConfigMap(f func(tuned []tunedv1alpha1.Tuned) (*corev1.ConfigMap, error), tuned *tunedv1alpha1.Tuned) error {
+func (r *ReconcileTuned) syncClusterConfigMap(f func(tuned []tunedv1.Tuned) (*corev1.ConfigMap, error), tuned *tunedv1.Tuned) error {
 	glog.V(1).Infof("syncClusterConfigMap()")
-	tunedList := &tunedv1alpha1.TunedList{}
+	tunedList := &tunedv1.TunedList{}
 	listOps := &client.ListOptions{Namespace: tuned.Namespace}
 	err := r.client.List(context.TODO(), listOps, tunedList)
 	if err != nil {
@@ -216,7 +216,7 @@ func (r *ReconcileTuned) syncClusterConfigMap(f func(tuned []tunedv1alpha1.Tuned
 	return nil
 }
 
-func (r *ReconcileTuned) syncDaemonSet(tuned *tunedv1alpha1.Tuned) error {
+func (r *ReconcileTuned) syncDaemonSet(tuned *tunedv1.Tuned) error {
 	glog.V(1).Infof("syncDaemonSet()")
 	dsManifest, err := r.manifestFactory.TunedDaemonSet()
 	if err != nil {
@@ -267,7 +267,7 @@ func createCustomResource(mgr manager.Manager) error {
 	return nil
 }
 
-func addOwnerReference(meta *metav1.ObjectMeta, tuned *tunedv1alpha1.Tuned) []metav1.OwnerReference {
+func addOwnerReference(meta *metav1.ObjectMeta, tuned *tunedv1.Tuned) []metav1.OwnerReference {
 	var isController bool
 	if tuned.Name == "default" {
 		isController = true
@@ -285,7 +285,7 @@ func addOwnerReference(meta *metav1.ObjectMeta, tuned *tunedv1alpha1.Tuned) []me
 	}
 
 	ownerReference := metav1.OwnerReference{
-		APIVersion: tunedv1alpha1.SchemeGroupVersion.String(),
+		APIVersion: tunedv1.SchemeGroupVersion.String(),
 		Kind:       "Tuned",
 		Name:       tuned.Name,
 		UID:        tuned.UID,
@@ -309,7 +309,7 @@ func (r *ReconcileTuned) Reconcile(request reconcile.Request) (reconcile.Result,
 	reconcileResult := reconcile.Result{RequeueAfter: reconcilePeriod}
 
 	// Fetch the Tuned instance
-	tunedInstance := &tunedv1alpha1.Tuned{}
+	tunedInstance := &tunedv1.Tuned{}
 	err := r.client.Get(context.TODO(), request.NamespacedName, tunedInstance)
 	if err != nil {
 		glog.Errorf("Couldn't get tunedInstance(): %v", err)

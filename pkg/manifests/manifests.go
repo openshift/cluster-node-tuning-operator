@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	"github.com/golang/glog"
-	tunedv1alpha1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1alpha1"
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 )
 
@@ -76,7 +76,7 @@ func (f *Factory) TunedClusterRoleBinding() (*rbacv1.ClusterRoleBinding, error) 
 	return crb, nil
 }
 
-func (f *Factory) TunedConfigMapProfiles(tunedArray []tunedv1alpha1.Tuned) (*corev1.ConfigMap, error) {
+func (f *Factory) TunedConfigMapProfiles(tunedArray []tunedv1.Tuned) (*corev1.ConfigMap, error) {
 	cm, err := NewConfigMap(MustAssetReader(TunedConfigMapProfiles))
 	if err != nil {
 		return nil, err
@@ -96,10 +96,10 @@ func (f *Factory) TunedConfigMapProfiles(tunedArray []tunedv1alpha1.Tuned) (*cor
 	return cm, nil
 }
 
-func (f *Factory) TunedConfigMapRecommend(tunedArray []tunedv1alpha1.Tuned) (*corev1.ConfigMap, error) {
+func (f *Factory) TunedConfigMapRecommend(tunedArray []tunedv1.Tuned) (*corev1.ConfigMap, error) {
 	var (
 		sb            strings.Builder
-		aRecommendAll []tunedv1alpha1.TunedRecommend
+		aRecommendAll []tunedv1.TunedRecommend
 	)
 	cm, err := NewConfigMap(MustAssetReader(TunedConfigMapRecommend))
 	if err != nil {
@@ -142,7 +142,7 @@ func (f *Factory) TunedDaemonSet() (*appsv1.DaemonSet, error) {
 	return ds, nil
 }
 
-func (f *Factory) TunedCustomResource() (*tunedv1alpha1.Tuned, error) {
+func (f *Factory) TunedCustomResource() (*tunedv1.Tuned, error) {
 	cr, err := NewTuned(MustAssetReader(TunedCustomResource))
 	if err != nil {
 		return nil, err
@@ -190,15 +190,15 @@ func NewDaemonSet(manifest io.Reader) (*appsv1.DaemonSet, error) {
 	return &ds, nil
 }
 
-func NewTuned(manifest io.Reader) (*tunedv1alpha1.Tuned, error) {
-	o := tunedv1alpha1.Tuned{}
+func NewTuned(manifest io.Reader) (*tunedv1.Tuned, error) {
+	o := tunedv1.Tuned{}
 	if err := yaml.NewYAMLOrJSONDecoder(manifest, 100).Decode(&o); err != nil {
 		return nil, err
 	}
 	return &o, nil
 }
 
-func toRecommendLine(match *tunedv1alpha1.TunedMatch) string {
+func toRecommendLine(match *tunedv1.TunedMatch) string {
 	var (
 		sb         strings.Builder
 		labelsFile string
@@ -245,7 +245,7 @@ func toRecommendConf(recommend []tunedRecommend, i *int) string {
 	return sb.String()
 }
 
-func matchWalk(match *tunedv1alpha1.TunedMatch, p tunedRecommend) []tunedRecommend {
+func matchWalk(match *tunedv1.TunedMatch, p tunedRecommend) []tunedRecommend {
 	var (
 		sb         strings.Builder
 		aRecommend []tunedRecommend
@@ -271,13 +271,13 @@ func matchWalk(match *tunedv1alpha1.TunedMatch, p tunedRecommend) []tunedRecomme
 	return aRecommend
 }
 
-func recommendWalk(r *tunedv1alpha1.TunedRecommend) []tunedRecommend {
+func recommendWalk(r *tunedv1.TunedRecommend) []tunedRecommend {
 	var aRecommend []tunedRecommend
 
 	if r.Profile != nil {
 		if len(r.Match) == 0 {
 			// Empty catch-all profile with no node/pod labels
-			sRecommend := toRecommendLine(&tunedv1alpha1.TunedMatch{})
+			sRecommend := toRecommendLine(&tunedv1.TunedMatch{})
 			aRecommend = append(aRecommend, tunedRecommend{Profile: *r.Profile, Data: sRecommend})
 		}
 		for _, m := range r.Match {
@@ -296,7 +296,7 @@ func recommendWalk(r *tunedv1alpha1.TunedRecommend) []tunedRecommend {
 	return aRecommend
 }
 
-func tunedConfigMapProfiles(tuned *tunedv1alpha1.Tuned, m map[string]string) {
+func tunedConfigMapProfiles(tuned *tunedv1.Tuned, m map[string]string) {
 	if tuned.Spec.Profile != nil {
 		for _, v := range tuned.Spec.Profile {
 			if v.Name != nil && v.Data != nil {

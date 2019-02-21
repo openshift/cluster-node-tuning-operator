@@ -1,5 +1,5 @@
 // Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
-package v1alpha1
+package v1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
