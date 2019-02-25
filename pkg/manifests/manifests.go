@@ -30,7 +30,7 @@ const (
 	TunedConfigMapProfiles  = "assets/tuned/04-cm-tuned-profiles.yaml"
 	TunedConfigMapRecommend = "assets/tuned/05-cm-tuned-recommend.yaml"
 	TunedDaemonSet          = "assets/tuned/06-ds-tuned.yaml"
-	TunedCustomResource     = "assets/tuned/07-cr-tuned.yaml"
+	TunedCustomResource     = "assets/tuned/default-cr-tuned.yaml"
 )
 
 type tunedRecommend struct {
