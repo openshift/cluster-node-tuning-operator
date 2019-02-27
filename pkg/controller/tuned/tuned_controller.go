@@ -43,6 +43,11 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
 func add(mgr manager.Manager, r reconcile.Reconciler) error {
+	const (
+		sleepRetry = 10
+		errsMax    = 5
+	)
+
 	// Create a new controller
 	c, err := controller.New("tuned-controller", mgr, controller.Options{Reconciler: r})
 	if err != nil {
@@ -64,10 +69,19 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	err = createCustomResource(mgr)
-	if err != nil {
-		glog.Errorf("createCustomResource(): %v", err)
-		return err
+	// A retry loop for errors like "caches not synchronized"
+	errs := 0
+	for {
+		err = createCustomResource(mgr)
+		if err != nil {
+			glog.Errorf("createCustomResource(): %v", err)
+			if errs++; errs >= errsMax {
+				return err
+			}
+			time.Sleep(time.Second * sleepRetry)
+			continue
+		}
+		break
 	}
 
 	return nil
