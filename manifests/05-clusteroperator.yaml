@@ -3,3 +3,7 @@ kind: ClusterOperator
 metadata:
   name: node-tuning
 spec: {}
+status:
+  versions:
+    - name: operator
+      version: "0.0.1-snapshot"
