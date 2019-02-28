@@ -3,13 +3,13 @@ package tuned
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/golang/glog"
 	configv1 "github.com/openshift/api/config/v1"
 	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util/clusteroperator"
-	"github.com/openshift/cluster-node-tuning-operator/version"
 	operatorv1helpers "github.com/openshift/library-go/pkg/operator/v1helpers"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -35,7 +35,15 @@ func (r *ReconcileTuned) syncOperatorStatus() (bool, error) {
 
 	oldConditions := coState.Status.Conditions
 	coState.Status.Conditions, requeue = computeStatusConditions(oldConditions, daemonset)
-	operatorv1helpers.SetOperandVersion(&coState.Status.Versions, configv1.OperandVersion{Name: ntoconfig.OperatorName(), Version: version.Version})
+	// every operator must report its version from the payload
+	// if the operator is reporting available, it resets the release version to the present value
+	if releaseVersion := os.Getenv("RELEASE_VERSION"); len(releaseVersion) > 0 {
+		for _, condition := range coState.Status.Conditions {
+			if condition.Type == configv1.OperatorAvailable && condition.Status == configv1.ConditionTrue {
+				operatorv1helpers.SetOperandVersion(&coState.Status.Versions, configv1.OperandVersion{Name: "operator", Version: releaseVersion})
+			}
+		}
+	}
 	coState.Status.RelatedObjects = []configv1.ObjectReference{
 		{
 			Group:    "",
