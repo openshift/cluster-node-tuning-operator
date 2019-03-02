@@ -84,6 +84,7 @@ spec:
       dnsPolicy: ClusterFirst
       nodeSelector:
         beta.kubernetes.io/os: linux
+      priorityClassName: "system-node-critical"
       hostNetwork: true
       hostPID: true
       restartPolicy: Always
