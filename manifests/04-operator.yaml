@@ -46,7 +46,7 @@ spec:
             value: "600"
           - name: CLUSTER_NODE_TUNED_IMAGE
             value: registry.svc.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuned
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           resources:
             requests:
               cpu: 10m

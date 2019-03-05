@@ -24,7 +24,7 @@ spec:
             cpu: 10m
             memory: 20Mi
         image: ${CLUSTER_NODE_TUNED_IMAGE}
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         name: tuned
         resources: {}
         securityContext:
