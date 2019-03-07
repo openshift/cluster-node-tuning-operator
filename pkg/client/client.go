@@ -12,19 +12,24 @@ import (
 )
 
 // GetConfig creates a *rest.Config for talking to a Kubernetes apiserver.
-// Otherwise will assume running in cluster and use the cluster provided kubeconfig.
 //
 // Config precedence
 //
 // * KUBECONFIG environment variable pointing at a file
-//
 // * In-cluster config if running in cluster
-//
 // * $HOME/.kube/config if exists
 func GetConfig() (*rest.Config, error) {
-	// If an env variable is specified with the config locaiton, use that
-	if len(os.Getenv("KUBECONFIG")) > 0 {
-		return clientcmd.BuildConfigFromFlags("", os.Getenv("KUBECONFIG"))
+	configFromFlags := func(kubeConfig string) (*rest.Config, error) {
+		if _, err := os.Stat(kubeConfig); err != nil {
+			return nil, fmt.Errorf("Cannot stat kubeconfig '%s'", kubeConfig)
+		}
+		return clientcmd.BuildConfigFromFlags("", kubeConfig)
+	}
+
+	// If an env variable is specified with the config location, use that
+	kubeConfig := os.Getenv("KUBECONFIG")
+	if len(kubeConfig) > 0 {
+		return configFromFlags(kubeConfig)
 	}
 	// If no explicit location, try the in-cluster config
 	if c, err := rest.InClusterConfig(); err == nil {
@@ -32,13 +37,11 @@ func GetConfig() (*rest.Config, error) {
 	}
 	// If no in-cluster config, try the default location in the user's home directory
 	if usr, err := user.Current(); err == nil {
-		if c, err := clientcmd.BuildConfigFromFlags(
-			"", filepath.Join(usr.HomeDir, ".kube", "config")); err == nil {
-			return c, nil
-		}
+		kubeConfig := filepath.Join(usr.HomeDir, ".kube", "config")
+		return configFromFlags(kubeConfig)
 	}
 
-	return nil, fmt.Errorf("could not locate a kubeconfig")
+	return nil, fmt.Errorf("Could not locate a kubeconfig")
 }
 
 // GetCfgV1Client returns OpenShift *v1.ConfigV1Client for talking to a Kubernetes apiserver.

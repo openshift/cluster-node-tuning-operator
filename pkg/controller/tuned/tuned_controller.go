@@ -322,9 +322,16 @@ func (r *ReconcileTuned) Reconcile(request reconcile.Request) (reconcile.Result,
 	reconcilePeriod := time.Duration(resyncPeriodDuration) * time.Second
 	reconcileResult := reconcile.Result{RequeueAfter: reconcilePeriod}
 
+	// Report the OperatorStatus as soon as possible
+	requeue, err := r.syncOperatorStatus()
+	if err != nil {
+		glog.Errorf("Couldn't syncOperatorStatus(): %v", err)
+		return reconcileResult, err
+	}
+
 	// Fetch the Tuned instance
 	tunedInstance := &tunedv1.Tuned{}
-	err := r.client.Get(context.TODO(), request.NamespacedName, tunedInstance)
+	err = r.client.Get(context.TODO(), request.NamespacedName, tunedInstance)
 	if err != nil {
 		glog.Errorf("Couldn't get tunedInstance(): %v", err)
 		if errors.IsNotFound(err) {
@@ -374,12 +381,8 @@ func (r *ReconcileTuned) Reconcile(request reconcile.Request) (reconcile.Result,
 		return reconcileResult, err
 	}
 
-	requeue, err = r.syncOperatorStatus()
-	if err != nil {
-		glog.Errorf("Couldn't syncOperatorStatus(): %v", err)
-		return reconcileResult, err
-	} else if requeue {
-		glog.Errorf("Reconcile requeue due to syncOperatorStatus()")
+	if requeue {
+		glog.Infof("Reconcile requeue due to syncOperatorStatus()")
 		return reconcile.Result{Requeue: true}, nil
 	}
 
