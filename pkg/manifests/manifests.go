@@ -29,7 +29,8 @@ const (
 	TunedClusterRoleBinding = "assets/tuned/03-cluster-role-binding.yaml"
 	TunedConfigMapProfiles  = "assets/tuned/04-cm-tuned-profiles.yaml"
 	TunedConfigMapRecommend = "assets/tuned/05-cm-tuned-recommend.yaml"
-	TunedDaemonSet          = "assets/tuned/06-ds-tuned.yaml"
+	TunedDaemonSetRHEL7     = "assets/tuned/06-ds-tuned-rhel7.yaml"
+	TunedDaemonSetRHEL8     = "assets/tuned/06-ds-tuned-rhel8.yaml"
 	TunedCustomResource     = "assets/tuned/default-cr-tuned.yaml"
 )
 
@@ -131,9 +132,20 @@ func (f *Factory) TunedConfigMapRecommend(tunedArray []tunedv1.Tuned) (*corev1.C
 	return cm, nil
 }
 
-func (f *Factory) TunedDaemonSet() (*appsv1.DaemonSet, error) {
-	ds, err := NewDaemonSet(MustAssetReader(TunedDaemonSet))
-	imageTuned := ntoconfig.NodeTunedImage()
+func (f *Factory) TunedDaemonSetRHEL7() (*appsv1.DaemonSet, error) {
+	ds, err := NewDaemonSet(MustAssetReader(TunedDaemonSetRHEL7))
+	imageTuned := ntoconfig.NodeTunedImage("RHEL7")
+	ds.Spec.Template.Spec.Containers[0].Image = imageTuned
+
+	if err != nil {
+		return nil, err
+	}
+	return ds, nil
+}
+
+func (f *Factory) TunedDaemonSetRHEL8() (*appsv1.DaemonSet, error) {
+	ds, err := NewDaemonSet(MustAssetReader(TunedDaemonSetRHEL8))
+	imageTuned := ntoconfig.NodeTunedImage("RHEL8")
 	ds.Spec.Template.Spec.Containers[0].Image = imageTuned
 
 	if err != nil {

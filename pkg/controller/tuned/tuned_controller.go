@@ -230,9 +230,9 @@ func (r *ReconcileTuned) syncClusterConfigMap(f func(tuned []tunedv1.Tuned) (*co
 	return nil
 }
 
-func (r *ReconcileTuned) syncDaemonSet(tuned *tunedv1.Tuned) error {
+func (r *ReconcileTuned) syncDaemonSet(f func() (*appsv1.DaemonSet, error), tuned *tunedv1.Tuned) error {
 	glog.V(1).Infof("syncDaemonSet()")
-	dsManifest, err := r.manifestFactory.TunedDaemonSet()
+	dsManifest, err := f()
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned DaemonSet: %v", err)
 	}
@@ -375,7 +375,7 @@ func (r *ReconcileTuned) Reconcile(request reconcile.Request) (reconcile.Result,
 		return reconcileResult, err
 	}
 
-	err = r.syncDaemonSet(tunedInstance)
+	err = r.syncDaemonSet(r.manifestFactory.TunedDaemonSetRHEL7, tunedInstance)
 	if err != nil {
 		glog.Errorf("Couldn't syncDaemonSet(): %v", err)
 		return reconcileResult, err

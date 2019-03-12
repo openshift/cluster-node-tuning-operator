@@ -15,8 +15,8 @@ const (
 )
 
 // NodeTunedImage returns the operator's operand/tuned image path.
-func NodeTunedImage() string {
-	nodeTunedImage := os.Getenv("CLUSTER_NODE_TUNED_IMAGE")
+func NodeTunedImage(version string) string {
+	nodeTunedImage := os.Getenv("CLUSTER_NODE_TUNED_IMAGE_" + version)
 
 	if len(nodeTunedImage) > 0 {
 		return nodeTunedImage

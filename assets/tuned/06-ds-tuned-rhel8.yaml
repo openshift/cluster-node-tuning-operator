@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: tuned
+  name: tuned-rhel8
   namespace: openshift-cluster-node-tuning-operator
   labels:
-    openshift-app: tuned
+    openshift-app: tuned-rhel8
 spec:
   selector:
     matchLabels:
-      openshift-app: tuned
+      openshift-app: tuned-rhel8
   template:
     metadata:
       labels:
-        openshift-app: tuned
+        openshift-app: tuned-rhel8
     spec:
       serviceAccountName: tuned
       automountServiceAccountToken: true
@@ -84,6 +84,7 @@ spec:
       dnsPolicy: ClusterFirst
       nodeSelector:
         beta.kubernetes.io/os: linux
+        os-major-version: "8"
       priorityClassName: "system-node-critical"
       hostNetwork: true
       hostPID: true

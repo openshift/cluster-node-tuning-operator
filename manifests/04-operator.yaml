@@ -44,7 +44,7 @@ spec:
             value: "node-tuning"
           - name: RESYNC_PERIOD
             value: "600"
-          - name: CLUSTER_NODE_TUNED_IMAGE
+          - name: CLUSTER_NODE_TUNED_IMAGE_RHEL7
             value: registry.svc.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuned
           imagePullPolicy: IfNotPresent
           resources:

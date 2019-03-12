@@ -29,7 +29,7 @@ func (r *ReconcileTuned) syncOperatorStatus() (bool, error) {
 		return false, err
 	}
 
-	dsManifest, err := r.manifestFactory.TunedDaemonSet()
+	dsManifest, err := r.manifestFactory.TunedDaemonSetRHEL7() // TODO: RHEL8 too
 	daemonset := &appsv1.DaemonSet{}
 	dsErr := r.client.Get(context.TODO(), types.NamespacedName{Namespace: dsManifest.Namespace, Name: dsManifest.Name}, daemonset)
 
