@@ -51,7 +51,7 @@ func TestSetStatusCondition(t *testing.T) {
 			description: "existing conditions, one changed",
 			oldConditions: []configv1.ClusterOperatorStatusCondition{
 				{
-					Type:   configv1.OperatorFailing,
+					Type:   configv1.OperatorDegraded,
 					Status: configv1.ConditionFalse,
 				},
 				{
@@ -69,7 +69,7 @@ func TestSetStatusCondition(t *testing.T) {
 			},
 			expected: []configv1.ClusterOperatorStatusCondition{
 				{
-					Type:   configv1.OperatorFailing,
+					Type:   configv1.OperatorDegraded,
 					Status: configv1.ConditionFalse,
 				},
 				{
