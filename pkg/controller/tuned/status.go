@@ -116,8 +116,8 @@ func computeStatusConditions(conditions []configv1.ClusterOperatorStatusConditio
 		Type:   configv1.OperatorProgressing,
 		Status: configv1.ConditionFalse,
 	}
-	failingCondition := &configv1.ClusterOperatorStatusCondition{
-		Type:   configv1.OperatorFailing,
+	degradedCondition := &configv1.ClusterOperatorStatusCondition{
+		Type:   configv1.OperatorDegraded,
 		Status: configv1.ConditionFalse,
 	}
 
@@ -131,7 +131,7 @@ func computeStatusConditions(conditions []configv1.ClusterOperatorStatusConditio
 				availableCondition.Status = configv1.ConditionFalse
 				progressingCondition.Status = configv1.ConditionTrue
 				progressingCondition.Message = fmt.Sprintf("Working towards %q", os.Getenv("RELEASE_VERSION"))
-				failingCondition.Status = configv1.ConditionFalse
+				degradedCondition.Status = configv1.ConditionFalse
 			} else {
 				// This should not happen unless there was a manual intervention.
 				// Preserve the previously known conditions and requeue.
@@ -143,7 +143,7 @@ func computeStatusConditions(conditions []configv1.ClusterOperatorStatusConditio
 			glog.Errorf("Setting all ClusterOperator conditions to Unknown: ", dsErr)
 			availableCondition.Status = configv1.ConditionUnknown
 			progressingCondition.Status = configv1.ConditionUnknown
-			failingCondition.Status = configv1.ConditionUnknown
+			degradedCondition.Status = configv1.ConditionUnknown
 		}
 	} else {
 		if daemonset.Status.NumberAvailable > 0 {
@@ -177,7 +177,7 @@ func computeStatusConditions(conditions []configv1.ClusterOperatorStatusConditio
 
 	conditions = clusteroperator.SetStatusCondition(conditions, availableCondition)
 	conditions = clusteroperator.SetStatusCondition(conditions, progressingCondition)
-	conditions = clusteroperator.SetStatusCondition(conditions, failingCondition)
+	conditions = clusteroperator.SetStatusCondition(conditions, degradedCondition)
 	glog.V(2).Infof("Operator status conditions: %v", conditions)
 
 	return conditions, requeue

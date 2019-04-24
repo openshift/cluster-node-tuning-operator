@@ -149,7 +149,7 @@ func (GenericControllerConfig) SwaggerDoc() map[string]string {
 }
 
 var map_HTTPServingInfo = map[string]string{
-	"": "HTTPServingInfo holds configuration for serving HTTP",
+	"":                      "HTTPServingInfo holds configuration for serving HTTP",
 	"maxRequestsInFlight":   "MaxRequestsInFlight is the number of concurrent requests allowed to the server. If zero, no limit.",
 	"requestTimeoutSeconds": "RequestTimeoutSeconds is the number of seconds before requests are timed out. The default is 60 minutes, if -1 there is no limit on requests.",
 }
@@ -335,12 +335,11 @@ func (Build) SwaggerDoc() map[string]string {
 }
 
 var map_BuildDefaults = map[string]string{
-	"defaultProxy":     "DefaultProxy contains the default proxy settings for all build operations, including image pull/push and source download.\n\nValues can be overrode by setting the `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables in the build config's strategy.",
-	"gitProxy":         "GitProxy contains the proxy settings for git operations only. If set, this will override any Proxy settings for all git commands, such as git clone.\n\nValues that are not set here will be inherited from DefaultProxy.",
-	"env":              "Env is a set of default environment variables that will be applied to the build if the specified variables do not exist on the build",
-	"imageLabels":      "ImageLabels is a list of docker labels that are applied to the resulting image. User can override a default label by providing a label with the same name in their Build/BuildConfig.",
-	"resources":        "Resources defines resource requirements to execute the build.",
-	"registriesConfig": "RegistriesConfig controls the registries allowed for image pull and push.",
+	"defaultProxy": "DefaultProxy contains the default proxy settings for all build operations, including image pull/push and source download.\n\nValues can be overrode by setting the `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables in the build config's strategy.",
+	"gitProxy":     "GitProxy contains the proxy settings for git operations only. If set, this will override any Proxy settings for all git commands, such as git clone.\n\nValues that are not set here will be inherited from DefaultProxy.",
+	"env":          "Env is a set of default environment variables that will be applied to the build if the specified variables do not exist on the build",
+	"imageLabels":  "ImageLabels is a list of docker labels that are applied to the resulting image. User can override a default label by providing a label with the same name in their Build/BuildConfig.",
+	"resources":    "Resources defines resource requirements to execute the build.",
 }
 
 func (BuildDefaults) SwaggerDoc() map[string]string {
@@ -382,17 +381,6 @@ var map_ImageLabel = map[string]string{
 
 func (ImageLabel) SwaggerDoc() map[string]string {
 	return map_ImageLabel
-}
-
-var map_RegistriesConfig = map[string]string{
-	"searchRegistries":   "SearchRegistries lists the registries to search for images if an image repository is not specified in an image pull spec.\n\nIf this is not set, builds will search Docker Hub (docker.io) when a repository is not specified. Setting this to an empty list will require all builds to fully qualify their image pull specs.",
-	"insecureRegistries": "InsecureRegistries are registries which do not have a valid SSL certificate or only support HTTP connections.",
-	"blockedRegistries":  "BlockedRegistries are blacklisted from image pull/push. All other registries are allowed.\n\nOnly one of BlockedRegistries or AllowedRegistries may be set.",
-	"allowedRegistries":  "AllowedRegistries are whitelisted for image pull/push. All other registries are blocked.\n\nOnly one of BlockedRegistries or AllowedRegistries may be set.",
-}
-
-func (RegistriesConfig) SwaggerDoc() map[string]string {
-	return map_RegistriesConfig
 }
 
 var map_ClusterOperator = map[string]string{
@@ -504,7 +492,7 @@ var map_ClusterVersionStatus = map[string]string{
 	"history":            "history contains a list of the most recent versions applied to the cluster. This value may be empty during cluster startup, and then will be updated when a new update is being applied. The newest update is first in the list and it is ordered by recency. Updates in the history have state Completed if the rollout completed - if an update was failing or halfway applied the state will be Partial. Only a limited amount of update history is preserved.",
 	"observedGeneration": "observedGeneration reports which version of the spec is being synced. If this value is not equal to metadata.generation, then the desired and conditions fields may represent from a previous version.",
 	"versionHash":        "versionHash is a fingerprint of the content that the cluster will be updated with. It is used by the operator to avoid unnecessary work and is for internal use only.",
-	"conditions":         "conditions provides information about the cluster version. The condition \"Available\" is set to true if the desiredUpdate has been reached. The condition \"Progressing\" is set to true if an update is being applied. The condition \"Failing\" is set to true if an update is currently blocked by a temporary or permanent error. Conditions are only valid for the current desiredUpdate when metadata.generation is equal to status.generation.",
+	"conditions":         "conditions provides information about the cluster version. The condition \"Available\" is set to true if the desiredUpdate has been reached. The condition \"Progressing\" is set to true if an update is being applied. The condition \"Degraded\" is set to true if an update is currently blocked by a temporary or permanent error. Conditions are only valid for the current desiredUpdate when metadata.generation is equal to status.generation.",
 	"availableUpdates":   "availableUpdates contains the list of updates that are appropriate for this cluster. This list may be empty if no updates are recommended, if the update service is unavailable, or if an invalid channel has been specified.",
 }
 
@@ -576,7 +564,7 @@ func (ConsoleList) SwaggerDoc() map[string]string {
 }
 
 var map_ConsoleStatus = map[string]string{
-	"publicHostname": "The hostname for the console. This will match the host for the route that is created for the console.",
+	"consoleURL": "The URL for the console. This will be derived from the host for the route that is created for the console.",
 }
 
 func (ConsoleStatus) SwaggerDoc() map[string]string {
@@ -603,11 +591,50 @@ func (DNSList) SwaggerDoc() map[string]string {
 }
 
 var map_DNSSpec = map[string]string{
-	"baseDomain": "baseDomain is the base domain of the cluster. All managed DNS records will be sub-domains of this base.\n\nFor example, given the base domain `openshift.example.com`, an API server DNS record may be created for `cluster-api.openshift.example.com`.",
+	"baseDomain":  "baseDomain is the base domain of the cluster. All managed DNS records will be sub-domains of this base.\n\nFor example, given the base domain `openshift.example.com`, an API server DNS record may be created for `cluster-api.openshift.example.com`.",
+	"publicZone":  "publicZone is the location where all the DNS records that are publicly accessible to the internet exist. If this field is nil, no public records should be created.",
+	"privateZone": "privateZone is the location where all the DNS records that are only available internally to the cluster exist. If this field is nil, no private records should be created.",
 }
 
 func (DNSSpec) SwaggerDoc() map[string]string {
 	return map_DNSSpec
+}
+
+var map_DNSZone = map[string]string{
+	"":     "DNSZone is used to define a DNS hosted zone. A zone can be identified by an ID or tags.",
+	"id":   "id is the identifier that can be used to find the DNS hosted zone.\n\non AWS zone can be fetched using `ID` as id in [1] on Azure zone can be fetched using `ID` as a pre-determined name in [2], on GCP zone can be fetched using `ID` as a pre-determined name in [3].\n\n[1]: https://docs.aws.amazon.com/cli/latest/reference/route53/get-hosted-zone.html#options [2]: https://docs.microsoft.com/en-us/cli/azure/network/dns/zone?view=azure-cli-latest#az-network-dns-zone-show [3]: https://cloud.google.com/dns/docs/reference/v1/managedZones/get",
+	"tags": "tags can be used to query the DNS hosted zone.\n\non AWS, resourcegroupstaggingapi [1] can be used to fetch a zone using `Tags` as tag-filters,\n\n[1]: https://docs.aws.amazon.com/cli/latest/reference/resourcegroupstaggingapi/get-resources.html#options",
+}
+
+func (DNSZone) SwaggerDoc() map[string]string {
+	return map_DNSZone
+}
+
+var map_FeatureGate = map[string]string{
+	"":         "Feature holds cluster-wide information about feature gates.  The canonical name is `cluster`",
+	"metadata": "Standard object's metadata.",
+	"spec":     "spec holds user settable values for configuration",
+	"status":   "status holds observed values from the cluster. They may not be overridden.",
+}
+
+func (FeatureGate) SwaggerDoc() map[string]string {
+	return map_FeatureGate
+}
+
+var map_FeatureGateList = map[string]string{
+	"metadata": "Standard object's metadata.",
+}
+
+func (FeatureGateList) SwaggerDoc() map[string]string {
+	return map_FeatureGateList
+}
+
+var map_FeatureGateSpec = map[string]string{
+	"featureSet": "featureSet changes the list of features in the cluster.  The default is empty.  Be very careful adjusting this setting. Turning on or off features may cause irreversible changes in your cluster which cannot be undone.",
+}
+
+func (FeatureGateSpec) SwaggerDoc() map[string]string {
+	return map_FeatureGateSpec
 }
 
 var map_Image = map[string]string{
@@ -632,7 +659,8 @@ func (ImageList) SwaggerDoc() map[string]string {
 var map_ImageSpec = map[string]string{
 	"allowedRegistriesForImport": "AllowedRegistriesForImport limits the container image registries that normal users may import images from. Set this list to the registries that you trust to contain valid Docker images and that you want applications to be able to import from. Users with permission to create Images or ImageStreamMappings via the API are not affected by this policy - typically only administrators or system integrations will have those permissions.",
 	"externalRegistryHostnames":  "externalRegistryHostnames provides the hostnames for the default external image registry. The external hostname should be set only when the image registry is exposed externally. The first value is used in 'publicDockerImageRepository' field in ImageStreams. The value must be in \"hostname[:port]\" format.",
-	"additionalTrustedCA":        "AdditionalTrustedCA is a reference to a ConfigMap containing additional CAs that should be trusted during imagestream import. The namespace for this config map is openshift-config.",
+	"additionalTrustedCA":        "AdditionalTrustedCA is a reference to a ConfigMap containing additional CAs that should be trusted during imagestream import, pod image pull, and imageregistry pullthrough. The namespace for this config map is openshift-config.",
+	"registrySources":            "RegistrySources contains configuration that determines how the container runtime should treat individual registries when accessing images for builds+pods. (e.g. whether or not to allow insecure access).  It does not contain configuration for the internal cluster registry.",
 }
 
 func (ImageSpec) SwaggerDoc() map[string]string {
@@ -658,6 +686,17 @@ func (RegistryLocation) SwaggerDoc() map[string]string {
 	return map_RegistryLocation
 }
 
+var map_RegistrySources = map[string]string{
+	"":                   "RegistrySources holds cluster-wide information about how to handle the registries config.",
+	"insecureRegistries": "InsecureRegistries are registries which do not have a valid SSL certificate or only support HTTP connections.",
+	"blockedRegistries":  "BlockedRegistries are blacklisted from image pull/push. All other registries are allowed.\n\nOnly one of BlockedRegistries or AllowedRegistries may be set.",
+	"allowedRegistries":  "AllowedRegistries are whitelisted for image pull/push. All other registries are blocked.\n\nOnly one of BlockedRegistries or AllowedRegistries may be set.",
+}
+
+func (RegistrySources) SwaggerDoc() map[string]string {
+	return map_RegistrySources
+}
+
 var map_Infrastructure = map[string]string{
 	"":         "Infrastructure holds cluster-wide information about Infrastructure.  The canonical name is `cluster`",
 	"metadata": "Standard object's metadata.",
@@ -679,7 +718,8 @@ func (InfrastructureList) SwaggerDoc() map[string]string {
 }
 
 var map_InfrastructureSpec = map[string]string{
-	"": "InfrastructureSpec contains settings that apply to the cluster infrastructure.",
+	"":            "InfrastructureSpec contains settings that apply to the cluster infrastructure.",
+	"cloudConfig": "cloudConfig is a reference to a ConfigMap containing the cloud provider configuration file. This configuration file is used to configure the Kubernetes cloud provider integration when using the built-in cloud provider integration or the external cloud controller manager. The namespace for this config map is openshift-config.",
 }
 
 func (InfrastructureSpec) SwaggerDoc() map[string]string {
@@ -688,7 +728,8 @@ func (InfrastructureSpec) SwaggerDoc() map[string]string {
 
 var map_InfrastructureStatus = map[string]string{
 	"":                    "InfrastructureStatus describes the infrastructure the cluster is leveraging.",
-	"platform":            "platform is the underlying infrastructure provider for the cluster. This value controls whether infrastructure automation such as service load balancers, dynamic volume provisioning, machine creation and deletion, and other integrations are enabled. If None, no infrastructure automation is enabled. Allowed values are \"AWS\", \"Azure\", \"GCP\", \"Libvirt\", \"OpenStack\", \"VSphere\", and \"None\". Individual components may not support all platforms, and must handle unrecognized platforms as None if they do not support that platform.",
+	"infrastructureName":  "infrastructureName uniquely identifies a cluster with a human friendly name. Once set it should not be changed. Must be of max length 27 and must have only alphanumeric or hyphen characters.",
+	"platform":            "platform is the underlying infrastructure provider for the cluster. This value controls whether infrastructure automation such as service load balancers, dynamic volume provisioning, machine creation and deletion, and other integrations are enabled. If None, no infrastructure automation is enabled. Allowed values are \"AWS\", \"Azure\", \"BareMetal\", \"GCP\", \"Libvirt\", \"OpenStack\", \"VSphere\", and \"None\". Individual components may not support all platforms, and must handle unrecognized platforms as None if they do not support that platform.",
 	"etcdDiscoveryDomain": "etcdDiscoveryDomain is the domain used to fetch the SRV records for discovering etcd servers and clients. For more info: https://github.com/etcd-io/etcd/blob/329be66e8b3f9e2e6af83c123ff89297e49ebd15/Documentation/op-guide/clustering.md#dns-discovery",
 	"apiServerURL":        "apiServerURL is a valid URL with scheme(http/https), address and port. apiServerURL can be used by components like kubelet on machines, to contact the `apisever` using the infrastructure provider rather than the kubernetes networking.",
 }
@@ -833,8 +874,6 @@ func (HTPasswdIdentityProvider) SwaggerDoc() map[string]string {
 var map_IdentityProvider = map[string]string{
 	"":              "IdentityProvider provides identities for users authenticating using credentials",
 	"name":          "name is used to qualify the identities returned by this provider. - It MUST be unique and not shared by any other identity provider used - It MUST be a valid path segment: name cannot equal \".\" or \"..\" or contain \"/\" or \"%\" or \":\"\n  Ref: https://godoc.org/github.com/openshift/origin/pkg/user/apis/user/validation#ValidateIdentityProviderName",
-	"challenge":     "challenge indicates whether to issue WWW-Authenticate challenges for this provider",
-	"login":         "login indicates whether to use this identity provider for unauthenticated browsers to login against",
 	"mappingMethod": "mappingMethod determines how identities from this provider are mapped to users Defaults to \"claim\"",
 }
 
@@ -963,23 +1002,12 @@ var map_OpenIDIdentityProvider = map[string]string{
 	"ca":                       "ca is an optional reference to a config map by name containing the PEM-encoded CA bundle. It is used as a trust anchor to validate the TLS certificate presented by the remote server. The key \"ca.crt\" is used to locate the data. If specified and the config map or expected key is not found, the identity provider is not honored. If the specified ca data is not valid, the identity provider is not honored. If empty, the default system roots are used. The namespace for this config map is openshift-config.",
 	"extraScopes":              "extraScopes are any scopes to request in addition to the standard \"openid\" scope.",
 	"extraAuthorizeParameters": "extraAuthorizeParameters are any custom parameters to add to the authorize request.",
-	"urls":   "urls to use to authenticate",
-	"claims": "claims mappings",
+	"issuer":                   "issuer is the URL that the OpenID Provider asserts as its Issuer Identifier. It must use the https scheme with no query or fragment component.",
+	"claims":                   "claims mappings",
 }
 
 func (OpenIDIdentityProvider) SwaggerDoc() map[string]string {
 	return map_OpenIDIdentityProvider
-}
-
-var map_OpenIDURLs = map[string]string{
-	"":          "OpenIDURLs are URLs to use when authenticating with an OpenID identity provider",
-	"authorize": "authorize is the oauth authorization URL",
-	"token":     "token is the oauth token granting URL",
-	"userInfo":  "userInfo is the optional userinfo URL. If present, a granted access_token is used to request claims If empty, a granted id_token is parsed for claims",
-}
-
-func (OpenIDURLs) SwaggerDoc() map[string]string {
-	return map_OpenIDURLs
 }
 
 var map_RequestHeaderIdentityProvider = map[string]string{
@@ -999,7 +1027,7 @@ func (RequestHeaderIdentityProvider) SwaggerDoc() map[string]string {
 }
 
 var map_TokenConfig = map[string]string{
-	"": "TokenConfig holds the necessary configuration options for authorization and access tokens",
+	"":                                    "TokenConfig holds the necessary configuration options for authorization and access tokens",
 	"accessTokenMaxAgeSeconds":            "accessTokenMaxAgeSeconds defines the maximum age of access tokens",
 	"accessTokenInactivityTimeoutSeconds": "accessTokenInactivityTimeoutSeconds defines the default token inactivity timeout for tokens granted by any client. The value represents the maximum amount of time that can occur between consecutive uses of the token. Tokens become invalid if they are not used within this temporal window. The user will need to acquire a new token to regain access once a token times out. Valid values are integer values:\n  x < 0  Tokens time out is enabled but tokens never timeout unless configured per client (e.g. `-1`)\n  x = 0  Tokens time out is disabled (default)\n  x > 0  Tokens time out if there is no activity for x seconds\nThe current minimum allowed value for X is 300 (5 minutes)",
 }
@@ -1028,7 +1056,7 @@ func (ProjectList) SwaggerDoc() map[string]string {
 }
 
 var map_ProjectSpec = map[string]string{
-	"": "ProjectSpec holds the project creation configuration.",
+	"":                       "ProjectSpec holds the project creation configuration.",
 	"projectRequestMessage":  "projectRequestMessage is the string presented to a user if they are unable to request a project via the projectrequest api endpoint",
 	"projectRequestTemplate": "projectRequestTemplate is the template to use for creating projects in response to projectrequest. This must point to a template in 'openshift-config' namespace. It is optional. If it is not specified, a default template is used.",
 }
@@ -1073,59 +1101,32 @@ func (ProxySpec) SwaggerDoc() map[string]string {
 	return map_ProxySpec
 }
 
-var map_Registry = map[string]string{
-	"":         "Registry holds cluster-wide information about how to handle the registries config.  The canonical name is `cluster`",
-	"metadata": "Standard object's metadata.",
-	"spec":     "spec holds user settable values for configuration",
-}
-
-func (Registry) SwaggerDoc() map[string]string {
-	return map_Registry
-}
-
-var map_RegistryList = map[string]string{
-	"metadata": "Standard object's metadata.",
-}
-
-func (RegistryList) SwaggerDoc() map[string]string {
-	return map_RegistryList
-}
-
-var map_RegistrySpec = map[string]string{
-	"insecureRegistries": "InsecureRegistries are registries which do not have a valid SSL certificate or only support HTTP connections.",
-	"blockedRegistries":  "BlockedRegistries are blacklisted from image pull/push. All other registries are allowed.\n\nOnly one of BlockedRegistries or AllowedRegistries may be set.",
-	"allowedRegistries":  "AllowedRegistries are whitelisted for image pull/push. All other registries are blocked.\n\nOnly one of BlockedRegistries or AllowedRegistries may be set.",
-}
-
-func (RegistrySpec) SwaggerDoc() map[string]string {
-	return map_RegistrySpec
-}
-
-var map_Scheduling = map[string]string{
-	"":         "Scheduling holds cluster-wide information about Scheduling.  The canonical name is `cluster`",
+var map_Scheduler = map[string]string{
+	"":         "Scheduler holds cluster-wide information about Scheduler.  The canonical name is `cluster`",
 	"metadata": "Standard object's metadata.",
 	"spec":     "spec holds user settable values for configuration",
 	"status":   "status holds observed values from the cluster. They may not be overridden.",
 }
 
-func (Scheduling) SwaggerDoc() map[string]string {
-	return map_Scheduling
+func (Scheduler) SwaggerDoc() map[string]string {
+	return map_Scheduler
 }
 
-var map_SchedulingList = map[string]string{
+var map_SchedulerList = map[string]string{
 	"metadata": "Standard object's metadata.",
 }
 
-func (SchedulingList) SwaggerDoc() map[string]string {
-	return map_SchedulingList
+func (SchedulerList) SwaggerDoc() map[string]string {
+	return map_SchedulerList
 }
 
-var map_SchedulingSpec = map[string]string{
-	"policy": "policy is a reference to a ConfigMap containing scheduler policy which has user specified predicates and priorities. If this ConfigMap is not available scheduler will default to use DefaultAlgorithmProvider. The namespace for this configmap is openshift-config.",
+var map_SchedulerSpec = map[string]string{
+	"policy":              "policy is a reference to a ConfigMap containing scheduler policy which has user specified predicates and priorities. If this ConfigMap is not available scheduler will default to use DefaultAlgorithmProvider. The namespace for this configmap is openshift-config.",
+	"defaultNodeSelector": "defaultNodeSelector helps set the cluster-wide default node selector to restrict pod placement to specific nodes. This is applied to the pods created in all namespaces without a specified nodeSelector value. For example, defaultNodeSelector: \"type=user-node,region=east\" would set nodeSelector field in pod spec to \"type=user-node,region=east\" to all pods created in all namespaces. Namespaces having project-wide node selectors won't be impacted even if this field is set. This adds an annotation section to the namespace. For example, if a new namespace is created with node-selector='type=user-node,region=east', the annotation openshift.io/node-selector: type=user-node,region=east gets added to the project. When the openshift.io/node-selector annotation is set on the project the value is used in preference to the value we are setting for defaultNodeSelector field. For instance, openshift.io/node-selector: \"type=user-node,region=west\" means that the default of \"type=user-node,region=east\" set in defaultNodeSelector would not be applied.",
 }
 
-func (SchedulingSpec) SwaggerDoc() map[string]string {
-	return map_SchedulingSpec
+func (SchedulerSpec) SwaggerDoc() map[string]string {
+	return map_SchedulerSpec
 }
 
 // AUTO-GENERATED FUNCTIONS END HERE
