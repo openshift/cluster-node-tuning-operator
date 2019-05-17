@@ -26,7 +26,6 @@ spec:
         image: ${CLUSTER_NODE_TUNED_IMAGE}
         imagePullPolicy: IfNotPresent
         name: tuned
-        resources: {}
         securityContext:
           privileged: true
         terminationMessagePolicy: FallbackToLogsOnError
