@@ -1,30 +1,29 @@
 PACKAGE=github.com/openshift/cluster-node-tuning-operator
-MAIN_PACKAGE=$(PACKAGE)/cmd/manager
+PACKAGE_BIN=$(lastword $(subst /, ,$(PACKAGE)))
+PACKAGE_MAIN=$(PACKAGE)/cmd/manager
 
-BIN=$(lastword $(subst /, ,$(PACKAGE)))
+# Build-specific variables
+vpath bin/go-bindata $(GOPATH)
+GOBINDATA_BIN=bin/go-bindata
 BINDATA=pkg/manifests/bindata.go
-
+ENVVAR=GOOS=linux CGO_ENABLED=0
+GOOS=linux
+GO_BUILD_RECIPE=GOOS=$(GOOS) go build -o $(PACKAGE_BIN) -ldflags '-X $(PACKAGE)/version.Version=$(REV)' $(PACKAGE_MAIN)
 GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
 REV=$(shell git describe --long --tags --match='v*' --always --dirty)
 
+# Container image-related variables
 DOCKERFILE=Dockerfile
 IMAGE_TAG=openshift/origin-cluster-node-tuning-operator
 IMAGE_REGISTRY=quay.io
 
-vpath bin/go-bindata $(GOPATH)
-GOBINDATA_BIN=bin/go-bindata
+all: build
 
-ENVVAR=GOOS=linux CGO_ENABLED=0
-GOOS=linux
-GO_BUILD_RECIPE=GOOS=$(GOOS) go build -o $(BIN) -ldflags '-X $(PACKAGE)/version.Version=$(REV)' $(MAIN_PACKAGE)
-
-all: generate build
-
-build:
+build: $(BINDATA)
 	$(GO_BUILD_RECIPE)
 
 # Using "-modtime 1" to make generate target deterministic. It sets all file time stamps to unix timestamp 1
-generate: $(GOBINDATA_BIN)
+generate $(BINDATA): $(GOBINDATA_BIN)
 	go-bindata -mode 420 -modtime 1 -pkg manifests -o $(BINDATA) assets/...
 	gofmt -s -w $(BINDATA)
 
@@ -53,7 +52,7 @@ test:
 
 clean:
 	go clean
-	rm -f $(BIN)
+	rm -f $(PACKAGE_BIN) $(BINDATA)
 
 local-image:
 ifdef USE_BUILDAH
