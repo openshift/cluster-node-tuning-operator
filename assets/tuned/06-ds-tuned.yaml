@@ -17,14 +17,17 @@ spec:
       serviceAccountName: tuned
       automountServiceAccountToken: true
       containers:
-      - command:
-        - /var/lib/tuned/bin/run
+      - command: ["/var/lib/tuned/bin/run","start"]
         resources:
           requests:
             cpu: 10m
-            memory: 20Mi
+            memory: 50Mi
         image: ${CLUSTER_NODE_TUNED_IMAGE}
         imagePullPolicy: IfNotPresent
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/var/lib/tuned/bin/run","stop"]
         name: tuned
         securityContext:
           privileged: true
