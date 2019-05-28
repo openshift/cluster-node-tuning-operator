@@ -120,11 +120,8 @@ func (r *ReconcileTuned) syncServiceAccount(tuned *tunedv1.Tuned) error {
 			return fmt.Errorf("Failed to get ServiceAccount: %v\n", err)
 		}
 	} else {
-		glog.V(2).Infof("Tuned ServiceAccount already exists, updating")
-		err = r.client.Update(context.TODO(), saManifest)
-		if err != nil {
-			return fmt.Errorf("Couldn't update tuned ServiceAccount: %v", err)
-		}
+		// Do not update service account as it leads to accumulating secrets; see BZ1714484
+		glog.V(2).Infof("Tuned ServiceAccount already exists, skipping update")
 	}
 
 	return nil
