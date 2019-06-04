@@ -327,6 +327,14 @@
   version = "v1.1.6"
 
 [[projects]]
+  digest = "1:d2a9e7a59509e1632d614f1a8768653686018e8511310219337e2e6b3652d6fc"
+  name = "github.com/kevinburke/go-bindata"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "53d73b98acf3bd9f56d7f9136ed8e1be64756e1d"
+  version = "v3.13.0"
+
+[[projects]]
   digest = "1:31e761d97c76151dde79e9d28964a812c46efc5baee4085b86f68f0c654450de"
   name = "github.com/konsorten/go-windows-terminal-sequences"
   packages = ["."]
@@ -1198,6 +1206,7 @@
   analyzer-version = 1
   input-imports = [
     "github.com/golang/glog",
+    "github.com/kevinburke/go-bindata",
     "github.com/openshift/api/config/v1",
     "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1",
     "github.com/openshift/library-go/pkg/operator/v1helpers",
