@@ -24,6 +24,10 @@
 #   go-tests = true
 #   unused-packages = true
 
+# Force dep to vendor non-imported code generators.
+required = [
+  "github.com/kevinburke/go-bindata",
+]
 
 [[constraint]]
   branch = "master"
@@ -72,3 +76,7 @@
 [prune]
   go-tests = true
   unused-packages = true
+
+[[constraint]]
+  name = "github.com/kevinburke/go-bindata"
+  version = "3.13.0"

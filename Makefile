@@ -3,8 +3,7 @@ PACKAGE_BIN=$(lastword $(subst /, ,$(PACKAGE)))
 PACKAGE_MAIN=$(PACKAGE)/cmd/manager
 
 # Build-specific variables
-vpath bin/go-bindata $(GOPATH)
-GOBINDATA_BIN=bin/go-bindata
+GOBINDATA_BIN=./go-bindata
 BINDATA=pkg/manifests/bindata.go
 ENVVAR=GOOS=linux CGO_ENABLED=0
 GOOS=linux
@@ -24,11 +23,11 @@ build: $(BINDATA)
 
 # Using "-modtime 1" to make generate target deterministic. It sets all file time stamps to unix timestamp 1
 generate $(BINDATA): $(GOBINDATA_BIN)
-	go-bindata -mode 420 -modtime 1 -pkg manifests -o $(BINDATA) assets/...
+	$(GOBINDATA_BIN) -mode 420 -modtime 1 -pkg manifests -o $(BINDATA) assets/...
 	gofmt -s -w $(BINDATA)
 
 $(GOBINDATA_BIN):
-	go get -u github.com/jteeuwen/go-bindata/...
+	go build -o $(GOBINDATA_BIN) ./vendor/github.com/kevinburke/go-bindata/go-bindata
 
 test-e2e: generate
 	go test -v ./test/e2e/... -root $(PWD) -kubeconfig=$(KUBECONFIG) -tags e2e -globalMan manifests/02-crd.yaml
@@ -52,7 +51,7 @@ test:
 
 clean:
 	go clean
-	rm -f $(PACKAGE_BIN) $(BINDATA)
+	rm -f $(PACKAGE_BIN) $(BINDATA) $(GOBINDATA_BIN)
 
 local-image:
 ifdef USE_BUILDAH
