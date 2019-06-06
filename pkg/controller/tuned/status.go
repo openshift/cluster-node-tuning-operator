@@ -7,6 +7,7 @@ import (
 
 	"github.com/golang/glog"
 	configv1 "github.com/openshift/api/config/v1"
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util/clusteroperator"
@@ -29,7 +30,14 @@ func (r *ReconcileTuned) syncOperatorStatus() (bool, error) {
 		return false, err
 	}
 
-	dsManifest, err := r.manifestFactory.TunedDaemonSet()
+	tunedManifest, _ := r.manifestFactory.TunedCustomResource()
+	saManifest, _ := r.manifestFactory.TunedServiceAccount()
+	crManifest, _ := r.manifestFactory.TunedClusterRole()
+	crbManifest, _ := r.manifestFactory.TunedClusterRoleBinding()
+	cmManifestProfiles, _ := r.manifestFactory.TunedConfigMapProfiles([]tunedv1.Tuned{})
+	cmManifestRecommend, _ := r.manifestFactory.TunedConfigMapRecommend([]tunedv1.Tuned{})
+
+	dsManifest, _ := r.manifestFactory.TunedDaemonSet()
 	daemonset := &appsv1.DaemonSet{}
 	dsErr := r.client.Get(context.TODO(), types.NamespacedName{Namespace: dsManifest.Namespace, Name: dsManifest.Name}, daemonset)
 
@@ -45,11 +53,14 @@ func (r *ReconcileTuned) syncOperatorStatus() (bool, error) {
 		}
 	}
 	coState.Status.RelatedObjects = []configv1.ObjectReference{
-		{
-			Group:    "",
-			Resource: "namespaces",
-			Name:     dsManifest.Namespace,
-		},
+		{Group: "", Resource: "namespaces", Name: tunedManifest.Namespace},
+		{Group: "tuned.openshift.io", Resource: tunedManifest.Kind, Name: tunedManifest.Name, Namespace: tunedManifest.Namespace},
+		{Group: "", Resource: saManifest.Kind, Name: saManifest.Name, Namespace: saManifest.Namespace},
+		{Group: "rbac.authorization.k8s.io", Resource: crManifest.Kind, Name: crManifest.Name},
+		{Group: "rbac.authorization.k8s.io", Resource: crbManifest.Kind, Name: crbManifest.Name, Namespace: crbManifest.Namespace},
+		{Group: "", Resource: cmManifestProfiles.Kind, Name: cmManifestProfiles.Name, Namespace: cmManifestProfiles.Namespace},
+		{Group: "", Resource: cmManifestRecommend.Kind, Name: cmManifestRecommend.Name, Namespace: cmManifestRecommend.Namespace},
+		{Group: "apps", Resource: dsManifest.Kind, Name: dsManifest.Name, Namespace: dsManifest.Namespace},
 	}
 
 	if clusteroperator.ConditionsEqual(oldConditions, coState.Status.Conditions) {
