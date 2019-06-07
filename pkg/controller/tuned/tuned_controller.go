@@ -3,6 +3,7 @@ package tuned
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
@@ -99,6 +100,89 @@ type ReconcileTuned struct {
 	cfgv1client     *configv1client.ConfigV1Client
 }
 
+// getTunedSecrets returns names of all secrets associated with the tuned service account
+func (r *ReconcileTuned) getTunedSecrets(tuned *tunedv1.Tuned) (map[string]bool, error) {
+	glog.V(2).Infof("getTunedSecrets()")
+	saSecrets := map[string]bool{}
+	saManifest, err := r.manifestFactory.TunedServiceAccount()
+	if err != nil {
+		return saSecrets, fmt.Errorf("Couldn't build tuned ServiceAccount: %v", err)
+	}
+
+	sa := &corev1.ServiceAccount{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: saManifest.Namespace, Name: saManifest.Name}, sa)
+	if err != nil {
+		return saSecrets, fmt.Errorf("Failed to get ServiceAccount: %v", err)
+	}
+	for _, s := range sa.Secrets {
+		saSecrets[s.Name] = true
+		secret := &corev1.Secret{}
+
+		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: tuned.Namespace, Name: s.Name}, secret)
+		if err != nil {
+			return saSecrets, fmt.Errorf("Couldn't get secret: %v", err)
+		}
+		if len(secret.Annotations["openshift.io/token-secret.name"]) > 0 {
+			// Found OpenShift token name annotation
+			saSecrets[secret.Annotations["openshift.io/token-secret.name"]] = true
+		}
+	}
+
+	return saSecrets, nil
+}
+
+// removeTunedSecrets removes all unused "tuned" secrets ever created in the operator namespace.
+// This is only necessary to do operator-assisted removal of accumulated secrets prior to commit 014900fe.
+// See BZ1714484
+func (r *ReconcileTuned) removeTunedSecrets(tuned *tunedv1.Tuned) error {
+	glog.V(2).Infof("removeTunedSecrets()")
+
+	opts := &client.ListOptions{}
+	opts.InNamespace(tuned.Namespace)
+	secretsList := &corev1.SecretList{}
+	err := r.client.List(context.TODO(), opts, secretsList)
+	if err != nil {
+		return fmt.Errorf("Couldn't get a list of secrets: %v", err)
+	}
+
+	saSecrets, err := r.getTunedSecrets(tuned)
+	if err != nil {
+		return fmt.Errorf("Couldn't get secrets associated with tuned service account: %v", err)
+	}
+
+	for _, s := range secretsList.Items {
+		if saSecrets[s.Name] {
+			// Secret name matches a secret currently associated with tuned service account, do not delete
+			glog.V(2).Infof("Not deleting secret: %v", s.Name)
+			continue
+		}
+
+		if s.Annotations["kubernetes.io/service-account.name"] == "tuned" {
+			secret := &corev1.Secret{}
+
+			err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: tuned.Namespace, Name: s.Name}, secret)
+			if err != nil {
+				if !errors.IsNotFound(err) {
+					glog.Errorf("Couldn't get secret: %v", err)
+				}
+				continue
+			}
+
+			err := r.client.Delete(context.TODO(), secret)
+			if err != nil {
+				if !errors.IsNotFound(err) {
+					glog.Errorf("Couldn't delete secret: %v", err)
+				}
+				continue
+			} else {
+				glog.V(2).Infof("Deleted secret: %v", s.Name)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (r *ReconcileTuned) syncServiceAccount(tuned *tunedv1.Tuned) error {
 	glog.V(1).Infof("syncServiceAccount()")
 	saManifest, err := r.manifestFactory.TunedServiceAccount()
@@ -117,7 +201,7 @@ func (r *ReconcileTuned) syncServiceAccount(tuned *tunedv1.Tuned) error {
 			}
 			glog.V(2).Infof("Created ServiceAccount for %s/%s", saManifest.Namespace, saManifest.Name)
 		} else {
-			return fmt.Errorf("Failed to get ServiceAccount: %v\n", err)
+			return fmt.Errorf("Failed to get ServiceAccount: %v", err)
 		}
 	} else {
 		// Do not update service account as it leads to accumulating secrets; see BZ1714484
@@ -145,7 +229,7 @@ func (r *ReconcileTuned) syncClusterRole(tuned *tunedv1.Tuned) error {
 			}
 			glog.V(2).Infof("Created ClusterRole for %s", crManifest.Name)
 		} else {
-			return fmt.Errorf("Failed to get ClusterRole: %v\n", err)
+			return fmt.Errorf("Failed to get ClusterRole: %v", err)
 		}
 	} else {
 		glog.V(2).Infof("Tuned ClusterRole already exists, updating")
@@ -249,6 +333,25 @@ func (r *ReconcileTuned) syncDaemonSet(tuned *tunedv1.Tuned) error {
 		}
 	} else {
 		glog.V(2).Infof("Tuned DaemonSet already exists, updating")
+
+		operatorReleaseVersion := os.Getenv("RELEASE_VERSION")
+		operandReleaseVersion := ""
+
+		for _, e := range daemonset.Spec.Template.Spec.Containers[0].Env {
+			if e.Name == "RELEASE_VERSION" {
+				operandReleaseVersion = e.Value
+				break
+			}
+		}
+		if operatorReleaseVersion != operandReleaseVersion {
+			// This is really only necessary to do operator-assisted removal of accumulated secrets prior to commit 014900fe
+			glog.V(2).Infof("This is an operand upgrade, removing all tuned secrets.")
+			err := r.removeTunedSecrets(tuned)
+			if err != nil {
+				return fmt.Errorf("Failed to remove unused tuned secrets: %v", err)
+			}
+		}
+
 		err = r.client.Update(context.TODO(), dsManifest)
 		if err != nil {
 			return fmt.Errorf("Couldn't update tuned DaemonSet: %v", err)
