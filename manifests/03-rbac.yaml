@@ -28,7 +28,7 @@ rules:
   verbs: ["use"]
 # "" indicates the core API group
 - apiGroups: [""]
-  resources: ["configmaps","namespaces","serviceaccounts","services"]
+  resources: ["configmaps","namespaces","secrets","serviceaccounts","services"]
   verbs: ["create","get","delete","list","update","watch"]
 - apiGroups: [""]
   resources: ["nodes","pods"]

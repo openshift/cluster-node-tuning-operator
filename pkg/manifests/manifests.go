@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 
@@ -135,6 +136,13 @@ func (f *Factory) TunedDaemonSet() (*appsv1.DaemonSet, error) {
 	ds, err := NewDaemonSet(MustAssetReader(TunedDaemonSet))
 	imageTuned := ntoconfig.NodeTunedImage()
 	ds.Spec.Template.Spec.Containers[0].Image = imageTuned
+
+	for i := range ds.Spec.Template.Spec.Containers[0].Env {
+		if ds.Spec.Template.Spec.Containers[0].Env[i].Name == "RELEASE_VERSION" {
+			ds.Spec.Template.Spec.Containers[0].Env[i].Value = os.Getenv("RELEASE_VERSION")
+			break
+		}
+	}
 
 	if err != nil {
 		return nil, err
