@@ -86,7 +86,7 @@ spec:
         name: var-lib-tuned-profiles-data
       dnsPolicy: ClusterFirst
       nodeSelector:
-        beta.kubernetes.io/os: linux
+        kubernetes.io/os: linux
       priorityClassName: "system-node-critical"
       hostNetwork: true
       hostPID: true
