@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 	"runtime"
@@ -11,6 +12,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/controller"
 	"github.com/openshift/cluster-node-tuning-operator/version"
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
+	"github.com/operator-framework/operator-sdk/pkg/leader"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/klog"
@@ -47,6 +49,14 @@ func main() {
 
 	// Get a config to talk to the apiserver
 	cfg, err := config.GetConfig()
+	if err != nil {
+		glog.Fatal(err)
+	}
+
+	ctx := context.TODO()
+
+	// Become the leader before proceeding
+	err = leader.Become(ctx, "node-tuning-operator-lock")
 	if err != nil {
 		glog.Fatal(err)
 	}

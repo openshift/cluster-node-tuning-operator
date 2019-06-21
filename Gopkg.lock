@@ -405,7 +405,7 @@
   revision = "a47c6814c02c8516ee468a2ce68fbb798755a76e"
 
 [[projects]]
-  digest = "1:b76e13ecb05043f1188cc9520f36668560a525ec73fddc75dbc5400a595f1828"
+  digest = "1:5090c23b108ee7237435eb9a8dc32b62e85f3efac66f158334bcc470deec2d75"
   name = "github.com/operator-framework/operator-sdk"
   packages = [
     "internal/pkg/scaffold",
@@ -417,6 +417,7 @@
     "internal/util/projutil",
     "internal/util/yamlutil",
     "pkg/k8sutil",
+    "pkg/leader",
     "pkg/test",
     "version",
   ]
@@ -1211,6 +1212,7 @@
     "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1",
     "github.com/openshift/library-go/pkg/operator/v1helpers",
     "github.com/operator-framework/operator-sdk/pkg/k8sutil",
+    "github.com/operator-framework/operator-sdk/pkg/leader",
     "github.com/operator-framework/operator-sdk/pkg/test",
     "github.com/operator-framework/operator-sdk/version",
     "gopkg.in/yaml.v2",
