@@ -52,6 +52,8 @@ spec:
                 fieldPath: spec.nodeName
           - name: RESYNC_PERIOD
             value: "60"
+          - name: RELEASE_VERSION
+            value: ""
       volumes:
       - hostPath:
           path: /sys
