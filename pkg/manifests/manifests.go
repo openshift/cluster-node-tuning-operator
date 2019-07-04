@@ -117,7 +117,7 @@ func (f *Factory) TunedConfigMapRecommend(tunedArray []tunedv1.Tuned) (*corev1.C
 		if aRecommendAll[i].Priority != nil && aRecommendAll[j].Priority != nil {
 			return *aRecommendAll[i].Priority < *aRecommendAll[j].Priority
 		}
-		return false
+		return aRecommendAll[i].Priority != nil // undefined priority has the lowest priority
 	})
 	i := 0
 	// Walk through the virtual "recommend:" section of all items in tunedArray sorted by priority
