@@ -73,9 +73,9 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	// A retry loop for errors like "caches not synchronized"
 	errs := 0
 	for {
-		err = createCustomResource(mgr)
+		err = replaceDefaultCustomResource(mgr)
 		if err != nil {
-			glog.Errorf("createCustomResource(): %v", err)
+			glog.Errorf("replaceDefaultCustomResource(): %v", err)
 			if errs++; errs >= errsMax {
 				return err
 			}
@@ -199,7 +199,7 @@ func (r *ReconcileTuned) syncServiceAccount(tuned *tunedv1.Tuned) error {
 			if err != nil {
 				return fmt.Errorf("Couldn't create tuned ServiceAccount: %v", err)
 			}
-			glog.V(2).Infof("Created ServiceAccount for %s/%s", saManifest.Namespace, saManifest.Name)
+			glog.V(2).Infof("Created ServiceAccount %s/%s", saManifest.Namespace, saManifest.Name)
 		} else {
 			return fmt.Errorf("Failed to get ServiceAccount: %v", err)
 		}
@@ -227,7 +227,7 @@ func (r *ReconcileTuned) syncClusterRole(tuned *tunedv1.Tuned) error {
 			if err != nil {
 				return fmt.Errorf("Couldn't create tuned ClusterRole: %v", err)
 			}
-			glog.V(2).Infof("Created ClusterRole for %s", crManifest.Name)
+			glog.V(2).Infof("Created ClusterRole %s", crManifest.Name)
 		} else {
 			return fmt.Errorf("Failed to get ClusterRole: %v", err)
 		}
@@ -258,7 +258,7 @@ func (r *ReconcileTuned) syncClusterRoleBinding(tuned *tunedv1.Tuned) error {
 			if err != nil {
 				return fmt.Errorf("Couldn't create tuned ClusterRoleBinding: %v", err)
 			}
-			glog.V(2).Infof("Created ClusterRoleBinding for %s", crbManifest.Name)
+			glog.V(2).Infof("Created ClusterRoleBinding %s", crbManifest.Name)
 		} else {
 			return fmt.Errorf("Failed to get ClusterRoleBinding: %v", err)
 		}
@@ -296,7 +296,7 @@ func (r *ReconcileTuned) syncClusterConfigMap(f func(tuned []tunedv1.Tuned) (*co
 			if err != nil {
 				return fmt.Errorf("Couldn't create tuned ConfigMap: %v", err)
 			}
-			glog.V(2).Infof("Created ConfigMap for %s/%s", cmManifest.Namespace, cmManifest.Name)
+			glog.V(2).Infof("Created ConfigMap %s/%s", cmManifest.Namespace, cmManifest.Name)
 		} else {
 			return fmt.Errorf("Failed to get ConfigMap: %vn", err)
 		}
@@ -327,7 +327,7 @@ func (r *ReconcileTuned) syncDaemonSet(tuned *tunedv1.Tuned) error {
 			if err != nil {
 				return fmt.Errorf("Couldn't create tuned DaemonSet: %v", err)
 			}
-			glog.V(2).Infof("Created DaemonSet for %s/%s", dsManifest.Namespace, dsManifest.Name)
+			glog.V(2).Infof("Created DaemonSet %s/%s", dsManifest.Namespace, dsManifest.Name)
 		} else {
 			return fmt.Errorf("Failed to get DaemonSet: %v", err)
 		}
@@ -361,7 +361,7 @@ func (r *ReconcileTuned) syncDaemonSet(tuned *tunedv1.Tuned) error {
 	return nil
 }
 
-func createCustomResource(mgr manager.Manager) error {
+func replaceDefaultCustomResource(mgr manager.Manager) error {
 	client := mgr.GetClient()
 	manifestFactory := manifests.NewFactory()
 
@@ -371,11 +371,25 @@ func createCustomResource(mgr manager.Manager) error {
 		return fmt.Errorf("Couldn't build tuned CustomResource: %v", err)
 	}
 
+	// Get(), List() operations are cached and will not work with the default split client here.
+	// Keep things simple and use Delete/Create()
+	err = client.Delete(context.TODO(), crManifest)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			// Ignore errors when the CR is not found/created
+			glog.Errorf("Couldn't delete tuned CustomResource %s/%s: %v", crManifest.Namespace, crManifest.Name, err)
+		}
+	} else {
+		glog.V(2).Infof("Deleted tuned CustomResource %s/%s", crManifest.Namespace, crManifest.Name)
+	}
+
 	err = client.Create(context.TODO(), crManifest)
 	if err != nil {
 		if !errors.IsAlreadyExists(err) {
-			return fmt.Errorf("Couldn't create tuned CustomResource: %v", err)
+			return fmt.Errorf("Couldn't create tuned CustomResource %s/%s: %v", crManifest.Namespace, crManifest.Name, err)
 		}
+	} else {
+		glog.V(2).Infof("Created tuned CustomResource %s/%s", crManifest.Namespace, crManifest.Name)
 	}
 
 	return nil

@@ -4,6 +4,7 @@ PACKAGE_MAIN=$(PACKAGE)/cmd/manager
 
 # Build-specific variables
 GOBINDATA_BIN=./go-bindata
+ASSETS=$(shell find assets -name \*.yaml)
 BINDATA=pkg/manifests/bindata.go
 ENVVAR=GOOS=linux CGO_ENABLED=0
 GOOS=linux
@@ -22,14 +23,14 @@ build: $(BINDATA)
 	$(GO_BUILD_RECIPE)
 
 # Using "-modtime 1" to make generate target deterministic. It sets all file time stamps to unix timestamp 1
-generate $(BINDATA): $(GOBINDATA_BIN)
+$(BINDATA): $(GOBINDATA_BIN) $(ASSETS)
 	$(GOBINDATA_BIN) -mode 420 -modtime 1 -pkg manifests -o $(BINDATA) assets/...
 	gofmt -s -w $(BINDATA)
 
 $(GOBINDATA_BIN):
 	go build -o $(GOBINDATA_BIN) ./vendor/github.com/kevinburke/go-bindata/go-bindata
 
-test-e2e: generate
+test-e2e: $(BINDATA)
 	go test -v ./test/e2e/... -root $(PWD) -kubeconfig=$(KUBECONFIG) -tags e2e -globalMan manifests/02-crd.yaml
 
 verify:	verify-gofmt
@@ -68,4 +69,4 @@ else
 	sudo docker push $(IMAGE_REGISTRY)/$(IMAGE_TAG)
 endif
 
-.PHONY: all build generate test-e2e verify verify-gofmt clean local-image local-image-push
+.PHONY: all build test-e2e verify verify-gofmt clean local-image local-image-push
