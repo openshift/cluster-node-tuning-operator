@@ -10,11 +10,8 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/apis"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/controller"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/util/leader"
 	"github.com/openshift/cluster-node-tuning-operator/version"
-	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
-	"github.com/operator-framework/operator-sdk/pkg/leader"
-	sdkVersion "github.com/operator-framework/operator-sdk/version"
-	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/klog"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -29,7 +26,6 @@ var (
 func printVersion() {
 	glog.Infof("Go Version: %s", runtime.Version())
 	glog.Infof("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH)
-	glog.Infof("operator-sdk Version: %v", sdkVersion.Version)
 	glog.Infof("%s Version: %s", ntoconfig.OperatorName(), version.Version)
 }
 
@@ -42,10 +38,11 @@ func main() {
 		os.Exit(0)
 	}
 
-	namespace, err := k8sutil.GetWatchNamespace()
-	if err != nil {
-		glog.Fatalf("failed to get watch namespace: %v", err)
+	operatorNamespace := os.Getenv("WATCH_NAMESPACE")
+	if len(operatorNamespace) == 0 {
+		glog.Fatalf("WATCH_NAMESPACE environment variable missing")
 	}
+	glog.Infof("Operator namespace: %s", operatorNamespace)
 
 	// Get a config to talk to the apiserver
 	cfg, err := config.GetConfig()
@@ -56,13 +53,13 @@ func main() {
 	ctx := context.TODO()
 
 	// Become the leader before proceeding
-	err = leader.Become(ctx, "node-tuning-operator-lock")
+	err = leader.Become(ctx, operatorNamespace, "node-tuning-operator-lock")
 	if err != nil {
 		glog.Fatal(err)
 	}
 
 	// Create a new Cmd to provide shared dependencies and start components
-	mgr, err := manager.New(cfg, manager.Options{Namespace: namespace})
+	mgr, err := manager.New(cfg, manager.Options{Namespace: operatorNamespace})
 	if err != nil {
 		glog.Fatal(err)
 	}

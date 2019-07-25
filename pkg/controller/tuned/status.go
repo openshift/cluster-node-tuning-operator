@@ -8,7 +8,6 @@ import (
 	"github.com/golang/glog"
 	configv1 "github.com/openshift/api/config/v1"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util/clusteroperator"
 	operatorv1helpers "github.com/openshift/library-go/pkg/operator/v1helpers"
@@ -67,8 +66,9 @@ func (r *ReconcileTuned) syncOperatorStatus() (bool, error) {
 		return requeue, nil
 	}
 
-	_, err = r.cfgv1client.ClusterOperators().UpdateStatus(coState)
+	err = r.client.Status().Update(context.TODO(), coState)
 	if err != nil {
+		glog.Errorf("Unable to update coState")
 		return requeue, err
 	}
 
@@ -76,42 +76,45 @@ func (r *ReconcileTuned) syncOperatorStatus() (bool, error) {
 }
 
 func (r *ReconcileTuned) getOrCreateOperatorStatus() (*configv1.ClusterOperator, error) {
-	var err error
-
-	clusterOperatorName := ntoconfig.OperatorName()
-
-	co := &configv1.ClusterOperator{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ClusterOperator",
-			APIVersion: "config.openshift.io/v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: clusterOperatorName,
-		},
-	}
-
-	if r.cfgv1client == nil {
-		r.cfgv1client, err = ntoclient.GetCfgV1Client()
-		if r.cfgv1client == nil {
-			return nil, err
-		}
-	}
-
-	coGet, err := r.cfgv1client.ClusterOperators().Get(clusterOperatorName, metav1.GetOptions{})
-	if err != nil {
+	co := &configv1.ClusterOperator{ObjectMeta: metav1.ObjectMeta{Name: ntoconfig.OperatorName()}}
+	if err := r.client.Get(context.TODO(), types.NamespacedName{Name: co.Name}, co); err != nil {
 		if errors.IsNotFound(err) {
 			// Cluster operator not found, create it
-			co_created, err := r.cfgv1client.ClusterOperators().Create(co)
-			if err != nil {
-				// Failed to create the cluster operator object
-				return nil, err
+			initializeClusterOperator(co)
+			if err := r.client.Create(context.TODO(), co); err != nil {
+				glog.Errorf("Failed to create clusteroperator %s: %v", co.Name, err)
+				return nil, fmt.Errorf("Failed to create clusteroperator %s: %v", co.Name, err)
 			}
-			return co_created, nil
+			return co, nil
 		} else {
 			return nil, err
 		}
 	}
-	return coGet, nil
+	return co, nil
+}
+
+// Populate versions and conditions in cluster operator status as CVO expects these fields.
+func initializeClusterOperator(co *configv1.ClusterOperator) {
+	co.Status.Versions = []configv1.OperandVersion{
+		{
+			Name:    "operator",
+			Version: "unknown",
+		},
+	}
+	co.Status.Conditions = []configv1.ClusterOperatorStatusCondition{
+		{
+			Type:   configv1.OperatorAvailable,
+			Status: configv1.ConditionUnknown,
+		},
+		{
+			Type:   configv1.OperatorProgressing,
+			Status: configv1.ConditionUnknown,
+		},
+		{
+			Type:   configv1.OperatorDegraded,
+			Status: configv1.ConditionUnknown,
+		},
+	}
 }
 
 // computeStatusConditions computes the operator's current state.
@@ -151,7 +154,7 @@ func computeStatusConditions(conditions []configv1.ClusterOperatorStatusConditio
 			}
 		} else {
 			// Unclassified error fetching the Tuned daemonset
-			glog.Errorf("Setting all ClusterOperator conditions to Unknown: ", dsErr)
+			glog.Errorf("Setting all ClusterOperator conditions to Unknown: %v", dsErr)
 			availableCondition.Status = configv1.ConditionUnknown
 			progressingCondition.Status = configv1.ConditionUnknown
 			degradedCondition.Status = configv1.ConditionUnknown
