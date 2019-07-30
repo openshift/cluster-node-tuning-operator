@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 
@@ -19,6 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -36,9 +37,10 @@ func Add(mgr manager.Manager) error {
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return &ReconcileTuned{
-		client: mgr.GetClient(), scheme: mgr.GetScheme(),
+		client:          ntoclient.GetClient(),
+		cache:           mgr.GetCache(),
+		scheme:          ntoclient.GetScheme(),
 		manifestFactory: manifests.NewFactory(),
-		cfgv1client:     nil,
 	}
 }
 
@@ -95,9 +97,9 @@ type ReconcileTuned struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
 	client          client.Client
+	cache           cache.Cache
 	scheme          *runtime.Scheme
 	manifestFactory *manifests.Factory
-	cfgv1client     *configv1client.ConfigV1Client
 }
 
 // getTunedSecrets returns names of all secrets associated with the tuned service account
@@ -110,7 +112,7 @@ func (r *ReconcileTuned) getTunedSecrets(tuned *tunedv1.Tuned) (map[string]bool,
 	}
 
 	sa := &corev1.ServiceAccount{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: saManifest.Namespace, Name: saManifest.Name}, sa)
+	err = r.cache.Get(context.TODO(), types.NamespacedName{Namespace: saManifest.Namespace, Name: saManifest.Name}, sa)
 	if err != nil {
 		return saSecrets, fmt.Errorf("Failed to get ServiceAccount: %v", err)
 	}
@@ -118,7 +120,7 @@ func (r *ReconcileTuned) getTunedSecrets(tuned *tunedv1.Tuned) (map[string]bool,
 		saSecrets[s.Name] = true
 		secret := &corev1.Secret{}
 
-		err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: tuned.Namespace, Name: s.Name}, secret)
+		err = r.cache.Get(context.TODO(), types.NamespacedName{Namespace: tuned.Namespace, Name: s.Name}, secret)
 		if err != nil {
 			return saSecrets, fmt.Errorf("Couldn't get secret: %v", err)
 		}
@@ -137,10 +139,8 @@ func (r *ReconcileTuned) getTunedSecrets(tuned *tunedv1.Tuned) (map[string]bool,
 func (r *ReconcileTuned) removeTunedSecrets(tuned *tunedv1.Tuned) error {
 	glog.V(2).Infof("removeTunedSecrets()")
 
-	opts := &client.ListOptions{}
-	opts.InNamespace(tuned.Namespace)
 	secretsList := &corev1.SecretList{}
-	err := r.client.List(context.TODO(), opts, secretsList)
+	err := r.cache.List(context.TODO(), secretsList, client.InNamespace(tuned.Namespace))
 	if err != nil {
 		return fmt.Errorf("Couldn't get a list of secrets: %v", err)
 	}
@@ -160,7 +160,7 @@ func (r *ReconcileTuned) removeTunedSecrets(tuned *tunedv1.Tuned) error {
 		if s.Annotations["kubernetes.io/service-account.name"] == "tuned" {
 			secret := &corev1.Secret{}
 
-			err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: tuned.Namespace, Name: s.Name}, secret)
+			err = r.cache.Get(context.TODO(), types.NamespacedName{Namespace: tuned.Namespace, Name: s.Name}, secret)
 			if err != nil {
 				if !errors.IsNotFound(err) {
 					glog.Errorf("Couldn't get secret: %v", err)
@@ -191,7 +191,7 @@ func (r *ReconcileTuned) syncServiceAccount(tuned *tunedv1.Tuned) error {
 	}
 
 	sa := &corev1.ServiceAccount{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: saManifest.Namespace, Name: saManifest.Name}, sa)
+	err = r.cache.Get(context.TODO(), types.NamespacedName{Namespace: saManifest.Namespace, Name: saManifest.Name}, sa)
 	saManifest.SetOwnerReferences(addOwnerReference(&sa.ObjectMeta, tuned))
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -219,7 +219,7 @@ func (r *ReconcileTuned) syncClusterRole(tuned *tunedv1.Tuned) error {
 	}
 
 	cr := &rbacv1.ClusterRole{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: "", Name: crManifest.Name}, cr)
+	err = r.cache.Get(context.TODO(), types.NamespacedName{Namespace: "", Name: crManifest.Name}, cr)
 	crManifest.SetOwnerReferences(addOwnerReference(&cr.ObjectMeta, tuned))
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -250,7 +250,7 @@ func (r *ReconcileTuned) syncClusterRoleBinding(tuned *tunedv1.Tuned) error {
 	}
 
 	crb := &rbacv1.ClusterRoleBinding{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: "", Name: crbManifest.Name}, crb)
+	err = r.cache.Get(context.TODO(), types.NamespacedName{Namespace: "", Name: crbManifest.Name}, crb)
 	crbManifest.SetOwnerReferences(addOwnerReference(&crb.ObjectMeta, tuned))
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -276,8 +276,7 @@ func (r *ReconcileTuned) syncClusterRoleBinding(tuned *tunedv1.Tuned) error {
 func (r *ReconcileTuned) syncClusterConfigMap(f func(tuned []tunedv1.Tuned) (*corev1.ConfigMap, error), tuned *tunedv1.Tuned) error {
 	glog.V(1).Infof("syncClusterConfigMap()")
 	tunedList := &tunedv1.TunedList{}
-	listOps := &client.ListOptions{Namespace: tuned.Namespace}
-	err := r.client.List(context.TODO(), listOps, tunedList)
+	err := r.cache.List(context.TODO(), tunedList, client.InNamespace(tuned.Namespace))
 	if err != nil {
 		return fmt.Errorf("Couldn't list Tuned: %v", err)
 	}
@@ -288,7 +287,7 @@ func (r *ReconcileTuned) syncClusterConfigMap(f func(tuned []tunedv1.Tuned) (*co
 	}
 
 	cm := &corev1.ConfigMap{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: cmManifest.Namespace, Name: cmManifest.Name}, cm)
+	err = r.cache.Get(context.TODO(), types.NamespacedName{Namespace: cmManifest.Namespace, Name: cmManifest.Name}, cm)
 	cmManifest.SetOwnerReferences(addOwnerReference(&cm.ObjectMeta, tuned))
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -319,7 +318,7 @@ func (r *ReconcileTuned) syncDaemonSet(tuned *tunedv1.Tuned) error {
 	}
 
 	daemonset := &appsv1.DaemonSet{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: dsManifest.Namespace, Name: dsManifest.Name}, daemonset)
+	err = r.cache.Get(context.TODO(), types.NamespacedName{Namespace: dsManifest.Namespace, Name: dsManifest.Name}, daemonset)
 	dsManifest.SetOwnerReferences(addOwnerReference(&daemonset.ObjectMeta, tuned))
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -362,7 +361,8 @@ func (r *ReconcileTuned) syncDaemonSet(tuned *tunedv1.Tuned) error {
 }
 
 func replaceDefaultCustomResource(mgr manager.Manager) error {
-	client := mgr.GetClient()
+	glog.V(1).Infof("ReplaceDefaultCustomResource()")
+	client := ntoclient.GetClient()
 	manifestFactory := manifests.NewFactory()
 
 	// Get the default configuration (CR) for Tuned
@@ -372,7 +372,7 @@ func replaceDefaultCustomResource(mgr manager.Manager) error {
 	}
 
 	// Get(), List() operations are cached and will not work with the default split client here.
-	// Keep things simple and use Delete/Create()
+	// Keep things simple and use Delete/Create().
 	err = client.Delete(context.TODO(), crManifest)
 	if err != nil {
 		if !errors.IsNotFound(err) {
@@ -445,7 +445,7 @@ func (r *ReconcileTuned) Reconcile(request reconcile.Request) (reconcile.Result,
 
 	// Fetch the Tuned instance
 	tunedInstance := &tunedv1.Tuned{}
-	err = r.client.Get(context.TODO(), request.NamespacedName, tunedInstance)
+	err = r.cache.Get(context.TODO(), request.NamespacedName, tunedInstance)
 	if err != nil {
 		glog.Errorf("Couldn't get tunedInstance(): %v", err)
 		if errors.IsNotFound(err) {

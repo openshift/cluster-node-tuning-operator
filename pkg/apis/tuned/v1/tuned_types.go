@@ -1,4 +1,7 @@
-// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
+// +k8s:deepcopy-gen=package,register
+// +k8s:defaulter-gen=TypeMeta
+// +k8s:openapi-gen=true
+// +groupName=tuned.openshift.io
 package v1
 
 import (
@@ -33,10 +36,8 @@ type TunedMatch struct {
 type TunedStatus struct {
 }
 
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
+// +kubebuilder:object:root=true
 // Tuned is the Schema for the tuneds API
-// +k8s:openapi-gen=true
 type Tuned struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -45,8 +46,7 @@ type Tuned struct {
 	Status TunedStatus `json:"status,omitempty"`
 }
 
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
+// +kubebuilder:object:root=true
 // TunedList contains a list of Tuned
 type TunedList struct {
 	metav1.TypeMeta `json:",inline"`

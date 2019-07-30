@@ -4,11 +4,10 @@ PACKAGE_MAIN=$(PACKAGE)/cmd/manager
 
 # Build-specific variables
 GOBINDATA_BIN=./go-bindata
-ASSETS=$(shell find assets -name \*.yaml)
 BINDATA=pkg/manifests/bindata.go
-ENVVAR=GOOS=linux CGO_ENABLED=0
-GOOS=linux
-GO_BUILD_RECIPE=GOOS=$(GOOS) go build -o $(PACKAGE_BIN) -ldflags '-X $(PACKAGE)/version.Version=$(REV)' $(PACKAGE_MAIN)
+ASSETS=$(shell find assets -name \*.yaml)
+GO=GOOS=linux GO111MODULE=on GOFLAGS=-mod=vendor go
+GO_BUILD_RECIPE=$(GO) build -o $(PACKAGE_BIN) -ldflags '-X $(PACKAGE)/version.Version=$(REV)' $(PACKAGE_MAIN)
 GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
 REV=$(shell git describe --long --tags --match='v*' --always --dirty)
 
@@ -22,16 +21,18 @@ all: build
 build: $(BINDATA)
 	$(GO_BUILD_RECIPE)
 
-# Using "-modtime 1" to make generate target deterministic. It sets all file time stamps to unix timestamp 1
 $(BINDATA): $(GOBINDATA_BIN) $(ASSETS)
 	$(GOBINDATA_BIN) -mode 420 -modtime 1 -pkg manifests -o $(BINDATA) assets/...
 	gofmt -s -w $(BINDATA)
 
+deepcopy: pkg/apis/tuned/v1/types.go
+	$(GO) run sigs.k8s.io/controller-tools/cmd/controller-gen object paths=$^
+
 $(GOBINDATA_BIN):
-	go build -o $(GOBINDATA_BIN) ./vendor/github.com/kevinburke/go-bindata/go-bindata
+	$(GO) build -o $(GOBINDATA_BIN) ./vendor/github.com/kevinburke/go-bindata/go-bindata
 
 test-e2e: $(BINDATA)
-	go test -v ./test/e2e/... -root $(PWD) -kubeconfig=$(KUBECONFIG) -tags e2e -globalMan manifests/02-crd.yaml
+	KUBERNETES_CONFIG="$(KUBECONFIG)" $(GO) test -v -tags e2e ./test/e2e/...
 
 verify:	verify-gofmt
 
@@ -48,10 +49,10 @@ else
 endif
 
 test:
-	go test ./cmd/... ./pkg/... -coverprofile cover.out
+	$(GO) test ./cmd/... ./pkg/... -coverprofile cover.out
 
 clean:
-	go clean
+	$(GO) clean
 	rm -f $(PACKAGE_BIN) $(BINDATA) $(GOBINDATA_BIN)
 
 local-image:
@@ -69,4 +70,4 @@ else
 	sudo docker push $(IMAGE_REGISTRY)/$(IMAGE_TAG)
 endif
 
-.PHONY: all build test-e2e verify verify-gofmt clean local-image local-image-push
+.PHONY: all build deepcopy test-e2e verify verify-gofmt clean local-image local-image-push
