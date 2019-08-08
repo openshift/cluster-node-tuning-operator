@@ -48,6 +48,16 @@ spec:
         - mountPath: /lib/modules
           name: lib-modules
           readOnly: true
+        - mountPath: /etc/grub.d
+          name: etc-grub
+        - mountPath: /etc/default/grub
+          name: etc-default-grub
+        - mountPath: /boot/grub2
+          name: boot-grub2
+        - mountPath: /etc/grub2.cfg
+          name: boot-grub2-cfg
+        - mountPath: /etc/grub2-efi.cfg
+          name: boot-grub2-cfg
         env:
           - name: OCP_NODE_NAME
             valueFrom:
@@ -70,6 +80,19 @@ spec:
       - hostPath:
           path: /lib/modules
         name: lib-modules
+      - hostPath:
+          path: /boot/grub2
+        name: boot-grub2
+      - hostPath:
+          path: /boot/grub2/grub.cfg
+          type: File
+        name: boot-grub2-cfg
+      - hostPath:
+          path: /etc/grub.d
+        name: etc-grub
+      - hostPath:
+          path: /etc/default/grub
+        name: etc-default-grub
       - configMap:
           items:
           - key: tuned-ocp-recommend

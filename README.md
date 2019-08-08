@@ -173,6 +173,7 @@ are supported when using [custom profiles](#custom-tuning-specification) defined
 in the `profile:` section of the Tuned CR:
 
 * audio
+* bootloader
 * cpu
 * disk
 * eeepc_she
