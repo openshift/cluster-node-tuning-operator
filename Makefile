@@ -13,7 +13,7 @@ REV=$(shell git describe --long --tags --match='v*' --always --dirty)
 
 # Container image-related variables
 DOCKERFILE=Dockerfile
-IMAGE_TAG=openshift/origin-cluster-node-tuning-operator
+IMAGE_TAG=yrobla/origin-cluster-node-tuning-operator
 IMAGE_REGISTRY=quay.io
 
 all: build

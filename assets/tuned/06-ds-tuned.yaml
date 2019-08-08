@@ -17,7 +17,11 @@ spec:
       serviceAccountName: tuned
       automountServiceAccountToken: true
       containers:
-      - command: ["/var/lib/tuned/bin/run","start"]
+      - command: ["/bin/sh", "-c"]
+        args:
+          - ln -s /boot/grub2/grub.cfg /etc/grub2.cfg;
+            ln -s /boot/grub2/grub.cfg /etc/grub2-efi.cfg;
+            /var/lib/tuned/bin/run start;
         resources:
           requests:
             cpu: 10m
@@ -48,6 +52,17 @@ spec:
         - mountPath: /lib/modules
           name: lib-modules
           readOnly: true
+        - mountPath: /etc/grub.d
+          name: etc-path
+          subPath: grub.d
+        - mountPath: /etc/default/grub
+          name: etc-path
+          subPath: default/grub
+        - mountPath: /boot/grub2
+          name: boot-path
+          subPath: grub2
+        - mountPath: /boot
+          name: boot-path
         env:
           - name: OCP_NODE_NAME
             valueFrom:
@@ -70,6 +85,12 @@ spec:
       - hostPath:
           path: /lib/modules
         name: lib-modules
+      - hostPath:
+          path: /boot
+        name: boot-path
+      - hostPath:
+          path: /etc
+        name: etc-path
       - configMap:
           items:
           - key: tuned-ocp-recommend
