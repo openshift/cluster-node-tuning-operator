@@ -61,8 +61,6 @@ spec:
         - mountPath: /boot/grub2
           name: boot-path
           subPath: grub2
-        - mountPath: /boot
-          name: boot-path
         env:
           - name: OCP_NODE_NAME
             valueFrom:
