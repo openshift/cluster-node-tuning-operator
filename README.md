@@ -1,6 +1,6 @@
-# Cluster Node Tuning Operator
+# Node Tuning Operator
 
-The Cluster Node Tuning Operator manages cluster node-level tuning for
+The Node Tuning Operator manages cluster node-level tuning for
 [OpenShift](https://openshift.io/).
 
 The majority of high-performance applications require some
@@ -16,8 +16,12 @@ specification](#custom-tuning-specification) is passed to all
 daemons running in the cluster in the format that the daemons understand.
 The daemons run on all nodes in the cluster, one per node.
 
+Node-level settings applied by the containerized tuned daemon are rolled back
+on an event that triggers a profile change or when the containerized tuned
+daemon is terminated gracefully by receiving and handling a termination signal.
 
-## Deploying the node tuning operator
+
+## Deploying the Node Tuning Operator
 
 The operator is deployed by applying the `*.yaml` manifests in the operator's
 `/manifests` directory in alphanumeric order.  It automatically creates a default deployment
@@ -27,15 +31,22 @@ for the tuned daemons.  The following shows the default CR created
 by the operator on a cluster with the operator installed.
 
 ```
-$ oc get Tuned
+$ oc get Tuned -n openshift-cluster-node-tuning-operator
 NAME      AGE
 default   1h
 ```
 
+Note the default CR is meant for delivering standard node-level tuning for
+the OpenShift platform and any custom changes to the the default CR will be
+overwritten by the operator.  For custom tuning, create your own tuned CRs.
+Newly created CRs will be combined with the default CR and custom tuning
+applied to OpenShift nodes based on node/pod labels and profile priorities.
+
+
 ## Custom tuning specification
 
 For an example of a tuning specification, refer to
-`/assets/tuned/07-cr-tuned.yaml` in the operator's directory or to
+`/assets/tuned/default-cr-tuned.yaml` in the operator's directory or to
 the resource created in a live cluster by:
 
 ```
@@ -67,7 +78,7 @@ The `profile:` section lists tuned profiles and their names.
 
       [sysctl]
       net.ipv4.ip_forward=1
-      # ... other sysctl's or other tuned daemon plugins supported by the containerized tuned
+      # ... other sysctl's or other tuned daemon plug-ins supported by the containerized tuned
 
   # ...
 
@@ -81,7 +92,8 @@ The `profile:` section lists tuned profiles and their names.
 ```
 
 Refer to a list of
-(tuned plugins supported by the operator)[#supported-tuned-daemon-plugins].
+(tuned plug-ins supported by the operator)[#supported-tuned-daemon-plug-ins].
+
 
 ### Recommended profiles
 
@@ -165,10 +177,45 @@ It lacks the `<match>` section and, therefore, will always match.  It
 acts as a profile catch-all to set openshift-node profile, if no other
 profile with higher priority matches on a given node.
 
-### Supported tuned daemon plugins
+### Example
+
+The following CR applies custom node-level tuning for
+OpenShift nodes that run an ingress pod with label
+`tuned.openshift.io/ingress-pod-label=ingress-pod-label-value`.
+As an administrator, use the following command to create a custom tuned CR.
+
+```
+oc create -f- <<_EOF_
+apiVersion: tuned.openshift.io/v1
+kind: Tuned
+metadata:
+  name: ingress
+  namespace: openshift-cluster-node-tuning-operator
+spec:
+  profile:
+  - data: |
+      [main]
+      summary=A custom OpenShift ingress profile
+      include=openshift-control-plane
+      [sysctl]
+      net.ipv4.ip_local_port_range="1024 65535"
+      net.ipv4.tcp_tw_reuse=1
+    name: openshift-ingress
+  recommend:
+  - match:
+    - label: tuned.openshift.io/ingress-pod-label
+      value: "ingress-pod-label-value"
+      type: pod
+    priority: 10
+    profile: openshift-ingress
+_EOF_
+```
+
+
+## Supported tuned daemon plug-ins
 
 Aside from the `[main]` section, the following
-[tuned plugins](https://github.com/redhat-performance/tuned/tree/master/tuned/plugins)
+[tuned plug-ins](https://github.com/redhat-performance/tuned/tree/master/tuned/plugins)
 are supported when using [custom profiles](#custom-tuning-specification) defined
 in the `profile:` section of the Tuned CR:
 
@@ -188,9 +235,8 @@ in the `profile:` section of the Tuned CR:
 * video
 * vm
 
-with the exception of dynamic tuning functionality provided by some of the plugins.
-
-The following Tuned plugins are currently not supported:
+with the exception of dynamic tuning functionality provided by some of the plug-ins.
+The following Tuned plug-ins are currently not supported:
 
 * bootloader
 * script
