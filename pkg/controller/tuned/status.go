@@ -118,18 +118,20 @@ func (r *ReconcileTuned) getOrCreateOperatorStatus() (*configv1.ClusterOperator,
 func computeStatusConditions(conditions []configv1.ClusterOperatorStatusCondition,
 	daemonset *appsv1.DaemonSet,
 	dsErr error) ([]configv1.ClusterOperatorStatusCondition, bool) {
+	const (
+		// maximum number of seconds for the operator to be Unavailable with a unique
+		// Reason/Message before setting the Degraded ClusterOperator condition
+		maxTunedUnavailable = 7200
+	)
 	var requeue bool
-	availableCondition := &configv1.ClusterOperatorStatusCondition{
-		Type:   configv1.OperatorAvailable,
-		Status: configv1.ConditionFalse,
+	availableCondition := configv1.ClusterOperatorStatusCondition{
+		Type: configv1.OperatorAvailable,
 	}
-	progressingCondition := &configv1.ClusterOperatorStatusCondition{
-		Type:   configv1.OperatorProgressing,
-		Status: configv1.ConditionFalse,
+	progressingCondition := configv1.ClusterOperatorStatusCondition{
+		Type: configv1.OperatorProgressing,
 	}
-	degradedCondition := &configv1.ClusterOperatorStatusCondition{
-		Type:   configv1.OperatorDegraded,
-		Status: configv1.ConditionFalse,
+	degradedCondition := configv1.ClusterOperatorStatusCondition{
+		Type: configv1.OperatorDegraded,
 	}
 
 	if dsErr != nil {
@@ -140,9 +142,16 @@ func computeStatusConditions(conditions []configv1.ClusterOperatorStatusConditio
 				// This looks like a fresh install => initialize
 				glog.V(2).Infof("No ClusterOperator conditions set, initializing them.")
 				availableCondition.Status = configv1.ConditionFalse
+				availableCondition.Reason = "TunedUnavailable"
+				availableCondition.Message = fmt.Sprintf("DaemonSet %q unavailable.", daemonset.Name)
+
 				progressingCondition.Status = configv1.ConditionTrue
+				progressingCondition.Reason = "Reconciling"
 				progressingCondition.Message = fmt.Sprintf("Working towards %q", os.Getenv("RELEASE_VERSION"))
+
 				degradedCondition.Status = configv1.ConditionFalse
+				degradedCondition.Reason = progressingCondition.Reason
+				degradedCondition.Message = progressingCondition.Message
 			} else {
 				// This should not happen unless there was a manual intervention.
 				// Preserve the previously known conditions and requeue.
@@ -150,16 +159,24 @@ func computeStatusConditions(conditions []configv1.ClusterOperatorStatusConditio
 				return conditions, true
 			}
 		} else {
-			// Unclassified error fetching the Tuned daemonset
-			glog.Errorf("Setting all ClusterOperator conditions to Unknown: ", dsErr)
+			glog.Errorf("Setting all ClusterOperator conditions to Unknown: %v", dsErr)
 			availableCondition.Status = configv1.ConditionUnknown
-			progressingCondition.Status = configv1.ConditionUnknown
-			degradedCondition.Status = configv1.ConditionUnknown
+			availableCondition.Reason = "Unknown"
+			availableCondition.Message = fmt.Sprintf("Unable to fetch DaemonSet %q: %v", daemonset.Name, dsErr)
+
+			progressingCondition.Status = availableCondition.Status
+			progressingCondition.Reason = availableCondition.Reason
+			progressingCondition.Message = availableCondition.Message
+
+			degradedCondition.Status = availableCondition.Status
+			degradedCondition.Reason = availableCondition.Reason
+			degradedCondition.Message = availableCondition.Message
 		}
 	} else {
 		if daemonset.Status.NumberAvailable > 0 {
 			// The operand maintained by the operator is reported as available in the cluster
 			availableCondition.Status = configv1.ConditionTrue
+			availableCondition.Reason = "AsExpected"
 			if daemonset.Status.UpdatedNumberScheduled > 0 {
 				// At least one operand instance runs RELEASE_VERSION, report it
 				glog.V(2).Infof("%d operands run release version %q", daemonset.Status.UpdatedNumberScheduled, os.Getenv("RELEASE_VERSION"))
@@ -168,9 +185,11 @@ func computeStatusConditions(conditions []configv1.ClusterOperatorStatusConditio
 		} else {
 			// No operand maintained by the operator is reported as available in the cluster
 			availableCondition.Status = configv1.ConditionFalse
+			availableCondition.Reason = "TunedUnavailable"
 			availableCondition.Message = fmt.Sprintf("DaemonSet %q has no available pod(s).", daemonset.Name)
 			glog.V(2).Infof("syncOperatorStatus(): %s", availableCondition.Message)
 		}
+
 		// The operator is actively making changes to the operand (is Progressing) when:
 		// the total number of nodes that should be running the daemon pod
 		// (including nodes correctly running the daemon pod) != the total number of
@@ -179,16 +198,37 @@ func computeStatusConditions(conditions []configv1.ClusterOperatorStatusConditio
 			daemonset.Status.DesiredNumberScheduled == 0 {
 			glog.V(2).Infof("Setting Progressing condition to true")
 			progressingCondition.Status = configv1.ConditionTrue
+			progressingCondition.Reason = "Reconciling"
 			progressingCondition.Message = fmt.Sprintf("Working towards %q", os.Getenv("RELEASE_VERSION"))
-			requeue = true // Requeue as we need to set Progressing=false or Failing=true eventually
+			requeue = true // Requeue as we need to set Progressing=false or Degraded=true eventually
 		} else {
+			progressingCondition.Status = configv1.ConditionFalse
+			progressingCondition.Reason = "AsExpected"
 			progressingCondition.Message = fmt.Sprintf("Cluster version is %q", os.Getenv("RELEASE_VERSION"))
 		}
+
+		degradedCondition.Status = configv1.ConditionFalse
+		degradedCondition.Reason = "AsExpected"
+		degradedCondition.Message = fmt.Sprintf("DaemonSet %q available", daemonset.Name)
 	}
 
-	conditions = clusteroperator.SetStatusCondition(conditions, availableCondition)
-	conditions = clusteroperator.SetStatusCondition(conditions, progressingCondition)
-	conditions = clusteroperator.SetStatusCondition(conditions, degradedCondition)
+	conditions = clusteroperator.SetStatusCondition(conditions, &availableCondition)
+	conditions = clusteroperator.SetStatusCondition(conditions, &progressingCondition)
+
+	// If the operator is not available for an extensive period of time, set the Degraded operator status
+	now := metav1.Now().Unix()
+	for _, condition := range conditions {
+		if condition.Type == configv1.OperatorAvailable &&
+			condition.Status == configv1.ConditionFalse &&
+			now-condition.LastTransitionTime.Unix() > maxTunedUnavailable {
+			glog.V(1).Infof("Operator unavailable for longer than %d seconds, setting Degraded status.", maxTunedUnavailable)
+			degradedCondition.Status = configv1.ConditionTrue
+			degradedCondition.Reason = "TunedUnavailable"
+			degradedCondition.Message = fmt.Sprintf("DaemonSet %q unavailable for more than %d seconds.", maxTunedUnavailable)
+		}
+	}
+	conditions = clusteroperator.SetStatusCondition(conditions, &degradedCondition)
+
 	glog.V(2).Infof("Operator status conditions: %v", conditions)
 
 	return conditions, requeue
