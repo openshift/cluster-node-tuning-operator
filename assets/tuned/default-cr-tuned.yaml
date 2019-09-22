@@ -19,7 +19,7 @@ spec:
 
       [sysctl]
       net.ipv4.ip_forward=1
-      kernel.pid_max=>131072
+      kernel.pid_max=>4194304
       net.netfilter.nf_conntrack_max=1048576
       net.ipv4.neigh.default.gc_thresh1=8192
       net.ipv4.neigh.default.gc_thresh2=32768
