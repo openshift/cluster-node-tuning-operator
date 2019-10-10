@@ -88,6 +88,7 @@ spec:
       nodeSelector:
         kubernetes.io/os: linux
       priorityClassName: "system-node-critical"
+      hostIPC: true
       hostNetwork: true
       hostPID: true
       restartPolicy: Always
