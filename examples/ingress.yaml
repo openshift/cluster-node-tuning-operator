@@ -1,0 +1,21 @@
+apiVersion: tuned.openshift.io/v1
+kind: Tuned
+metadata:
+  name: ingress
+  namespace: openshift-cluster-node-tuning-operator
+spec:
+  profile:
+  - data: |
+      [main]
+      summary=A custom OpenShift ingress profile
+      include=openshift-control-plane
+      [sysctl]
+      net.ipv4.ip_local_port_range="1024 65535"
+      net.ipv4.tcp_tw_reuse=1
+    name: openshift-ingress
+  recommend:
+  - match:
+    - label: tuned.openshift.io/ingress
+      type: pod
+    priority: 30
+    profile: openshift-ingress
