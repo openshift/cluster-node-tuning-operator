@@ -35,6 +35,10 @@ var KnownPackages = map[string]PackageOverride{
 			Type:   "string",
 			Format: "date-time",
 		}
+		p.Schemata[TypeIdent{Name: "MicroTime", Package: pkg}] = apiext.JSONSchemaProps{
+			Type:   "string",
+			Format: "date-time",
+		}
 		p.Schemata[TypeIdent{Name: "Duration", Package: pkg}] = apiext.JSONSchemaProps{
 			// TODO(directxman12): regexp validation for this (or get kube to support it as a format value)
 			Type: "string",
@@ -59,6 +63,13 @@ var KnownPackages = map[string]PackageOverride{
 	"k8s.io/apimachinery/pkg/runtime": func(p *Parser, pkg *loader.Package) {
 		p.Schemata[TypeIdent{Name: "RawExtension", Package: pkg}] = apiext.JSONSchemaProps{
 			// TODO(directxman12): regexp validation for this (or get kube to support it as a format value)
+			Type: "object",
+		}
+		p.AddPackage(pkg) // get the rest of the types
+	},
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured": func(p *Parser, pkg *loader.Package) {
+		p.Schemata[TypeIdent{Name: "Unstructured", Package: pkg}] = apiext.JSONSchemaProps{
 			Type: "object",
 		}
 		p.AddPackage(pkg) // get the rest of the types

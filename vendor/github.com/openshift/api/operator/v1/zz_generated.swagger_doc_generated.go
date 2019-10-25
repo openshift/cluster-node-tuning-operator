@@ -91,9 +91,10 @@ func (StaticPodOperatorSpec) SwaggerDoc() map[string]string {
 }
 
 var map_StaticPodOperatorStatus = map[string]string{
-	"":                        "StaticPodOperatorStatus is status for controllers that manage static pods.  There are different needs because individual node status must be tracked.",
-	"latestAvailableRevision": "latestAvailableRevision is the deploymentID of the most recent deployment",
-	"nodeStatuses":            "nodeStatuses track the deployment values and errors across individual nodes",
+	"":                              "StaticPodOperatorStatus is status for controllers that manage static pods.  There are different needs because individual node status must be tracked.",
+	"latestAvailableRevision":       "latestAvailableRevision is the deploymentID of the most recent deployment",
+	"latestAvailableRevisionReason": "latestAvailableRevisionReason describe the detailed reason for the most recent deployment",
+	"nodeStatuses":                  "nodeStatuses track the deployment values and errors across individual nodes",
 }
 
 func (StaticPodOperatorStatus) SwaggerDoc() map[string]string {
@@ -116,21 +117,60 @@ func (AuthenticationList) SwaggerDoc() map[string]string {
 	return map_AuthenticationList
 }
 
+var map_Console = map[string]string{
+	"": "Console provides a means to configure an operator to manage the console.",
+}
+
+func (Console) SwaggerDoc() map[string]string {
+	return map_Console
+}
+
 var map_ConsoleCustomization = map[string]string{
+	"":                     "ConsoleCustomization defines a list of optional configuration for the console UI.",
 	"brand":                "brand is the default branding of the web console which can be overridden by providing the brand field.  There is a limited set of specific brand options. This field controls elements of the console such as the logo. Invalid value will prevent a console rollout.",
 	"documentationBaseURL": "documentationBaseURL links to external documentation are shown in various sections of the web console.  Providing documentationBaseURL will override the default documentation URL. Invalid value will prevent a console rollout.",
+	"customProductName":    "customProductName is the name that will be displayed in page titles, logo alt text, and the about dialog instead of the normal OpenShift product name.",
+	"customLogoFile":       "customLogoFile replaces the default OpenShift logo in the masthead and about dialog. It is a reference to a ConfigMap in the openshift-config namespace. This can be created with a command like 'oc create configmap custom-logo --from-file=/path/to/file -n openshift-config'. Image size must be less than 1 MB due to constraints on the ConfigMap size. The ConfigMap key should include a file extension so that the console serves the file with the correct MIME type. Recommended logo specifications: Dimensions: Max height of 68px and max width of 200px SVG format preferred",
 }
 
 func (ConsoleCustomization) SwaggerDoc() map[string]string {
 	return map_ConsoleCustomization
 }
 
+var map_ConsoleProviders = map[string]string{
+	"":           "ConsoleProviders defines a list of optional additional providers of functionality to the console.",
+	"statuspage": "statuspage contains ID for statuspage.io page that provides status info about.",
+}
+
+func (ConsoleProviders) SwaggerDoc() map[string]string {
+	return map_ConsoleProviders
+}
+
 var map_ConsoleSpec = map[string]string{
+	"":              "ConsoleSpec is the specification of the desired behavior of the Console.",
 	"customization": "customization is used to optionally provide a small set of customization options to the web console.",
+	"providers":     "providers contains configuration for using specific service providers.",
 }
 
 func (ConsoleSpec) SwaggerDoc() map[string]string {
 	return map_ConsoleSpec
+}
+
+var map_ConsoleStatus = map[string]string{
+	"": "ConsoleStatus defines the observed status of the Console.",
+}
+
+func (ConsoleStatus) SwaggerDoc() map[string]string {
+	return map_ConsoleStatus
+}
+
+var map_StatuspageProvider = map[string]string{
+	"":       "StatuspageProvider provides identity for statuspage account.",
+	"pageID": "pageID is the unique ID assigned by Statuspage for your page. This must be a public page.",
+}
+
+func (StatuspageProvider) SwaggerDoc() map[string]string {
+	return map_StatuspageProvider
 }
 
 var map_DNS = map[string]string{
@@ -188,21 +228,24 @@ func (EtcdList) SwaggerDoc() map[string]string {
 	return map_EtcdList
 }
 
-var map_EtcdSpec = map[string]string{
-	"forceRedeploymentReason": "forceRedeploymentReason can be used to force the redeployment of the kube-apiserver by providing a unique string. This provides a mechanism to kick a previously failed deployment and provide a reason why you think it will work this time instead of failing again on the same config.",
-}
-
-func (EtcdSpec) SwaggerDoc() map[string]string {
-	return map_EtcdSpec
-}
-
 var map_EndpointPublishingStrategy = map[string]string{
-	"":     "EndpointPublishingStrategy is a way to publish the endpoints of an IngressController, and represents the type and any additional configuration for a specific type.",
-	"type": "type is the publishing strategy to use. Valid values are:\n\n* LoadBalancerService\n\nPublishes the ingress controller using a Kubernetes LoadBalancer Service.\n\nIn this configuration, the ingress controller deployment uses container networking. A LoadBalancer Service is created to publish the deployment.\n\nSee: https://kubernetes.io/docs/concepts/services-networking/#loadbalancer\n\nIf domain is set, a wildcard DNS record will be managed to point at the LoadBalancer Service's external name. DNS records are managed only in DNS zones defined by dns.config.openshift.io/cluster .spec.publicZone and .spec.privateZone.\n\nWildcard DNS management is currently supported only on the AWS platform.\n\n* HostNetwork\n\nPublishes the ingress controller on node ports where the ingress controller is deployed.\n\nIn this configuration, the ingress controller deployment uses host networking, bound to node ports 80 and 443. The user is responsible for configuring an external load balancer to publish the ingress controller via the node ports.\n\n* Private\n\nDoes not publish the ingress controller.\n\nIn this configuration, the ingress controller deployment uses container networking, and is not explicitly published. The user must manually publish the ingress controller.",
+	"":             "EndpointPublishingStrategy is a way to publish the endpoints of an IngressController, and represents the type and any additional configuration for a specific type.",
+	"type":         "type is the publishing strategy to use. Valid values are:\n\n* LoadBalancerService\n\nPublishes the ingress controller using a Kubernetes LoadBalancer Service.\n\nIn this configuration, the ingress controller deployment uses container networking. A LoadBalancer Service is created to publish the deployment.\n\nSee: https://kubernetes.io/docs/concepts/services-networking/#loadbalancer\n\nIf domain is set, a wildcard DNS record will be managed to point at the LoadBalancer Service's external name. DNS records are managed only in DNS zones defined by dns.config.openshift.io/cluster .spec.publicZone and .spec.privateZone.\n\nWildcard DNS management is currently supported only on the AWS, Azure, and GCP platforms.\n\n* HostNetwork\n\nPublishes the ingress controller on node ports where the ingress controller is deployed.\n\nIn this configuration, the ingress controller deployment uses host networking, bound to node ports 80 and 443. The user is responsible for configuring an external load balancer to publish the ingress controller via the node ports.\n\n* Private\n\nDoes not publish the ingress controller.\n\nIn this configuration, the ingress controller deployment uses container networking, and is not explicitly published. The user must manually publish the ingress controller.",
+	"loadBalancer": "loadBalancer holds parameters for the load balancer. Present only if type is LoadBalancerService.",
+	"hostNetwork":  "hostNetwork holds parameters for the HostNetwork endpoint publishing strategy. Present only if type is HostNetwork.",
+	"private":      "private holds parameters for the Private endpoint publishing strategy. Present only if type is Private.",
 }
 
 func (EndpointPublishingStrategy) SwaggerDoc() map[string]string {
 	return map_EndpointPublishingStrategy
+}
+
+var map_HostNetworkStrategy = map[string]string{
+	"": "HostNetworkStrategy holds parameters for the HostNetwork endpoint publishing strategy.",
+}
+
+func (HostNetworkStrategy) SwaggerDoc() map[string]string {
+	return map_HostNetworkStrategy
 }
 
 var map_IngressController = map[string]string{
@@ -227,7 +270,7 @@ var map_IngressControllerSpec = map[string]string{
 	"":                           "IngressControllerSpec is the specification of the desired behavior of the IngressController.",
 	"domain":                     "domain is a DNS name serviced by the ingress controller and is used to configure multiple features:\n\n* For the LoadBalancerService endpoint publishing strategy, domain is\n  used to configure DNS records. See endpointPublishingStrategy.\n\n* When using a generated default certificate, the certificate will be valid\n  for domain and its subdomains. See defaultCertificate.\n\n* The value is published to individual Route statuses so that end-users\n  know where to target external DNS records.\n\ndomain must be unique among all IngressControllers, and cannot be updated.\n\nIf empty, defaults to ingress.config.openshift.io/cluster .spec.domain.",
 	"replicas":                   "replicas is the desired number of ingress controller replicas. If unset, defaults to 2.",
-	"endpointPublishingStrategy": "endpointPublishingStrategy is used to publish the ingress controller endpoints to other networks, enable load balancer integrations, etc.\n\nIf unset, the default is based on infrastructure.config.openshift.io/cluster .status.platform:\n\n  AWS:      LoadBalancerService\n  Libvirt:  HostNetwork\n\nAny other platform types (including None) default to HostNetwork.\n\nendpointPublishingStrategy cannot be updated.",
+	"endpointPublishingStrategy": "endpointPublishingStrategy is used to publish the ingress controller endpoints to other networks, enable load balancer integrations, etc.\n\nIf unset, the default is based on infrastructure.config.openshift.io/cluster .status.platform:\n\n  AWS:      LoadBalancerService (with External scope)\n  Azure:    LoadBalancerService (with External scope)\n  GCP:      LoadBalancerService (with External scope)\n  Libvirt:  HostNetwork\n\nAny other platform types (including None) default to HostNetwork.\n\nendpointPublishingStrategy cannot be updated.",
 	"defaultCertificate":         "defaultCertificate is a reference to a secret containing the default certificate served by the ingress controller. When Routes don't specify their own certificate, defaultCertificate is used.\n\nThe secret must contain the following keys and data:\n\n  tls.crt: certificate file contents\n  tls.key: key file contents\n\nIf unset, a wildcard certificate is automatically generated and used. The certificate is valid for the ingress controller domain (and subdomains) and the generated certificate's CA will be automatically integrated with the cluster's trust store.\n\nThe in-use certificate (whether generated or user-specified) will be automatically integrated with OpenShift's built-in OAuth server.",
 	"namespaceSelector":          "namespaceSelector is used to filter the set of namespaces serviced by the ingress controller. This is useful for implementing shards.\n\nIf unset, the default is no filtering.",
 	"routeSelector":              "routeSelector is used to filter the set of Routes serviced by the ingress controller. This is useful for implementing shards.\n\nIf unset, the default is no filtering.",
@@ -251,6 +294,15 @@ func (IngressControllerStatus) SwaggerDoc() map[string]string {
 	return map_IngressControllerStatus
 }
 
+var map_LoadBalancerStrategy = map[string]string{
+	"":      "LoadBalancerStrategy holds parameters for a load balancer.",
+	"scope": "scope indicates the scope at which the load balancer is exposed. Possible values are \"External\" and \"Internal\".",
+}
+
+func (LoadBalancerStrategy) SwaggerDoc() map[string]string {
+	return map_LoadBalancerStrategy
+}
+
 var map_NodePlacement = map[string]string{
 	"":             "NodePlacement describes node scheduling configuration for an ingress controller.",
 	"nodeSelector": "nodeSelector is the node selector applied to ingress controller deployments.\n\nIf unset, the default is:\n\n  beta.kubernetes.io/os: linux\n  node-role.kubernetes.io/worker: ''\n\nIf set, the specified selector is used and replaces the default.",
@@ -259,6 +311,14 @@ var map_NodePlacement = map[string]string{
 
 func (NodePlacement) SwaggerDoc() map[string]string {
 	return map_NodePlacement
+}
+
+var map_PrivateStrategy = map[string]string{
+	"": "PrivateStrategy holds parameters for the Private endpoint publishing strategy.",
+}
+
+func (PrivateStrategy) SwaggerDoc() map[string]string {
+	return map_PrivateStrategy
 }
 
 var map_KubeAPIServer = map[string]string{
@@ -298,10 +358,12 @@ func (KubeControllerManagerList) SwaggerDoc() map[string]string {
 }
 
 var map_AdditionalNetworkDefinition = map[string]string{
-	"":             "AdditionalNetworkDefinition configures an extra network that is available but not created by default. Instead, pods must request them by name. type must be specified, along with exactly one \"Config\" that matches the type.",
-	"type":         "type is the type of network The only supported value is NetworkTypeRaw",
-	"name":         "name is the name of the network. This will be populated in the resulting CRD This must be unique.",
-	"rawCNIConfig": "rawCNIConfig is the raw CNI configuration json to create in the NetworkAttachmentDefinition CRD",
+	"":                    "AdditionalNetworkDefinition configures an extra network that is available but not created by default. Instead, pods must request them by name. type must be specified, along with exactly one \"Config\" that matches the type.",
+	"type":                "type is the type of network The supported values are NetworkTypeRaw, NetworkTypeSimpleMacvlan",
+	"name":                "name is the name of the network. This will be populated in the resulting CRD This must be unique.",
+	"namespace":           "namespace is the namespace of the network. This will be populated in the resulting CRD If not given the network will be created in the default namespace.",
+	"rawCNIConfig":        "rawCNIConfig is the raw CNI configuration json to create in the NetworkAttachmentDefinition CRD",
+	"simpleMacvlanConfig": "SimpleMacvlanConfig configures the macvlan interface in case of type:NetworkTypeSimpleMacvlan",
 }
 
 func (AdditionalNetworkDefinition) SwaggerDoc() map[string]string {
@@ -321,10 +383,32 @@ var map_DefaultNetworkDefinition = map[string]string{
 	"type":                "type is the type of network All NetworkTypes are supported except for NetworkTypeRaw",
 	"openshiftSDNConfig":  "openShiftSDNConfig configures the openshift-sdn plugin",
 	"ovnKubernetesConfig": "oVNKubernetesConfig configures the ovn-kubernetes plugin. This is currently not implemented.",
+	"kuryrConfig":         "KuryrConfig configures the kuryr plugin",
 }
 
 func (DefaultNetworkDefinition) SwaggerDoc() map[string]string {
 	return map_DefaultNetworkDefinition
+}
+
+var map_IPAMConfig = map[string]string{
+	"":                 "IPAMConfig contains configurations for IPAM (IP Address Management)",
+	"type":             "Type is the type of IPAM module will be used for IP Address Management(IPAM). The supported values are IPAMTypeDHCP, IPAMTypeStatic",
+	"staticIPAMConfig": "StaticIPAMConfig configures the static IP address in case of type:IPAMTypeStatic",
+}
+
+func (IPAMConfig) SwaggerDoc() map[string]string {
+	return map_IPAMConfig
+}
+
+var map_KuryrConfig = map[string]string{
+	"":                        "KuryrConfig configures the Kuryr-Kubernetes SDN",
+	"daemonProbesPort":        "The port kuryr-daemon will listen for readiness and liveness requests.",
+	"controllerProbesPort":    "The port kuryr-controller will listen for readiness and liveness requests.",
+	"openStackServiceNetwork": "openStackServiceNetwork contains the CIDR of network from which to allocate IPs for OpenStack Octavia's Amphora VMs. Please note that with Amphora driver Octavia uses two IPs from that network for each loadbalancer - one given by OpenShift and second for VRRP connections. As the first one is managed by OpenShift's and second by Neutron's IPAMs, those need to come from different pools. Therefore `openStackServiceNetwork` needs to be at least twice the size of `serviceNetwork`, and whole `serviceNetwork` must be overlapping with `openStackServiceNetwork`. cluster-network-operator will then make sure VRRP IPs are taken from the ranges inside `openStackServiceNetwork` that are not overlapping with `serviceNetwork`, effectivly preventing conflicts. If not set cluster-network-operator will use `serviceNetwork` expanded by decrementing the prefix size by 1.",
+}
+
+func (KuryrConfig) SwaggerDoc() map[string]string {
+	return map_KuryrConfig
 }
 
 var map_Network = map[string]string{
@@ -381,6 +465,7 @@ var map_OpenShiftSDNConfig = map[string]string{
 	"vxlanPort":              "vxlanPort is the port to use for all vxlan packets. The default is 4789.",
 	"mtu":                    "mtu is the mtu to use for the tunnel interface. Defaults to 1450 if unset. This must be 50 bytes smaller than the machine's uplink.",
 	"useExternalOpenvswitch": "useExternalOpenvswitch tells the operator not to install openvswitch, because it will be provided separately. If set, you must provide it yourself.",
+	"enableUnidling":         "enableUnidling controls whether or not the service proxy will support idling and unidling of services. By default, unidling is enabled.",
 }
 
 func (OpenShiftSDNConfig) SwaggerDoc() map[string]string {
@@ -396,6 +481,60 @@ var map_ProxyConfig = map[string]string{
 
 func (ProxyConfig) SwaggerDoc() map[string]string {
 	return map_ProxyConfig
+}
+
+var map_SimpleMacvlanConfig = map[string]string{
+	"":           "SimpleMacvlanConfig contains configurations for macvlan interface.",
+	"master":     "master is the host interface to create the macvlan interface from. If not specified, it will be default route interface",
+	"ipamConfig": "IPAMConfig configures IPAM module will be used for IP Address Management (IPAM).",
+	"mode":       "mode is the macvlan mode: bridge, private, vepa, passthru. The default is bridge",
+	"mtu":        "mtu is the mtu to use for the macvlan interface. if unset, host's kernel will select the value.",
+}
+
+func (SimpleMacvlanConfig) SwaggerDoc() map[string]string {
+	return map_SimpleMacvlanConfig
+}
+
+var map_StaticIPAMAddresses = map[string]string{
+	"":        "StaticIPAMAddresses provides IP address and Gateway for static IPAM addresses",
+	"address": "Address is the IP address in CIDR format",
+	"gateway": "Gateway is IP inside of subnet to designate as the gateway",
+}
+
+func (StaticIPAMAddresses) SwaggerDoc() map[string]string {
+	return map_StaticIPAMAddresses
+}
+
+var map_StaticIPAMConfig = map[string]string{
+	"":          "StaticIPAMConfig contains configurations for static IPAM (IP Address Management)",
+	"addresses": "Addresses configures IP address for the interface",
+	"routes":    "Routes configures IP routes for the interface",
+	"dns":       "DNS configures DNS for the interface",
+}
+
+func (StaticIPAMConfig) SwaggerDoc() map[string]string {
+	return map_StaticIPAMConfig
+}
+
+var map_StaticIPAMDNS = map[string]string{
+	"":            "StaticIPAMDNS provides DNS related information for static IPAM",
+	"nameservers": "Nameservers points DNS servers for IP lookup",
+	"domain":      "Domain configures the domainname the local domain used for short hostname lookups",
+	"search":      "Search configures priority ordered search domains for short hostname lookups",
+}
+
+func (StaticIPAMDNS) SwaggerDoc() map[string]string {
+	return map_StaticIPAMDNS
+}
+
+var map_StaticIPAMRoutes = map[string]string{
+	"":            "StaticIPAMRoutes provides Destination/Gateway pairs for static IPAM routes",
+	"destination": "Destination points the IP route destination",
+	"gateway":     "Gateway is the route's next-hop IP address If unset, a default gateway is assumed (as determined by the CNI plugin).",
+}
+
+func (StaticIPAMRoutes) SwaggerDoc() map[string]string {
+	return map_StaticIPAMRoutes
 }
 
 var map_OpenShiftAPIServer = map[string]string{

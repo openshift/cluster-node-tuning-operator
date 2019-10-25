@@ -13,11 +13,12 @@ type ServiceCA struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
 
-	// +required
 	//spec holds user settable values for configuration
+	// +kubebuilder:validation:Required
+	// +required
 	Spec ServiceCASpec `json:"spec"`
-	// +optional
 	// status holds observed values from the cluster. They may not be overridden.
+	// +optional
 	Status ServiceCAStatus `json:"status"`
 }
 

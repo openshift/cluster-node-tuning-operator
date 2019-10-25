@@ -13,6 +13,7 @@ type Etcd struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
 
+	// +kubebuilder:validation:Required
 	// +required
 	Spec EtcdSpec `json:"spec"`
 	// +optional
@@ -21,11 +22,6 @@ type Etcd struct {
 
 type EtcdSpec struct {
 	StaticPodOperatorSpec `json:",inline"`
-
-	// forceRedeploymentReason can be used to force the redeployment of the kube-apiserver by providing a unique string.
-	// This provides a mechanism to kick a previously failed deployment and provide a reason why you think it will work
-	// this time instead of failing again on the same config.
-	ForceRedeploymentReason string `json:"forceRedeploymentReason"`
 }
 
 type EtcdStatus struct {
