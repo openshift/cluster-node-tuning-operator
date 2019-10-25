@@ -17,11 +17,13 @@ package crd
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/gobuffalo/flect"
 
 	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
@@ -36,10 +38,90 @@ type SpecMarker interface {
 	ApplyToCRD(crd *apiext.CustomResourceDefinitionSpec, version string) error
 }
 
+// mergeIdenticalSubresources checks to see if subresources are identical across
+// all versions, and if so, merges them into a top-level version.
+//
+// This assumes you're not using trivial versions.
+func mergeIdenticalSubresources(crd *apiext.CustomResourceDefinition) {
+	subres := crd.Spec.Versions[0].Subresources
+	for _, ver := range crd.Spec.Versions {
+		if ver.Subresources == nil || !equality.Semantic.DeepEqual(subres, ver.Subresources) {
+			// either all nil, or not identical
+			return
+		}
+	}
+
+	// things are identical if we've gotten this far, so move the subresources up
+	// and discard the identical per-version ones
+	crd.Spec.Subresources = subres
+	for i := range crd.Spec.Versions {
+		crd.Spec.Versions[i].Subresources = nil
+	}
+}
+
+// mergeIdenticalSchemata checks to see if schemata are identical across
+// all versions, and if so, merges them into a top-level version.
+//
+// This assumes you're not using trivial versions.
+func mergeIdenticalSchemata(crd *apiext.CustomResourceDefinition) {
+	schema := crd.Spec.Versions[0].Schema
+	for _, ver := range crd.Spec.Versions {
+		if ver.Schema == nil || !equality.Semantic.DeepEqual(schema, ver.Schema) {
+			// either all nil, or not identical
+			return
+		}
+	}
+
+	// things are identical if we've gotten this far, so move the schemata up
+	// to a single schema and discard the identical per-version ones
+	crd.Spec.Validation = schema
+	for i := range crd.Spec.Versions {
+		crd.Spec.Versions[i].Schema = nil
+	}
+}
+
+// mergeIdenticalPrinterColumns checks to see if schemata are identical across
+// all versions, and if so, merges them into a top-level version.
+//
+// This assumes you're not using trivial versions.
+func mergeIdenticalPrinterColumns(crd *apiext.CustomResourceDefinition) {
+	cols := crd.Spec.Versions[0].AdditionalPrinterColumns
+	for _, ver := range crd.Spec.Versions {
+		if len(ver.AdditionalPrinterColumns) == 0 || !equality.Semantic.DeepEqual(cols, ver.AdditionalPrinterColumns) {
+			// either all nil, or not identical
+			return
+		}
+	}
+
+	// things are identical if we've gotten this far, so move the printer columns up
+	// and discard the identical per-version ones
+	crd.Spec.AdditionalPrinterColumns = cols
+	for i := range crd.Spec.Versions {
+		crd.Spec.Versions[i].AdditionalPrinterColumns = nil
+	}
+}
+
+// MergeIdenticalVersionInfo makes sure that components of the Versions field that are identical
+// across all versions get merged into the top-level fields in v1beta1.
+//
+// This is required by the Kubernetes API server validation.
+//
+// The reason is that a v1beta1 -> v1 -> v1beta1 conversion cycle would need to
+// round-trip identically, v1 doesn't have top-level subresources, and without
+// this restriction it would be ambiguous how a v1-with-identical-subresources
+// converts into a v1beta1).
+func MergeIdenticalVersionInfo(crd *apiext.CustomResourceDefinition) {
+	if len(crd.Spec.Versions) > 0 {
+		mergeIdenticalSubresources(crd)
+		mergeIdenticalSchemata(crd)
+		mergeIdenticalPrinterColumns(crd)
+	}
+}
+
 // NeedCRDFor requests the full CRD for the given group-kind.  It requires
 // that the packages containing the Go structs for that CRD have already
 // been loaded with NeedPackage.
-func (p *Parser) NeedCRDFor(groupKind schema.GroupKind) {
+func (p *Parser) NeedCRDFor(groupKind schema.GroupKind, maxDescLen *int) {
 	p.init()
 
 	if _, exists := p.CustomResourceDefinitions[groupKind]; exists {
@@ -66,8 +148,10 @@ func (p *Parser) NeedCRDFor(groupKind schema.GroupKind) {
 		Spec: apiext.CustomResourceDefinitionSpec{
 			Group: groupKind.Group,
 			Names: apiext.CustomResourceDefinitionNames{
-				Kind:   groupKind.Kind,
-				Plural: defaultPlural,
+				Kind:     groupKind.Kind,
+				ListKind: groupKind.Kind + "List",
+				Plural:   defaultPlural,
+				Singular: strings.ToLower(groupKind.Kind),
 			},
 		},
 	}
@@ -78,12 +162,17 @@ func (p *Parser) NeedCRDFor(groupKind schema.GroupKind) {
 		if typeInfo == nil {
 			continue
 		}
-		fullSchema := FlattenEmbedded(p.flattener.FlattenType(typeIdent), pkg)
+		p.NeedFlattenedSchemaFor(typeIdent)
+		fullSchema := p.FlattenedSchemata[typeIdent]
+		fullSchema = *fullSchema.DeepCopy() // don't mutate the cache (we might be truncating description, etc)
+		if maxDescLen != nil {
+			TruncateDescription(&fullSchema, *maxDescLen)
+		}
 		ver := apiext.CustomResourceDefinitionVersion{
 			Name:   p.GroupVersions[pkg].Version,
 			Served: true,
 			Schema: &apiext.CustomResourceValidation{
-				OpenAPIV3Schema: fullSchema,
+				OpenAPIV3Schema: &fullSchema, // fine to take a reference since we deepcopy above
 			},
 		}
 		crd.Spec.Versions = append(crd.Spec.Versions, ver)
@@ -119,6 +208,11 @@ func (p *Parser) NeedCRDFor(groupKind schema.GroupKind) {
 		return
 	}
 
+	// it is necessary to make sure the order of CRD versions in crd.Spec.Versions is stable and explicitly set crd.Spec.Version.
+	// Otherwise, crd.Spec.Version may point to different CRD versions across different runs.
+	sort.Slice(crd.Spec.Versions, func(i, j int) bool { return crd.Spec.Versions[i].Name < crd.Spec.Versions[j].Name })
+	crd.Spec.Version = crd.Spec.Versions[0].Name
+
 	// make sure we have *a* storage version
 	// (default it if we only have one, otherwise, bail)
 	if len(crd.Spec.Versions) == 1 {
@@ -143,6 +237,10 @@ func (p *Parser) NeedCRDFor(groupKind schema.GroupKind) {
 	// these to empty till we get a better solution.
 	crd.Status.Conditions = []apiext.CustomResourceDefinitionCondition{}
 	crd.Status.StoredVersions = []string{}
+
+	// make sure we merge identical per-version parts, to avoid validation errors
+	// (see the reasoning near the top of the file).
+	MergeIdenticalVersionInfo(&crd)
 
 	p.CustomResourceDefinitions[groupKind] = crd
 }
