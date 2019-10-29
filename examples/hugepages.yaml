@@ -1,0 +1,21 @@
+apiVersion: tuned.openshift.io/v1
+kind: Tuned
+metadata:
+  name: hugepages
+  namespace: openshift-cluster-node-tuning-operator
+spec:
+  profile:
+  - data: |
+      [main]
+      summary=Configuration for hugepages
+      include=openshift-node
+      [vm]
+      transparent_hugepages=never
+      [sysctl]
+      vm.nr_hugepages=16
+    name: hugepages
+  recommend:
+  - match:
+    - label: tuned.openshift.io/hugepages
+    priority: 30
+    profile: hugepages
