@@ -22,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -189,10 +190,12 @@ func (r *ReconcileTuned) syncServiceAccount(tuned *tunedv1.Tuned) error {
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned ServiceAccount: %v", err)
 	}
+	if err := setControllerReference(tuned, saManifest, r.scheme); err != nil {
+		return fmt.Errorf("Couldn't set owner references to ServiceAccount: %v", err)
+	}
 
 	sa := &corev1.ServiceAccount{}
 	err = r.cache.Get(context.TODO(), types.NamespacedName{Namespace: saManifest.Namespace, Name: saManifest.Name}, sa)
-	saManifest.SetOwnerReferences(addOwnerReference(&sa.ObjectMeta, tuned))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err = r.client.Create(context.TODO(), saManifest)
@@ -217,10 +220,12 @@ func (r *ReconcileTuned) syncClusterRole(tuned *tunedv1.Tuned) error {
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned ClusterRole: %v", err)
 	}
+	if err := setControllerReference(tuned, crManifest, r.scheme); err != nil {
+		return fmt.Errorf("Couldn't set owner references to ClusterRole: %v", err)
+	}
 
 	cr := &rbacv1.ClusterRole{}
 	err = r.cache.Get(context.TODO(), types.NamespacedName{Namespace: "", Name: crManifest.Name}, cr)
-	crManifest.SetOwnerReferences(addOwnerReference(&cr.ObjectMeta, tuned))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err = r.client.Create(context.TODO(), crManifest)
@@ -248,10 +253,12 @@ func (r *ReconcileTuned) syncClusterRoleBinding(tuned *tunedv1.Tuned) error {
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned ClusterRoleBinding: %v", err)
 	}
+	if err := setControllerReference(tuned, crbManifest, r.scheme); err != nil {
+		return fmt.Errorf("Couldn't set owner references to ClusterRoleBinding: %v", err)
+	}
 
 	crb := &rbacv1.ClusterRoleBinding{}
 	err = r.cache.Get(context.TODO(), types.NamespacedName{Namespace: "", Name: crbManifest.Name}, crb)
-	crbManifest.SetOwnerReferences(addOwnerReference(&crb.ObjectMeta, tuned))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err = r.client.Create(context.TODO(), crbManifest)
@@ -285,10 +292,12 @@ func (r *ReconcileTuned) syncClusterConfigMap(f func(tuned []tunedv1.Tuned) (*co
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned ConfigMap: %v", err)
 	}
+	if err := setControllerReference(tuned, cmManifest, r.scheme); err != nil {
+		return fmt.Errorf("Couldn't set owner references to ConfigMap: %v", err)
+	}
 
 	cm := &corev1.ConfigMap{}
 	err = r.cache.Get(context.TODO(), types.NamespacedName{Namespace: cmManifest.Namespace, Name: cmManifest.Name}, cm)
-	cmManifest.SetOwnerReferences(addOwnerReference(&cm.ObjectMeta, tuned))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err = r.client.Create(context.TODO(), cmManifest)
@@ -316,10 +325,12 @@ func (r *ReconcileTuned) syncDaemonSet(tuned *tunedv1.Tuned) error {
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned DaemonSet: %v", err)
 	}
+	if err := setControllerReference(tuned, dsManifest, r.scheme); err != nil {
+		return fmt.Errorf("Couldn't set owner references to DaemonSet: %v", err)
+	}
 
 	daemonset := &appsv1.DaemonSet{}
 	err = r.cache.Get(context.TODO(), types.NamespacedName{Namespace: dsManifest.Namespace, Name: dsManifest.Name}, daemonset)
-	dsManifest.SetOwnerReferences(addOwnerReference(&daemonset.ObjectMeta, tuned))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err = r.client.Create(context.TODO(), dsManifest)
@@ -395,32 +406,13 @@ func replaceDefaultCustomResource(mgr manager.Manager) error {
 	return nil
 }
 
-func addOwnerReference(meta *metav1.ObjectMeta, tuned *tunedv1.Tuned) []metav1.OwnerReference {
-	var isController bool
+func setControllerReference(tuned *tunedv1.Tuned, object metav1.Object, scheme *runtime.Scheme) error {
 	if tuned.Name == "default" {
-		isController = true
-	}
-
-	if meta.OwnerReferences == nil {
-		meta.OwnerReferences = []metav1.OwnerReference{}
-	} else {
-		for _, owner := range meta.OwnerReferences {
-			if owner.UID == tuned.UID {
-				// Owner reference already set
-				return meta.OwnerReferences
-			}
+		if err := controllerutil.SetControllerReference(tuned, object, scheme); err != nil {
+			return err
 		}
 	}
-
-	ownerReference := metav1.OwnerReference{
-		APIVersion: tunedv1.SchemeGroupVersion.String(),
-		Kind:       "Tuned",
-		Name:       tuned.Name,
-		UID:        tuned.UID,
-		Controller: &isController,
-	}
-
-	return append(meta.OwnerReferences, ownerReference)
+	return nil
 }
 
 // Reconcile reads that state of the cluster for a Tuned object and makes changes based on the state read
