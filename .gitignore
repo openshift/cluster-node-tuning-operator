@@ -1,15 +1,10 @@
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
+# Folders
+_output
+_obj
+_test
+tmp
 
-# Test binary, build with `go test -c`
-*.test
-
-# Output of the go coverage tool, specifically when used with LiteIDE
-*.out
-
-m.sh
-cluster-node-tuning-operator
+# Files
+/*.sh
+/TODO
+pkg/manifests/bindata.go

@@ -3,7 +3,6 @@
 package e2e
 
 import (
-	"context"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -12,27 +11,23 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-
-	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/framework"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Test the ClusterOperator node-tuning object exists and is Available.
 func TestOperatorAvailable(t *testing.T) {
-	client := ntoclient.GetClient()
-	if client == nil {
-		t.Fatal("Failed to get kube client.")
-	}
+	cs := framework.NewClientSet()
 
 	err := wait.PollImmediate(1*time.Second, 5*time.Minute, func() (bool, error) {
-		co := &configv1.ClusterOperator{}
-		if err := client.Get(context.TODO(), types.NamespacedName{Name: ntoconfig.OperatorName()}, co); err != nil {
+		co, err := cs.ClusterOperators().Get(tunedv1.TunedClusterOperatorResourceName, metav1.GetOptions{})
+		if err != nil {
 			return false, nil
 		}
 
@@ -51,14 +46,11 @@ func TestOperatorAvailable(t *testing.T) {
 
 // Test the default tuned CR exists.
 func TestDefaultTunedExists(t *testing.T) {
-	client := ntoclient.GetClient()
-	if client == nil {
-		t.Fatal("Failed to get kube client.")
-	}
+	cs := framework.NewClientSet()
 
 	err := wait.PollImmediate(1*time.Second, 5*time.Minute, func() (bool, error) {
-		tuned := &tunedv1.Tuned{}
-		if err := client.Get(context.TODO(), types.NamespacedName{Name: "default", Namespace: ntoconfig.OperatorNamespace()}, tuned); err != nil {
+		_, err := cs.Tuneds(ntoconfig.OperatorNamespace()).Get(tunedv1.TunedDefaultResourceName, metav1.GetOptions{})
+		if err != nil {
 			return false, nil
 		}
 		return true, nil
@@ -72,19 +64,16 @@ func TestDefaultTunedExists(t *testing.T) {
 // need(s) to be set across the nodes.
 func TestWorkerNodeSysctl(t *testing.T) {
 	sysctlVar := "net.ipv4.neigh.default.gc_thresh1"
-	client := ntoclient.GetClient()
-	if client == nil {
-		t.Fatal("Failed to get kube client.")
-	}
+	cs := framework.NewClientSet()
 
-	nodes, err := getNodesByRole(&client, "worker")
+	nodes, err := getNodesByRole(cs, "worker")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	node := nodes[0]
 	t.Logf("Getting a tuned pod running on node %s", node.Name)
-	pod, err := getTunedForNode(&client, &node)
+	pod, err := getTunedForNode(cs, &node)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,20 +93,17 @@ func TestCustomProfileIngress(t *testing.T) {
 		sysctlVar       = "net.ipv4.tcp_tw_reuse"
 	)
 
-	client := ntoclient.GetClient()
-	if client == nil {
-		t.Fatal("Failed to get kube client.")
-	}
+	cs := framework.NewClientSet()
 
 	t.Logf("Getting a list of worker nodes")
-	nodes, err := getNodesByRole(&client, "worker")
+	nodes, err := getNodesByRole(cs, "worker")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	node := nodes[0]
 	t.Logf("Getting a tuned pod running on node %s", node.Name)
-	pod, err := getTunedForNode(&client, &node)
+	pod, err := getTunedForNode(cs, &node)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,20 +153,17 @@ func TestCustomProfileHugepages(t *testing.T) {
 		sysctlVar          = "vm.nr_hugepages"
 	)
 
-	client := ntoclient.GetClient()
-	if client == nil {
-		t.Fatal("Failed to get kube client.")
-	}
+	cs := framework.NewClientSet()
 
 	t.Logf("Getting a list of worker nodes")
-	nodes, err := getNodesByRole(&client, "worker")
+	nodes, err := getNodesByRole(cs, "worker")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	node := nodes[0]
 	t.Logf("Getting a tuned pod running on node %s", node.Name)
-	pod, err := getTunedForNode(&client, &node)
+	pod, err := getTunedForNode(cs, &node)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,9 +206,11 @@ func TestCustomProfileHugepages(t *testing.T) {
 }
 
 // Returns a list of nodes that match a given role.
-func getNodesByRole(cl *client.Client, role string) ([]corev1.Node, error) {
-	nodeList := &corev1.NodeList{}
-	err := (*cl).List(context.TODO(), nodeList, client.MatchingLabels(labels.Set{fmt.Sprintf("node-role.kubernetes.io/%s", role): ""}))
+func getNodesByRole(cs *framework.ClientSet, role string) ([]corev1.Node, error) {
+	listOptions := metav1.ListOptions{
+		LabelSelector: labels.SelectorFromSet(labels.Set{fmt.Sprintf("node-role.kubernetes.io/%s", role): ""}).String(),
+	}
+	nodeList, err := cs.Nodes().List(listOptions)
 	if err != nil {
 		return nil, fmt.Errorf("Couldn't get a list of nodes by role (%s): %v", role, err)
 	}
@@ -233,11 +218,13 @@ func getNodesByRole(cl *client.Client, role string) ([]corev1.Node, error) {
 }
 
 // Returns a pod that runs on a given node.
-func getTunedForNode(cl *client.Client, node *corev1.Node) (*corev1.Pod, error) {
-	podList := &corev1.PodList{}
-	err := (*cl).List(context.TODO(), podList, client.InNamespace(ntoconfig.OperatorNamespace()),
-		client.MatchingLabels(labels.Set{"openshift-app": "tuned"}),
-		client.MatchingField("spec.nodeName", node.Name))
+func getTunedForNode(cs *framework.ClientSet, node *corev1.Node) (*corev1.Pod, error) {
+	listOptions := metav1.ListOptions{
+		FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": node.Name}).String(),
+	}
+	listOptions.LabelSelector = labels.SelectorFromSet(labels.Set{"openshift-app": "tuned"}).String()
+
+	podList, err := cs.Pods(ntoconfig.OperatorNamespace()).List(listOptions)
 	if err != nil {
 		return nil, fmt.Errorf("Couldn't get a list of tuned pods: %v", err)
 	}

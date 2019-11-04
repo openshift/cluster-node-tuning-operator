@@ -7,5 +7,8 @@ package tools
 
 import (
 	_ "github.com/kevinburke/go-bindata/go-bindata"
-	_ "sigs.k8s.io/controller-tools/cmd/controller-gen"
+	_ "k8s.io/code-generator"
+
+	// required by hack/codegen/update-crd.sh
+	_ "github.com/openshift/crd-schema-gen/cmd/crd-schema-gen"
 )

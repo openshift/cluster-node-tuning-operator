@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: tuned
+  namespace: openshift-cluster-node-tuning-operator
+  labels:
+    openshift-app: tuned
+spec:
+  selector:
+    matchLabels:
+      openshift-app: tuned
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        openshift-app: tuned
+    spec:
+      serviceAccountName: tuned
+      containers:
+      - command: ["/var/lib/tuned/bin/run","start"]
+        resources:
+          requests:
+            cpu: 10m
+            memory: 50Mi
+        image: ${CLUSTER_NODE_TUNED_IMAGE}
+        imagePullPolicy: IfNotPresent
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/var/lib/tuned/bin/run","stop"]
+        name: tuned
+        securityContext:
+          privileged: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: FallbackToLogsOnError
+        volumeMounts:
+        - mountPath: /var/lib/tuned/profiles-data
+          name: var-lib-tuned-profiles-data
+        - mountPath: /sys
+          name: sys
+        - mountPath: /var/run/dbus
+          name: var-run-dbus
+          readOnly: true
+        - mountPath: /run/systemd/system
+          name: run-systemd-system
+          readOnly: true
+        - mountPath: /lib/modules
+          name: lib-modules
+          readOnly: true
+        env:
+          - name: WATCH_NAMESPACE
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+          - name: OCP_NODE_NAME
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: spec.nodeName
+          - name: RESYNC_PERIOD
+            value: "60"
+          - name: RELEASE_VERSION
+            value: ""
+      volumes:
+      - hostPath:
+          path: /sys
+          type: Directory
+        name: sys
+      - hostPath:
+          path: /var/run/dbus
+          type: Directory
+        name: var-run-dbus
+      - hostPath:
+          path: /run/systemd/system
+          type: Directory
+        name: run-systemd-system
+      - hostPath:
+          path: /lib/modules
+          type: Directory
+        name: lib-modules
+      - configMap:
+          defaultMode: 0644
+          items:
+          - key: tuned-profiles-data
+            path: tuned-profiles.yaml
+          name: tuned-profiles
+          optional: true
+        name: var-lib-tuned-profiles-data
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+        kubernetes.io/os: linux
+      priorityClassName: "system-node-critical"
+      hostIPC: true
+      hostNetwork: true
+      hostPID: true
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      tolerations:
+      # tolerate all taints so that tuned is always present on all nodes
+      - operator: Exists
