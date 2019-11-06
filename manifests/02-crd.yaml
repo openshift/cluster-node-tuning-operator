@@ -21,7 +21,7 @@ spec:
     served: true
     # One and only one version must be marked as the storage version.
     storage: true
-  #preserveUnknownFields: false	# Do not use "false" in k8s 1.15, recursively nested "match" sections are dropped.
+  preserveUnknownFields: false
   validation:
     openAPIV3Schema:
       description: 'Tuned is a collection of rules that allows cluster-wide deployment of
@@ -111,6 +111,8 @@ spec:
                           description: 'Additional rules governing application of the tuned profile connected by logical AND operator.'
                           type: array
                           items:
+                            # Recursively nested "match" sections are dropped without the following.
+                            x-kubernetes-preserve-unknown-fields: true
                             # OpenAPI v3 validation schemas containing $ref are not permitted => cannot do recursive validation in 1.14
                             # https://kubernetes.io/docs/tasks/access-kubernetes-api/custom-resources/custom-resource-definitions/#validation
                             type: object
