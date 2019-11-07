@@ -228,7 +228,6 @@ in the `profile:` section of the Tuned CR:
 * net
 * scheduler
 * scsi_host
-* selinux
 * sysctl
 * sysfs
 * usb
@@ -240,4 +239,5 @@ The following Tuned plug-ins are currently not supported:
 
 * bootloader
 * script
+* selinux
 * systemd
