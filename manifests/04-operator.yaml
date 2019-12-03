@@ -35,7 +35,7 @@ spec:
           command:
           - cluster-node-tuning-operator
           args:
-          - "-v=1"
+          - "-v=0"
           env:
           - name: RELEASE_VERSION
             value: "0.0.1-snapshot"
@@ -47,8 +47,6 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: metadata.name
-          - name: OPERATOR_NAME
-            value: "node-tuning"
           - name: RESYNC_PERIOD
             value: "600"
           - name: CLUSTER_NODE_TUNED_IMAGE

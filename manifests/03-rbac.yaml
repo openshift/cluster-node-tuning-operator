@@ -1,4 +1,4 @@
-# Account for the operator itself.  It should require namespace scoped
+# Account for the operator itself.
 # permissions.
 apiVersion: v1
 kind: ServiceAccount
@@ -41,7 +41,7 @@ rules:
   verbs: ["create"]
 - apiGroups: ["config.openshift.io"]
   resources: ["clusteroperators"]
-  verbs: ["create","get"]
+  verbs: ["create","get","list","watch"]
 - apiGroups: ["config.openshift.io"]
   resources: ["clusteroperators/status"]
   verbs: ["update"]
@@ -62,3 +62,45 @@ roleRef:
   name: cluster-node-tuning-operator
 userNames:
 - "system:serviceaccount:openshift-cluster-node-tuning-operator:cluster-node-tuning-operator"
+
+---
+
+# Account for the operand.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tuned
+  namespace: openshift-cluster-node-tuning-operator
+
+---
+
+# Cluster role for the operand.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-node-tuning:tuned
+rules:
+- apiGroups: ["tuned.openshift.io"]
+  resources: ["*"]
+  verbs: ["*"]
+- apiGroups: ["security.openshift.io"]
+  resources: ["securitycontextconstraints"]
+  verbs: ["use"]
+  resourceNames: ["privileged"]
+
+---
+
+# Bind the operand cluster role to its Service Account.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-node-tuning:tuned
+roleRef:
+  kind: ClusterRole
+  name: cluster-node-tuning:tuned
+subjects:
+- kind: ServiceAccount
+  name: tuned
+  namespace: openshift-cluster-node-tuning-operator
+userNames:
+- system:serviceaccount:openshift-cluster-node-tuning-operator:tuned

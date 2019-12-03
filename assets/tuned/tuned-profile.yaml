@@ -1,0 +1,8 @@
+apiVersion: tuned.openshift.io/v1
+kind: Profile
+metadata:
+  name: node-name
+  namespace: openshift-cluster-node-tuning-operator
+spec:
+  config:
+    tunedProfile: "openshift-node"

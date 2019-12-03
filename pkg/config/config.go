@@ -3,13 +3,13 @@ package config
 import (
 	"os"
 	"strconv"
+	"time"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 )
 
 const (
 	nodeTunedImageDefault    string = "registry.svc.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuned"
-	operatorNameDefault      string = "node-tuning"
 	operatorNamespaceDefault string = "openshift-cluster-node-tuning-operator"
 	resyncPeriodDefault      int64  = 600
 )
@@ -25,17 +25,6 @@ func NodeTunedImage() string {
 	return nodeTunedImageDefault
 }
 
-// OperatorName returns the operator name.
-func OperatorName() string {
-	operatorName := os.Getenv("OPERATOR_NAME")
-
-	if len(operatorName) > 0 {
-		return operatorName
-	}
-
-	return operatorNameDefault
-}
-
 // OperatorName returns the operator namespace.
 func OperatorNamespace() string {
 	operatorNamespace := os.Getenv("WATCH_NAMESPACE")
@@ -48,7 +37,7 @@ func OperatorNamespace() string {
 }
 
 // ResyncPeriod returns the configured or default Reconcile period.
-func ResyncPeriod() int64 {
+func ResyncPeriod() time.Duration {
 	resyncPeriodDuration := resyncPeriodDefault
 	resyncPeriodEnv := os.Getenv("RESYNC_PERIOD")
 
@@ -56,9 +45,9 @@ func ResyncPeriod() int64 {
 		var err error
 		resyncPeriodDuration, err = strconv.ParseInt(resyncPeriodEnv, 10, 64)
 		if err != nil {
-			glog.Errorf("Cannot parse RESYNC_PERIOD (%s), using %d", resyncPeriodEnv, resyncPeriodDefault)
+			klog.Errorf("cannot parse RESYNC_PERIOD (%s), using %d", resyncPeriodEnv, resyncPeriodDefault)
 			resyncPeriodDuration = resyncPeriodDefault
 		}
 	}
-	return resyncPeriodDuration
+	return time.Second * time.Duration(resyncPeriodDuration)
 }

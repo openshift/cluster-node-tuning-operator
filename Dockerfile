@@ -4,7 +4,7 @@ COPY . .
 RUN make build
 
 FROM registry.svc.ci.openshift.org/openshift/origin-v4.0:base
-COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/cluster-node-tuning-operator /usr/bin/
+COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/cluster-node-tuning-operator /usr/bin/
 COPY manifests /manifests
 RUN useradd cluster-node-tuning-operator
 USER cluster-node-tuning-operator
