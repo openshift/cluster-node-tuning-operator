@@ -15,7 +15,6 @@ type Listers struct {
 	Pods                kcorelisters.PodLister
 	Nodes               kcorelisters.NodeLister
 	Secrets             kcorelisters.SecretNamespaceLister
-	ConfigMaps          kcorelisters.ConfigMapNamespaceLister
 	ServiceAccounts     kcorelisters.ServiceAccountNamespaceLister
 	ClusterRoles        krbaclisters.ClusterRoleLister
 	ClusterRoleBindings krbaclisters.ClusterRoleBindingLister

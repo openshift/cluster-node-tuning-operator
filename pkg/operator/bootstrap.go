@@ -24,8 +24,7 @@ func (c *Controller) Bootstrap() error {
 		return nil
 	}
 
-	// If no registry resource exists,
-	// let's create one with sane defaults
+	// If no tuned resource exists, create one with sane defaults.
 	klog.Infof("creating default Tuned custom resource")
 	cr = ntomf.TunedCustomResource()
 

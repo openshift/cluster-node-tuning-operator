@@ -8,11 +8,16 @@ const (
 	// TunedDefaultResourceName is the name of the Node Tuning Operator's default custom tuned resource
 	TunedDefaultResourceName = "default"
 
+	// TunedRenderedResourceName is the name of the Node Tuning Operator's tuned resource combined out of
+	// all the other custom tuned resources
+	TunedRenderedResourceName = "rendered"
+
 	// TunedClusterOperatorResourceName is the name of the clusteroperator resource
 	// that reflects the node tuning operator status.
 	TunedClusterOperatorResourceName = "node-tuning"
 )
 
+/////////////////////////////////////////////////////////////////////////////////
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
@@ -88,6 +93,7 @@ type TunedList struct {
 	Items           []Tuned `json:"items"`
 }
 
+/////////////////////////////////////////////////////////////////////////////////
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 

@@ -86,11 +86,11 @@ func TestWorkerNodeSysctl(t *testing.T) {
 }
 
 // Test the application (and rollback) of a custom profile via pod labelling.
-func TestCustomProfileIngress(t *testing.T) {
+func TestCustomProfileElasticSearch(t *testing.T) {
 	const (
-		profileIngress  = "../../examples/ingress.yaml"
-		podLabelIngress = "tuned.openshift.io/ingress"
-		sysctlVar       = "net.ipv4.tcp_tw_reuse"
+		profileElasticSearch  = "../../examples/elasticsearch.yaml"
+		podLabelElasticSearch = "tuned.openshift.io/elasticsearch"
+		sysctlVar             = "vm.max_map_count"
 	)
 
 	cs := framework.NewClientSet()
@@ -114,26 +114,26 @@ func TestCustomProfileIngress(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Logf("Labelling pod %s with label %s", pod.Name, podLabelIngress)
-	out, err := exec.Command("oc", "label", "pod", "--overwrite", "-n", ntoconfig.OperatorNamespace(), pod.Name, podLabelIngress+"=").CombinedOutput()
+	t.Logf("Labelling pod %s with label %s", pod.Name, podLabelElasticSearch)
+	out, err := exec.Command("oc", "label", "pod", "--overwrite", "-n", ntoconfig.OperatorNamespace(), pod.Name, podLabelElasticSearch+"=").CombinedOutput()
 	if err != nil {
 		t.Fatal(fmt.Errorf("%v", string(out)))
 	}
 
-	t.Logf("Applying the custom ingress profile from %s", profileIngress)
-	out, err = exec.Command("oc", "apply", "-n", ntoconfig.OperatorNamespace(), "-f", profileIngress).CombinedOutput()
+	t.Logf("Applying the custom elasticsearch profile %s", profileElasticSearch)
+	out, err = exec.Command("oc", "apply", "-n", ntoconfig.OperatorNamespace(), "-f", profileElasticSearch).CombinedOutput()
 	if err != nil {
 		t.Fatal(fmt.Errorf("%v", string(out)))
 	}
 
 	t.Logf("Ensuring the custom worker node profile was set")
-	err = ensureSysctl(sysctlVar, pod, "1")
+	err = ensureSysctl(sysctlVar, pod, "262144")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	t.Logf("Removing label %s from pod %s", podLabelIngress, pod.Name)
-	out, err = exec.Command("oc", "label", "pod", "--overwrite", "-n", ntoconfig.OperatorNamespace(), pod.Name, podLabelIngress+"-").CombinedOutput()
+	t.Logf("Removing label %s from pod %s", podLabelElasticSearch, pod.Name)
+	out, err = exec.Command("oc", "label", "pod", "--overwrite", "-n", ntoconfig.OperatorNamespace(), pod.Name, podLabelElasticSearch+"-").CombinedOutput()
 	if err != nil {
 		t.Fatal(fmt.Errorf("%v", string(out)))
 	}
@@ -142,6 +142,12 @@ func TestCustomProfileIngress(t *testing.T) {
 	err = ensureSysctl(sysctlVar, pod, valOrig)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	t.Logf("Deleting the custom elasticsearch profile %s", profileElasticSearch)
+	out, err = exec.Command("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileElasticSearch).CombinedOutput()
+	if err != nil {
+		t.Fatal(fmt.Errorf("%v", string(out)))
 	}
 }
 
@@ -180,7 +186,7 @@ func TestCustomProfileHugepages(t *testing.T) {
 		t.Fatal(fmt.Errorf("%v", string(out)))
 	}
 
-	t.Logf("Applying the custom hugepages profile from %s", profileHugepages)
+	t.Logf("Applying the custom hugepages profile %s", profileHugepages)
 	out, err = exec.Command("oc", "apply", "-n", ntoconfig.OperatorNamespace(), "-f", profileHugepages).CombinedOutput()
 	if err != nil {
 		t.Fatal(fmt.Errorf("%v", string(out)))
@@ -192,8 +198,8 @@ func TestCustomProfileHugepages(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Logf("Removing label %s from node %s", nodeLabelHugepages, node.Name)
-	out, err = exec.Command("oc", "label", "node", "--overwrite", "-n", ntoconfig.OperatorNamespace(), node.Name, nodeLabelHugepages+"-").CombinedOutput()
+	t.Logf("Deleting the custom hugepages profile %s", profileHugepages)
+	out, err = exec.Command("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileHugepages).CombinedOutput()
 	if err != nil {
 		t.Fatal(fmt.Errorf("%v", string(out)))
 	}
@@ -202,6 +208,12 @@ func TestCustomProfileHugepages(t *testing.T) {
 	err = ensureSysctl(sysctlVar, pod, valOrig)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	t.Logf("Removing label %s from node %s", nodeLabelHugepages, node.Name)
+	out, err = exec.Command("oc", "label", "node", "--overwrite", "-n", ntoconfig.OperatorNamespace(), node.Name, nodeLabelHugepages+"-").CombinedOutput()
+	if err != nil {
+		t.Fatal(fmt.Errorf("%v", string(out)))
 	}
 }
 
