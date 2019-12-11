@@ -38,7 +38,6 @@ const (
 	wqKindPod             = "pod"
 	wqKindNode            = "node"
 	wqKindClusterOperator = "clusteroperator"
-	wqKindConfigMap       = "configmap"
 	wqKindDaemonSet       = "daemonset"
 	wqKindTuned           = "tuned"
 	wqKindProfile         = "profile"
@@ -197,11 +196,11 @@ func (c *Controller) sync(key wqKey) error {
 	default:
 	}
 
-	// Tuned or ConfigMap changed; in either case the (tuned-profiles) ConfigMap needs to be synced
-	klog.V(2).Infof("sync(): ConfigMap")
-	err = c.syncConfigMap(cr)
+	// Tuned CR changed
+	klog.V(2).Infof("sync(): Tuned %s", tunedv1.TunedRenderedResourceName)
+	err = c.syncTunedRendered(cr)
 	if err != nil {
-		return fmt.Errorf("failed to sync tuned-profiles ConfigMap: %v", err)
+		return fmt.Errorf("failed to sync Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
 	}
 
 	klog.V(2).Infof("sync(): DaemonSet")
@@ -227,35 +226,40 @@ func (c *Controller) sync(key wqKey) error {
 	return nil
 }
 
-func (c *Controller) syncConfigMap(tuned *tunedv1.Tuned) error {
+func (c *Controller) syncTunedRendered(tuned *tunedv1.Tuned) error {
 	tunedList, err := c.listers.TunedResources.List(labels.Everything())
 	if err != nil {
 		return fmt.Errorf("failed to list Tuned: %v", err)
 	}
 
-	cmMf := ntomf.TunedConfigMapProfiles(tunedList)
-	cmMf.ObjectMeta.OwnerReferences = getDefaultTunedRefs(tuned)
+	crMf := ntomf.TunedRenderedResource(tunedList)
+	crMf.ObjectMeta.OwnerReferences = getDefaultTunedRefs(tuned)
+	crMf.Name = tunedv1.TunedRenderedResourceName
 
-	cm, err := c.listers.ConfigMaps.Get(cmMf.Name)
+	cr, err := c.listers.TunedResources.Get(tunedv1.TunedRenderedResourceName)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			_, err = c.clients.Core.ConfigMaps(ntoconfig.OperatorNamespace()).Create(cmMf)
+			_, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Create(crMf)
 			if err != nil {
-				return fmt.Errorf("failed to create ConfigMap %q: %v", cmMf.Name, err)
+				return fmt.Errorf("failed to create Tuned %q: %v", crMf.Name, err)
 			}
-			// ConfigMap created successfully
+			// Tuned created successfully
 			return nil
 		}
-		return fmt.Errorf("failed to get ConfigMap: %v", err)
+		return fmt.Errorf("failed to get Tuned: %v", err)
 	} else {
-		if reflect.DeepEqual(cmMf.Data, cm.Data) {
-			klog.V(2).Infof("Tuned ConfigMap %q doesn't need updating", cmMf.Name)
+		if reflect.DeepEqual(crMf.Spec.Profile, cr.Spec.Profile) {
+			klog.V(2).Infof("Tuned %q doesn't need updating", crMf.Name)
 			return nil
 		}
-		klog.V(2).Infof("updating Tuned ConfigMap %q", cmMf.Name)
-		_, err = c.clients.Core.ConfigMaps(ntoconfig.OperatorNamespace()).Update(cmMf)
+		cr = cr.DeepCopy() // never update the objects from cache
+		cr.Spec.Profile = crMf.Spec.Profile
+		cr.Spec.Recommend = crMf.Spec.Recommend
+
+		klog.V(2).Infof("updating Tuned %q", crMf.Name)
+		_, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Update(cr)
 		if err != nil {
-			return fmt.Errorf("failed to update tuned ConfigMap %q: %v", cmMf.Name, err)
+			return fmt.Errorf("failed to update tuned %q: %v", crMf.Name, err)
 		}
 	}
 
@@ -477,10 +481,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	c.listers.ClusterOperators = coInformer.Lister()
 	coInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindClusterOperator}))
 
-	cmInformer := kubeNTOInformerFactory.Core().V1().ConfigMaps()
-	c.listers.ConfigMaps = cmInformer.Lister().ConfigMaps(ntoconfig.OperatorNamespace())
-	cmInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindConfigMap}))
-
 	dsInformer := kubeNTOInformerFactory.Apps().V1().DaemonSets()
 	c.listers.DaemonSets = dsInformer.Lister().DaemonSets(ntoconfig.OperatorNamespace())
 	dsInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindDaemonSet}))
@@ -494,7 +494,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	tpInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindProfile}))
 
 	configInformerFactory.Start(stopCh)  // ClusterOperator
-	kubeNTOInformerFactory.Start(stopCh) // ConfigMap/DaemonSet
+	kubeNTOInformerFactory.Start(stopCh) // DaemonSet
 	kubeInformerFactory.Start(stopCh)    // Pod/Node
 	tunedInformerFactory.Start(stopCh)   // Tuned/Profile
 
@@ -504,7 +504,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 		podInformer.Informer().HasSynced,
 		nodeInformer.Informer().HasSynced,
 		coInformer.Informer().HasSynced,
-		cmInformer.Informer().HasSynced,
 		dsInformer.Informer().HasSynced,
 		trInformer.Informer().HasSynced,
 		tpInformer.Informer().HasSynced,

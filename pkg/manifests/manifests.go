@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"sort"
 
-	yamlv2 "gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
@@ -17,34 +17,54 @@ import (
 
 const (
 	// Assets
-	TunedConfigMapProfilesAsset = "assets/tuned/cm-tuned-profiles.yaml"
-	TunedDaemonSetAsset         = "assets/tuned/ds-tuned.yaml"
-	TunedProfileAsset           = "assets/tuned/tuned-profile.yaml"
-	TunedCustomResourceAsset    = "assets/tuned/default-cr-tuned.yaml"
+	TunedDaemonSetAsset      = "assets/tuned/ds-tuned.yaml"
+	TunedProfileAsset        = "assets/tuned/tuned-profile.yaml"
+	TunedCustomResourceAsset = "assets/tuned/default-cr-tuned.yaml"
 )
 
 func MustAssetReader(asset string) io.Reader {
 	return bytes.NewReader(MustAsset(asset))
 }
 
-func TunedConfigMapProfiles(tunedArray []*tunedv1.Tuned) *corev1.ConfigMap {
-	cm, err := NewConfigMap(MustAssetReader(TunedConfigMapProfilesAsset))
-	if err != nil {
-		panic(err)
+func TunedRenderedResource(tunedSlice []*tunedv1.Tuned) *tunedv1.Tuned {
+	cr := &tunedv1.Tuned{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      tunedv1.TunedRenderedResourceName,
+			Namespace: ntoconfig.OperatorNamespace(),
+		},
+		Spec: tunedv1.TunedSpec{
+			Recommend: []tunedv1.TunedRecommend{},
+		},
 	}
 
-	m := map[string]string{}
-	for _, tuned := range tunedArray {
-		tunedConfigMapProfiles(tuned, m)
+	tunedProfiles := []tunedv1.TunedProfile{}
+	m := map[string]tunedv1.TunedProfile{}
+
+	for _, tuned := range tunedSlice {
+		if tuned.Name == tunedv1.TunedRenderedResourceName {
+			// Skip the "rendered" Tuned resource itself
+			continue
+		}
+		tunedRenderedProfiles(tuned, m)
 	}
-	tunedOcpProfiles, err := yamlv2.Marshal(&m)
-	if err != nil {
-		panic(err)
+	for _, tunedProfile := range m {
+		if tunedProfile.Name == nil {
+			// This should never happen (openAPIV3Schema validation); ignore invalid profiles
+			continue
+		}
+		tunedProfiles = append(tunedProfiles, tunedProfile)
 	}
 
-	cm.Data["tuned-profiles-data"] = string(tunedOcpProfiles)
+	// The order of Tuned resources is variable and so is the order of profiles
+	// within the resource itself.  Sort the rendered profiles by their names for
+	// simpler change detection.
+	sort.Slice(tunedProfiles, func(i, j int) bool {
+		return *tunedProfiles[i].Name < *tunedProfiles[j].Name
+	})
 
-	return cm
+	cr.Spec.Profile = tunedProfiles
+
+	return cr
 }
 
 func TunedDaemonSet() *appsv1.DaemonSet {
@@ -81,14 +101,6 @@ func TunedCustomResource() *tunedv1.Tuned {
 	return cr
 }
 
-func NewConfigMap(manifest io.Reader) (*corev1.ConfigMap, error) {
-	cm := corev1.ConfigMap{}
-	if err := yaml.NewYAMLOrJSONDecoder(manifest, 100).Decode(&cm); err != nil {
-		return nil, err
-	}
-	return &cm, nil
-}
-
 func NewDaemonSet(manifest io.Reader) (*appsv1.DaemonSet, error) {
 	ds := appsv1.DaemonSet{}
 	if err := yaml.NewYAMLOrJSONDecoder(manifest, 100).Decode(&ds); err != nil {
@@ -113,14 +125,14 @@ func NewTuned(manifest io.Reader) (*tunedv1.Tuned, error) {
 	return &o, nil
 }
 
-func tunedConfigMapProfiles(tuned *tunedv1.Tuned, m map[string]string) {
+func tunedRenderedProfiles(tuned *tunedv1.Tuned, m map[string]tunedv1.TunedProfile) {
 	if tuned.Spec.Profile != nil {
 		for _, v := range tuned.Spec.Profile {
 			if v.Name != nil && v.Data != nil {
 				if _, found := m[*v.Name]; found {
 					klog.Warningf("WARNING: Duplicate profile %s", *v.Name)
 				}
-				m[*v.Name] = *v.Data
+				m[*v.Name] = v
 			}
 		}
 	}
