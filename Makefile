@@ -28,6 +28,7 @@ all: build
 
 build: $(BINDATA) pkg/generated
 	$(GO_BUILD_RECIPE)
+	ln -sf $(PACKAGE_BIN) $(OUT_DIR)/openshift-tuned
 
 $(BINDATA): $(GOBINDATA_BIN) $(ASSETS)
 	$(GOBINDATA_BIN) -mode 420 -modtime 1 -pkg manifests -o $(BINDATA) assets/...

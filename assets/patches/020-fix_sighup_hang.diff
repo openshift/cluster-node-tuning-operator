@@ -1,0 +1,40 @@
+Fix a hang on SIGHUP when the preset profile does not exist.
+
+Resolves rhbz#1702724,1774645
+
+See: https://github.com/redhat-performance/tuned/pull/225
+
+diff --git a/tuned/daemon/controller.py b/tuned/daemon/controller.py
+index 5e1e9ba2..18e0bb61 100644
+--- a/daemon/controller.py
++++ b/daemon/controller.py
+@@ -132,14 +132,16 @@ def stop(self, caller = None):
+ 	def reload(self, caller = None):
+ 		if caller == "":
+ 			return False
+-		if not self._daemon.is_running():
+-			return False
+-		else:
++		if self._daemon.is_running():
+ 			stop_ok = self.stop()
+ 			if not stop_ok:
+ 				return False
++		try:
+ 			self._daemon.reload_profile_config()
+-			return self.start()
++		except TunedException as e:
++			log.error("Failed to reload Tuned: %s" % e)
++			return False
++		return self.start()
+ 
+ 	def _switch_profile(self, profile_name, manual):
+ 		was_running = self._daemon.is_running()
+@@ -215,7 +217,7 @@ def disable(self, caller = None):
+ 		if self._daemon.is_running():
+ 			self._daemon.stop()
+ 		if self._daemon.is_enabled():
+-			self._daemon.set_profile(None, None, save_instantly=True)
++			self._daemon.set_profile(None, True, save_instantly=True)
+ 		return True
+ 
+ 	@exports.export("", "b")
