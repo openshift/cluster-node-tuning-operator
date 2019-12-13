@@ -55,6 +55,10 @@ spec:
       # improve wake-up latency and throughput for latency critical tasks.
       kernel.sched_wakeup_granularity_ns=4000000
 
+      [disk]
+      device=xvda
+      elevator=bfq
+
   - name: "openshift-node"
     data: |
       [main]
