@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"path/filepath"
 	"runtime"
 
 	"k8s.io/klog"
@@ -10,6 +11,7 @@ import (
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/operator"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/signals"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/tuned"
 	"github.com/openshift/cluster-node-tuning-operator/version"
 )
 
@@ -25,24 +27,38 @@ func printVersion() {
 }
 
 func main() {
-	klog.InitFlags(nil)
-	flag.Parse()
+	const (
+		operandFilename  string = "openshift-tuned"
+		operatorFilename string = "cluster-node-tuning-operator"
+	)
 
-	printVersion()
+	runAs := filepath.Base(os.Args[0])
 
-	if *boolVersion {
-		os.Exit(0)
-	}
+	switch runAs {
+	case operatorFilename:
+		klog.InitFlags(nil)
+		flag.Parse()
 
-	stopCh := signals.SetupSignalHandler()
+		printVersion()
 
-	controller, err := operator.NewController()
-	if err != nil {
-		klog.Fatal(err)
-	}
+		if *boolVersion {
+			os.Exit(0)
+		}
 
-	err = controller.Run(stopCh)
-	if err != nil {
-		klog.Fatalf("error running controller: %s", err.Error())
+		stopCh := signals.SetupSignalHandler()
+
+		controller, err := operator.NewController()
+		if err != nil {
+			klog.Fatal(err)
+		}
+
+		err = controller.Run(stopCh)
+		if err != nil {
+			klog.Fatalf("error running controller: %s", err.Error())
+		}
+	case operandFilename:
+		tuned.Run(boolVersion)
+	default:
+		klog.Fatalf("application should be run as \"%s\" or \"%s\"", operatorFilename, operandFilename)
 	}
 }

@@ -12,9 +12,9 @@ specified by user needs.  The operator manages the containerized
 daemon for [OpenShift](https://openshift.io/) as
 a Kubernetes DaemonSet.  It ensures [custom tuning
 specification](#custom-tuning-specification) is passed to all
-[containerized tuned](https://github.com/openshift/openshift-tuned)
-daemons running in the cluster in the format that the daemons understand.
-The daemons run on all nodes in the cluster, one per node.
+containerized tuned daemons running in the cluster in the format
+that the daemons understand. The daemons run on all nodes in the
+cluster, one per node.
 
 Node-level settings applied by the containerized tuned daemon are rolled back
 on an event that triggers a profile change or when the containerized tuned

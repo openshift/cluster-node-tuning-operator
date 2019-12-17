@@ -13,6 +13,9 @@ spec:
       labels:
         name: cluster-node-tuning-operator
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 499
       serviceAccountName: cluster-node-tuning-operator
       nodeSelector:
         node-role.kubernetes.io/master: ""
@@ -50,7 +53,7 @@ spec:
           - name: RESYNC_PERIOD
             value: "600"
           - name: CLUSTER_NODE_TUNED_IMAGE
-            value: registry.svc.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuned
+            value: registry.svc.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuning-operator
           imagePullPolicy: IfNotPresent
           terminationMessagePolicy: FallbackToLogsOnError
           resources:
