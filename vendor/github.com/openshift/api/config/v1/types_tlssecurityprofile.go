@@ -14,6 +14,9 @@ type TLSSecurityProfile struct {
 	// are found to be insecure.  Depending on precisely which ciphers are available to a process, the list may be
 	// reduced.
 	//
+	// Note that the Modern profile is currently not supported because it is not
+	// yet well adopted by common software libraries.
+	//
 	// +unionDiscriminator
 	// +optional
 	Type TLSProfileType `json:"type"`
@@ -53,10 +56,7 @@ type TLSSecurityProfile struct {
 	//     - AES128-SHA
 	//     - AES256-SHA
 	//     - DES-CBC3-SHA
-	//   tlsVersion:
-	//     minimumVersion: TLSv1.0
-	//     maximumVersion: TLSv1.3
-	//   dhParamSize: 1024
+	//   minTLSVersion: TLSv1.0
 	//
 	// +optional
 	// +nullable
@@ -79,10 +79,7 @@ type TLSSecurityProfile struct {
 	//     - ECDHE-RSA-CHACHA20-POLY1305
 	//     - DHE-RSA-AES128-GCM-SHA256
 	//     - DHE-RSA-AES256-GCM-SHA384
-	//   tlsVersion:
-	//     minimumVersion: TLSv1.2
-	//     maximumVersion: TLSv1.3
-	//   dhParamSize: 2048
+	//   minTLSVersion: TLSv1.2
 	//
 	// +optional
 	// +nullable
@@ -97,10 +94,9 @@ type TLSSecurityProfile struct {
 	//     - TLS_AES_128_GCM_SHA256
 	//     - TLS_AES_256_GCM_SHA384
 	//     - TLS_CHACHA20_POLY1305_SHA256
-	//   tlsVersion:
-	//     minimumVersion: TLSv1.3
-	//     maximumVersion: TLSv1.3
-	//   dhParamSize: 2048
+	//   minTLSVersion: TLSv1.3
+	//
+	// NOTE: Currently unsupported.
 	//
 	// +optional
 	// +nullable
@@ -114,10 +110,7 @@ type TLSSecurityProfile struct {
 	//     - ECDHE-RSA-CHACHA20-POLY1305
 	//     - ECDHE-RSA-AES128-GCM-SHA256
 	//     - ECDHE-ECDSA-AES128-GCM-SHA256
-	//   tlsVersion:
-	//     minimumVersion: TLSv1.1
-	//     maximumVersion: TLSv1.2
-	//   dhParamSize: 1024
+	//   minTLSVersion: TLSv1.1
 	//
 	// +optional
 	// +nullable
@@ -163,76 +156,21 @@ const (
 type TLSProfileSpec struct {
 	// ciphers is used to specify the cipher algorithms that are negotiated
 	// during the TLS handshake.  Operators may remove entries their operands
-	// do not support.  For example, to use 3DES  (yaml):
+	// do not support.  For example, to use DES-CBC3-SHA  (yaml):
 	//
 	//   ciphers:
-	//     - 3DES
+	//     - DES-CBC3-SHA
 	//
 	Ciphers []string `json:"ciphers"`
-	// tlsVersion is used to specify one or more versions of the TLS protocol
+	// minTLSVersion is used to specify the minimal version of the TLS protocol
 	// that is negotiated during the TLS handshake. For example, to use TLS
 	// versions 1.1, 1.2 and 1.3 (yaml):
 	//
-	//   tlsVersion:
-	//     minimumVersion: TLSv1.1
-	//     maximumVersion: TLSv1.3
+	//   minTLSVersion: TLSv1.1
 	//
-	TLSVersion TLSVersion `json:"tlsVersion"`
-	// dhParamSize sets the maximum size of the Diffie-Hellman parameters used for generating
-	// the ephemeral/temporary Diffie-Hellman key in case of DHE key exchange. The final size
-	// will try to match the size of the server's RSA (or DSA) key (e.g, a 2048 bits temporary
-	// DH key for a 2048 bits RSA key), but will not exceed this maximum value.
+	// NOTE: currently the highest minTLSVersion allowed is VersionTLS12
 	//
-	// Available DH Parameter sizes are:
-	//
-	//   "2048": A Diffie-Hellman parameter of 2048 bits.
-	//   "1024": A Diffie-Hellman parameter of 1024 bits.
-	//
-	// For example, to use a Diffie-Hellman parameter of 2048 bits (yaml):
-	//
-	//   dhParamSize: 2048
-	//
-	DHParamSize DHParamSize `json:"dhParamSize"`
-}
-
-// TLSVersion defines one or more versions of the TLS protocol that are negotiated
-// during the TLS handshake.
-type TLSVersion struct {
-	// minimumVersion enforces use of the specified TLSProtocolVersion or newer
-	// that are negotiated during the TLS handshake. minimumVersion must be lower
-	// than or equal to maximumVersion.
-	//
-	// If unset and maximumVersion is set, minimumVersion will be set
-	// to maximumVersion. If minimumVersion and maximumVersion are unset,
-	// the minimum version is determined by the TLS security profile type.
-	//
-	//   TLSProfileType Modern:       VersionTLS13
-	//   TLSProfileType Intermediate: VersionTLS12
-	//   TLSProfileType Old:          VersionTLS10
-	//
-	// Supported minimum versions are:
-	//
-	//   "TLSv1.3": Version 1.3 of the TLS security protocol.
-	//   "TLSv1.2": Version 1.2 of the TLS security protocol.
-	//   "TLSv1.1": Version 1.1 of the TLS security protocol.
-	//   "TLSv1.0": Version 1.0 of the TLS security protocol.
-	//
-	MinimumVersion TLSProtocolVersion `json:"minimumVersion"`
-	// maximumVersion enforces use of the specified TLSProtocolVersion or older
-	// that are negotiated during the TLS handshake. maximumVersion must be higher
-	// than or equal to minimumVersion.
-	//
-	// If unset and minimumVersion is set, maximumVersion will be set
-	// to minimumVersion. If minimumVersion and maximumVersion are unset,
-	// the maximum version is determined by the TLS security profile type.
-	//
-	//   TLSProfileType Modern:       VersionTLS13
-	//   TLSProfileType Intermediate: VersionTLS13
-	//   TLSProfileType Old:          VersionTLS13
-	//
-	// Supported maximum versions are the same as minimum versions.
-	//
-	MaximumVersion TLSProtocolVersion `json:"maximumVersion"`
+	MinTLSVersion TLSProtocolVersion `json:"minTLSVersion"`
 }
 
 // TLSProtocolVersion is a way to specify the protocol version used for TLS connections.
@@ -245,25 +183,14 @@ type TLSVersion struct {
 type TLSProtocolVersion string
 
 const (
-	// TLSv1.0 is version 1.0 of the TLS security protocol.
-	VersionTLS10 TLSProtocolVersion = "TLSv1.0"
-	// TLSv1.1 is version 1.1 of the TLS security protocol.
-	VersionTLS11 TLSProtocolVersion = "TLSv1.1"
-	// TLSv1.2 is version 1.2 of the TLS security protocol.
-	VersionTLS12 TLSProtocolVersion = "TLSv1.2"
-	// TLSv1.3 is version 1.3 of the TLS security protocol.
-	VersionTLS13 TLSProtocolVersion = "TLSv1.3"
-)
-
-// DHParamSize sets the maximum size of the Diffie-Hellman parameters used for
-// generating the ephemeral/temporary Diffie-Hellman key.
-type DHParamSize string
-
-const (
-	// 1024 is a Diffie-Hellman parameter of 1024 bits.
-	DHParamSize1024 DHParamSize = "1024"
-	// 2048 is a Diffie-Hellman parameter of 2048 bits.
-	DHParamSize2048 DHParamSize = "2048"
+	// VersionTLSv10 is version 1.0 of the TLS security protocol.
+	VersionTLS10 TLSProtocolVersion = "VersionTLS10"
+	// VersionTLSv11 is version 1.1 of the TLS security protocol.
+	VersionTLS11 TLSProtocolVersion = "VersionTLS11"
+	// VersionTLSv12 is version 1.2 of the TLS security protocol.
+	VersionTLS12 TLSProtocolVersion = "VersionTLS12"
+	// VersionTLSv13 is version 1.3 of the TLS security protocol.
+	VersionTLS13 TLSProtocolVersion = "VersionTLS13"
 )
 
 // TLSProfiles Contains a map of TLSProfileType names to TLSProfileSpec.
@@ -304,11 +231,7 @@ var TLSProfiles = map[TLSProfileType]*TLSProfileSpec{
 			"AES256-SHA",
 			"DES-CBC3-SHA",
 		},
-		TLSVersion: TLSVersion{
-			MinimumVersion: VersionTLS10,
-			MaximumVersion: VersionTLS13,
-		},
-		DHParamSize: DHParamSize1024,
+		MinTLSVersion: VersionTLS10,
 	},
 	TLSProfileIntermediateType: {
 		Ciphers: []string{
@@ -324,11 +247,7 @@ var TLSProfiles = map[TLSProfileType]*TLSProfileSpec{
 			"DHE-RSA-AES128-GCM-SHA256",
 			"DHE-RSA-AES256-GCM-SHA384",
 		},
-		TLSVersion: TLSVersion{
-			MinimumVersion: VersionTLS12,
-			MaximumVersion: VersionTLS13,
-		},
-		DHParamSize: DHParamSize2048,
+		MinTLSVersion: VersionTLS12,
 	},
 	TLSProfileModernType: {
 		Ciphers: []string{
@@ -336,9 +255,6 @@ var TLSProfiles = map[TLSProfileType]*TLSProfileSpec{
 			"TLS_AES_256_GCM_SHA384",
 			"TLS_CHACHA20_POLY1305_SHA256",
 		},
-		TLSVersion: TLSVersion{
-			MinimumVersion: VersionTLS13,
-			MaximumVersion: VersionTLS13,
-		},
+		MinTLSVersion: VersionTLS13,
 	},
 }
