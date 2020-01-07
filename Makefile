@@ -90,7 +90,7 @@ test:
 	$(GO) test ./cmd/... ./pkg/... -coverprofile cover.out
 
 clean:
-	$(GO) clean
+	$(GO) clean $(PACKAGE_MAIN)
 	rm -rf $(BINDATA) $(OUT_DIR)
 
 local-image:
