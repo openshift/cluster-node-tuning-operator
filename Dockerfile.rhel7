@@ -16,9 +16,10 @@ RUN INSTALL_PKGS=" \
       tuned tuna tuned-profiles-cpu-partitioning patch socat \
       " && \
     ARCH_DEP_PKGS=$(if [ "$(uname -m)" != "s390x" ]; then echo -n hdparm kernel-tools ; fi) && \
+    mkdir -p /etc/grub.d/ /boot && \
     yum install --setopt=tsflags=nodocs -y $INSTALL_PKGS $ARCH_DEP_PKGS && \
     rpm -V $INSTALL_PKGS $ARCH_DEP_PKGS && \
-    (LC_COLLATE=C cat patches/*.diff | patch -Np1 -d /usr/lib/python*/site-packages/tuned/ || :) && \
+    (LC_COLLATE=C cat patches/*.diff | patch -Np1 -d / || :) && \
     touch /etc/sysctl.conf && \
     yum -y remove patch && \
     yum clean all && \

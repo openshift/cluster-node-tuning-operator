@@ -6,8 +6,8 @@ See: https://github.com/redhat-performance/tuned/pull/225
 
 diff --git a/tuned/daemon/controller.py b/tuned/daemon/controller.py
 index 5e1e9ba2..18e0bb61 100644
---- a/daemon/controller.py
-+++ b/daemon/controller.py
+--- a/usr/lib/python2.7/site-packages/tuned/daemon/controller.py
++++ b/usr/lib/python2.7/site-packages/tuned/daemon/controller.py
 @@ -132,14 +132,16 @@ def stop(self, caller = None):
  	def reload(self, caller = None):
  		if caller == "":

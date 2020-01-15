@@ -20,8 +20,8 @@ See: https://github.com/redhat-performance/tuned/pull/226
 
 diff --git a/tuned/plugins/plugin_sysctl.py b/tuned/plugins/plugin_sysctl.py
 index b298bfa8..ee7596d5 100644
---- a/plugins/plugin_sysctl.py
-+++ b/plugins/plugin_sysctl.py
+--- a/usr/lib/python2.7/site-packages/tuned/plugins/plugin_sysctl.py
++++ b/usr/lib/python2.7/site-packages/tuned/plugins/plugin_sysctl.py
 @@ -12,10 +12,7 @@
  
  DEPRECATED_SYSCTL_OPTIONS = [ "base_reachable_time", "retrans_time" ]

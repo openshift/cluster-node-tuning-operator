@@ -1,0 +1,22 @@
+apiVersion: tuned.openshift.io/v1
+kind: Tuned
+metadata:
+  name: openshift-cpu-partitioning
+  namespace: openshift-cluster-node-tuning-operator
+spec:
+  profile:
+  - data: |
+      [main]
+      summary=Configuration for cpu-partitioning
+      include=openshift-node,cpu-partitioning
+      [variables]
+      # {isolated,no_balance}_cores take a list of ranges; e.g. isolated_cores=2,4-7
+      isolated_cores=1
+      no_balance_cores=1
+    name: openshift-cpu-partitioning
+
+  recommend:
+  - match:
+    - label: node-role.kubernetes.io/worker-rt
+    priority: 30
+    profile: openshift-cpu-partitioning
