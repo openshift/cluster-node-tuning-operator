@@ -64,6 +64,7 @@ spec:
       [sysctl]
       net.ipv4.tcp_fastopen=3
       fs.inotify.max_user_watches=65536
+      fs.inotify.max_user_instances=8192
 
   - name: "openshift-control-plane-es"
     data: |
