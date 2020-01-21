@@ -2,6 +2,7 @@ package operator
 
 import (
 	"fmt"
+	"os"
 	"reflect"
 	"time"
 
@@ -122,6 +123,10 @@ func (c *Controller) eventProcessor() {
 }
 
 func (c *Controller) sync(key wqKey) error {
+	var (
+		cr  *tunedv1.Tuned
+		err error
+	)
 	klog.V(2).Infof("sync(): Kind %s: %s/%s", key.kind, key.namespace, key.name)
 
 	switch {
@@ -161,12 +166,24 @@ func (c *Controller) sync(key wqKey) error {
 	default:
 	}
 
-	cr, err := c.listers.TunedResources.Get(tunedv1.TunedDefaultResourceName)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return c.Bootstrap()
+	if key.kind == wqKindTuned && key.name == tunedv1.TunedDefaultResourceName {
+		// default Tuned changed or a bootstrap event received
+		cr, err = c.syncTunedDefault()
+		if err != nil {
+			return fmt.Errorf("failed to sync default Tuned CR: %v", err)
 		}
-		return fmt.Errorf("failed to get Tuned %q: %v", tunedv1.TunedDefaultResourceName, err)
+	} else {
+		cr, err = c.listers.TunedResources.Get(tunedv1.TunedDefaultResourceName)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				cr, err = c.syncTunedDefault()
+				if err != nil {
+					return fmt.Errorf("failed to sync default Tuned CR: %v", err)
+				}
+			} else {
+				return fmt.Errorf("failed to get Tuned %q: %v", tunedv1.TunedDefaultResourceName, err)
+			}
+		}
 	}
 	// We have the default Tuned custom resource (cr)
 
@@ -226,6 +243,41 @@ func (c *Controller) sync(key wqKey) error {
 	return nil
 }
 
+func (c *Controller) syncTunedDefault() (*tunedv1.Tuned, error) {
+	crMf := ntomf.TunedCustomResource()
+
+	cr, err := c.listers.TunedResources.Get(tunedv1.TunedDefaultResourceName)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			klog.V(2).Infof("syncTunedDefault(): Tuned %q not found, creating one", tunedv1.TunedDefaultResourceName)
+			cr, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Create(crMf)
+
+			if err != nil {
+				return cr, fmt.Errorf("failed to create Tuned %q: %v", tunedv1.TunedDefaultResourceName, err)
+			}
+			// Tuned resource created successfully
+			return cr, nil
+		}
+
+		return nil, fmt.Errorf("failed to get Tuned %q: %v", tunedv1.TunedDefaultResourceName, err)
+	} else {
+		// Tuned resource found, check whether we need to update it
+		if reflect.DeepEqual(crMf.Spec, cr.Spec) {
+			klog.V(2).Infof("Tuned %q doesn't need updating", crMf.Name)
+			return cr, nil
+		}
+		cr = cr.DeepCopy() // never update the objects from cache
+		cr.Spec = crMf.Spec
+
+		klog.V(2).Infof("updating Tuned %q", crMf.Name)
+		cr, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Update(cr)
+		if err != nil {
+			return cr, fmt.Errorf("failed to update tuned %q: %v", crMf.Name, err)
+		}
+		return cr, nil
+	}
+}
+
 func (c *Controller) syncTunedRendered(tuned *tunedv1.Tuned) error {
 	tunedList, err := c.listers.TunedResources.List(labels.Everything())
 	if err != nil {
@@ -253,8 +305,7 @@ func (c *Controller) syncTunedRendered(tuned *tunedv1.Tuned) error {
 			return nil
 		}
 		cr = cr.DeepCopy() // never update the objects from cache
-		cr.Spec.Profile = crMf.Spec.Profile
-		cr.Spec.Recommend = crMf.Spec.Recommend
+		cr.Spec = crMf.Spec
 
 		klog.V(2).Infof("updating Tuned %q", crMf.Name)
 		_, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Update(cr)
@@ -285,6 +336,31 @@ func (c *Controller) syncDaemonSet(tuned *tunedv1.Tuned) error {
 
 		return fmt.Errorf("failed to get DaemonSet %q: %v", dsMf.Name, err)
 	} else {
+		operatorReleaseVersion := os.Getenv("RELEASE_VERSION")
+		operandReleaseVersion := ""
+
+		for _, e := range ds.Spec.Template.Spec.Containers[0].Env {
+			if e.Name == "RELEASE_VERSION" {
+				operandReleaseVersion = e.Value
+				break
+			}
+		}
+
+		ds = ds.DeepCopy() // never update the objects from cache
+		ds.Spec = dsMf.Spec
+
+		if operatorReleaseVersion != operandReleaseVersion {
+			// Update the DaemonSet
+			klog.V(2).Infof("syncDaemonSet(): operatorReleaseVersion (%s) != operandReleaseVersion (%s), updating", operatorReleaseVersion, operandReleaseVersion)
+			_, err = c.clients.Apps.DaemonSets(ntoconfig.OperatorNamespace()).Update(ds)
+
+			if err != nil {
+				return fmt.Errorf("failed to update DaemonSet: %v", err)
+			}
+			// DaemonSet created successfully
+			return nil
+		}
+
 		// DaemonSet comparison is non-trivial and expensive
 		klog.V(2).Infof("syncDaemonSet(): found DaemonSet %q, not changing it", ds.Name)
 	}
