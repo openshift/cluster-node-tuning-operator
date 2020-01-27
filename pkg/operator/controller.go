@@ -537,6 +537,10 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	}
 	klog.Info("became a leader")
 
+	// Remove any leftover ConfigMaps during upgrade from 4.[1-3] installations; drop this hack for 4.5+
+	c.clients.Core.ConfigMaps(ntoconfig.OperatorNamespace()).Delete("tuned-profiles", &metaapi.DeleteOptions{})
+	c.clients.Core.ConfigMaps(ntoconfig.OperatorNamespace()).Delete("tuned-recommend", &metaapi.DeleteOptions{})
+
 	// Start the informer factories to begin populating the informer caches
 	klog.Info("starting Tuned controller")
 
