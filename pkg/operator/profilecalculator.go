@@ -82,7 +82,7 @@ func (pc *ProfileCalculator) podChangeHandler(podNamespace string, podName strin
 	podLabels := pc.state.podLabels[nodeName]
 
 	if !mapOfStringsEqual(podLabelsNew, podLabels[podNamespaceName]) {
-		// Node labels for nodeName changed
+		// Pod podName labels on nodeName changed
 		klog.V(3).Infof("Pod %q labels on Node %q changed: %v", podName, nodeName, true)
 		changeNodeWide := podLabelsNodeWideChange(podLabels, podNamespaceName, podLabelsNew)
 		podLabels[podNamespaceName] = podLabelsNew
