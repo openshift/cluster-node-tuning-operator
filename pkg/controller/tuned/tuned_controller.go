@@ -190,9 +190,6 @@ func (r *ReconcileTuned) syncServiceAccount(tuned *tunedv1.Tuned) error {
 	if err != nil {
 		return fmt.Errorf("Couldn't build tuned ServiceAccount: %v", err)
 	}
-	if err := setControllerReference(tuned, saManifest, r.scheme); err != nil {
-		return fmt.Errorf("Couldn't set owner references to ServiceAccount: %v", err)
-	}
 
 	sa := &corev1.ServiceAccount{}
 	err = r.cache.Get(context.TODO(), types.NamespacedName{Namespace: saManifest.Namespace, Name: saManifest.Name}, sa)
