@@ -1,7 +1,7 @@
 apiVersion: tuned.openshift.io/v1
 kind: Tuned
 metadata:
-  name: elasticsearch
+  name: openshift-elasticsearch
   namespace: openshift-cluster-node-tuning-operator
 spec:
   profile:
@@ -11,10 +11,10 @@ spec:
       include=openshift-node
       [sysctl]
       vm.max_map_count=262144
-    name: openshift-node-elasticsearch
+    name: openshift-elasticsearch
   recommend:
   - match:
     - label: tuned.openshift.io/elasticsearch
       type: pod
     priority: 30
-    profile: openshift-node-elasticsearch
+    profile: openshift-elasticsearch

@@ -7,7 +7,7 @@ spec:
   profile:
   - data: |
       [main]
-      summary=Configuration for cpu-partitioning
+      summary=Custom OpenShift cpu-partitioning profile
       include=openshift-node,cpu-partitioning
       [variables]
       # {isolated,no_balance}_cores take a list of ranges; e.g. isolated_cores=2,4-7
