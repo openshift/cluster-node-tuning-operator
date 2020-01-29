@@ -58,6 +58,7 @@ type Controller struct {
 	pc *ProfileCalculator
 }
 
+// NewController instantiates new Controller objects
 func NewController() (*Controller, error) {
 	kubeconfig, err := ntoclient.GetConfig()
 	if err != nil {
@@ -260,22 +261,21 @@ func (c *Controller) syncTunedDefault() (*tunedv1.Tuned, error) {
 		}
 
 		return nil, fmt.Errorf("failed to get Tuned %q: %v", tunedv1.TunedDefaultResourceName, err)
-	} else {
-		// Tuned resource found, check whether we need to update it
-		if reflect.DeepEqual(crMf.Spec, cr.Spec) {
-			klog.V(2).Infof("Tuned %q doesn't need updating", crMf.Name)
-			return cr, nil
-		}
-		cr = cr.DeepCopy() // never update the objects from cache
-		cr.Spec = crMf.Spec
-
-		klog.V(2).Infof("updating Tuned %q", crMf.Name)
-		cr, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Update(cr)
-		if err != nil {
-			return cr, fmt.Errorf("failed to update tuned %q: %v", crMf.Name, err)
-		}
+	}
+	// Tuned resource found, check whether we need to update it
+	if reflect.DeepEqual(crMf.Spec, cr.Spec) {
+		klog.V(2).Infof("Tuned %q doesn't need updating", crMf.Name)
 		return cr, nil
 	}
+	cr = cr.DeepCopy() // never update the objects from cache
+	cr.Spec = crMf.Spec
+
+	klog.V(2).Infof("updating Tuned %q", crMf.Name)
+	cr, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Update(cr)
+	if err != nil {
+		return cr, fmt.Errorf("failed to update tuned %q: %v", crMf.Name, err)
+	}
+	return cr, nil
 }
 
 func (c *Controller) syncTunedRendered(tuned *tunedv1.Tuned) error {
@@ -299,19 +299,18 @@ func (c *Controller) syncTunedRendered(tuned *tunedv1.Tuned) error {
 			return nil
 		}
 		return fmt.Errorf("failed to get Tuned: %v", err)
-	} else {
-		if reflect.DeepEqual(crMf.Spec.Profile, cr.Spec.Profile) {
-			klog.V(2).Infof("Tuned %q doesn't need updating", crMf.Name)
-			return nil
-		}
-		cr = cr.DeepCopy() // never update the objects from cache
-		cr.Spec = crMf.Spec
+	}
+	if reflect.DeepEqual(crMf.Spec.Profile, cr.Spec.Profile) {
+		klog.V(2).Infof("Tuned %q doesn't need updating", crMf.Name)
+		return nil
+	}
+	cr = cr.DeepCopy() // never update the objects from cache
+	cr.Spec = crMf.Spec
 
-		klog.V(2).Infof("updating Tuned %q", crMf.Name)
-		_, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Update(cr)
-		if err != nil {
-			return fmt.Errorf("failed to update tuned %q: %v", crMf.Name, err)
-		}
+	klog.V(2).Infof("updating Tuned %q", crMf.Name)
+	_, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Update(cr)
+	if err != nil {
+		return fmt.Errorf("failed to update tuned %q: %v", crMf.Name, err)
 	}
 
 	return nil
@@ -335,35 +334,34 @@ func (c *Controller) syncDaemonSet(tuned *tunedv1.Tuned) error {
 		}
 
 		return fmt.Errorf("failed to get DaemonSet %q: %v", dsMf.Name, err)
-	} else {
-		operatorReleaseVersion := os.Getenv("RELEASE_VERSION")
-		operandReleaseVersion := ""
-
-		for _, e := range ds.Spec.Template.Spec.Containers[0].Env {
-			if e.Name == "RELEASE_VERSION" {
-				operandReleaseVersion = e.Value
-				break
-			}
-		}
-
-		ds = ds.DeepCopy() // never update the objects from cache
-		ds.Spec = dsMf.Spec
-
-		if operatorReleaseVersion != operandReleaseVersion {
-			// Update the DaemonSet
-			klog.V(2).Infof("syncDaemonSet(): operatorReleaseVersion (%s) != operandReleaseVersion (%s), updating", operatorReleaseVersion, operandReleaseVersion)
-			_, err = c.clients.Apps.DaemonSets(ntoconfig.OperatorNamespace()).Update(ds)
-
-			if err != nil {
-				return fmt.Errorf("failed to update DaemonSet: %v", err)
-			}
-			// DaemonSet created successfully
-			return nil
-		}
-
-		// DaemonSet comparison is non-trivial and expensive
-		klog.V(2).Infof("syncDaemonSet(): found DaemonSet %q, not changing it", ds.Name)
 	}
+	operatorReleaseVersion := os.Getenv("RELEASE_VERSION")
+	operandReleaseVersion := ""
+
+	for _, e := range ds.Spec.Template.Spec.Containers[0].Env {
+		if e.Name == "RELEASE_VERSION" {
+			operandReleaseVersion = e.Value
+			break
+		}
+	}
+
+	ds = ds.DeepCopy() // never update the objects from cache
+	ds.Spec = dsMf.Spec
+
+	if operatorReleaseVersion != operandReleaseVersion {
+		// Update the DaemonSet
+		klog.V(2).Infof("syncDaemonSet(): operatorReleaseVersion (%s) != operandReleaseVersion (%s), updating", operatorReleaseVersion, operandReleaseVersion)
+		_, err = c.clients.Apps.DaemonSets(ntoconfig.OperatorNamespace()).Update(ds)
+
+		if err != nil {
+			return fmt.Errorf("failed to update DaemonSet: %v", err)
+		}
+		// DaemonSet created successfully
+		return nil
+	}
+
+	// DaemonSet comparison is non-trivial and expensive
+	klog.V(2).Infof("syncDaemonSet(): found DaemonSet %q, not changing it", ds.Name)
 
 	return nil
 }
@@ -393,20 +391,18 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		}
 
 		return fmt.Errorf("failed to get Profile %q: %v", profileMf.Name, err)
-	} else {
-		if profile.Spec.Config.TunedProfile == tunedProfileName {
-			klog.V(2).Infof("no need to update Profile %q", nodeName)
-			return nil
-		}
-		profile = profile.DeepCopy() // never update the objects from cache
-		profile.Spec.Config.TunedProfile = tunedProfileName
-
-		klog.V(2).Infof("updating Profile %q", profile.Name)
-		_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Update(profile)
-		if err != nil {
-			return fmt.Errorf("failed to update Profile: %v", err)
-		}
+	}
+	if profile.Spec.Config.TunedProfile == tunedProfileName {
+		klog.V(2).Infof("no need to update Profile %q", nodeName)
 		return nil
+	}
+	profile = profile.DeepCopy() // never update the objects from cache
+	profile.Spec.Config.TunedProfile = tunedProfileName
+
+	klog.V(2).Infof("updating Profile %q", profile.Name)
+	_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Update(profile)
+	if err != nil {
+		return fmt.Errorf("failed to update Profile: %v", err)
 	}
 
 	return nil
