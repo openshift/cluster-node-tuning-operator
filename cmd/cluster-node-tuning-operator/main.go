@@ -57,7 +57,7 @@ func main() {
 			klog.Fatalf("error running controller: %s", err.Error())
 		}
 	case operandFilename:
-		tuned.Run(boolVersion)
+		tuned.Run(boolVersion, version.Version)
 	default:
 		klog.Fatalf("application should be run as \"%s\" or \"%s\"", operatorFilename, operandFilename)
 	}

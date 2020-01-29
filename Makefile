@@ -86,6 +86,9 @@ else
 	@exit 1
 endif
 
+vet: $(BINDATA)
+	$(GO) vet ./...
+
 test:
 	$(GO) test ./cmd/... ./pkg/... -coverprofile cover.out
 

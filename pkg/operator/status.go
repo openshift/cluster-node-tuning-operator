@@ -192,7 +192,7 @@ func (c *Controller) computeStatusConditions(conditions []configv1.ClusterOperat
 			klog.V(3).Infof("operator unavailable for longer than %d seconds, setting Degraded status.", maxTunedUnavailable)
 			degradedCondition.Status = configv1.ConditionTrue
 			degradedCondition.Reason = "TunedUnavailable"
-			degradedCondition.Message = fmt.Sprintf("DaemonSet %q unavailable for more than %d seconds.", maxTunedUnavailable)
+			degradedCondition.Message = fmt.Sprintf("DaemonSet %q unavailable for more than %d seconds.", dsName, maxTunedUnavailable)
 		}
 	}
 	conditions = clusteroperator.SetStatusCondition(conditions, &degradedCondition)

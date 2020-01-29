@@ -406,7 +406,6 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		if err != nil {
 			return fmt.Errorf("failed to update Profile: %v", err)
 		}
-		return nil
 	}
 
 	return nil

@@ -70,7 +70,6 @@ var (
 	done               = make(chan bool, 1)
 	tunedExit          = make(chan bool, 1)
 	terminationSignals = []os.Signal{syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT}
-	version            string // programName version
 	cmd                *exec.Cmd
 )
 
@@ -661,8 +660,6 @@ func changeWatcher() (err error) {
 			}
 		}
 	}
-
-	return nil
 }
 
 func retryLoop() (err error) {
@@ -714,7 +711,7 @@ func retryLoop() (err error) {
 	return err
 }
 
-func Run(boolVersion *bool) {
+func Run(boolVersion *bool, version string) {
 	parseCmdOpts()
 
 	if *boolVersion {
