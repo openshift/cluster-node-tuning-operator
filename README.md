@@ -42,6 +42,12 @@ overwritten by the operator.  For custom tuning, create your own tuned CRs.
 Newly created CRs will be combined with the default CR and custom tuning
 applied to OpenShift nodes based on node/pod labels and profile priorities.
 
+While in certain situations the support for pod labels can be a convenient
+way of automatically delivering required tuning, this practice is discouraged
+and strongly advised against especially in large-scale clusters.  The default
+tuned CR ships without pod label matching.  If a custom profile is created
+with pod label matching the functionality will be enabled at that time.
+
 
 ## Custom tuning specification
 

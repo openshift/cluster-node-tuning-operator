@@ -28,6 +28,7 @@ spec:
       net.ipv6.neigh.default.gc_thresh1=8192
       net.ipv6.neigh.default.gc_thresh2=32768
       net.ipv6.neigh.default.gc_thresh3=65536
+      vm.max_map_count=262144
 
       [sysfs]
       /sys/module/nvme_core/parameters/io_timeout=4294967295
@@ -66,40 +67,7 @@ spec:
       fs.inotify.max_user_watches=65536
       fs.inotify.max_user_instances=8192
 
-  - name: "openshift-control-plane-es"
-    data: |
-      [main]
-      summary=Optimize systems running ES on OpenShift control-plane
-      include=openshift-control-plane
-
-      [sysctl]
-      vm.max_map_count=262144
-
-  - name: "openshift-node-es"
-    data: |
-      [main]
-      summary=Optimize systems running ES on OpenShift nodes
-      include=openshift-node
-
-      [sysctl]
-      vm.max_map_count=262144
-
   recommend:
-  - profile: "openshift-control-plane-es"
-    priority: 10
-    match:
-    - label: "tuned.openshift.io/elasticsearch"
-      type: "pod"
-      match:
-      - label: "node-role.kubernetes.io/master"
-      - label: "node-role.kubernetes.io/infra"
-
-  - profile: "openshift-node-es"
-    priority: 20
-    match:
-    - label: "tuned.openshift.io/elasticsearch"
-      type: "pod"
-
   - profile: "openshift-control-plane"
     priority: 30
     match:
