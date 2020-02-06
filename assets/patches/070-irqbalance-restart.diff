@@ -1,0 +1,27 @@
+Backport upstream fix to restart irqbalance for cpu-partitioning and realtime profiles.
+
+See: https://github.com/redhat-performance/tuned/pull/243
+
+diff -Nura a/usr/lib/tuned/functions b/usr/lib/tuned/functions
+--- a/usr/lib/tuned/functions	2020-01-30 17:42:19.734070120 +0100
++++ b/usr/lib/tuned/functions	2019-11-04 14:56:25.914002552 +0100
+@@ -473,6 +473,19 @@
+ 	mv -Z $RSYSLOG_SAVE $RSYSLOG_CFG || mv $RSYSLOG_SAVE $RSYSLOG_CFG
+ }
+ 
++irqbalance_banned_cpus_clear() {
++    sed -i '/^IRQBALANCE_BANNED_CPUS=/d' /etc/sysconfig/irqbalance && \
++        test ${1:-restart} = restart && systemctl try-restart irqbalance
++}
++
++irqbalance_banned_cpus_setup() {
++    irqbalance_banned_cpus_clear norestart
++    if [ -n "$1" ]; then
++        echo "IRQBALANCE_BANNED_CPUS=$1" >> /etc/sysconfig/irqbalance
++    fi
++    systemctl try-restart irqbalance
++}
++
+ #
+ # HARDWARE SPECIFIC tuning
+ #

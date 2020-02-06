@@ -20,6 +20,7 @@ RUN INSTALL_PKGS=" \
     yum install --setopt=tsflags=nodocs -y $INSTALL_PKGS $ARCH_DEP_PKGS && \
     rpm -V $INSTALL_PKGS $ARCH_DEP_PKGS && \
     (LC_COLLATE=C cat patches/*.diff | patch -Np1 -d / || :) && \
+    chmod 755 /usr/lib/tuned/*/script.sh && \
     touch /etc/sysctl.conf && \
     yum -y remove patch && \
     yum clean all && \

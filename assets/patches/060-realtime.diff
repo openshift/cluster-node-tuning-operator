@@ -1,0 +1,88 @@
+Backport upstream realtime profile.
+
+diff -Nura a/etc/tuned/realtime-variables.conf b/etc/tuned/realtime-variables.conf
+--- a/etc/tuned/realtime-variables.conf	1970-01-01 01:00:00.000000000 +0100
++++ b/etc/tuned/realtime-variables.conf	2017-05-16 14:42:40.000000000 +0200
+@@ -0,0 +1,4 @@
++# Examples:
++# isolated_cores=2,4-7
++# isolated_cores=2-23
++#
+diff -Nura a/usr/lib/tuned/realtime/script.sh b/usr/lib/tuned/realtime/script.sh
+--- a/usr/lib/tuned/realtime/script.sh	1970-01-01 01:00:00.000000000 +0100
++++ b/usr/lib/tuned/realtime/script.sh	2019-11-04 14:56:25.000000000 +0100
+@@ -0,0 +1,20 @@
++#!/bin/sh
++
++. /usr/lib/tuned/functions
++
++start() {
++    irqbalance_banned_cpus_setup "$TUNED_isolated_cpumask"
++    return 0
++}
++
++stop() {
++    irqbalance_banned_cpus_clear
++    return 0
++}
++
++verify() {
++    tuna -c "$TUNED_isolated_cores" -P
++    return "$?"
++}
++
++process $@
+diff -Nura a/usr/lib/tuned/realtime/tuned.conf b/usr/lib/tuned/realtime/tuned.conf
+--- a/usr/lib/tuned/realtime/tuned.conf	1970-01-01 01:00:00.000000000 +0100
++++ b/usr/lib/tuned/realtime/tuned.conf	2020-01-09 11:13:10.000000000 +0100
+@@ -0,0 +1,50 @@
++# tuned configuration
++#
++# Red Hat Enterprise Linux for Real Time Documentation:
++# https://docs.redhat.com
++
++[main]
++summary=Optimize for realtime workloads
++include = network-latency
++
++[variables]
++# User is responsible for updating variables.conf with variable content such as isolated_cores=X-Y 
++include = /etc/tuned/realtime-variables.conf
++
++isolated_cores_assert_check = \\${isolated_cores}
++# Make sure isolated_cores is defined before any of the variables that
++# use it (such as assert1) are defined, so that child profiles can set
++# isolated_cores directly in the profile (tuned.conf)
++isolated_cores = ${isolated_cores}
++# Fail if isolated_cores are not set
++assert1=${f:assertion_non_equal:isolated_cores are set:${isolated_cores}:${isolated_cores_assert_check}}
++
++# Non-isolated cores cpumask including offline cores
++not_isolated_cpumask = ${f:cpulist2hex_invert:${isolated_cores}}
++isolated_cores_expanded=${f:cpulist_unpack:${isolated_cores}}
++isolated_cpumask=${f:cpulist2hex:${isolated_cores_expanded}}
++isolated_cores_online_expanded=${f:cpulist_online:${isolated_cores}}
++
++# Fail if isolated_cores contains CPUs which are not online
++assert2=${f:assertion:isolated_cores contains online CPU(s):${isolated_cores_expanded}:${isolated_cores_online_expanded}}
++
++[sysctl]
++kernel.hung_task_timeout_secs = 600
++kernel.nmi_watchdog = 0
++kernel.sched_rt_runtime_us = -1
++vm.stat_interval = 10
++kernel.timer_migration = 0
++
++[sysfs]
++/sys/bus/workqueue/devices/writeback/cpumask = ${not_isolated_cpumask}
++/sys/devices/virtual/workqueue/cpumask = ${not_isolated_cpumask}
++/sys/devices/system/machinecheck/machinecheck*/ignore_ce = 1
++
++[bootloader]
++cmdline_realtime=+isolcpus=${isolated_cores} intel_pstate=disable nosoftlockup tsc=nowatchdog
++
++[script]
++script = ${i:PROFILE_DIR}/script.sh
++
++[scheduler]
++isolated_cores=${isolated_cores}
