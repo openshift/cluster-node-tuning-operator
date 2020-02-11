@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	kubeinformers "k8s.io/client-go/informers"
+	corev1informers "k8s.io/client-go/informers/core/v1"
 	kubeset "k8s.io/client-go/kubernetes"
 	appsset "k8s.io/client-go/kubernetes/typed/apps/v1"
 	coreset "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -54,6 +55,13 @@ type Controller struct {
 
 	listers *ntoclient.Listers
 	clients *ntoclient.Clients
+
+	pod struct {
+		informerFactory kubeinformers.SharedInformerFactory
+		informer        corev1informers.PodInformer
+		informerEnabled bool
+		stopCh          chan struct{}
+	}
 
 	pc *ProfileCalculator
 }
@@ -149,10 +157,18 @@ func (c *Controller) sync(key wqKey) error {
 		return nil
 
 	case key.kind == wqKindNode:
-		klog.V(2).Infof("sync(): Node: %s", key.name)
+		klog.V(2).Infof("sync(): Node %s", key.name)
 
 		change, err := c.pc.nodeChangeHandler(key.name)
 		if err != nil {
+			if errors.IsNotFound(err) {
+				// Do not leave any leftover profiles after node deletions
+				err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Delete(key.name, &metaapi.DeleteOptions{})
+				if err != nil && !errors.IsNotFound(err) {
+					return fmt.Errorf("failed to delete Profile %s: %v", key.name, err)
+				}
+				return nil
+			}
 			return fmt.Errorf("failed to process Node %s change: %v", key.name, err)
 		}
 		if change {
@@ -181,7 +197,7 @@ func (c *Controller) sync(key wqKey) error {
 					return fmt.Errorf("failed to sync default Tuned CR: %v", err)
 				}
 			} else {
-				return fmt.Errorf("failed to get Tuned %q: %v", tunedv1.TunedDefaultResourceName, err)
+				return fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
 			}
 		}
 	}
@@ -202,11 +218,11 @@ func (c *Controller) sync(key wqKey) error {
 		return nil
 
 	case key.kind == wqKindProfile:
-		klog.V(2).Infof("sync(): Profile: %s", key.name)
+		klog.V(2).Infof("sync(): Profile %s", key.name)
 
 		err = c.syncProfile(cr, key.name)
 		if err != nil {
-			return fmt.Errorf("failed to sync Profile %q: %v", key.name, err)
+			return fmt.Errorf("failed to sync Profile %s: %v", key.name, err)
 		}
 		return nil
 
@@ -228,7 +244,7 @@ func (c *Controller) sync(key wqKey) error {
 
 	if key.kind == wqKindTuned {
 		// Tuned CR changed, this can affect all profiles, list them and trigger profile updates
-		klog.V(2).Infof("sync(): Tuned: %s", key.name)
+		klog.V(2).Infof("sync(): Tuned %s", key.name)
 
 		profileList, err := c.listers.TunedProfiles.List(labels.Everything())
 		if err != nil {
@@ -249,30 +265,30 @@ func (c *Controller) syncTunedDefault() (*tunedv1.Tuned, error) {
 	cr, err := c.listers.TunedResources.Get(tunedv1.TunedDefaultResourceName)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			klog.V(2).Infof("syncTunedDefault(): Tuned %q not found, creating one", tunedv1.TunedDefaultResourceName)
+			klog.V(2).Infof("syncTunedDefault(): Tuned %s not found, creating one", tunedv1.TunedDefaultResourceName)
 			cr, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Create(crMf)
 
 			if err != nil {
-				return cr, fmt.Errorf("failed to create Tuned %q: %v", tunedv1.TunedDefaultResourceName, err)
+				return cr, fmt.Errorf("failed to create Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
 			}
 			// Tuned resource created successfully
 			return cr, nil
 		}
 
-		return nil, fmt.Errorf("failed to get Tuned %q: %v", tunedv1.TunedDefaultResourceName, err)
+		return nil, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
 	} else {
 		// Tuned resource found, check whether we need to update it
 		if reflect.DeepEqual(crMf.Spec, cr.Spec) {
-			klog.V(2).Infof("Tuned %q doesn't need updating", crMf.Name)
+			klog.V(2).Infof("Tuned %s doesn't need updating", crMf.Name)
 			return cr, nil
 		}
 		cr = cr.DeepCopy() // never update the objects from cache
 		cr.Spec = crMf.Spec
 
-		klog.V(2).Infof("updating Tuned %q", crMf.Name)
+		klog.V(2).Infof("updating Tuned %s", crMf.Name)
 		cr, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Update(cr)
 		if err != nil {
-			return cr, fmt.Errorf("failed to update tuned %q: %v", crMf.Name, err)
+			return cr, fmt.Errorf("failed to update Tuned %s: %v", crMf.Name, err)
 		}
 		return cr, nil
 	}
@@ -288,29 +304,34 @@ func (c *Controller) syncTunedRendered(tuned *tunedv1.Tuned) error {
 	crMf.ObjectMeta.OwnerReferences = getDefaultTunedRefs(tuned)
 	crMf.Name = tunedv1.TunedRenderedResourceName
 
+	// Enable/Disable Pod events based on tuned CRs using this functionality.
+	// It is strongly advised not to use the Pod-label functionality in large-scale clusters.
+	podLabelsUsed := c.pc.tunedsUsePodLabels(tunedList)
+	c.enablePodInformer(podLabelsUsed)
+
 	cr, err := c.listers.TunedResources.Get(tunedv1.TunedRenderedResourceName)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			_, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Create(crMf)
 			if err != nil {
-				return fmt.Errorf("failed to create Tuned %q: %v", crMf.Name, err)
+				return fmt.Errorf("failed to create Tuned %s: %v", crMf.Name, err)
 			}
 			// Tuned created successfully
 			return nil
 		}
-		return fmt.Errorf("failed to get Tuned: %v", err)
+		return fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
 	} else {
 		if reflect.DeepEqual(crMf.Spec.Profile, cr.Spec.Profile) {
-			klog.V(2).Infof("Tuned %q doesn't need updating", crMf.Name)
+			klog.V(2).Infof("Tuned %s doesn't need updating", crMf.Name)
 			return nil
 		}
 		cr = cr.DeepCopy() // never update the objects from cache
 		cr.Spec = crMf.Spec
 
-		klog.V(2).Infof("updating Tuned %q", crMf.Name)
+		klog.V(2).Infof("updating Tuned %s", crMf.Name)
 		_, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Update(cr)
 		if err != nil {
-			return fmt.Errorf("failed to update tuned %q: %v", crMf.Name, err)
+			return fmt.Errorf("failed to update Tuned %s: %v", crMf.Name, err)
 		}
 	}
 
@@ -324,7 +345,7 @@ func (c *Controller) syncDaemonSet(tuned *tunedv1.Tuned) error {
 	ds, err := c.listers.DaemonSets.Get(dsMf.Name)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			klog.V(2).Infof("syncDaemonSet(): DaemonSet %q not found, creating one", dsMf.Name)
+			klog.V(2).Infof("syncDaemonSet(): DaemonSet %s not found, creating one", dsMf.Name)
 			_, err = c.clients.Apps.DaemonSets(ntoconfig.OperatorNamespace()).Create(dsMf)
 
 			if err != nil {
@@ -334,7 +355,7 @@ func (c *Controller) syncDaemonSet(tuned *tunedv1.Tuned) error {
 			return nil
 		}
 
-		return fmt.Errorf("failed to get DaemonSet %q: %v", dsMf.Name, err)
+		return fmt.Errorf("failed to get DaemonSet %s: %v", dsMf.Name, err)
 	} else {
 		operatorReleaseVersion := os.Getenv("RELEASE_VERSION")
 		operandReleaseVersion := ""
@@ -362,7 +383,7 @@ func (c *Controller) syncDaemonSet(tuned *tunedv1.Tuned) error {
 		}
 
 		// DaemonSet comparison is non-trivial and expensive
-		klog.V(2).Infof("syncDaemonSet(): found DaemonSet %q, not changing it", ds.Name)
+		klog.V(2).Infof("syncDaemonSet(): found DaemonSet %s, not changing it", ds.Name)
 	}
 
 	return nil
@@ -381,7 +402,16 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	profile, err := c.listers.TunedProfiles.Get(profileMf.Name)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			klog.V(2).Infof("Profile %q not found, creating one", profileMf.Name)
+			_, err = c.listers.Nodes.Get(nodeName)
+			if err != nil {
+				if errors.IsNotFound(err) {
+					// Node not found, do not create a profile for a node that does not exist
+					return nil
+				}
+				return err
+			}
+
+			klog.V(2).Infof("Profile %s not found, creating one", profileMf.Name)
 			profileMf.Spec.Config.TunedProfile = tunedProfileName
 			_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Create(profileMf)
 
@@ -392,16 +422,16 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 			return nil
 		}
 
-		return fmt.Errorf("failed to get Profile %q: %v", profileMf.Name, err)
+		return fmt.Errorf("failed to get Profile %s: %v", profileMf.Name, err)
 	} else {
 		if profile.Spec.Config.TunedProfile == tunedProfileName {
-			klog.V(2).Infof("no need to update Profile %q", nodeName)
+			klog.V(2).Infof("no need to update Profile %s", nodeName)
 			return nil
 		}
 		profile = profile.DeepCopy() // never update the objects from cache
 		profile.Spec.Config.TunedProfile = tunedProfileName
 
-		klog.V(2).Infof("updating Profile %q", profile.Name)
+		klog.V(2).Infof("updating Profile %s to %s", profile.Name, tunedProfileName)
 		_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Update(profile)
 		if err != nil {
 			return fmt.Errorf("failed to update Profile: %v", err)
@@ -471,7 +501,7 @@ func (c *Controller) informerEventHandler(workqueueKey wqKey) cache.ResourceEven
 					klog.Errorf("error decoding object tombstone, invalid type")
 					return
 				}
-				klog.V(4).Infof("recovered deleted object %q from tombstone", object.GetName())
+				klog.V(4).Infof("recovered deleted object %s from tombstone", object.GetName())
 			}
 			if clusterOperator, ok := o.(*configapiv1.ClusterOperator); ok {
 				if clusterOperator.GetName() != tunedv1.TunedClusterOperatorResourceName {
@@ -482,6 +512,31 @@ func (c *Controller) informerEventHandler(workqueueKey wqKey) cache.ResourceEven
 			c.workqueue.Add(wqKey{kind: workqueueKey.kind, namespace: object.GetNamespace(), name: object.GetName()})
 		},
 	}
+}
+
+// enablePodInformer enables/disables event handling for Pods
+func (c *Controller) enablePodInformer(enable bool) error {
+	if (enable && c.pod.informerEnabled) || (!enable && !c.pod.informerEnabled) {
+		return nil
+	}
+
+	if enable {
+		c.pod.stopCh = make(chan struct{})
+		c.pod.informerFactory = kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.Kube, ntoconfig.ResyncPeriod(), kubeinformers.WithNamespace(corev1.NamespaceAll))
+
+		c.pod.informer = c.pod.informerFactory.Core().V1().Pods()
+		c.listers.Pods = c.pod.informer.Lister()
+		c.pod.informer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindPod}))
+
+		c.pod.informerFactory.Start(c.pod.stopCh)
+	} else {
+		defer close(c.pod.stopCh)
+		c.pod.stopCh <- struct{}{}
+		c.pc.podLabelsDelete()
+	}
+
+	c.pod.informerEnabled = enable
+	return nil
 }
 
 // Run will set up the event handlers for types we are interested in, as well
@@ -548,10 +603,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.Kube, ntoconfig.ResyncPeriod(), kubeinformers.WithNamespace(corev1.NamespaceAll))
 	tunedInformerFactory := tunedinformers.NewSharedInformerFactoryWithOptions(c.clients.Tuned, ntoconfig.ResyncPeriod(), tunedinformers.WithNamespace(ntoconfig.OperatorNamespace()))
 
-	podInformer := kubeInformerFactory.Core().V1().Pods()
-	c.listers.Pods = podInformer.Lister()
-	podInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindPod}))
-
 	nodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	c.listers.Nodes = nodeInformer.Lister()
 	nodeInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindNode}))
@@ -574,13 +625,12 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 	configInformerFactory.Start(stopCh)  // ClusterOperator
 	kubeNTOInformerFactory.Start(stopCh) // DaemonSet
-	kubeInformerFactory.Start(stopCh)    // Pod/Node
+	kubeInformerFactory.Start(stopCh)    // Node
 	tunedInformerFactory.Start(stopCh)   // Tuned/Profile
 
 	// Wait for the caches to be synced before starting worker(s)
 	klog.Info("waiting for informer caches to sync")
 	ok := cache.WaitForCacheSync(stopCh,
-		podInformer.Informer().HasSynced,
 		nodeInformer.Informer().HasSynced,
 		coInformer.Informer().HasSynced,
 		dsInformer.Informer().HasSynced,
@@ -596,6 +646,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	klog.Info("started events processor")
 
 	<-stopCh
+	c.enablePodInformer(false)
 	klog.Info("shutting down events processor")
 
 	return nil
