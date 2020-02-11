@@ -36,6 +36,9 @@ import (
 )
 
 const (
+	// With the DefaultControllerRateLimiter, retries will happen at 5ms*2^(retry_n-1)
+	// 5ms, 10ms, 20ms, 40ms, 80ms, 160ms, 320ms, 640ms, 1.3s, 2.6s, 5.1s, 10.2s, 20.4s, 41s, 82s
+	maxRetries = 15
 	// workqueue related constants
 	wqKindPod             = "pod"
 	wqKindNode            = "node"
@@ -118,14 +121,20 @@ func (c *Controller) eventProcessor() {
 			}
 
 			if err := c.sync(workqueueKey); err != nil {
-				// Re-enqueue the workqueueKey.  Based on the rate limiter on the queue
-				// and the re-enqueue history, the workqueueKey will be processed later again.
-				c.workqueue.AddRateLimited(workqueueKey)
-				klog.Errorf("unable to sync(%s/%s/%s) requeuing: %v", workqueueKey.kind, workqueueKey.namespace, workqueueKey.name, err)
+				// Limit retries to maxRetries.  After that, stop trying.
+				if c.workqueue.NumRequeues(workqueueKey) < maxRetries {
+					// Re-enqueue the workqueueKey.  Based on the rate limiter on the queue
+					// and the re-enqueue history, the workqueueKey will be processed later again.
+					c.workqueue.AddRateLimited(workqueueKey)
+					klog.Errorf("unable to sync(%s/%s/%s) requeued: %v", workqueueKey.kind, workqueueKey.namespace, workqueueKey.name, err)
+					return
+				}
+				klog.Errorf("unable to sync(%s/%s/%s) reached max retries(%d): %v", workqueueKey.kind, workqueueKey.namespace, workqueueKey.name, maxRetries, err)
 			} else {
-				c.workqueue.Forget(obj)
 				klog.V(1).Infof("event from workqueue (%s/%s/%s) successfully processed", workqueueKey.kind, workqueueKey.namespace, workqueueKey.name)
 			}
+			// Successful processing or we're dropping an item after maxRetries unsuccessful retries
+			c.workqueue.Forget(obj)
 		}()
 	}
 }
