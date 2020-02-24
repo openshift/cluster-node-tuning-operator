@@ -24,7 +24,7 @@ import (
 
 	coreapi "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metaapi "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
 )
@@ -57,7 +57,7 @@ func (c *Controller) becomeLeader(ns string, lockName string) error {
 		return err
 	}
 
-	existing, err := c.clients.Core.ConfigMaps(ns).Get(context.TODO(), lockName, metaapi.GetOptions{})
+	existing, err := c.clients.Core.ConfigMaps(ns).Get(context.TODO(), lockName, metav1.GetOptions{})
 
 	switch {
 	case err == nil:
@@ -78,21 +78,21 @@ func (c *Controller) becomeLeader(ns string, lockName string) error {
 	}
 
 	cm := &coreapi.ConfigMap{
-		TypeMeta: metaapi.TypeMeta{
+		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
 			Kind:       "ConfigMap",
 		},
-		ObjectMeta: metaapi.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:            lockName,
 			Namespace:       ns,
-			OwnerReferences: []metaapi.OwnerReference{*owner},
+			OwnerReferences: []metav1.OwnerReference{*owner},
 		},
 	}
 
 	// try to create a lock
 	backoff := time.Second
 	for {
-		_, err := c.clients.Core.ConfigMaps(ns).Create(context.TODO(), cm, metaapi.CreateOptions{})
+		_, err := c.clients.Core.ConfigMaps(ns).Create(context.TODO(), cm, metav1.CreateOptions{})
 
 		switch {
 		case err == nil:
@@ -127,7 +127,7 @@ func (c *Controller) getPod(ns string) (*coreapi.Pod, error) {
 
 	klog.V(2).Infof("Getting Pod %s", podName)
 
-	pod, err := c.clients.Core.Pods(ns).Get(context.TODO(), podName, metaapi.GetOptions{})
+	pod, err := c.clients.Core.Pods(ns).Get(context.TODO(), podName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("Failed to get Pod %s/%s", ns, podName)
 		return nil, err
@@ -141,13 +141,13 @@ func (c *Controller) getPod(ns string) (*coreapi.Pod, error) {
 // myOwnerRef returns an OwnerReference that corresponds to the pod in which
 // this code is currently running.
 // It expects the environment variable POD_NAME to be set by the downwards API
-func (c *Controller) myOwnerRef(ns string) (*metaapi.OwnerReference, error) {
+func (c *Controller) myOwnerRef(ns string) (*metav1.OwnerReference, error) {
 	myPod, err := c.getPod(ns)
 	if err != nil {
 		return nil, err
 	}
 
-	owner := &metaapi.OwnerReference{
+	owner := &metav1.OwnerReference{
 		APIVersion: "v1",
 		Kind:       "Pod",
 		Name:       myPod.ObjectMeta.Name,

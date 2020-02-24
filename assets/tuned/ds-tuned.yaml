@@ -73,7 +73,7 @@ spec:
                 apiVersion: v1
                 fieldPath: spec.nodeName
           - name: RESYNC_PERIOD
-            value: "60"
+            value: "600"
           - name: RELEASE_VERSION
             value: ""
       volumes:
@@ -114,6 +114,7 @@ spec:
         kubernetes.io/os: linux
       priorityClassName: "system-node-critical"
       hostIPC: true
+      # hostNetwork is needed for getting access to host's Network namespace (e.g. net.ipv[46].neigh.default.gc_thresh[1-3])
       hostNetwork: true
       hostPID: true
       restartPolicy: Always

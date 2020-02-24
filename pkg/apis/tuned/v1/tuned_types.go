@@ -63,6 +63,12 @@ type TunedRecommend struct {
 	Priority *uint64 `json:"priority"`
 	// Rules governing application of a tuned profile connected by logical OR operator.
 	Match []TunedMatch `json:"match,omitempty"`
+	// MachineConfigLabels specifies the labels for a MachineConfig. The MachineConfig is created
+	// automatically to apply additional host settings (e.g. kernel boot parameters) profile 'Profile'
+	// needs and can only be applied by creating a MachineConfig. This involves finding all
+	// MachineConfigPools with machineConfigSelector matching the MachineConfigLabels and setting the
+	// profile 'Profile' on all nodes that match the MachineConfigPools' nodeSelectors.
+	MachineConfigLabels map[string]string `json:"machineConfigLabels,omitempty"`
 }
 
 // Rules governing application of a tuned profile.
@@ -111,11 +117,14 @@ type ProfileSpec struct {
 }
 
 type ProfileConfig struct {
+	// tuned profile to apply
 	TunedProfile string `json:"tunedProfile"`
 }
 
 // ProfileStatus is the status for a Profile resource
 type ProfileStatus struct {
+	// kernel parameters calculated by tuned for the active tuned profile
+	Bootcmdline string `json:"bootcmdline"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

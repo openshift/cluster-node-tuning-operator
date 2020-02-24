@@ -12,8 +12,7 @@ start() {
   ulimit -Sn 1024	# workaround for the issue above
 
   openshift-tuned \
-    -v=1 \
-    ${OCP_NODE_NAME}
+    -v=0
 }
 
 stop() {

@@ -45,6 +45,12 @@ rules:
 - apiGroups: ["config.openshift.io"]
   resources: ["clusteroperators/status"]
   verbs: ["update"]
+- apiGroups: ["machineconfiguration.openshift.io"]
+  resources: ["machineconfigs"]
+  verbs: ["create","get","delete","list","update","watch"]
+- apiGroups: ["machineconfiguration.openshift.io"]
+  resources: ["machineconfigpools"]
+  verbs: ["get","list","watch"]
 
 ---
 

@@ -7,12 +7,14 @@ import (
 
 	configset "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	tunedset "github.com/openshift/cluster-node-tuning-operator/pkg/generated/clientset/versioned"
+	mcfgclientset "github.com/openshift/machine-config-operator/pkg/generated/clientset/versioned"
 )
 
 type Clients struct {
 	Kube   *kubeset.Clientset
 	Config *configset.ConfigV1Client
 	Tuned  *tunedset.Clientset
+	MC     *mcfgclientset.Clientset
 	Core   *coreset.CoreV1Client
 	Apps   *appsset.AppsV1Client
 }

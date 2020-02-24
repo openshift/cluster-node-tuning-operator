@@ -5,12 +5,17 @@ import (
 	"sort"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
+
+	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
 
 const (
@@ -81,7 +86,7 @@ func (pc *ProfileCalculator) podChangeHandler(podNamespace string, podName strin
 	}
 	podLabels := pc.state.podLabels[nodeName]
 
-	if !mapOfStringsEqual(podLabelsNew, podLabels[podNamespaceName]) {
+	if !util.MapOfStringsEqual(podLabelsNew, podLabels[podNamespaceName]) {
 		// Pod podName labels on nodeName changed
 		klog.V(3).Infof("Pod %s labels on Node %s changed: %v", podName, nodeName, true)
 		changeNodeWide := podLabelsNodeWideChange(podLabels, podNamespaceName, podLabelsNew)
@@ -112,7 +117,7 @@ func (pc *ProfileCalculator) nodeChangeHandler(nodeName string) (bool, error) {
 		return false, err
 	}
 
-	if !mapOfStringsEqual(nodeLabelsNew, pc.state.nodeLabels[nodeName]) {
+	if !util.MapOfStringsEqual(nodeLabelsNew, pc.state.nodeLabels[nodeName]) {
 		// Node labels for nodeName changed
 		pc.state.nodeLabels[nodeName] = nodeLabelsNew
 
@@ -127,17 +132,55 @@ func (pc *ProfileCalculator) nodeChangeHandler(nodeName string) (bool, error) {
 //
 // Returns
 // * the tuned daemon profile name
+// * MachineConfig labels if the profile was selected by machineConfigLabels
+// * MachineConfigPools for 'nodeName' if the profile was selected by machineConfigLabels
 // * an error if any
-func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, error) {
+func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[string]string, []*mcfgv1.MachineConfigPool, error) {
 	klog.V(3).Infof("calculateProfile(%s)", nodeName)
 	tunedList, err := pc.listers.TunedResources.List(labels.Everything())
+
 	if err != nil {
-		return "", fmt.Errorf("failed to list Tuned: %v", err)
+		return "", nil, nil, fmt.Errorf("failed to list Tuned: %v", err)
 	}
 
 	for _, recommend := range tunedRecommend(tunedList) {
-		if pc.profileMatches(recommend.Match, nodeName) {
-			return *recommend.Profile, nil
+		var (
+			pools []*mcfgv1.MachineConfigPool
+			node  *corev1.Node
+		)
+
+		// Start with node/pod label based matching to MachineConfig matching when
+		// both the match section and MachineConfigLabels are specified.
+		// Also note the catch-all functionality when "recommend.Match == nil",
+		// we do not want to call profileMatches() in that case unless machineConfigLabels
+		// is undefined.
+		if (recommend.Match != nil || recommend.MachineConfigLabels == nil) && pc.profileMatches(recommend.Match, nodeName) {
+			return *recommend.Profile, nil, nil, nil
+		}
+
+		if recommend.MachineConfigLabels == nil {
+			// Speed things up, empty labels (used as selectors) match/select nothing.
+			continue
+		}
+
+		if node == nil {
+			// We did not retrieve the node object from cache yet -- get it and also the pools
+			// for this node.  Do not move this code outside the for loop, fetching the node/pools
+			// is often unneeded and would likely have a performance impact.
+			node, err = pc.listers.Nodes.Get(nodeName)
+			if err != nil {
+				return "", nil, nil, err
+			}
+
+			pools, err = pc.getPoolsForNode(node)
+			if err != nil {
+				return "", nil, nil, err
+			}
+		}
+
+		// MachineConfigLabels based matching
+		if pc.machineConfigLabelsMatch(recommend.MachineConfigLabels, pools) {
+			return *recommend.Profile, recommend.MachineConfigLabels, pools, nil
 		}
 	}
 
@@ -145,10 +188,10 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, error) {
 	// in the "recommend" section to select the default profile for the tuned daemon.
 	_, err = pc.listers.TunedResources.Get(tunedv1.TunedDefaultResourceName)
 	if err != nil {
-		return defaultProfile, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
+		return defaultProfile, nil, nil, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
 	}
 
-	return defaultProfile, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
+	return defaultProfile, nil, nil, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
 }
 
 // profileMatches returns true, if Node 'nodeName' fulfills all the necessary
@@ -230,6 +273,42 @@ func (pc *ProfileCalculator) podLabelMatches(mPodLabel *string, mPodLabelValue *
 	return false
 }
 
+// machineConfigLabelsMatch returns true if any of the MachineConfigPools 'pools' select 'machineConfigLabels' labels.
+func (pc *ProfileCalculator) machineConfigLabelsMatch(machineConfigLabels map[string]string, pools []*mcfgv1.MachineConfigPool) bool {
+	if machineConfigLabels == nil || pools == nil {
+		// Undefined MachineConfig labels or no pools provided are not a valid match
+		return false
+	}
+
+	labelSelector := &metav1.LabelSelector{
+		MatchLabels: machineConfigLabels,
+	}
+
+	selector, err := metav1.LabelSelectorAsSelector(labelSelector)
+	if err != nil {
+		// Invalid label selector, do not propagate this user error to the event loop, only log this
+		klog.Errorf("invalid label selector %s: %v", util.ObjectInfo(selector), err)
+		return false
+	}
+
+	for _, p := range pools {
+		selector, err := metav1.LabelSelectorAsSelector(p.Spec.MachineConfigSelector)
+		if err != nil {
+			klog.Errorf("invalid label selector %s in MachineConfigPool %s: %v", util.ObjectInfo(selector), p.ObjectMeta.Name, err)
+			continue
+		}
+
+		// A resource with a nil or empty selector matches nothing.
+		if selector.Empty() || !selector.Matches(labels.Set(machineConfigLabels)) {
+			continue
+		}
+
+		return true
+	}
+
+	return false
+}
+
 // nodeLabelsGet fetches labels for Node 'nodeName' from local cache.
 //
 // Returns
@@ -241,7 +320,7 @@ func (pc *ProfileCalculator) nodeLabelsGet(nodeName string) (map[string]string, 
 		return nil, err
 	}
 
-	return mapOfStringsCopy(node.Labels), nil
+	return util.MapOfStringsCopy(node.Labels), nil
 }
 
 // podLabelsGet fetches labels for Pod 'podNamespace/podName' from local cache.
@@ -255,7 +334,7 @@ func (pc *ProfileCalculator) podLabelsGet(podNamespace, podName string) (string,
 		return "", nil, err
 	}
 
-	return pod.Spec.NodeName, mapOfStringsCopy(pod.Labels), nil
+	return pod.Spec.NodeName, util.MapOfStringsCopy(pod.Labels), nil
 }
 
 // nodeRemove removes all data structures related to node "nodeName" in
@@ -403,34 +482,7 @@ func podLabelsNodeWideChange(podLabelsNodeWide map[string]map[string]string,
 	curPodLabelsUnique := podLabelsUnique(podLabelsNodeWide, podNsName, podLabels)
 	// If there is a difference between old and current unique Pod labels, a unique Pod label was
 	// added/removed or both
-	change := !mapOfStringsEqual(oldPodLabelsUnique, curPodLabelsUnique)
+	change := !util.MapOfStringsEqual(oldPodLabelsUnique, curPodLabelsUnique)
 
 	return change
-}
-
-// mapOfStringsCopy returns a copy of a map of strings 'a'
-func mapOfStringsCopy(a map[string]string) map[string]string {
-	b := map[string]string{}
-
-	for k, v := range a {
-		b[k] = v
-	}
-
-	return b
-}
-
-// mapOfStringsEqual returns true if maps of strings 'a' and 'b' are equal.
-// reflect.DeepEqual is roughly 10x slower than this
-func mapOfStringsEqual(a, b map[string]string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	for k, v := range a {
-		if w, ok := b[k]; !ok || v != w {
-			return false
-		}
-	}
-
-	return true
 }

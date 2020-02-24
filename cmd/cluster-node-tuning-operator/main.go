@@ -34,6 +34,8 @@ func main() {
 
 	runAs := filepath.Base(os.Args[0])
 
+	stopCh := signals.SetupSignalHandler()
+
 	switch runAs {
 	case operatorFilename:
 		klog.InitFlags(nil)
@@ -45,8 +47,6 @@ func main() {
 			os.Exit(0)
 		}
 
-		stopCh := signals.SetupSignalHandler()
-
 		controller, err := operator.NewController()
 		if err != nil {
 			klog.Fatal(err)
@@ -57,7 +57,7 @@ func main() {
 			klog.Fatalf("error running controller: %s", err.Error())
 		}
 	case operandFilename:
-		tuned.Run(boolVersion, version.Version)
+		tuned.Run(stopCh, boolVersion, version.Version)
 	default:
 		klog.Fatalf("application should be run as \"%s\" or \"%s\"", operatorFilename, operandFilename)
 	}

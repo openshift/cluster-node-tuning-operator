@@ -10,16 +10,17 @@ import (
 	"testing"
 	"time"
 
-	configv1 "github.com/openshift/api/config/v1"
-	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/framework"
-
+	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
+
+	configv1 "github.com/openshift/api/config/v1"
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/framework"
 )
 
 // Test the ClusterOperator node-tuning object exists and is Available.
@@ -80,7 +81,7 @@ func TestWorkerNodeSysctl(t *testing.T) {
 	}
 
 	t.Logf("Ensuring the default worker node profile was set")
-	err = ensureSysctl(sysctlVar, pod, "8192")
+	err = ensureSysctl(pod, sysctlVar, "8192")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,14 +122,14 @@ func TestCustomProfileElasticSearch(t *testing.T) {
 		t.Fatal(fmt.Errorf("%v", string(out)))
 	}
 
-	t.Logf("Applying the custom elasticsearch profile %s", profileElasticSearch)
-	out, err = exec.Command("oc", "apply", "-n", ntoconfig.OperatorNamespace(), "-f", profileElasticSearch).CombinedOutput()
+	t.Logf("Creating the custom elasticsearch profile %s", profileElasticSearch)
+	out, err = exec.Command("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileElasticSearch).CombinedOutput()
 	if err != nil {
 		t.Fatal(fmt.Errorf("%v", string(out)))
 	}
 
 	t.Logf("Ensuring the custom worker node profile was set")
-	err = ensureSysctl(sysctlVar, pod, "262144")
+	err = ensureSysctl(pod, sysctlVar, "262144")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +141,7 @@ func TestCustomProfileElasticSearch(t *testing.T) {
 	}
 
 	t.Logf("Ensuring the original %s value (%s) is set in pod %s", sysctlVar, valOrig, pod.Name)
-	err = ensureSysctl(sysctlVar, pod, valOrig)
+	err = ensureSysctl(pod, sysctlVar, valOrig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,19 +183,19 @@ func TestCustomProfileHugepages(t *testing.T) {
 	}
 
 	t.Logf("Labelling node %s with label %s", node.Name, nodeLabelHugepages)
-	out, err := exec.Command("oc", "label", "node", "--overwrite", "-n", ntoconfig.OperatorNamespace(), node.Name, nodeLabelHugepages+"=").CombinedOutput()
+	out, err := exec.Command("oc", "label", "node", "--overwrite", node.Name, nodeLabelHugepages+"=").CombinedOutput()
 	if err != nil {
 		t.Fatal(fmt.Errorf("%v", string(out)))
 	}
 
-	t.Logf("Applying the custom hugepages profile %s", profileHugepages)
-	out, err = exec.Command("oc", "apply", "-n", ntoconfig.OperatorNamespace(), "-f", profileHugepages).CombinedOutput()
+	t.Logf("Creating the custom hugepages profile %s", profileHugepages)
+	out, err = exec.Command("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileHugepages).CombinedOutput()
 	if err != nil {
 		t.Fatal(fmt.Errorf("%v", string(out)))
 	}
 
 	t.Logf("Ensuring the custom worker node profile was set")
-	err = ensureSysctl(sysctlVar, pod, "16")
+	err = ensureSysctl(pod, sysctlVar, "16")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,13 +207,127 @@ func TestCustomProfileHugepages(t *testing.T) {
 	}
 
 	t.Logf("Ensuring the original %s value (%s) is set in pod %s", sysctlVar, valOrig, pod.Name)
-	err = ensureSysctl(sysctlVar, pod, valOrig)
+	err = ensureSysctl(pod, sysctlVar, valOrig)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	t.Logf("Removing label %s from node %s", nodeLabelHugepages, node.Name)
-	out, err = exec.Command("oc", "label", "node", "--overwrite", "-n", ntoconfig.OperatorNamespace(), node.Name, nodeLabelHugepages+"-").CombinedOutput()
+	out, err = exec.Command("oc", "label", "node", "--overwrite", node.Name, nodeLabelHugepages+"-").CombinedOutput()
+	if err != nil {
+		t.Fatal(fmt.Errorf("%v", string(out)))
+	}
+}
+
+// Test the MachineConfig labels matching functionality and rollback.
+func TestMachineConfigLabelsMatching(t *testing.T) {
+	const (
+		profileRealtime   = "../../examples/realtime-mc.yaml"
+		mcpRealtime       = "../../examples/realtime-mcp.yaml"
+		nodeLabelRealtime = "node-role.kubernetes.io/worker-rt"
+		procCmdline       = "/proc/cmdline"
+	)
+
+	cs := framework.NewClientSet()
+
+	t.Logf("Getting a list of worker nodes")
+	nodes, err := getNodesByRole(cs, "worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	workerMachinesOrig, err := getUpdatedMachineCountForPool(t, cs, "worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	node := nodes[0]
+	t.Logf("Getting a tuned pod running on node %s", node.Name)
+	pod, err := getTunedForNode(cs, &node)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("Getting the current %s value in pod %s", procCmdline, pod.Name)
+	cmdlineOrig, err := getFileInPod(pod, procCmdline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("%s has %s: %s", pod.Name, procCmdline, cmdlineOrig)
+
+	t.Logf("Labelling node %s with label %s", node.Name, nodeLabelRealtime)
+	out, err := exec.Command("oc", "label", "node", "--overwrite", node.Name, nodeLabelRealtime+"=").CombinedOutput()
+	if err != nil {
+		t.Fatal(fmt.Errorf("%v", string(out)))
+	}
+
+	t.Logf("Creating custom realtime profile %s", profileRealtime)
+	out, err = exec.Command("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileRealtime).CombinedOutput()
+	if err != nil {
+		t.Fatal(fmt.Errorf("%v", string(out)))
+	}
+
+	t.Logf("Creating custom MachineConfigPool %s", mcpRealtime)
+	out, err = exec.Command("oc", "create", "-f", mcpRealtime).CombinedOutput()
+	if err != nil {
+		t.Fatal(fmt.Errorf("%v", string(out)))
+	}
+
+	t.Logf("Waiting for worker-rt MachineConfigPool UpdatedMachineCount == 1")
+	if err := waitForPoolUpdatedMachineCount(t, cs, "worker-rt", 1); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("Getting the current %s value in pod %s", procCmdline, pod.Name)
+	cmdlineNew, err := getFileInPod(pod, procCmdline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("%s has %s: %s", pod.Name, procCmdline, cmdlineNew)
+
+	// Check the key kernel parameters for the realtime profile to be present in /proc/cmdline
+	t.Logf("Ensuring the custom worker node profile was set")
+	for _, v := range []string{"skew_tick", "intel_pstate=disable", "nosoftlockup", "tsc=nowatchdog"} {
+		if !strings.Contains(cmdlineNew, v) {
+			t.Fatalf("Missing '%s' in %s: %s", v, procCmdline, cmdlineNew)
+		}
+	}
+
+	// Node label needs to be removed first, and we also need to wait for the worker pool to complete the update;
+	// otherwise worker-rt MachineConfigPool deletion would cause Degraded state of the worker pool.
+	// see rhbz#1816239
+	t.Logf("Removing label %s from node %s", nodeLabelRealtime, node.Name)
+	out, err = exec.Command("oc", "label", "node", "--overwrite", node.Name, nodeLabelRealtime+"-").CombinedOutput()
+	if err != nil {
+		t.Fatal(fmt.Errorf("%v", string(out)))
+	}
+
+	t.Logf("Deleting the custom realtime profile %s", profileRealtime)
+	out, err = exec.Command("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileRealtime).CombinedOutput()
+	if err != nil {
+		t.Fatal(fmt.Errorf("%v", string(out)))
+	}
+
+	// Wait for the worker machineCount to go to the original value when the node was not part of worker-rt pool.
+	t.Logf("Waiting for worker UpdatedMachineCount == %d", workerMachinesOrig)
+	if err := waitForPoolUpdatedMachineCount(t, cs, "worker", workerMachinesOrig); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("Getting the current %s value in pod %s", procCmdline, pod.Name)
+	cmdlineNew, err = getFileInPod(pod, procCmdline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("%s has %s: %s", pod.Name, procCmdline, cmdlineNew)
+
+	t.Logf("Ensuring the original kernel command line was restored")
+	if cmdlineOrig != cmdlineNew {
+		t.Fatal(fmt.Errorf("Kernel parameters as retrieved from %s after profile rollback do not match", procCmdline))
+	}
+
+	t.Logf("Deleting custom MachineConfigPool %s", mcpRealtime)
+	out, err = exec.Command("oc", "delete", "-f", mcpRealtime).CombinedOutput()
 	if err != nil {
 		t.Fatal(fmt.Errorf("%v", string(out)))
 	}
@@ -271,9 +386,39 @@ func getSysctl(sysctlVar string, pod *corev1.Pod) (val string, err error) {
 	return val, nil
 }
 
+func execCmdInPod(pod *corev1.Pod, args ...string) (string, error) {
+	entryPoint := "oc"
+	cmd := []string{"rsh", "-n", ntoconfig.OperatorNamespace(), pod.Name}
+	cmd = append(cmd, args...)
+
+	b, err := exec.Command(entryPoint, cmd...).CombinedOutput()
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// getFileInPod returns content for file from inside a (tuned) pod.
+func getFileInPod(pod *corev1.Pod, file string) (val string, err error) {
+	wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
+		out, err := execCmdInPod(pod, "cat", file)
+		if err != nil {
+			// Failed to query a sysctl "sysctlVar" on pod.Name
+			return false, nil
+		}
+		val = strings.TrimSpace(out)
+		return true, nil
+	})
+	if err != nil {
+		return "", fmt.Errorf("Failed to retrieve %s content in pod %s: %v", file, pod.Name, err)
+	}
+
+	return val, nil
+}
+
 // Makes sure a sysctl value for sysctlVar from inside a (tuned) pod is equal to valExp.
 // Returns an error otherwise.
-func ensureSysctl(sysctlVar string, pod *corev1.Pod, valExp string) (err error) {
+func ensureSysctl(pod *corev1.Pod, sysctlVar string, valExp string) (err error) {
 	var val string
 	wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
 		val, err = getSysctl(sysctlVar, pod)
@@ -291,5 +436,52 @@ func ensureSysctl(sysctlVar string, pod *corev1.Pod, valExp string) (err error) 
 		return fmt.Errorf("sysctl %s=%s on %s, expected %s.", sysctlVar, val, pod.Name, valExp)
 	}
 
+	return nil
+}
+
+// getUpdatedMachineCountForPool returns the UpdatedMachineCount for pool 'pool'.
+func getUpdatedMachineCountForPool(t *testing.T, cs *framework.ClientSet, pool string) (int32, error) {
+	mcp, err := cs.MachineConfigPools().Get(context.TODO(), pool, metav1.GetOptions{})
+	if err != nil {
+		return 0, err
+	}
+	return mcp.Status.UpdatedMachineCount, nil
+}
+
+// waitForPoolMachineCount polls a pool until its machineCount equals to 'count'.
+func waitForPoolMachineCount(t *testing.T, cs *framework.ClientSet, pool string, count int32) error {
+	startTime := time.Now()
+	if err := wait.Poll(5*time.Second, 20*time.Minute, func() (bool, error) {
+		mcp, err := cs.MachineConfigPools().Get(context.TODO(), pool, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		if mcp.Status.MachineCount == count {
+			return true, nil
+		}
+		return false, nil
+	}); err != nil {
+		return errors.Wrapf(err, "pool %s MachineCount != %d (waited %s)", pool, count, time.Since(startTime))
+	}
+	t.Logf("Pool %s has MachineCount == %d (waited %v)", pool, count, time.Since(startTime))
+	return nil
+}
+
+// waitForPoolUpdatedMachineCount polls a pool until its UpdatedMachineCount equals to 'count'.
+func waitForPoolUpdatedMachineCount(t *testing.T, cs *framework.ClientSet, pool string, count int32) error {
+	startTime := time.Now()
+	if err := wait.Poll(5*time.Second, 20*time.Minute, func() (bool, error) {
+		mcp, err := cs.MachineConfigPools().Get(context.TODO(), pool, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		if mcp.Status.UpdatedMachineCount == count {
+			return true, nil
+		}
+		return false, nil
+	}); err != nil {
+		return errors.Wrapf(err, "pool %s UpdatedMachineCount != %d (waited %s)", pool, count, time.Since(startTime))
+	}
+	t.Logf("Pool %s has UpdatedMachineCount == %d (waited %v)", pool, count, time.Since(startTime))
 	return nil
 }

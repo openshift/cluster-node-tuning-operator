@@ -8,6 +8,7 @@ import (
 	configlisters "github.com/openshift/client-go/config/listers/config/v1"
 
 	ntolisters "github.com/openshift/cluster-node-tuning-operator/pkg/generated/listers/tuned/v1"
+	mcfglisters "github.com/openshift/machine-config-operator/pkg/generated/listers/machineconfiguration.openshift.io/v1"
 )
 
 type Listers struct {
@@ -21,4 +22,6 @@ type Listers struct {
 	ClusterOperators    configlisters.ClusterOperatorLister
 	TunedResources      ntolisters.TunedNamespaceLister
 	TunedProfiles       ntolisters.ProfileNamespaceLister
+	MachineConfigs      mcfglisters.MachineConfigLister
+	MachineConfigPools  mcfglisters.MachineConfigPoolLister
 }

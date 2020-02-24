@@ -7,8 +7,8 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/clusteroperator"
 	ntomf "github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/util/clusteroperator"
 	operatorv1helpers "github.com/openshift/library-go/pkg/operator/v1helpers"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
