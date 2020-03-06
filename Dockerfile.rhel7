@@ -3,7 +3,7 @@ WORKDIR /go/src/github.com/openshift/cluster-node-tuning-operator
 COPY . .
 RUN make build
 
-FROM registry.svc.ci.openshift.org/ocp/4.0:base
+FROM registry.svc.ci.openshift.org/ocp/4.3:base
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/cluster-node-tuning-operator /usr/bin/
 COPY manifests /manifests
 RUN useradd cluster-node-tuning-operator
