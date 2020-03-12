@@ -192,7 +192,6 @@ func (r *ReconcileTuned) syncServiceAccount(tuned *tunedv1.Tuned) error {
 
 	sa := &corev1.ServiceAccount{}
 	err = r.cache.Get(context.TODO(), types.NamespacedName{Namespace: saManifest.Namespace, Name: saManifest.Name}, sa)
-	saManifest.SetOwnerReferences(addOwnerReference(&sa.ObjectMeta, tuned))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err = r.client.Create(context.TODO(), saManifest)
