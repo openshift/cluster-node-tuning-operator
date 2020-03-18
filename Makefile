@@ -14,7 +14,7 @@ REV=$(shell git describe --long --tags --match='v*' --always --dirty)
 
 # API-related variables
 API_TYPES_DIR:=pkg/apis/tuned/v1
-API_TYPES:=$(wildcard $(API_TYPES_DIR)/types_*.go)
+API_TYPES:=$(wildcard $(API_TYPES_DIR)/*_types.go)
 API_ZZ_GENERATED:=zz_generated.deepcopy
 API_TYPES_GENERATED:=$(API_TYPES_DIR)/$(API_ZZ_GENERATED).go
 API_GO_HEADER_FILE:=pkg/apis/header.go.txt

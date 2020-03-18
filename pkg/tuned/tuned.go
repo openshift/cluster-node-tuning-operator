@@ -13,7 +13,6 @@ import (
 	"os/signal"     // signal.Notify()
 	"os/user"       // user.Current()
 	"path/filepath" // filepath.Join()
-	"reflect"       // DeepEqual()
 	"strconv"       // strconv
 	"strings"       // strings.Join()
 	"syscall"       // syscall.SIGHUP, ...
@@ -410,7 +409,6 @@ func timedTunedReloader(tuned *tunedState) (err error) {
 	if tuned.change.profile {
 		// Profile changed
 		var activeProfile, recommendedProfile string
-		tuned.change.profile = false
 		if activeProfile, err = getActiveProfile(); err != nil {
 			return err
 		}
@@ -429,9 +427,11 @@ func timedTunedReloader(tuned *tunedState) (err error) {
 		} else {
 			klog.V(1).Infof("active and recommended profile (%s) match; profile change will not trigger profile reload", activeProfile)
 		}
+		tuned.change.profile = false
 	}
 	if tuned.change.rendered {
 		// The "rendered" tuned object changed
+		klog.V(1).Infof("tuned daemon profiles changed, forcing tuned daemon reload")
 		tuned.change.rendered = false
 		reload = true
 	}
@@ -483,14 +483,6 @@ func profileEventHandler(tuned *tunedState) cache.ResourceEventHandlerFuncs {
 				klog.Errorf("%s", err.Error())
 				return
 			}
-			pOld, err := getTunedProfile(objOld)
-			if err != nil {
-				klog.Errorf("%s", err.Error())
-				return
-			}
-			if pNew.Spec.Config.TunedProfile == pOld.Spec.Config.TunedProfile {
-				return
-			}
 			klog.V(1).Infof("profile %q changed, tuned profile requested: %s", pNew.ObjectMeta.Name, pNew.Spec.Config.TunedProfile)
 			err = tunedRecommendFileWrite(pNew.Spec.Config.TunedProfile)
 			if err != nil {
@@ -530,18 +522,6 @@ func tunedEventHandler(tuned *tunedState) cache.ResourceEventHandlerFuncs {
 			tNew, err := getTuned(objNew)
 			if err != nil {
 				klog.Errorf("%s", err.Error())
-				return
-			}
-			tOld, err := getTuned(objOld)
-			if err != nil {
-				klog.Errorf("%s", err.Error())
-				return
-			}
-			// TODO: after merging the operator and operand repos, do not check for equality
-			// and extract the profiles here; just enqueue the change and get the new object
-			// from cache
-			if reflect.DeepEqual(tNew.Spec.Profile, tOld.Spec.Profile) {
-				// Profiles in the cluster-wide "rendered" Tuned CR did not change
 				return
 			}
 			klog.V(1).Infof("tuned %q changed", tNew.ObjectMeta.Name)
