@@ -17,6 +17,7 @@
 package operator
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -56,7 +57,7 @@ func (c *Controller) becomeLeader(ns string, lockName string) error {
 		return err
 	}
 
-	existing, err := c.clients.Core.ConfigMaps(ns).Get(lockName, metaapi.GetOptions{})
+	existing, err := c.clients.Core.ConfigMaps(ns).Get(context.TODO(), lockName, metaapi.GetOptions{})
 
 	switch {
 	case err == nil:
@@ -91,7 +92,7 @@ func (c *Controller) becomeLeader(ns string, lockName string) error {
 	// try to create a lock
 	backoff := time.Second
 	for {
-		_, err := c.clients.Core.ConfigMaps(ns).Create(cm)
+		_, err := c.clients.Core.ConfigMaps(ns).Create(context.TODO(), cm, metaapi.CreateOptions{})
 
 		switch {
 		case err == nil:
@@ -126,7 +127,7 @@ func (c *Controller) getPod(ns string) (*coreapi.Pod, error) {
 
 	klog.V(2).Infof("Getting Pod %s", podName)
 
-	pod, err := c.clients.Core.Pods(ns).Get(podName, metaapi.GetOptions{})
+	pod, err := c.clients.Core.Pods(ns).Get(context.TODO(), podName, metaapi.GetOptions{})
 	if err != nil {
 		klog.Errorf("Failed to get Pod %s/%s", ns, podName)
 		return nil, err
