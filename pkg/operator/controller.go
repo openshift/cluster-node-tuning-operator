@@ -1,6 +1,7 @@
 package operator
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"reflect"
@@ -172,7 +173,7 @@ func (c *Controller) sync(key wqKey) error {
 		if err != nil {
 			if errors.IsNotFound(err) {
 				// Do not leave any leftover profiles after node deletions
-				err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Delete(key.name, &metaapi.DeleteOptions{})
+				err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Delete(context.TODO(), key.name, metaapi.DeleteOptions{})
 				if err != nil && !errors.IsNotFound(err) {
 					return fmt.Errorf("failed to delete Profile %s: %v", key.name, err)
 				}
@@ -275,7 +276,7 @@ func (c *Controller) syncTunedDefault() (*tunedv1.Tuned, error) {
 	if err != nil {
 		if errors.IsNotFound(err) {
 			klog.V(2).Infof("syncTunedDefault(): Tuned %s not found, creating one", tunedv1.TunedDefaultResourceName)
-			cr, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Create(crMf)
+			cr, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Create(context.TODO(), crMf, metaapi.CreateOptions{})
 
 			if err != nil {
 				return cr, fmt.Errorf("failed to create Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
@@ -295,7 +296,7 @@ func (c *Controller) syncTunedDefault() (*tunedv1.Tuned, error) {
 		cr.Spec = crMf.Spec
 
 		klog.V(2).Infof("updating Tuned %s", crMf.Name)
-		cr, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Update(cr)
+		cr, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Update(context.TODO(), cr, metaapi.UpdateOptions{})
 		if err != nil {
 			return cr, fmt.Errorf("failed to update Tuned %s: %v", crMf.Name, err)
 		}
@@ -321,7 +322,7 @@ func (c *Controller) syncTunedRendered(tuned *tunedv1.Tuned) error {
 	cr, err := c.listers.TunedResources.Get(tunedv1.TunedRenderedResourceName)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			_, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Create(crMf)
+			_, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Create(context.TODO(), crMf, metaapi.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to create Tuned %s: %v", crMf.Name, err)
 			}
@@ -338,7 +339,7 @@ func (c *Controller) syncTunedRendered(tuned *tunedv1.Tuned) error {
 		cr.Spec = crMf.Spec
 
 		klog.V(2).Infof("updating Tuned %s", crMf.Name)
-		_, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Update(cr)
+		_, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Update(context.TODO(), cr, metaapi.UpdateOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to update Tuned %s: %v", crMf.Name, err)
 		}
@@ -355,7 +356,7 @@ func (c *Controller) syncDaemonSet(tuned *tunedv1.Tuned) error {
 	if err != nil {
 		if errors.IsNotFound(err) {
 			klog.V(2).Infof("syncDaemonSet(): DaemonSet %s not found, creating one", dsMf.Name)
-			_, err = c.clients.Apps.DaemonSets(ntoconfig.OperatorNamespace()).Create(dsMf)
+			_, err = c.clients.Apps.DaemonSets(ntoconfig.OperatorNamespace()).Create(context.TODO(), dsMf, metaapi.CreateOptions{})
 
 			if err != nil {
 				return fmt.Errorf("failed to create DaemonSet: %v", err)
@@ -382,7 +383,7 @@ func (c *Controller) syncDaemonSet(tuned *tunedv1.Tuned) error {
 		if operatorReleaseVersion != operandReleaseVersion {
 			// Update the DaemonSet
 			klog.V(2).Infof("syncDaemonSet(): operatorReleaseVersion (%s) != operandReleaseVersion (%s), updating", operatorReleaseVersion, operandReleaseVersion)
-			_, err = c.clients.Apps.DaemonSets(ntoconfig.OperatorNamespace()).Update(ds)
+			_, err = c.clients.Apps.DaemonSets(ntoconfig.OperatorNamespace()).Update(context.TODO(), ds, metaapi.UpdateOptions{})
 
 			if err != nil {
 				return fmt.Errorf("failed to update DaemonSet: %v", err)
@@ -422,7 +423,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 
 			klog.V(2).Infof("Profile %s not found, creating one", profileMf.Name)
 			profileMf.Spec.Config.TunedProfile = tunedProfileName
-			_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Create(profileMf)
+			_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Create(context.TODO(), profileMf, metaapi.CreateOptions{})
 
 			if err != nil {
 				return fmt.Errorf("failed to create Profile: %v", err)
@@ -441,7 +442,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		profile.Spec.Config.TunedProfile = tunedProfileName
 
 		klog.V(2).Infof("updating Profile %s to %s", profile.Name, tunedProfileName)
-		_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Update(profile)
+		_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Update(context.TODO(), profile, metaapi.UpdateOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to update Profile: %v", err)
 		}
@@ -601,8 +602,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	klog.Info("became a leader")
 
 	// Remove any leftover ConfigMaps during upgrade from 4.[1-3] installations; drop this hack for 4.5+
-	c.clients.Core.ConfigMaps(ntoconfig.OperatorNamespace()).Delete("tuned-profiles", &metaapi.DeleteOptions{})
-	c.clients.Core.ConfigMaps(ntoconfig.OperatorNamespace()).Delete("tuned-recommend", &metaapi.DeleteOptions{})
+	c.clients.Core.ConfigMaps(ntoconfig.OperatorNamespace()).Delete(context.TODO(), "tuned-profiles", metaapi.DeleteOptions{})
+	c.clients.Core.ConfigMaps(ntoconfig.OperatorNamespace()).Delete(context.TODO(), "tuned-recommend", metaapi.DeleteOptions{})
 
 	// Start the informer factories to begin populating the informer caches
 	klog.Info("starting Tuned controller")

@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -26,7 +27,7 @@ func TestOperatorAvailable(t *testing.T) {
 	cs := framework.NewClientSet()
 
 	err := wait.PollImmediate(1*time.Second, 5*time.Minute, func() (bool, error) {
-		co, err := cs.ClusterOperators().Get(tunedv1.TunedClusterOperatorResourceName, metav1.GetOptions{})
+		co, err := cs.ClusterOperators().Get(context.TODO(), tunedv1.TunedClusterOperatorResourceName, metav1.GetOptions{})
 		if err != nil {
 			return false, nil
 		}
@@ -49,7 +50,7 @@ func TestDefaultTunedExists(t *testing.T) {
 	cs := framework.NewClientSet()
 
 	err := wait.PollImmediate(1*time.Second, 5*time.Minute, func() (bool, error) {
-		_, err := cs.Tuneds(ntoconfig.OperatorNamespace()).Get(tunedv1.TunedDefaultResourceName, metav1.GetOptions{})
+		_, err := cs.Tuneds(ntoconfig.OperatorNamespace()).Get(context.TODO(), tunedv1.TunedDefaultResourceName, metav1.GetOptions{})
 		if err != nil {
 			return false, nil
 		}
@@ -222,7 +223,7 @@ func getNodesByRole(cs *framework.ClientSet, role string) ([]corev1.Node, error)
 	listOptions := metav1.ListOptions{
 		LabelSelector: labels.SelectorFromSet(labels.Set{fmt.Sprintf("node-role.kubernetes.io/%s", role): ""}).String(),
 	}
-	nodeList, err := cs.Nodes().List(listOptions)
+	nodeList, err := cs.Nodes().List(context.TODO(), listOptions)
 	if err != nil {
 		return nil, fmt.Errorf("Couldn't get a list of nodes by role (%s): %v", role, err)
 	}
@@ -236,7 +237,7 @@ func getTunedForNode(cs *framework.ClientSet, node *corev1.Node) (*corev1.Pod, e
 	}
 	listOptions.LabelSelector = labels.SelectorFromSet(labels.Set{"openshift-app": "tuned"}).String()
 
-	podList, err := cs.Pods(ntoconfig.OperatorNamespace()).List(listOptions)
+	podList, err := cs.Pods(ntoconfig.OperatorNamespace()).List(context.TODO(), listOptions)
 	if err != nil {
 		return nil, fmt.Errorf("Couldn't get a list of tuned pods: %v", err)
 	}
