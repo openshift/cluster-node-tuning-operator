@@ -88,6 +88,17 @@ spec:
                     type: integer
                     format: int64
                     minimum: 0
+                  machineConfigLabels:
+                    additionalProperties:
+                      type: string
+                    description: MachineConfigLabels specifies the labels for a MachineConfig.
+                      The MachineConfig is created automatically to apply additional
+                      host settings (e.g. kernel boot parameters) profile 'Profile'
+                      needs and can only be applied by creating a MachineConfig. This
+                      involves finding all MachineConfigPools with machineConfigSelector
+                      matching the MachineConfigLabels and setting the profile 'Profile'
+                      on all nodes that match the MachineConfigPools' nodeSelectors.
+                    type: object
                   match:
                     description: 'Rules governing application of a tuned profile connected by logical OR operator.'
                     type: array
@@ -167,6 +178,7 @@ spec:
             config:
               properties:
                 tunedProfile:
+                  description: tuned profile to apply
                   type: string
               required:
               - tunedProfile
@@ -176,5 +188,10 @@ spec:
           type: object
         status:
           description: ProfileStatus is the status for a Profile resource
+          properties:
+            bootcmdline:
+              description: kernel parameters calculated by tuned for the active tuned
+                profile
+              type: string
           type: object
       type: object

@@ -70,7 +70,7 @@ $(GOBINDATA_BIN):
 	$(GO) build -o $(GOBINDATA_BIN) ./vendor/github.com/kevinburke/go-bindata/go-bindata
 
 test-e2e: $(BINDATA)
-	KUBERNETES_CONFIG="$(KUBECONFIG)" $(GO) test -v -tags e2e ./test/e2e/... -run .
+	KUBERNETES_CONFIG="$(KUBECONFIG)" $(GO) test -v -timeout 20m -tags e2e ./test/e2e/... -run .
 
 verify:	verify-gofmt
 

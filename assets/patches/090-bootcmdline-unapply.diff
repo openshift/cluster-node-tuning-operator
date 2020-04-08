@@ -1,0 +1,20 @@
+Unapply bootcmdline settings even when grub.cfg does not exits.
+
+See: https://github.com/redhat-performance/tuned/pull/248
+
+diff --git a/tuned/plugins/plugin_bootloader.py b/tuned/plugins/plugin_bootloader.py
+index 0f8c8f32..1c9851b6 100644
+--- a/usr/lib/python2.7/site-packages/tuned/plugins/plugin_bootloader.py
++++ b/usr/lib/python2.7/site-packages/tuned/plugins/plugin_bootloader.py
+@@ -93,10 +93,10 @@ def _patch_bootcmdline(self, d):
+ 		return self._cmd.add_modify_option_in_file(consts.BOOT_CMDLINE_FILE, d)
+ 
+ 	def _remove_grub2_tuning(self):
++		self._patch_bootcmdline({consts.BOOT_CMDLINE_TUNED_VAR : "", consts.BOOT_CMDLINE_INITRD_ADD_VAR : ""})
+ 		if not self._grub2_cfg_file_names:
+ 			log.info("cannot find grub.cfg to patch")
+ 			return
+-		self._patch_bootcmdline({consts.BOOT_CMDLINE_TUNED_VAR : "", consts.BOOT_CMDLINE_INITRD_ADD_VAR : ""})
+ 		for f in self._grub2_cfg_file_names:
+ 			self._cmd.add_modify_option_in_file(f, {"set\s+" + consts.GRUB2_TUNED_VAR : "", "set\s+" + consts.GRUB2_TUNED_INITRD_VAR : ""}, add = False)
+ 		if self._initrd_dst_img_val is not None:

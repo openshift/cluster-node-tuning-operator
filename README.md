@@ -104,40 +104,55 @@ Refer to a list of
 ### Recommended profiles
 
 The `profile:` selection logic is defined by the `recommend:` section of the CR.
+The `recommend:` section is a list of items to recommend the profiles based on
+a selection criteria.
 
 ```
   recommend:
-  - match:                              # optional; if omitted, profile match is assumed unless a profile with a higher matches first
-    <match>                             # an optional array
+  <recommend-item-1>
+  # ...
+  <recommend-item-n>
+```
+
+The individual items of the list:
+
+```
+  - machineConfigLabels:                # optional
+      <mcLabels>                        # a dictionary of key/value machine config labels; keys must be unique
+    match:                              # optional; if omitted, profile match is assumed unless a profile with a higher priority matches first or 'machineConfigLabels:' is set
+    <match>                             # an optional list
     priority: <priority>                # profile ordering priority, lower numbers mean higher priority (0 is the highest priority)
     profile: <tuned_profile_name>       # e.g. tuned_profile_1
-
-  # ...
-
-  - match:
-    <match>
-    priority: <priority>
-    profile: <tuned_profile_name>       # e.g. tuned_profile_n
 ```
 
 If `<match>` is omitted, a profile match (i.e. _true_) is assumed.
 
-`<match>` is an optional array recursively defined as follows:
+`<match>` is an optional list recursively defined as follows:
 
 ```
     - label: <label_name>     # node or pod label name
       value: <label_value>    # optional node or pod label value; if omitted, the presence of <label_name> is enough to match
       type: <label_type>      # optional node or pod type ("node" or "pod"); if omitted, "node" is assumed
-      <match>                 # an optional <match> array
+      <match>                 # an optional <match> list
 ```
 
 If `<match>` is not omitted, all nested `<match>` sections must
 also evaluate to _true_.  Otherwise, _false_ is assumed and the
 profile with the respective `<match>` section will not be applied or
 recommended.  Therefore, the nesting (child `<match>` sections) works as logical
-_and_ operator.  Conversely, if any item of the `<match>` array matches,
-the entire `<match>` array evaluates to _true_.  Therefore, the array
+_and_ operator.  Conversely, if any item of the `<match>` list matches,
+the entire `<match>` list evaluates to _true_.  Therefore, the list
 acts as logical _or_ operator.
+
+If `<mcLabels>` is defined, MachineConfigPool based matching is turned on
+for the given `recommend:` list item.  This is in addition to the matching
+done in non-empty `<match>` section.  `<mcLabels>` specifies the labels
+for a MachineConfig.  The MachineConfig is created automatically to apply
+additional host settings (e.g. kernel boot parameters) profile `<tuned_profile_name>`
+needs and can only be applied by creating a MachineConfig.  This involves
+finding all MachineConfigPools with machineConfigSelector matching 
+`<mcLabels>` and setting the profile `<tuned_profile_name>` on all nodes that
+match the MachineConfigPools' `nodeSelectors`.
 
 
 #### Example
