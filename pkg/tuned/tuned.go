@@ -266,12 +266,11 @@ func disableSystemTuned() {
 // profile, the function returns true.
 func profilesExtract(profiles []tunedv1.TunedProfile) (bool, error) {
 	var (
-		activeProfile string
-		change        bool
+		change bool
 	)
 	klog.Infof("extracting tuned profiles")
 
-	activeProfile, err := getActiveProfile()
+	recommendedProfile, err := getRecommendedProfile()
 	if err != nil {
 		return change, err
 	}
@@ -291,8 +290,8 @@ func profilesExtract(profiles []tunedv1.TunedProfile) (bool, error) {
 			return change, fmt.Errorf("failed to create tuned profile directory %q: %v", profileDir, err)
 		}
 
-		if activeProfile == *profile.Name {
-			// Active profile name matches profile of the profile currently being extracted, compare their content.
+		if recommendedProfile == *profile.Name {
+			// Recommended profile name matches profile of the profile currently being extracted, compare their content.
 			var un string
 			content, err := ioutil.ReadFile(profileFile)
 			if err != nil {
@@ -303,7 +302,7 @@ func profilesExtract(profiles []tunedv1.TunedProfile) (bool, error) {
 			if !change {
 				un = "un"
 			}
-			klog.Infof("active tuned profile %s content %schanged", activeProfile, un)
+			klog.Infof("recommended tuned profile %s content %schanged", recommendedProfile, un)
 		}
 
 		f, err := os.Create(profileFile)
@@ -344,7 +343,7 @@ func tunedRecommendFileWrite(profileName string) error {
 		return fmt.Errorf("failed to create file %q: %v", tunedRecommendFile, err)
 	}
 	defer f.Close()
-	if _, err = f.WriteString(fmt.Sprintf("[%s]\n%s=.*\n", profileName, tunedRecommendFile)); err != nil {
+	if _, err = f.WriteString(fmt.Sprintf("[%s]\n", profileName)); err != nil {
 		return fmt.Errorf("failed to write file %q: %v", tunedRecommendFile, err)
 	}
 	klog.Infof("written %q to set tuned profile %s", tunedRecommendFile, profileName)
@@ -520,8 +519,10 @@ func (c *Controller) timedTunedReloader() (err error) {
 			klog.Infof("active profile (%s) != recommended profile (%s)", activeProfile, recommendedProfile)
 			recommendedProfileDir := tunedProfilesDir + "/" + recommendedProfile
 			if _, err := os.Stat(recommendedProfileDir); os.IsNotExist(err) {
-				// Workaround for tuned BZ1774645; do not send SIGHUP to tuned if the profile directory doesn't exist
-				klog.V(1).Infof("tuned profile directory %q does not exist", recommendedProfileDir)
+				// Workaround for tuned BZ1774645; do not send SIGHUP to tuned if the profile directory doesn't exist.
+				// Log this as an error for easier debugging.  Persistent non-existence of the profile directory very
+				// likely indicates a custom user profile which references a profile that was not defined.
+				klog.Errorf("tuned profile directory %q does not exist; was %q defined?", recommendedProfileDir, recommendedProfile)
 				return nil // retry later
 			}
 			reload = true
