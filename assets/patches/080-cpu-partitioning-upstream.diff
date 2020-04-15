@@ -3,8 +3,8 @@ Backport upstream change to use irqbalance_banned_cpus_(clear|setup) functions.
 See: https://github.com/redhat-performance/tuned/commit/4a8e64994eb978ada0c7e23702e96c82352cc222
 
 diff -Nura a/usr/lib/tuned/cpu-partitioning/script.sh b/usr/lib/tuned/cpu-partitioning/script.sh
---- a/usr/lib/tuned/cpu-partitioning/script.sh	2020-02-06 11:53:05.703480404 +0100
-+++ b/usr/lib/tuned/cpu-partitioning//script.sh	2019-08-05 11:29:07.019961531 +0200
+--- a/usr/lib/tuned/cpu-partitioning/script.sh
++++ b/usr/lib/tuned/cpu-partitioning/script.sh
 @@ -39,8 +39,7 @@
      mkdir -p "${TUNED_tmpdir}/usr/lib/dracut/hooks/pre-udev"
      cp /etc/systemd/system.conf "${TUNED_tmpdir}/etc/systemd/"
