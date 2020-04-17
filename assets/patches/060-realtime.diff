@@ -1,16 +1,27 @@
 Backport upstream realtime profile.
 
+This patch also includes a fix to enable isolate_managed_irq to be
+defined in child profiles.
+See: https://github.com/redhat-performance/tuned/pull/260
+
 diff -Nura a/etc/tuned/realtime-variables.conf b/etc/tuned/realtime-variables.conf
---- a/etc/tuned/realtime-variables.conf	1970-01-01 01:00:00.000000000 +0100
-+++ b/etc/tuned/realtime-variables.conf	2017-05-16 14:42:40.000000000 +0200
-@@ -0,0 +1,4 @@
+--- a/etc/tuned/realtime-variables.conf
++++ b/etc/tuned/realtime-variables.conf
+@@ -0,0 +1,11 @@
 +# Examples:
 +# isolated_cores=2,4-7
 +# isolated_cores=2-23
 +#
++#
++# Uncomment the 'isolate_managed_irq=Y' bellow if you want to move kernel
++# managed IRQs out of isolated cores. Note that this requires kernel
++# support. Please only specify this parameter if you are sure that the
++# kernel supports it.
++#
++# isolate_managed_irq=Y
 diff -Nura a/usr/lib/tuned/realtime/script.sh b/usr/lib/tuned/realtime/script.sh
---- a/usr/lib/tuned/realtime/script.sh	1970-01-01 01:00:00.000000000 +0100
-+++ b/usr/lib/tuned/realtime/script.sh	2019-11-04 14:56:25.000000000 +0100
+--- a/usr/lib/tuned/realtime/script.sh
++++ b/usr/lib/tuned/realtime/script.sh
 @@ -0,0 +1,20 @@
 +#!/bin/sh
 +
@@ -33,9 +44,9 @@ diff -Nura a/usr/lib/tuned/realtime/script.sh b/usr/lib/tuned/realtime/script.sh
 +
 +process $@
 diff -Nura a/usr/lib/tuned/realtime/tuned.conf b/usr/lib/tuned/realtime/tuned.conf
---- a/usr/lib/tuned/realtime/tuned.conf	1970-01-01 01:00:00.000000000 +0100
-+++ b/usr/lib/tuned/realtime/tuned.conf	2020-01-09 11:13:10.000000000 +0100
-@@ -0,0 +1,50 @@
+--- a/usr/lib/tuned/realtime/tuned.conf
++++ b/usr/lib/tuned/realtime/tuned.conf
+@@ -0,0 +1,57 @@
 +# tuned configuration
 +#
 +# Red Hat Enterprise Linux for Real Time Documentation:
@@ -66,6 +77,13 @@ diff -Nura a/usr/lib/tuned/realtime/tuned.conf b/usr/lib/tuned/realtime/tuned.co
 +# Fail if isolated_cores contains CPUs which are not online
 +assert2=${f:assertion:isolated_cores contains online CPU(s):${isolated_cores_expanded}:${isolated_cores_online_expanded}}
 +
++# Assembly managed_irq
++# Make sure isolate_managed_irq is defined before any of the variables that
++# use it (such as managed_irq) are defined, so that child profiles can set
++# isolate_managed_irq directly in the profile (tuned.conf)
++isolate_managed_irq = ${isolate_managed_irq}
++managed_irq=${f:regex_search_ternary:${isolate_managed_irq}:\b[y,Y,1,t,T]\b:managed_irq,domain,:}
++
 +[sysctl]
 +kernel.hung_task_timeout_secs = 600
 +kernel.nmi_watchdog = 0
@@ -79,7 +97,7 @@ diff -Nura a/usr/lib/tuned/realtime/tuned.conf b/usr/lib/tuned/realtime/tuned.co
 +/sys/devices/system/machinecheck/machinecheck*/ignore_ce = 1
 +
 +[bootloader]
-+cmdline_realtime=+isolcpus=${isolated_cores} intel_pstate=disable nosoftlockup tsc=nowatchdog
++cmdline_realtime=+isolcpus=${managed_irq}${isolated_cores} intel_pstate=disable nosoftlockup tsc=nowatchdog
 +
 +[script]
 +script = ${i:PROFILE_DIR}/script.sh

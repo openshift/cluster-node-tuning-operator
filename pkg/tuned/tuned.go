@@ -262,8 +262,8 @@ func disableSystemTuned() {
 }
 
 // profilesExtract extracts tuned daemon profiles to the daemon configuration directory.
-// If the data in the to be extracted active profile is different than the current active
-// profile, the function returns true.
+// If the data in the to be extracted recommended profile is different than the current
+// recommended profile, the function returns true.
 func profilesExtract(profiles []tunedv1.TunedProfile) (bool, error) {
 	var (
 		change bool
