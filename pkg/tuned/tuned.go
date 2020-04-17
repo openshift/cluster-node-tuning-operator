@@ -214,9 +214,19 @@ func profilesExtractCM() error {
 	return nil
 }
 
-func profilesExtract(profiles []tunedv1.TunedProfile) error {
+// profilesExtract extracts tuned daemon profiles to the daemon configuration directory.
+// If the data in the to be extracted recommended profile is different than the current
+// recommended profile, the function returns true.
+func profilesExtract(profiles []tunedv1.TunedProfile) (bool, error) {
+	var (
+		change bool
+	)
 	klog.Infof("extracting tuned profiles")
 
+	recommendedProfile, err := getRecommendedProfile()
+	if err != nil {
+		return change, err
+	}
 	for index, profile := range profiles {
 		if profile.Name == nil {
 			klog.Warningf("profilesExtract(): profile name missing for profile %v", index)
@@ -230,20 +240,35 @@ func profilesExtract(profiles []tunedv1.TunedProfile) error {
 		profileFile := fmt.Sprintf("%s/%s", profileDir, "tuned.conf")
 
 		if err := mkdir(profileDir); err != nil {
-			return fmt.Errorf("failed to create tuned profile directory %q: %v", profileDir, err)
+			return change, fmt.Errorf("failed to create tuned profile directory %q: %v", profileDir, err)
+		}
+
+		if recommendedProfile == *profile.Name {
+			// Recommended profile name matches profile of the profile currently being extracted, compare their content.
+			var un string
+			content, err := ioutil.ReadFile(profileFile)
+			if err != nil {
+				content = []byte{}
+			}
+
+			change = *profile.Data != string(content)
+			if !change {
+				un = "un"
+			}
+			klog.Infof("recommended tuned profile %s content %schanged", recommendedProfile, un)
 		}
 
 		f, err := os.Create(profileFile)
 		if err != nil {
-			return fmt.Errorf("failed to create tuned profile file %q: %v", profileFile, err)
+			return change, fmt.Errorf("failed to create tuned profile file %q: %v", profileFile, err)
 		}
 		defer f.Close()
 		if _, err = f.WriteString(*profile.Data); err != nil {
-			return fmt.Errorf("failed to write tuned profile file %q: %v", profileFile, err)
+			return change, fmt.Errorf("failed to write tuned profile file %q: %v", profileFile, err)
 		}
 	}
 
-	return nil
+	return change, nil
 }
 
 func openshiftTunedPidFileWrite() error {
@@ -419,8 +444,10 @@ func timedTunedReloader(tuned *tunedState) (err error) {
 			klog.V(1).Infof("active profile (%s) != recommended profile (%s)", activeProfile, recommendedProfile)
 			recommendedProfileDir := tunedProfilesDir + "/" + recommendedProfile
 			if _, err := os.Stat(recommendedProfileDir); os.IsNotExist(err) {
-				// Workaround for tuned BZ1774645; do not send SIGHUP to tuned if the profile directory doesn't exist
-				klog.V(1).Infof("tuned profile directory %q does not exist", recommendedProfileDir)
+				// Workaround for tuned BZ1774645; do not send SIGHUP to tuned if the profile directory doesn't exist.
+				// Log this as an error for easier debugging.  Persistent non-existence of the profile directory very
+				// likely indicates a custom user profile which references a profile that was not defined.
+				klog.Errorf("tuned profile directory %q does not exist; was %q defined?", recommendedProfileDir, recommendedProfile)
 				return nil // retry later on a filesystem event
 			}
 			reload = true
@@ -511,12 +538,12 @@ func tunedEventHandler(tuned *tunedState) cache.ResourceEventHandlerFuncs {
 				return
 			}
 			klog.V(1).Infof("tuned %q added", t.ObjectMeta.Name)
-			err = profilesExtract(t.Spec.Profile)
+			change, err := profilesExtract(t.Spec.Profile)
 			if err != nil {
 				klog.Errorf("%s", err.Error())
 				return
 			}
-			tuned.change.rendered = true
+			tuned.change.rendered = change
 		},
 		UpdateFunc: func(objOld, objNew interface{}) {
 			tNew, err := getTuned(objNew)
@@ -525,12 +552,12 @@ func tunedEventHandler(tuned *tunedState) cache.ResourceEventHandlerFuncs {
 				return
 			}
 			klog.V(1).Infof("tuned %q changed", tNew.ObjectMeta.Name)
-			err = profilesExtract(tNew.Spec.Profile)
+			change, err := profilesExtract(tNew.Spec.Profile)
 			if err != nil {
 				klog.Errorf("%s", err.Error())
 				return
 			}
-			tuned.change.rendered = true
+			tuned.change.rendered = change
 		},
 		DeleteFunc: func(obj interface{}) {
 			t, err := getTuned(obj)
