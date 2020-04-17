@@ -33,6 +33,14 @@ spec:
           privileged: true
         terminationMessagePolicy: FallbackToLogsOnError
         volumeMounts:
+        - mountPath: /etc/sysctl.d
+          name: etc
+          subPath: sysctl.d
+          readOnly: true
+        - mountPath: /etc/sysctl.conf
+          name: etc
+          subPath: sysctl.conf
+          readOnly: true
         - mountPath: /etc/tuned/recommend.d
           name: etc-tuned-recommend
         - mountPath: /var/lib/tuned/profiles-data
@@ -58,6 +66,10 @@ spec:
           - name: RELEASE_VERSION
             value: ""
       volumes:
+      - hostPath:
+          path: /etc
+          type: Directory
+        name: etc
       - hostPath:
           path: /sys
         name: sys
