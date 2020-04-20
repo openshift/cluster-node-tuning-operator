@@ -45,6 +45,14 @@ spec:
         - mountPath: /etc/sysconfig
           name: etc
           subPath: sysconfig
+        - mountPath: /etc/sysctl.d
+          name: etc
+          subPath: sysctl.d
+          readOnly: true
+        - mountPath: /etc/sysctl.conf
+          name: etc
+          subPath: sysctl.conf
+          readOnly: true
         - mountPath: /etc/systemd
           name: etc
           subPath: systemd
