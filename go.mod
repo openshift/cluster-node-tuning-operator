@@ -5,6 +5,8 @@ go 1.13
 require (
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/kevinburke/go-bindata v3.16.0+incompatible
+	github.com/onsi/ginkgo v1.11.0
+	github.com/onsi/gomega v1.8.1
 	github.com/openshift/api v3.9.1-0.20191111211345-a27ff30ebf09+incompatible
 	github.com/openshift/client-go v0.0.0-20200326155132-2a6cd50aedd0
 	github.com/openshift/crd-schema-gen v1.0.0
@@ -12,9 +14,9 @@ require (
 	github.com/openshift/machine-config-operator v4.2.0-alpha.0.0.20190917115525-033375cbe820+incompatible
 	github.com/pkg/errors v0.8.1
 
-	k8s.io/api v0.18.0
-	k8s.io/apimachinery v0.18.0
-	k8s.io/client-go v0.18.0
+	k8s.io/api v0.18.2
+	k8s.io/apimachinery v0.18.2
+	k8s.io/client-go v0.18.2
 	k8s.io/code-generator v0.18.0
 	k8s.io/klog v1.0.0
 	sigs.k8s.io/controller-tools v0.2.2 // indirect

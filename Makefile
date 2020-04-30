@@ -70,7 +70,9 @@ $(GOBINDATA_BIN):
 	$(GO) build -o $(GOBINDATA_BIN) ./vendor/github.com/kevinburke/go-bindata/go-bindata
 
 test-e2e: $(BINDATA)
-	KUBERNETES_CONFIG="$(KUBECONFIG)" $(GO) test -v -timeout 20m -tags e2e ./test/e2e/... -run .
+	for d in basic reboots; do \
+	  KUBERNETES_CONFIG="$(KUBECONFIG)" $(GO) test -v -timeout 20m ./test/e2e/$$d -ginkgo.v -ginkgo.noColor -ginkgo.failFast || exit; \
+	done
 
 verify:	verify-gofmt
 
