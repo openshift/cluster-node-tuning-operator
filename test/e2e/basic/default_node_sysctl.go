@@ -11,7 +11,7 @@ import (
 
 // Test the basic functionality of NTO and its operands.  The default sysctl(s)
 // need(s) to be set across the nodes.
-var _ = Describe("Node Tuning Operator: default profile set", func() {
+var _ = Describe("[basic][default_node_sysctl] Node Tuning Operator default profile set", func() {
 	sysctlVar := "net.ipv4.neigh.default.gc_thresh1"
 
 	It(fmt.Sprintf("%s set", sysctlVar), func() {

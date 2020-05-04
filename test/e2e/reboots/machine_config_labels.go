@@ -15,7 +15,7 @@ import (
 )
 
 // Test the MachineConfig labels matching functionality and rollback.
-var _ = Describe("Node Tuning Operator: machine config labels", func() {
+var _ = Describe("[reboots][machine_config_labels] Node Tuning Operator machine config labels", func() {
 	const (
 		profileRealtime   = "../../../examples/realtime-mc.yaml"
 		mcpRealtime       = "../../../examples/realtime-mcp.yaml"

@@ -59,7 +59,7 @@ func GetSysctl(sysctlVar string, pod *corev1.Pod) (val string, err error) {
 			"sysctl", "-n", sysctlVar).CombinedOutput()
 		if err != nil {
 			// Failed to query a sysctl "sysctlVar" on pod.Name
-			return false, nil
+			return false, err
 		}
 		val = strings.TrimSpace(string(out))
 		return true, nil
@@ -90,7 +90,7 @@ func GetFileInPod(pod *corev1.Pod, file string) (val string, err error) {
 		out, err := ExecCmdInPod(pod, "cat", file)
 		if err != nil {
 			// Failed to query a sysctl "sysctlVar" on pod.Name
-			return false, nil
+			return false, err
 		}
 		val = strings.TrimSpace(out)
 		return true, nil
@@ -109,7 +109,7 @@ func EnsureSysctl(pod *corev1.Pod, sysctlVar string, valExp string) (err error) 
 	wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
 		val, err = GetSysctl(sysctlVar, pod)
 		if err != nil {
-			return false, nil
+			return false, err
 		}
 
 		if val != valExp {

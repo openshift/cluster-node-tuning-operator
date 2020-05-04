@@ -14,7 +14,7 @@ import (
 )
 
 // Test the application (and rollback) of a custom profile via node labelling.
-var _ = Describe("Node Tuning Operator: custom profile: node labels", func() {
+var _ = Describe("[basic][custom_node_labels] Node Tuning Operator custom profile, node labels", func() {
 	const (
 		profileHugepages   = "../../../examples/hugepages.yaml"
 		nodeLabelHugepages = "tuned.openshift.io/hugepages"

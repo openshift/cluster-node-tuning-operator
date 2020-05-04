@@ -14,7 +14,7 @@ import (
 )
 
 // Test the application (and rollback) of a custom profile via pod labelling.
-var _ = Describe("Node Tuning Operator: custom profile: pod labels", func() {
+var _ = Describe("[basic][custom_pod_labels] Node Tuning Operator custom profile, pod labels", func() {
 	const (
 		profileElasticSearch  = "../../../examples/elasticsearch.yaml"
 		podLabelElasticSearch = "tuned.openshift.io/elasticsearch"

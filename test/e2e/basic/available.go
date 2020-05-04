@@ -16,13 +16,13 @@ import (
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 )
 
-var _ = Describe("Node Tuning Operator: availability", func() {
+var _ = Describe("[basic][available] Node Tuning Operator availability", func() {
 	It(fmt.Sprintf("clusteroperator/%s available", tunedv1.TunedClusterOperatorResourceName), func() {
 		By(fmt.Sprintf("wait for clusteroperator/%s available", tunedv1.TunedClusterOperatorResourceName))
 		err := wait.PollImmediate(1*time.Second, 5*time.Minute, func() (bool, error) {
 			co, err := cs.ClusterOperators().Get(context.TODO(), tunedv1.TunedClusterOperatorResourceName, metav1.GetOptions{})
 			if err != nil {
-				return false, nil
+				return false, err
 			}
 
 			for _, cond := range co.Status.Conditions {
@@ -41,7 +41,7 @@ var _ = Describe("Node Tuning Operator: availability", func() {
 		err := wait.PollImmediate(1*time.Second, 5*time.Minute, func() (bool, error) {
 			_, err := cs.Tuneds(ntoconfig.OperatorNamespace()).Get(context.TODO(), tunedv1.TunedDefaultResourceName, metav1.GetOptions{})
 			if err != nil {
-				return false, nil
+				return false, err
 			}
 			return true, nil
 		})
