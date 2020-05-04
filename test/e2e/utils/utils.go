@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	. "github.com/onsi/ginkgo"
+
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,6 +19,10 @@ import (
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/test/framework"
 )
+
+func Logf(format string, args ...interface{}) {
+	fmt.Fprintf(GinkgoWriter, format+"\n", args...)
+}
 
 // GetNodesByRole returns a list of nodes that match a given role.
 func GetNodesByRole(cs *framework.ClientSet, role string) ([]corev1.Node, error) {

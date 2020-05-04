@@ -78,7 +78,7 @@ var _ = Describe("[reboots][machine_config_labels] Node Tuning Operator machine 
 			By(fmt.Sprintf("getting the current %s value in pod %s", procCmdline, pod.Name))
 			cmdlineNew, err := GetFileInPod(pod, procCmdline)
 			Expect(err).NotTo(HaveOccurred())
-			By(fmt.Sprintf("%s has %s: %s", pod.Name, procCmdline, cmdlineNew))
+			Logf("%s has %s: %s", pod.Name, procCmdline, cmdlineNew)
 
 			// Check the key kernel parameters for the realtime profile to be present in /proc/cmdline
 			By("ensuring the custom worker node profile was set")
@@ -104,7 +104,7 @@ var _ = Describe("[reboots][machine_config_labels] Node Tuning Operator machine 
 
 			By(fmt.Sprintf("getting the current %s value in pod %s", procCmdline, pod.Name))
 			cmdlineNew, err = GetFileInPod(pod, procCmdline)
-			By(fmt.Sprintf("%s has %s: %s", pod.Name, procCmdline, cmdlineNew))
+			Logf("%s has %s: %s", pod.Name, procCmdline, cmdlineNew)
 
 			By("ensuring the original kernel command line was restored")
 			Expect(cmdlineOrig == cmdlineNew).To(BeTrue(), "kernel parameters as retrieved from %s after profile rollback do not match", procCmdline)
