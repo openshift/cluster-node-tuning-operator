@@ -4,75 +4,75 @@ import (
 	"fmt"
 	"os/exec"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 
-	. "github.com/openshift/cluster-node-tuning-operator/test/e2e/utils"
+	coreapi "k8s.io/api/core/v1"
 
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
-	coreapi "k8s.io/api/core/v1"
+	util "github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 )
 
 // Test the application (and rollback) of a custom profile via node labelling.
-var _ = Describe("[basic][custom_node_labels] Node Tuning Operator custom profile, node labels", func() {
+var _ = ginkgo.Describe("[basic][custom_node_labels] Node Tuning Operator custom profile, node labels", func() {
 	const (
 		profileHugepages   = "../../../examples/hugepages.yaml"
 		nodeLabelHugepages = "tuned.openshift.io/hugepages"
 		sysctlVar          = "vm.nr_hugepages"
 	)
 
-	Context("custom profile: node labels", func() {
+	ginkgo.Context("custom profile: node labels", func() {
 		var (
 			node *coreapi.Node
 		)
 
-		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of It()
-		AfterEach(func() {
-			By("cluster changes rollback")
+		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of ginkgo.It()
+		ginkgo.AfterEach(func() {
+			ginkgo.By("cluster changes rollback")
 			if node != nil {
-				exec.Command("oc", "label", "node", "--overwrite", node.Name, nodeLabelHugepages+"-").CombinedOutput()
+				exec.Command("oc", "label", "node", "--overwrite", node.Name, nodeLabelHugepages+"-")
 			}
-			exec.Command("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileHugepages).CombinedOutput()
+			exec.Command("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileHugepages)
 		})
 
-		It(fmt.Sprintf("%s set", sysctlVar), func() {
-			By("getting a list of worker nodes")
-			nodes, err := GetNodesByRole(cs, "worker")
-			Expect(err).NotTo(HaveOccurred())
-			Expect(len(nodes)).NotTo(BeZero())
+		ginkgo.It(fmt.Sprintf("%s set", sysctlVar), func() {
+			ginkgo.By("getting a list of worker nodes")
+			nodes, err := util.GetNodesByRole(cs, "worker")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(len(nodes)).NotTo(gomega.BeZero(), "number of worker nodes is 0")
 
 			node = &nodes[0]
-			By(fmt.Sprintf("getting a tuned pod running on node %s", node.Name))
-			pod, err := GetTunedForNode(cs, node)
-			Expect(err).NotTo(HaveOccurred())
+			ginkgo.By(fmt.Sprintf("getting a tuned pod running on node %s", node.Name))
+			pod, err := util.GetTunedForNode(cs, node)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			By(fmt.Sprintf("getting the current value of %s in pod %s", sysctlVar, pod.Name))
-			valOrig, err := GetSysctl(sysctlVar, pod)
-			Expect(err).NotTo(HaveOccurred())
+			ginkgo.By(fmt.Sprintf("getting the current value of %s in pod %s", sysctlVar, pod.Name))
+			valOrig, err := util.GetSysctl(sysctlVar, pod)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			By(fmt.Sprintf("labelling node %s with label %s", node.Name, nodeLabelHugepages))
-			_, err = exec.Command("oc", "label", "node", "--overwrite", node.Name, nodeLabelHugepages+"=").CombinedOutput()
-			Expect(err).NotTo(HaveOccurred())
+			ginkgo.By(fmt.Sprintf("labelling node %s with label %s", node.Name, nodeLabelHugepages))
+			_, _, err = util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelHugepages+"=")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			By(fmt.Sprintf("creating the custom hugepages profile %s", profileHugepages))
-			_, err = exec.Command("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileHugepages).CombinedOutput()
-			Expect(err).NotTo(HaveOccurred())
+			ginkgo.By(fmt.Sprintf("creating the custom hugepages profile %s", profileHugepages))
+			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileHugepages)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			By("ensuring the custom worker node profile was set")
-			err = EnsureSysctl(pod, sysctlVar, "16")
-			Expect(err).NotTo(HaveOccurred())
+			ginkgo.By("ensuring the custom worker node profile was set")
+			err = util.EnsureSysctl(pod, sysctlVar, "16")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			By(fmt.Sprintf("deleting the custom hugepages profile %s", profileHugepages))
-			_, err = exec.Command("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileHugepages).CombinedOutput()
-			Expect(err).NotTo(HaveOccurred())
+			ginkgo.By(fmt.Sprintf("deleting the custom hugepages profile %s", profileHugepages))
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileHugepages)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			By(fmt.Sprintf("ensuring the original %s value (%s) is set in pod %s", sysctlVar, valOrig, pod.Name))
-			err = EnsureSysctl(pod, sysctlVar, valOrig)
-			Expect(err).NotTo(HaveOccurred())
+			ginkgo.By(fmt.Sprintf("ensuring the original %s value (%s) is set in pod %s", sysctlVar, valOrig, pod.Name))
+			err = util.EnsureSysctl(pod, sysctlVar, valOrig)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			By(fmt.Sprintf("removing label %s from node %s", nodeLabelHugepages, node.Name))
-			_, err = exec.Command("oc", "label", "node", "--overwrite", node.Name, nodeLabelHugepages+"-").CombinedOutput()
-			Expect(err).NotTo(HaveOccurred())
+			ginkgo.By(fmt.Sprintf("removing label %s from node %s", nodeLabelHugepages, node.Name))
+			_, _, err = util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelHugepages+"-")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		})
 	})
 })

@@ -4,75 +4,75 @@ import (
 	"fmt"
 	"os/exec"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 
-	. "github.com/openshift/cluster-node-tuning-operator/test/e2e/utils"
+	coreapi "k8s.io/api/core/v1"
 
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
-	coreapi "k8s.io/api/core/v1"
+	util "github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 )
 
 // Test the application (and rollback) of a custom profile via pod labelling.
-var _ = Describe("[basic][custom_pod_labels] Node Tuning Operator custom profile, pod labels", func() {
+var _ = ginkgo.Describe("[basic][custom_pod_labels] Node Tuning Operator custom profile, pod labels", func() {
 	const (
-		profileElasticSearch  = "../../../examples/elasticsearch.yaml"
-		podLabelElasticSearch = "tuned.openshift.io/elasticsearch"
-		sysctlVar             = "vm.max_map_count"
+		profileIngress  = "../../../examples/ingress.yaml"
+		podLabelIngress = "tuned.openshift.io/ingress"
+		sysctlVar       = "net.ipv4.tcp_tw_reuse"
 	)
 
-	Context("custom profile: pod labels", func() {
+	ginkgo.Context("custom profile: pod labels", func() {
 		var (
 			pod *coreapi.Pod
 		)
 
-		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of It()
-		AfterEach(func() {
-			By("cluster changes rollback")
+		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of ginkgo.It()
+		ginkgo.AfterEach(func() {
+			ginkgo.By("cluster changes rollback")
 			if pod != nil {
-				exec.Command("oc", "label", "pod", "--overwrite", "-n", ntoconfig.OperatorNamespace(), pod.Name, podLabelElasticSearch+"-").CombinedOutput()
+				exec.Command("oc", "label", "pod", "--overwrite", "-n", ntoconfig.OperatorNamespace(), pod.Name, podLabelIngress+"-")
 			}
-			exec.Command("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileElasticSearch).CombinedOutput()
+			exec.Command("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileIngress)
 		})
 
-		It(fmt.Sprintf("%s set", sysctlVar), func() {
-			By("getting a list of worker nodes")
-			nodes, err := GetNodesByRole(cs, "worker")
-			Expect(err).NotTo(HaveOccurred())
-			Expect(len(nodes)).NotTo(BeZero())
+		ginkgo.It(fmt.Sprintf("%s set", sysctlVar), func() {
+			ginkgo.By("getting a list of worker nodes")
+			nodes, err := util.GetNodesByRole(cs, "worker")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(len(nodes)).NotTo(gomega.BeZero(), "number of worker nodes is 0")
 
 			node := nodes[0]
-			By(fmt.Sprintf("getting a tuned pod running on node %s", node.Name))
-			pod, err = GetTunedForNode(cs, &node)
-			Expect(err).NotTo(HaveOccurred())
+			ginkgo.By(fmt.Sprintf("getting a tuned pod running on node %s", node.Name))
+			pod, err = util.GetTunedForNode(cs, &node)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			By(fmt.Sprintf("getting the current value of %s in pod %s", sysctlVar, pod.Name))
-			valOrig, err := GetSysctl(sysctlVar, pod)
-			Expect(err).NotTo(HaveOccurred())
+			ginkgo.By(fmt.Sprintf("getting the current value of %s in pod %s", sysctlVar, pod.Name))
+			valOrig, err := util.GetSysctl(sysctlVar, pod)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			By(fmt.Sprintf("labelling pod %s with label %s", pod.Name, podLabelElasticSearch))
-			_, err = exec.Command("oc", "label", "pod", "--overwrite", "-n", ntoconfig.OperatorNamespace(), pod.Name, podLabelElasticSearch+"=").CombinedOutput()
-			Expect(err).NotTo(HaveOccurred())
+			ginkgo.By(fmt.Sprintf("labelling pod %s with label %s", pod.Name, podLabelIngress))
+			_, _, err = util.ExecAndLogCommand("oc", "label", "pod", "--overwrite", "-n", ntoconfig.OperatorNamespace(), pod.Name, podLabelIngress+"=")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			By(fmt.Sprintf("creating the custom elasticsearch profile %s", profileElasticSearch))
-			_, err = exec.Command("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileElasticSearch).CombinedOutput()
-			Expect(err).NotTo(HaveOccurred())
+			ginkgo.By(fmt.Sprintf("creating the custom ingress profile %s", profileIngress))
+			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileIngress)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			By("ensuring the custom worker node profile was set")
-			err = EnsureSysctl(pod, sysctlVar, "262144")
-			Expect(err).NotTo(HaveOccurred())
+			ginkgo.By("ensuring the custom worker node profile was set")
+			err = util.EnsureSysctl(pod, sysctlVar, "1")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			By(fmt.Sprintf("removing label %s from pod %s", podLabelElasticSearch, pod.Name))
-			_, err = exec.Command("oc", "label", "pod", "--overwrite", "-n", ntoconfig.OperatorNamespace(), pod.Name, podLabelElasticSearch+"-").CombinedOutput()
-			Expect(err).NotTo(HaveOccurred())
+			ginkgo.By(fmt.Sprintf("removing label %s from pod %s", podLabelIngress, pod.Name))
+			_, _, err = util.ExecAndLogCommand("oc", "label", "pod", "--overwrite", "-n", ntoconfig.OperatorNamespace(), pod.Name, podLabelIngress+"-")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			By(fmt.Sprintf("ensuring the original %s value (%s) is set in pod %s", sysctlVar, valOrig, pod.Name))
-			err = EnsureSysctl(pod, sysctlVar, valOrig)
-			Expect(err).NotTo(HaveOccurred())
+			ginkgo.By(fmt.Sprintf("ensuring the original %s value (%s) is set in pod %s", sysctlVar, valOrig, pod.Name))
+			err = util.EnsureSysctl(pod, sysctlVar, valOrig)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			By(fmt.Sprintf("deleting the custom elasticsearch profile %s", profileElasticSearch))
-			_, err = exec.Command("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileElasticSearch).CombinedOutput()
-			Expect(err).NotTo(HaveOccurred())
+			ginkgo.By(fmt.Sprintf("deleting the custom ingress profile %s", profileIngress))
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileIngress)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		})
 	})
 })

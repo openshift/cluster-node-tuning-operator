@@ -1,13 +1,14 @@
-package e2e
+package util
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os/exec"
 	"strings"
 	"time"
 
-	. "github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo"
 
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
@@ -21,7 +22,23 @@ import (
 )
 
 func Logf(format string, args ...interface{}) {
-	fmt.Fprintf(GinkgoWriter, format+"\n", args...)
+	fmt.Fprintf(ginkgo.GinkgoWriter, format+"\n", args...)
+}
+
+func ExecAndLogCommand(name string, arg ...string) (bytes.Buffer, bytes.Buffer, error) {
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+	)
+
+	cmd := exec.Command(name, arg...)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	Logf("run command '%s %v':\n  out=%s\n  err=%s\n  ret=%v",
+		name, arg, strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), err)
+
+	return stdout, stderr, err
 }
 
 // GetNodesByRole returns a list of nodes that match a given role.
@@ -31,7 +48,7 @@ func GetNodesByRole(cs *framework.ClientSet, role string) ([]corev1.Node, error)
 	}
 	nodeList, err := cs.Nodes().List(context.TODO(), listOptions)
 	if err != nil {
-		return nil, fmt.Errorf("Couldn't get a list of nodes by role (%s): %v", role, err)
+		return nil, fmt.Errorf("couldn't get a list of nodes by role (%s): %v", role, err)
 	}
 	return nodeList.Items, nil
 }
@@ -45,33 +62,37 @@ func GetTunedForNode(cs *framework.ClientSet, node *corev1.Node) (*corev1.Pod, e
 
 	podList, err := cs.Pods(ntoconfig.OperatorNamespace()).List(context.TODO(), listOptions)
 	if err != nil {
-		return nil, fmt.Errorf("Couldn't get a list of tuned pods: %v", err)
+		return nil, fmt.Errorf("couldn't get a list of tuned pods: %v", err)
 	}
 
 	if len(podList.Items) != 1 {
 		if len(podList.Items) == 0 {
-			return nil, fmt.Errorf("Failed to find a tuned pod for node %s", node.Name)
+			return nil, fmt.Errorf("failed to find a tuned pod for node %s", node.Name)
 		}
-		return nil, fmt.Errorf("Too many (%d) tuned pods for node %s", len(podList.Items), node.Name)
+		return nil, fmt.Errorf("too many (%d) tuned pods for node %s", len(podList.Items), node.Name)
 	}
 	return &podList.Items[0], nil
 }
 
 // GetSysctl returns a sysctl value for sysctlVar from inside a (tuned) pod.
-func GetSysctl(sysctlVar string, pod *corev1.Pod) (val string, err error) {
-	wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
+func GetSysctl(sysctlVar string, pod *corev1.Pod) (string, error) {
+	var (
+		val, explain string
+		err          error
+	)
+	err = wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
 		var out []byte
 		out, err = exec.Command("oc", "rsh", "-n", ntoconfig.OperatorNamespace(), pod.Name,
 			"sysctl", "-n", sysctlVar).CombinedOutput()
 		if err != nil {
-			// Failed to query a sysctl "sysctlVar" on pod.Name
-			return false, err
+			explain = fmt.Sprintf("failed to query sysctl %s on %s", sysctlVar, pod.Name)
+			return false, nil
 		}
 		val = strings.TrimSpace(string(out))
 		return true, nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("Failed to retrieve sysctl value %s in pod %s: %v", sysctlVar, pod.Name, err)
+		return "", fmt.Errorf("failed to retrieve sysctl value %s in pod %s: %s", sysctlVar, pod.Name, explain)
 	}
 
 	return val, nil
@@ -91,18 +112,19 @@ func ExecCmdInPod(pod *corev1.Pod, args ...string) (string, error) {
 }
 
 // GetFileInPod returns content for file from inside a (tuned) pod.
-func GetFileInPod(pod *corev1.Pod, file string) (val string, err error) {
-	wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
+func GetFileInPod(pod *corev1.Pod, file string) (string, error) {
+	var val, explain string
+	err := wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
 		out, err := ExecCmdInPod(pod, "cat", file)
 		if err != nil {
-			// Failed to query a sysctl "sysctlVar" on pod.Name
-			return false, err
+			explain = fmt.Sprintf("failed to cat %s", file)
+			return false, nil
 		}
 		val = strings.TrimSpace(out)
 		return true, nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("Failed to retrieve %s content in pod %s: %v", file, pod.Name, err)
+		return "", fmt.Errorf("failed to retrieve %s content in pod %s: %s", file, pod.Name, explain)
 	}
 
 	return val, nil
@@ -110,12 +132,13 @@ func GetFileInPod(pod *corev1.Pod, file string) (val string, err error) {
 
 // EnsureSysctl makes sure a sysctl value for sysctlVar from inside a (tuned) pod
 // is equal to valExp.  Returns an error otherwise.
-func EnsureSysctl(pod *corev1.Pod, sysctlVar string, valExp string) (err error) {
+func EnsureSysctl(pod *corev1.Pod, sysctlVar string, valExp string) error {
 	var val string
 	wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
+		var err error
 		val, err = GetSysctl(sysctlVar, pod)
 		if err != nil {
-			return false, err
+			return false, nil
 		}
 
 		if val != valExp {
@@ -123,7 +146,6 @@ func EnsureSysctl(pod *corev1.Pod, sysctlVar string, valExp string) (err error) 
 		}
 		return true, nil
 	})
-
 	if val != valExp {
 		return fmt.Errorf("sysctl %s=%s on %s, expected %s.", sysctlVar, val, pod.Name, valExp)
 	}

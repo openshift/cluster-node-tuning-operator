@@ -71,7 +71,7 @@ $(GOBINDATA_BIN):
 
 test-e2e: $(BINDATA)
 	for d in basic reboots; do \
-	  KUBERNETES_CONFIG="$(KUBECONFIG)" $(GO) test -v -timeout 20m ./test/e2e/$$d -ginkgo.v -ginkgo.noColor -ginkgo.failFast || exit; \
+	  KUBERNETES_CONFIG="$(KUBECONFIG)" $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.noColor -ginkgo.failFast || exit; \
 	done
 
 verify:	verify-gofmt

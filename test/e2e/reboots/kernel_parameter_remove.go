@@ -4,27 +4,30 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
 
 	coreapi "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	nutil "github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 )
 
-// Test the MachineConfig labels matching functionality and rollback.
-var _ = ginkgo.Describe("[reboots][machine_config_labels] Node Tuning Operator machine config labels", func() {
+// Test the removal of a kernel parameter defined by a parent profile.
+var _ = ginkgo.Describe("[reboots][kernel_parameter_remove] Node Tuning Operator parent profile kernel parameter removal", func() {
 	const (
-		profileRealtime   = "../../../examples/realtime-mc.yaml"
+		profileParent     = "../testing_manifests/kernel_parameter_remove-parent.yaml"
+		profileChild      = "../testing_manifests/kernel_parameter_remove-child.yaml"
 		mcpRealtime       = "../../../examples/realtime-mcp.yaml"
 		nodeLabelRealtime = "node-role.kubernetes.io/worker-rt"
 		procCmdline       = "/proc/cmdline"
 	)
 
-	ginkgo.Context("machine config labels", func() {
+	ginkgo.Context("kernel parameter remove", func() {
 		var (
 			node *coreapi.Node
 		)
@@ -37,11 +40,18 @@ var _ = ginkgo.Describe("[reboots][machine_config_labels] Node Tuning Operator m
 			if node != nil {
 				exec.Command("oc", "label", "node", "--overwrite", node.Name, nodeLabelRealtime+"-")
 			}
-			exec.Command("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileRealtime)
+			exec.Command("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileParent)
+			exec.Command("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileChild)
 			exec.Command("oc", "delete", "-f", mcpRealtime)
 		})
 
 		ginkgo.It("kernel parameters set", func() {
+			var explain string
+			const (
+				paramRemove = "nto.e2e.parent.remove"
+				paramKeep   = "nto.e2e.parent.keep"
+			)
+
 			ginkgo.By("getting a list of worker nodes")
 			nodes, err := util.GetNodesByRole(cs, "worker")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -64,8 +74,8 @@ var _ = ginkgo.Describe("[reboots][machine_config_labels] Node Tuning Operator m
 			_, _, err = util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelRealtime+"=")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("creating custom realtime profile %s", profileRealtime))
-			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileRealtime)
+			ginkgo.By(fmt.Sprintf("creating custom parent profile %s", profileParent))
+			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileParent)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("creating custom MachineConfigPool %s", mcpRealtime))
@@ -81,11 +91,35 @@ var _ = ginkgo.Describe("[reboots][machine_config_labels] Node Tuning Operator m
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			util.Logf("%s has %s: %s", pod.Name, procCmdline, cmdlineNew)
 
-			// Check the key kernel parameters for the realtime profile to be present in /proc/cmdline
-			ginkgo.By("ensuring the custom worker node profile was set")
-			for _, v := range []string{"skew_tick", "intel_pstate=disable", "nosoftlockup", "tsc=nowatchdog"} {
+			// Check the key kernel parameters for the parent profile to be present in /proc/cmdline
+			ginkgo.By("ensuring the custom worker parent profile was set")
+			for _, v := range []string{paramKeep, paramRemove} {
 				gomega.Expect(strings.Contains(cmdlineNew, v)).To(gomega.BeTrue(), "missing '%s' in %s: %s", v, procCmdline, cmdlineNew)
 			}
+
+			ginkgo.By(fmt.Sprintf("creating custom child profile %s", profileChild))
+			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileChild)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By("ensuring the custom worker child profile was set")
+			err = wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
+				cmdlineNew, err = util.GetFileInPod(pod, procCmdline)
+				if err != nil {
+					explain = err.Error()
+					return false, nil
+				}
+				if strings.Contains(cmdlineNew, paramRemove) {
+					explain = fmt.Sprintf("found '%s' in %s: %s", paramRemove, procCmdline, cmdlineNew)
+					return false, nil
+				}
+				if !strings.Contains(cmdlineNew, paramKeep) {
+					explain = fmt.Sprintf("missing '%s' in %s: %s", paramKeep, procCmdline, cmdlineNew)
+					return false, nil
+				}
+				return true, nil
+			})
+			gomega.Expect(err).NotTo(gomega.HaveOccurred(), explain)
+			util.Logf("%s has %s: %s", pod.Name, procCmdline, cmdlineNew)
 
 			// Node label needs to be removed first, and we also need to wait for the worker pool to complete the update;
 			// otherwise worker-rt MachineConfigPool deletion would cause Degraded state of the worker pool.
@@ -94,8 +128,12 @@ var _ = ginkgo.Describe("[reboots][machine_config_labels] Node Tuning Operator m
 			_, _, err = util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelRealtime+"-")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("deleting the custom realtime profile %s", profileRealtime))
-			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileRealtime)
+			ginkgo.By(fmt.Sprintf("deleting the custom parent profile %s", profileParent))
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileParent)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By(fmt.Sprintf("deleting the custom child profile %s", profileChild))
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileChild)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			// Wait for the worker machineCount to go to the original value when the node was not part of worker-rt pool.

@@ -6,7 +6,7 @@ func isspace(b byte) bool {
 }
 
 // You can use " around spaces, but can't escape ".  See next_arg() in kernel code.
-func nextArg(args string, start int) (int, int) {
+func nextArg(args string, start int) (int, int, int) {
 	var (
 		i, equals int
 		stop      int
@@ -41,23 +41,52 @@ func nextArg(args string, start int) (int, int) {
 
 	stop = i
 
-	return start, stop
+	return start, equals, stop
 }
 
 // SplitKernelArguments splits kernel parameters into a slice of strings one parameter per string.
 // Workaround for rhbz#1812605.
 func SplitKernelArguments(args string) []string {
+	return SplitKernelArgumentsWithout(args, nil)
+}
+
+// SplitKernelArgumentsWithout splits kernel parameters excluding any parameters in the 'exclude'
+// slice into a slice of strings one parameter per string.
+func SplitKernelArgumentsWithout(args string, exclude []string) []string {
 	var (
-		start, stop int
-		kv          []string
+		start, equals, stop int
+		kv                  []string
 	)
 
+loop:
 	for stop < len(args) {
-		start, stop = nextArg(args, stop)
+		start, equals, stop = nextArg(args, stop)
+		if len(exclude) != 0 {
+			// Some parameters are being excluded.
+			var key string
+
+			if equals == 0 {
+				key = args[start:stop]
+			} else {
+				key = args[start:equals]
+			}
+			for _, v := range exclude {
+				if key == v {
+					continue loop
+				}
+			}
+		}
 		if start != stop {
 			kv = append(kv, args[start:stop])
 		}
 	}
 
 	return kv
+}
+
+func KernelArgumentsEqual(args1, args2 string, exclude ...string) bool {
+	a1 := SplitKernelArgumentsWithout(args1, exclude)
+	a2 := SplitKernelArgumentsWithout(args2, exclude)
+
+	return StringSlicesAsSetsEqual(a1, a2)
 }
