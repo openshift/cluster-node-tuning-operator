@@ -251,13 +251,13 @@ func disableSystemTuned() {
 		stdout bytes.Buffer
 		stderr bytes.Buffer
 	)
-	klog.V(1).Infof("disabling system tuned...")
+	klog.Infof("disabling system tuned...")
 	cmd := exec.Command("/usr/bin/systemctl", "disable", "tuned", "--now")
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err != nil {
-		klog.V(1).Infof("failed to disable system tuned: %s", stderr.String()) // do not use log.Printf(), tuned has its own timestamping
+		klog.V(1).Infof("failed to disable system tuned: %v: %s", err, stderr.String()) // do not use log.Printf(), tuned has its own timestamping
 	}
 }
 
@@ -613,6 +613,7 @@ func (c *Controller) informerEventHandler(workqueueKey wqKey) cache.ResourceEven
 				return
 			}
 
+			workqueueKey.name = accessor.GetName()
 			if workqueueKey.kind == wqKindProfile && workqueueKey.name == getNodeName() {
 				// When moving this code elsewhere, consider whether it is desirable
 				// to disable system tuned on nodes that should not be managed by
@@ -621,7 +622,7 @@ func (c *Controller) informerEventHandler(workqueueKey wqKey) cache.ResourceEven
 			}
 
 			klog.V(2).Infof("add event to workqueue due to %s (add)", util.ObjectInfo(o))
-			c.workqueue.Add(wqKey{kind: workqueueKey.kind, name: accessor.GetName()})
+			c.workqueue.Add(wqKey{kind: workqueueKey.kind, name: workqueueKey.name})
 		},
 		UpdateFunc: func(o, n interface{}) {
 			newAccessor, err := kmeta.Accessor(n)
