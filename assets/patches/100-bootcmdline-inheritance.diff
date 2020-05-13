@@ -1,0 +1,22 @@
+Resolves an issue with removing parent profile cmdline parameters.
+
+See: rhbz#1816168, https://github.com/redhat-performance/tuned/pull/265
+
+--- a/usr/lib/tuned/network-latency/tuned.conf
++++ b/usr/lib/tuned/network-latency/tuned.conf
+@@ -16,4 +16,4 @@ net.ipv4.tcp_fastopen=3
+ kernel.numa_balancing=0
+ 
+ [bootloader]
+-cmdline=skew_tick=1
++cmdline_network_latency=skew_tick=1
+--- a/usr/lib/python2.7/site-packages/tuned/plugins/plugin_bootloader.py
++++ b/usr/lib/python2.7/site-packages/tuned/plugins/plugin_bootloader.py
+@@ -61,7 +61,6 @@ def _get_effective_options(self, options):
+ 				effective[key] = options[key]
+ 			else:
+ 				log.warn("Unknown option '%s' for plugin '%s'." % (key, self.__class__.__name__))
+-		cmdline_keys.sort()
+ 		cmdline = ""
+ 		for key in cmdline_keys:
+ 			val = options[key]
