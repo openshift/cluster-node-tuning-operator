@@ -30,3 +30,18 @@ func StringSlicesAsSetsEqual(a, b []string) bool {
 
 	return true
 }
+
+// StringSlicesEqual returns true if slices of strings 'a' and 'b' are the same.
+func StringSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i, v := range a {
+		if v !=b[i] {
+			return false
+		}
+	}
+
+	return true
+}

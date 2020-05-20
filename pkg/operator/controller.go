@@ -547,7 +547,7 @@ func (c *Controller) syncMachineConfig(name string, labels map[string]string, bo
 		return err
 	}
 
-	if util.StringSlicesAsSetsEqual(mc.Spec.KernelArguments, kernelArguments) {
+	if util.StringSlicesEqual(mc.Spec.KernelArguments, kernelArguments) {
 		// No update needed
 		klog.V(2).Infof("syncMachineConfig(): MachineConfig %s doesn't need updating", mc.ObjectMeta.Name)
 		return nil

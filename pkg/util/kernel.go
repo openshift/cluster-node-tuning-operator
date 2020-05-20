@@ -84,9 +84,13 @@ loop:
 	return kv
 }
 
+// KernelArgumentsEqual compares kernel arguments 'args1' and 'args2'
+// excluding parameters 'exclude'.  Returns true when they're equal.
+// Note the order of kernel arguments matters.  For example,
+// "hugepagesz=1G hugepages=1" vs. "hugepages=1 hugepagesz=1G".
 func KernelArgumentsEqual(args1, args2 string, exclude ...string) bool {
 	a1 := SplitKernelArgumentsWithout(args1, exclude)
 	a2 := SplitKernelArgumentsWithout(args2, exclude)
 
-	return StringSlicesAsSetsEqual(a1, a2)
+	return StringSlicesEqual(a1, a2)
 }
