@@ -38,7 +38,7 @@ func StringSlicesEqual(a, b []string) bool {
 	}
 
 	for i, v := range a {
-		if v !=b[i] {
+		if v != b[i] {
 			return false
 		}
 	}
