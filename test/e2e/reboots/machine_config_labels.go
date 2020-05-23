@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/onsi/ginkgo"
@@ -35,10 +34,10 @@ var _ = ginkgo.Describe("[reboots][machine_config_labels] Node Tuning Operator m
 			// this can cause a degraded MachineConfigPool
 			ginkgo.By("cluster changes rollback")
 			if node != nil {
-				exec.Command("oc", "label", "node", "--overwrite", node.Name, nodeLabelRealtime+"-")
+				util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelRealtime+"-")
 			}
-			exec.Command("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileRealtime)
-			exec.Command("oc", "delete", "-f", mcpRealtime)
+			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileRealtime)
+			util.ExecAndLogCommand("oc", "delete", "-f", mcpRealtime)
 		})
 
 		ginkgo.It("kernel parameters set", func() {

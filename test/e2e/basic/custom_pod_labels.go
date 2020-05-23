@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"fmt"
-	"os/exec"
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
@@ -30,9 +29,9 @@ var _ = ginkgo.Describe("[basic][custom_pod_labels] Node Tuning Operator custom 
 		ginkgo.AfterEach(func() {
 			ginkgo.By("cluster changes rollback")
 			if pod != nil {
-				exec.Command("oc", "label", "pod", "--overwrite", "-n", ntoconfig.OperatorNamespace(), pod.Name, podLabelIngress+"-")
+				util.ExecAndLogCommand("oc", "label", "pod", "--overwrite", "-n", ntoconfig.OperatorNamespace(), pod.Name, podLabelIngress+"-")
 			}
-			exec.Command("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileIngress)
+			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileIngress)
 		})
 
 		ginkgo.It(fmt.Sprintf("%s set", sysctlVar), func() {

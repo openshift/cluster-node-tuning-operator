@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -18,16 +17,16 @@ import (
 )
 
 // Test the removal of a kernel parameter defined by a parent profile.
-var _ = ginkgo.Describe("[reboots][kernel_parameter_remove] Node Tuning Operator parent profile kernel parameter removal", func() {
+var _ = ginkgo.Describe("[reboots][kernel_parameter_add_rm] Node Tuning Operator parent profile kernel parameter removal", func() {
 	const (
-		profileParent     = "../testing_manifests/kernel_parameter_remove-parent.yaml"
-		profileChild      = "../testing_manifests/kernel_parameter_remove-child.yaml"
+		profileParent     = "../testing_manifests/kernel_parameter_add_rm-parent.yaml"
+		profileChild      = "../testing_manifests/kernel_parameter_add_rm-child.yaml"
 		mcpRealtime       = "../../../examples/realtime-mcp.yaml"
 		nodeLabelRealtime = "node-role.kubernetes.io/worker-rt"
 		procCmdline       = "/proc/cmdline"
 	)
 
-	ginkgo.Context("kernel parameter remove", func() {
+	ginkgo.Context("kernel parameter add/remove", func() {
 		var (
 			node *coreapi.Node
 		)
@@ -38,16 +37,18 @@ var _ = ginkgo.Describe("[reboots][kernel_parameter_remove] Node Tuning Operator
 			// this can cause a degraded MachineConfigPool
 			ginkgo.By("cluster changes rollback")
 			if node != nil {
-				exec.Command("oc", "label", "node", "--overwrite", node.Name, nodeLabelRealtime+"-")
+				util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelRealtime+"-")
 			}
-			exec.Command("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileParent)
-			exec.Command("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileChild)
-			exec.Command("oc", "delete", "-f", mcpRealtime)
+			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileParent)
+			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileChild)
+			util.ExecAndLogCommand("oc", "delete", "-f", mcpRealtime)
 		})
 
 		ginkgo.It("kernel parameters set", func() {
 			var explain string
 			const (
+				paramAdd1   = "nto.e2e.child.add1"
+				paramAdd2   = "nto.e2e.child.add2"
 				paramRemove = "nto.e2e.parent.remove"
 				paramKeep   = "nto.e2e.parent.keep"
 			)
@@ -108,13 +109,16 @@ var _ = ginkgo.Describe("[reboots][kernel_parameter_remove] Node Tuning Operator
 					explain = err.Error()
 					return false, nil
 				}
+
 				if strings.Contains(cmdlineNew, paramRemove) {
 					explain = fmt.Sprintf("found '%s' in %s: %s", paramRemove, procCmdline, cmdlineNew)
 					return false, nil
 				}
-				if !strings.Contains(cmdlineNew, paramKeep) {
-					explain = fmt.Sprintf("missing '%s' in %s: %s", paramKeep, procCmdline, cmdlineNew)
-					return false, nil
+				for _, v := range []string{paramAdd1, paramAdd2, paramKeep} {
+					if !strings.Contains(cmdlineNew, v) {
+						explain = fmt.Sprintf("missing '%s' in %s: %s", v, procCmdline, cmdlineNew)
+						return false, nil
+					}
 				}
 				return true, nil
 			})
