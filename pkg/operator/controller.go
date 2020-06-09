@@ -24,6 +24,7 @@ import (
 	"k8s.io/klog"
 
 	configapiv1 "github.com/openshift/api/config/v1"
+	operatorv1 "github.com/openshift/api/operator/v1"
 	configset "github.com/openshift/client-go/config/clientset/versioned"
 	configsetv1 "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	configinformers "github.com/openshift/client-go/config/informers/externalversions"
@@ -66,9 +67,7 @@ type Controller struct {
 	listers *ntoclient.Listers
 	clients *ntoclient.Clients
 
-	pod struct {
-		informerFactory kubeinformers.SharedInformerFactory
-		informer        corev1informers.PodInformer
+	pod, node struct {
 		informerEnabled bool
 		stopCh          chan struct{}
 	}
@@ -148,10 +147,49 @@ func (c *Controller) eventProcessor() {
 
 func (c *Controller) sync(key wqKey) error {
 	var (
-		cr  *tunedv1.Tuned
-		err error
+		cr           *tunedv1.Tuned
+		err, lastErr error
 	)
 	klog.V(2).Infof("sync(): Kind %s: %s/%s", key.kind, key.namespace, key.name)
+
+	if key.kind == wqKindTuned && key.name == tunedv1.TunedDefaultResourceName {
+		// default Tuned changed or a bootstrap event received
+		cr, err = c.syncTunedDefault()
+		if err != nil {
+			return fmt.Errorf("failed to sync default Tuned CR: %v", err)
+		}
+	} else {
+		cr, err = c.listers.TunedResources.Get(tunedv1.TunedDefaultResourceName)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				cr, err = c.syncTunedDefault()
+				if err != nil {
+					return fmt.Errorf("failed to sync default Tuned CR: %v", err)
+				}
+			} else {
+				return fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
+			}
+		}
+	}
+	// We have the default Tuned custom resource (cr)
+
+	switch cr.Spec.ManagementState {
+	case operatorv1.Force:
+		// Use the same logic as Managed.
+	case operatorv1.Managed, "":
+		// Managed means that the operator is actively managing its resources and trying to keep the component active.
+	case operatorv1.Removed:
+		// Removed means that the operator is actively managing its resources and trying to remove all traces of the component.
+		lastErr = c.removeResources()
+		goto out
+	case operatorv1.Unmanaged:
+		// Unmanaged means that the operator will not take any action related to the component.
+		goto out
+	default:
+		// This should never happen due to openAPIV3Schema checks.
+		klog.Warningf("unknown custom resource ManagementState: %s", cr.Spec.ManagementState)
+	}
+	// Operator is in Force or Managed state.
 
 	switch {
 	case key.kind == wqKindPod:
@@ -219,31 +257,6 @@ func (c *Controller) sync(key wqKey) error {
 
 		return nil
 
-	default:
-	}
-
-	if key.kind == wqKindTuned && key.name == tunedv1.TunedDefaultResourceName {
-		// default Tuned changed or a bootstrap event received
-		cr, err = c.syncTunedDefault()
-		if err != nil {
-			return fmt.Errorf("failed to sync default Tuned CR: %v", err)
-		}
-	} else {
-		cr, err = c.listers.TunedResources.Get(tunedv1.TunedDefaultResourceName)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				cr, err = c.syncTunedDefault()
-				if err != nil {
-					return fmt.Errorf("failed to sync default Tuned CR: %v", err)
-				}
-			} else {
-				return fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
-			}
-		}
-	}
-	// We have the default Tuned custom resource (cr)
-
-	switch {
 	case key.kind == wqKindDaemonSet, key.kind == wqKindClusterOperator:
 		klog.V(2).Infof("sync(): DaemonSet/OperatorStatus")
 
@@ -251,7 +264,7 @@ func (c *Controller) sync(key wqKey) error {
 		if err != nil {
 			return fmt.Errorf("failed to sync DaemonSet: %v", err)
 		}
-		err = c.syncOperatorStatus()
+		err = c.syncOperatorStatus(cr)
 		if err != nil {
 			return fmt.Errorf("failed to sync OperatorStatus: %v", err)
 		}
@@ -276,11 +289,22 @@ func (c *Controller) sync(key wqKey) error {
 	default:
 	}
 
-	// Tuned CR changed
+	// Tuned CR changed and the operator components need to be managed.
 	klog.V(2).Infof("sync(): Tuned %s", tunedv1.TunedRenderedResourceName)
 	err = c.syncTunedRendered(cr)
 	if err != nil {
 		return fmt.Errorf("failed to sync Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
+	}
+
+	if key.name != tunedv1.TunedDefaultResourceName {
+		crTuned, err := c.listers.TunedResources.Get(key.name)
+		if err != nil {
+			if !errors.IsNotFound(err) {
+				return err
+			}
+		} else if crTuned.Spec.ManagementState != "" {
+			klog.Warningf("setting ManagementState is supported only in Tuned/%s; ignoring ManagementState in Tuned/%s", tunedv1.TunedDefaultResourceName, key.name)
+		}
 	}
 
 	klog.V(2).Infof("sync(): DaemonSet")
@@ -289,29 +313,42 @@ func (c *Controller) sync(key wqKey) error {
 		return fmt.Errorf("failed to sync DaemonSet: %v", err)
 	}
 
-	if key.kind == wqKindTuned {
-		// Tuned CR changed, this can affect all profiles, list them and trigger profile updates
-		klog.V(2).Infof("sync(): Tuned %s", key.name)
+	// Tuned CR changed, this can affect all profiles, list them and trigger profile updates
+	klog.V(2).Infof("sync(): Tuned %s", key.name)
 
-		err = c.enqueueProfileUpdates()
-		if err != nil {
-			return err
-		}
+	err = c.enqueueProfileUpdates()
+	if err != nil {
+		return err
+	}
 
-		if key.name == tunedv1.TunedRenderedResourceName {
-			// Do not start unused MachineConfig pruning unnecessarily for the rendered resource
-			return nil
-		}
+	if key.name == tunedv1.TunedRenderedResourceName {
+		// Do not start unused MachineConfig pruning unnecessarily for the rendered resource
+		return nil
+	}
 
-		// Tuned CR change can also mean some MachineConfigs the operator created are no longer needed;
-		// removal of these will also rollback host settings such as kernel boot parameters.
-		err = c.pruneMachineConfigs()
-		if err != nil {
-			return err
-		}
+	// Tuned CR change can also mean some MachineConfigs the operator created are no longer needed;
+	// removal of these will also rollback host settings such as kernel boot parameters.
+	err = c.pruneMachineConfigs()
+	if err != nil {
+		return err
 	}
 
 	return nil
+
+out:
+	err = c.enableNodeInformer(false)
+	if err != nil {
+		lastErr = fmt.Errorf("failed to disable Node informer: %v", err)
+	}
+	err = c.enablePodInformer(false)
+	if err != nil {
+		lastErr = fmt.Errorf("failed to disable Pod informer: %v", err)
+	}
+	err = c.syncOperatorStatus(cr)
+	if err != nil {
+		lastErr = fmt.Errorf("failed to synchronize Operator status: %v", err)
+	}
+	return lastErr
 }
 
 // enqueueProfileUpdates enqueues profile calculations/updates for all Tuned Profiles in the cluster.
@@ -346,12 +383,14 @@ func (c *Controller) syncTunedDefault() (*tunedv1.Tuned, error) {
 	}
 
 	// Tuned resource found, check whether we need to update it
-	if reflect.DeepEqual(crMf.Spec, cr.Spec) {
+	if reflect.DeepEqual(crMf.Spec.Profile, cr.Spec.Profile) &&
+		reflect.DeepEqual(crMf.Spec.Recommend, cr.Spec.Recommend) {
 		klog.V(2).Infof("syncTunedDefault(): Tuned %s doesn't need updating", crMf.Name)
 		return cr, nil
 	}
 	cr = cr.DeepCopy() // never update the objects from cache
-	cr.Spec = crMf.Spec
+	cr.Spec.Profile = crMf.Spec.Profile
+	cr.Spec.Recommend = crMf.Spec.Recommend
 
 	klog.V(2).Infof("syncTunedDefault(): updating Tuned %s", crMf.Name)
 	cr, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Update(context.TODO(), cr, metav1.UpdateOptions{})
@@ -370,6 +409,9 @@ func (c *Controller) syncTunedRendered(tuned *tunedv1.Tuned) error {
 	crMf := ntomf.TunedRenderedResource(tunedList)
 	crMf.ObjectMeta.OwnerReferences = getDefaultTunedRefs(tuned)
 	crMf.Name = tunedv1.TunedRenderedResourceName
+
+	nodeLabelsUsed := c.pc.tunedsUseNodeLabels(tunedList)
+	c.enableNodeInformer(nodeLabelsUsed)
 
 	// Enable/Disable Pod events based on tuned CRs using this functionality.
 	// It is strongly advised not to use the Pod-label functionality in large-scale clusters.
@@ -701,6 +743,35 @@ func (c *Controller) informerEventHandler(workqueueKey wqKey) cache.ResourceEven
 	}
 }
 
+// enableNodeInformer enables/disables event handling for Nodes.
+func (c *Controller) enableNodeInformer(enable bool) error {
+	if (enable && c.node.informerEnabled) || (!enable && !c.node.informerEnabled) {
+		return nil
+	}
+
+	if enable {
+		var (
+			informerFactory kubeinformers.SharedInformerFactory
+			informer        corev1informers.NodeInformer
+		)
+		c.node.stopCh = make(chan struct{})
+		informerFactory = kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.Kube, ntoconfig.ResyncPeriod(), kubeinformers.WithNamespace(corev1.NamespaceAll))
+
+		informer = informerFactory.Core().V1().Nodes()
+		c.listers.Nodes = informer.Lister()
+		informer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindNode}))
+
+		informerFactory.Start(c.node.stopCh)
+	} else {
+		defer close(c.node.stopCh)
+		c.node.stopCh <- struct{}{}
+		c.pc.nodeLabelsDelete()
+	}
+
+	c.node.informerEnabled = enable
+	return nil
+}
+
 // enablePodInformer enables/disables event handling for Pods.
 func (c *Controller) enablePodInformer(enable bool) error {
 	if (enable && c.pod.informerEnabled) || (!enable && !c.pod.informerEnabled) {
@@ -708,14 +779,18 @@ func (c *Controller) enablePodInformer(enable bool) error {
 	}
 
 	if enable {
+		var (
+			informerFactory kubeinformers.SharedInformerFactory
+			informer        corev1informers.PodInformer
+		)
 		c.pod.stopCh = make(chan struct{})
-		c.pod.informerFactory = kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.Kube, ntoconfig.ResyncPeriod(), kubeinformers.WithNamespace(corev1.NamespaceAll))
+		informerFactory = kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.Kube, ntoconfig.ResyncPeriod(), kubeinformers.WithNamespace(corev1.NamespaceAll))
 
-		c.pod.informer = c.pod.informerFactory.Core().V1().Pods()
-		c.listers.Pods = c.pod.informer.Lister()
-		c.pod.informer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindPod}))
+		informer = informerFactory.Core().V1().Pods()
+		c.listers.Pods = informer.Lister()
+		informer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindPod}))
 
-		c.pod.informerFactory.Start(c.pod.stopCh)
+		informerFactory.Start(c.pod.stopCh)
 	} else {
 		defer close(c.pod.stopCh)
 		c.pod.stopCh <- struct{}{}
@@ -724,6 +799,60 @@ func (c *Controller) enablePodInformer(enable bool) error {
 
 	c.pod.informerEnabled = enable
 	return nil
+}
+
+func (c *Controller) removeResources() error {
+	var lastErr error
+	dsMf := ntomf.TunedDaemonSet()
+	ctx := context.TODO()
+
+	_, err := c.listers.DaemonSets.Get(dsMf.Name)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			lastErr = fmt.Errorf("failed to get DaemonSet %s: %v", dsMf.Name, err)
+		}
+	} else {
+		err = c.clients.Apps.DaemonSets(ntoconfig.OperatorNamespace()).Delete(ctx, dsMf.Name, metav1.DeleteOptions{})
+		if err != nil {
+			lastErr = fmt.Errorf("failed to delete DaemonSet %s: %v", dsMf.Name, err)
+		} else {
+			klog.Infof("deleted DaemonSet %s", dsMf.Name)
+		}
+	}
+
+	_, err = c.listers.TunedResources.Get(tunedv1.TunedRenderedResourceName)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			lastErr = fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
+		}
+	} else {
+		err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.OperatorNamespace()).Delete(ctx, tunedv1.TunedRenderedResourceName, metav1.DeleteOptions{})
+		if err != nil {
+			lastErr = fmt.Errorf("failed to delete Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
+		} else {
+			klog.Infof("deleted Tuned %s", tunedv1.TunedRenderedResourceName)
+		}
+	}
+
+	profileList, err := c.listers.TunedProfiles.List(labels.Everything())
+	if err != nil {
+		lastErr = fmt.Errorf("failed to list Tuned profiles: %v", err)
+	}
+	for _, profile := range profileList {
+		err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Delete(ctx, profile.Name, metav1.DeleteOptions{})
+		if err != nil && !errors.IsNotFound(err) {
+			lastErr = fmt.Errorf("failed to delete Profile %s: %v", profile.Name, err)
+		} else {
+			klog.Infof("deleted Profile %s", profile.Name)
+		}
+	}
+
+	err = c.pruneMachineConfigs()
+	if err != nil {
+		lastErr = fmt.Errorf("failed to prune operator-created MachineConfigs: %v", err)
+	}
+
+	return lastErr
 }
 
 // Run will set up the event handlers for types we are interested in, as well
@@ -793,13 +922,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 	configInformerFactory := configinformers.NewSharedInformerFactory(configClient, ntoconfig.ResyncPeriod())
 	kubeNTOInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.Kube, ntoconfig.ResyncPeriod(), kubeinformers.WithNamespace(ntoconfig.OperatorNamespace()))
-	kubeInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.Kube, ntoconfig.ResyncPeriod(), kubeinformers.WithNamespace(corev1.NamespaceAll))
 	tunedInformerFactory := tunedinformers.NewSharedInformerFactoryWithOptions(c.clients.Tuned, ntoconfig.ResyncPeriod(), tunedinformers.WithNamespace(ntoconfig.OperatorNamespace()))
 	mcfgInformerFactory := mcfginformers.NewSharedInformerFactory(c.clients.MC, ntoconfig.ResyncPeriod())
-
-	nodeInformer := kubeInformerFactory.Core().V1().Nodes()
-	c.listers.Nodes = nodeInformer.Lister()
-	nodeInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindNode}))
 
 	coInformer := configInformerFactory.Config().V1().ClusterOperators()
 	c.listers.ClusterOperators = coInformer.Lister()
@@ -826,14 +950,12 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 	configInformerFactory.Start(stopCh)  // ClusterOperator
 	kubeNTOInformerFactory.Start(stopCh) // DaemonSet
-	kubeInformerFactory.Start(stopCh)    // Node
 	tunedInformerFactory.Start(stopCh)   // Tuned/Profile
 	mcfgInformerFactory.Start(stopCh)    // MachineConfig/MachineConfigPool
 
 	// Wait for the caches to be synced before starting worker(s)
 	klog.V(1).Info("waiting for informer caches to sync")
 	ok := cache.WaitForCacheSync(stopCh,
-		nodeInformer.Informer().HasSynced,
 		coInformer.Informer().HasSynced,
 		dsInformer.Informer().HasSynced,
 		trInformer.Informer().HasSynced,
@@ -850,6 +972,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	klog.Info("started events processor/controller")
 
 	<-stopCh
+	c.enableNodeInformer(false)
 	c.enablePodInformer(false)
 	klog.Info("shutting down events processor/controller")
 

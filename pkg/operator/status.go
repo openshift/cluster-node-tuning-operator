@@ -6,18 +6,20 @@ import (
 	"os"
 
 	configv1 "github.com/openshift/api/config/v1"
-	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/clusteroperator"
-	ntomf "github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
+	operatorv1 "github.com/openshift/api/operator/v1"
 	operatorv1helpers "github.com/openshift/library-go/pkg/operator/v1helpers"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
+
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/clusteroperator"
+	ntomf "github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 )
 
 // syncOperatorStatus computes the operator's current status and therefrom
 // creates or updates the ClusterOperator resource for the operator.
-func (c *Controller) syncOperatorStatus() error {
+func (c *Controller) syncOperatorStatus(tuned *tunedv1.Tuned) error {
 	klog.V(2).Infof("syncOperatorStatus()")
 
 	co, err := c.getOrCreateOperatorStatus()
@@ -30,7 +32,7 @@ func (c *Controller) syncOperatorStatus() error {
 	dsMf := ntomf.TunedDaemonSet()
 
 	oldConditions := co.Status.Conditions
-	co.Status.Conditions, err = c.computeStatusConditions(oldConditions, dsMf.Name)
+	co.Status.Conditions, err = c.computeStatusConditions(tuned, oldConditions, dsMf.Name)
 	if err != nil {
 		return err
 	}
@@ -86,7 +88,7 @@ func (c *Controller) getOrCreateOperatorStatus() (*configv1.ClusterOperator, err
 }
 
 // computeStatusConditions computes the operator's current state.
-func (c *Controller) computeStatusConditions(conditions []configv1.ClusterOperatorStatusCondition,
+func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []configv1.ClusterOperatorStatusCondition,
 	dsName string) ([]configv1.ClusterOperatorStatusCondition, error) {
 	const (
 		// maximum number of seconds for the operator to be Unavailable with a unique
@@ -103,99 +105,126 @@ func (c *Controller) computeStatusConditions(conditions []configv1.ClusterOperat
 		Type: configv1.OperatorDegraded,
 	}
 
-	ds, err := c.listers.DaemonSets.Get(dsName)
-	if err != nil {
-		// There was a problem fetching Tuned daemonset
-		if errors.IsNotFound(err) {
-			// Tuned daemonset has not been created yet
-			if len(conditions) == 0 {
-				// This looks like a fresh install => initialize
-				klog.V(3).Infof("no ClusterOperator conditions set, initializing them.")
+	switch tuned.Spec.ManagementState {
+	case operatorv1.Unmanaged:
+		availableCondition.Reason = "Unmanaged"
+		availableCondition.Message = "The operator configuration is set to unmanaged mode"
+
+	case operatorv1.Removed:
+		availableCondition.Reason = "Removed"
+		availableCondition.Message = "The operator is removed"
+
+	default:
+		ds, err := c.listers.DaemonSets.Get(dsName)
+		if err != nil {
+			// There was a problem fetching Tuned daemonset
+			if errors.IsNotFound(err) {
+				// Tuned daemonset has not been created yet
+				if len(conditions) == 0 {
+					// This looks like a fresh install => initialize
+					klog.V(3).Infof("no ClusterOperator conditions set, initializing them.")
+					availableCondition.Status = configv1.ConditionFalse
+					availableCondition.Reason = "TunedUnavailable"
+					availableCondition.Message = fmt.Sprintf("DaemonSet %q unavailable", dsName)
+
+					progressingCondition.Status = configv1.ConditionTrue
+					progressingCondition.Reason = "Reconciling"
+					progressingCondition.Message = fmt.Sprintf("Working towards %q", os.Getenv("RELEASE_VERSION"))
+
+					degradedCondition.Status = configv1.ConditionFalse
+					degradedCondition.Reason = progressingCondition.Reason
+					degradedCondition.Message = progressingCondition.Message
+				} else {
+					// This should not happen unless there was a manual intervention.
+					// Preserve the previously known conditions and requeue.
+					klog.Errorf("unable to calculate Operator status conditions, preserving the old ones: %v", err)
+					return conditions, err
+				}
+			} else {
+				klog.Errorf("setting all ClusterOperator conditions to Unknown: %v", err)
+				availableCondition.Status = configv1.ConditionUnknown
+				availableCondition.Reason = "Unknown"
+				availableCondition.Message = fmt.Sprintf("Unable to fetch DaemonSet %q: %v", dsName, err)
+
+				progressingCondition.Status = availableCondition.Status
+				progressingCondition.Reason = availableCondition.Reason
+				progressingCondition.Message = availableCondition.Message
+
+				degradedCondition.Status = availableCondition.Status
+				degradedCondition.Reason = availableCondition.Reason
+				degradedCondition.Message = availableCondition.Message
+			}
+		} else {
+			if ds.Status.NumberAvailable > 0 {
+				// The operand maintained by the operator is reported as available in the cluster
+				availableCondition.Status = configv1.ConditionTrue
+				availableCondition.Reason = "AsExpected"
+				if ds.Status.UpdatedNumberScheduled > 0 {
+					// At least one operand instance runs RELEASE_VERSION, report it
+					klog.V(3).Infof("%d operands run release version %q", ds.Status.UpdatedNumberScheduled, os.Getenv("RELEASE_VERSION"))
+					availableCondition.Message = fmt.Sprintf("Cluster has deployed %q", os.Getenv("RELEASE_VERSION"))
+				}
+			} else {
+				// No operand maintained by the operator is reported as available in the cluster
 				availableCondition.Status = configv1.ConditionFalse
 				availableCondition.Reason = "TunedUnavailable"
-				availableCondition.Message = fmt.Sprintf("DaemonSet %q unavailable.", dsName)
+				availableCondition.Message = fmt.Sprintf("DaemonSet %q has no available Pod(s)", dsName)
+				klog.V(3).Infof("syncOperatorStatus(): %s", availableCondition.Message)
+			}
 
+			// The operator is actively making changes to the operand (is Progressing) when:
+			// the total number of Nodes that should be running the daemon Pod
+			// (including Nodes correctly running the daemon Pod) != the total number of
+			// Nodes that are running updated daemon Pod.
+			if ds.Status.DesiredNumberScheduled != ds.Status.UpdatedNumberScheduled ||
+				ds.Status.DesiredNumberScheduled == 0 {
+				klog.V(3).Infof("setting Progressing condition to true")
 				progressingCondition.Status = configv1.ConditionTrue
 				progressingCondition.Reason = "Reconciling"
 				progressingCondition.Message = fmt.Sprintf("Working towards %q", os.Getenv("RELEASE_VERSION"))
-
-				degradedCondition.Status = configv1.ConditionFalse
-				degradedCondition.Reason = progressingCondition.Reason
-				degradedCondition.Message = progressingCondition.Message
 			} else {
-				// This should not happen unless there was a manual intervention.
-				// Preserve the previously known conditions and requeue.
-				klog.Errorf("unable to calculate Operator status conditions, preserving the old ones: %v", err)
-				return conditions, err
+				progressingCondition.Status = configv1.ConditionFalse
+				progressingCondition.Reason = "AsExpected"
+				progressingCondition.Message = fmt.Sprintf("Cluster version is %q", os.Getenv("RELEASE_VERSION"))
 			}
-		} else {
-			klog.Errorf("setting all ClusterOperator conditions to Unknown: %v", err)
-			availableCondition.Status = configv1.ConditionUnknown
-			availableCondition.Reason = "Unknown"
-			availableCondition.Message = fmt.Sprintf("Unable to fetch DaemonSet %q: %v", dsName, err)
 
-			progressingCondition.Status = availableCondition.Status
-			progressingCondition.Reason = availableCondition.Reason
-			progressingCondition.Message = availableCondition.Message
-
-			degradedCondition.Status = availableCondition.Status
-			degradedCondition.Reason = availableCondition.Reason
-			degradedCondition.Message = availableCondition.Message
+			degradedCondition.Status = configv1.ConditionFalse
+			degradedCondition.Reason = "AsExpected"
+			degradedCondition.Message = fmt.Sprintf("DaemonSet %q available", dsName)
 		}
-	} else {
-		if ds.Status.NumberAvailable > 0 {
-			// The operand maintained by the operator is reported as available in the cluster
-			availableCondition.Status = configv1.ConditionTrue
-			availableCondition.Reason = "AsExpected"
-			if ds.Status.UpdatedNumberScheduled > 0 {
-				// At least one operand instance runs RELEASE_VERSION, report it
-				klog.V(3).Infof("%d operands run release version %q", ds.Status.UpdatedNumberScheduled, os.Getenv("RELEASE_VERSION"))
-				availableCondition.Message = fmt.Sprintf("Cluster has deployed %q", os.Getenv("RELEASE_VERSION"))
+
+		// If the operator is not available for an extensive period of time, set the Degraded operator status
+		conditions = clusteroperator.SetStatusCondition(conditions, &availableCondition)
+		now := metav1.Now().Unix()
+		for _, condition := range conditions {
+			if condition.Type == configv1.OperatorAvailable &&
+				condition.Status == configv1.ConditionFalse &&
+				now-condition.LastTransitionTime.Unix() > maxTunedUnavailable {
+				klog.V(3).Infof("operator unavailable for longer than %d seconds, setting Degraded status.", maxTunedUnavailable)
+				degradedCondition.Status = configv1.ConditionTrue
+				degradedCondition.Reason = "TunedUnavailable"
+				degradedCondition.Message = fmt.Sprintf("DaemonSet %q unavailable for more than %d seconds", dsName, maxTunedUnavailable)
 			}
-		} else {
-			// No operand maintained by the operator is reported as available in the cluster
-			availableCondition.Status = configv1.ConditionFalse
-			availableCondition.Reason = "TunedUnavailable"
-			availableCondition.Message = fmt.Sprintf("DaemonSet %q has no available Pod(s).", dsName)
-			klog.V(3).Infof("syncOperatorStatus(): %s", availableCondition.Message)
 		}
+	}
 
-		// The operator is actively making changes to the operand (is Progressing) when:
-		// the total number of Nodes that should be running the daemon Pod
-		// (including Nodes correctly running the daemon Pod) != the total number of
-		// Nodes that are running updated daemon Pod.
-		if ds.Status.DesiredNumberScheduled != ds.Status.UpdatedNumberScheduled ||
-			ds.Status.DesiredNumberScheduled == 0 {
-			klog.V(3).Infof("setting Progressing condition to true")
-			progressingCondition.Status = configv1.ConditionTrue
-			progressingCondition.Reason = "Reconciling"
-			progressingCondition.Message = fmt.Sprintf("Working towards %q", os.Getenv("RELEASE_VERSION"))
-		} else {
-			progressingCondition.Status = configv1.ConditionFalse
-			progressingCondition.Reason = "AsExpected"
-			progressingCondition.Message = fmt.Sprintf("Cluster version is %q", os.Getenv("RELEASE_VERSION"))
-		}
+	switch tuned.Spec.ManagementState {
+	case operatorv1.Removed, operatorv1.Unmanaged:
+		availableCondition.Status = configv1.ConditionTrue
+
+		progressingCondition.Status = configv1.ConditionFalse
+		progressingCondition.Reason = availableCondition.Reason
+		progressingCondition.Message = availableCondition.Message
 
 		degradedCondition.Status = configv1.ConditionFalse
-		degradedCondition.Reason = "AsExpected"
-		degradedCondition.Message = fmt.Sprintf("DaemonSet %q available", dsName)
+		degradedCondition.Reason = availableCondition.Reason
+		degradedCondition.Message = availableCondition.Message
+
+	default:
 	}
 
 	conditions = clusteroperator.SetStatusCondition(conditions, &availableCondition)
 	conditions = clusteroperator.SetStatusCondition(conditions, &progressingCondition)
-
-	// If the operator is not available for an extensive period of time, set the Degraded operator status
-	now := metav1.Now().Unix()
-	for _, condition := range conditions {
-		if condition.Type == configv1.OperatorAvailable &&
-			condition.Status == configv1.ConditionFalse &&
-			now-condition.LastTransitionTime.Unix() > maxTunedUnavailable {
-			klog.V(3).Infof("operator unavailable for longer than %d seconds, setting Degraded status.", maxTunedUnavailable)
-			degradedCondition.Status = configv1.ConditionTrue
-			degradedCondition.Reason = "TunedUnavailable"
-			degradedCondition.Message = fmt.Sprintf("DaemonSet %q unavailable for more than %d seconds.", dsName, maxTunedUnavailable)
-		}
-	}
 	conditions = clusteroperator.SetStatusCondition(conditions, &degradedCondition)
 
 	klog.V(3).Infof("operator status conditions: %v", conditions)
