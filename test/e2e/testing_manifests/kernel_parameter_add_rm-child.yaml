@@ -1,0 +1,21 @@
+apiVersion: tuned.openshift.io/v1
+kind: Tuned
+metadata:
+  name: openshift-kernel-parameter-remove-child
+  namespace: openshift-cluster-node-tuning-operator
+spec:
+  profile:
+  - data: |
+      [main]
+      summary=Custom OpenShift child profile, test removal of kernel parameter defined in parent profile
+      include=openshift-kernel-parameter-remove-parent
+      [bootloader]
+      cmdline_openshift_kernel_parameter_remove_child_a=+nto.e2e.child.add1 nto.e2e.child.add2
+      cmdline_openshift_kernel_parameter_remove_child_r=-nto.e2e.parent.remove
+    name: openshift-kernel-parameter-remove-child
+
+  recommend:
+  - machineConfigLabels:
+      machineconfiguration.openshift.io/role: "worker-rt"
+    priority: 20
+    profile: openshift-kernel-parameter-remove-child

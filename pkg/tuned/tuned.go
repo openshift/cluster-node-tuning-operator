@@ -24,7 +24,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
-	"github.com/fsnotify/fsnotify"
+	fsnotify "gopkg.in/fsnotify.v1"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
