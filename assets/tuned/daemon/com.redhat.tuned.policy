@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD polkit Policy Configuration 1.0//EN"
+"http://www.freedesktop.org/software/polkit/policyconfig-1.dtd">
+<policyconfig>
+
+  <vendor>Tuned</vendor>
+  <vendor_url>https://fedorahosted.org/tuned/</vendor_url>
+  <icon_name>tuned</icon_name>
+
+  <action id="com.redhat.tuned.active_profile">
+    <description>Show active profile</description>
+    <message>Authentication is required to show active profile</message>
+    <defaults>
+      <allow_any>yes</allow_any>
+      <allow_inactive>yes</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.profile_mode">
+    <description>Show current profile selection mode</description>
+    <message>Authentication is required to show current profile selection mode</message>
+    <defaults>
+      <allow_any>yes</allow_any>
+      <allow_inactive>yes</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.post_loaded_profile">
+    <description>Show active post-loaded profile</description>
+    <message>Authentication is required to show active post-loaded profile</message>
+    <defaults>
+      <allow_any>yes</allow_any>
+      <allow_inactive>yes</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.disable">
+    <description>Disable Tuned</description>
+    <message>Authentication is required to disable Tuned</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.is_running">
+    <description>Check whether Tuned is running</description>
+    <message>Authentication is required to check whether Tuned is running</message>
+    <defaults>
+      <allow_any>yes</allow_any>
+      <allow_inactive>yes</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.profile_info">
+    <description>Show information about Tuned profile</description>
+    <message>Authentication is required to show information about Tuned profile</message>
+    <defaults>
+      <allow_any>yes</allow_any>
+      <allow_inactive>yes</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.profiles">
+    <description>List Tuned profiles</description>
+    <message>Authentication is required to list Tuned profiles</message>
+    <defaults>
+      <allow_any>yes</allow_any>
+      <allow_inactive>yes</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.profiles2">
+    <description>List Tuned profiles</description>
+    <message>Authentication is required to list Tuned profiles</message>
+    <defaults>
+      <allow_any>yes</allow_any>
+      <allow_inactive>yes</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.recommend_profile">
+    <description>Show Tuned profile name which is recommended for your system</description>
+    <message>Authentication is required to show recommended profile name</message>
+    <defaults>
+      <allow_any>yes</allow_any>
+      <allow_inactive>yes</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.reload">
+    <description>Reload Tuned configuration</description>
+    <message>Authentication is required to reload Tuned configuration</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.start">
+    <description>Start Tuned daemon</description>
+    <message>Authentication is required to start Tuned daemon</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.stop">
+    <description>Stop Tuned daemon</description>
+    <message>Authentication is required to stop Tuned daemon</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.switch_profile">
+    <description>Switch Tuned profile</description>
+    <message>Authentication is required to switch Tuned profile</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.log_capture_start">
+    <description>Start log capture</description>
+    <message>Authentication is required to start log capture</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.log_capture_finish">
+    <description>Stop log capture and return captured log</description>
+    <message>Authentication is required to stop log capture</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.auto_profile">
+    <description>Enable automatic profile selection mode</description>
+    <message>Authentication is required to change profile selection mode</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.verify_profile">
+    <description>Verify Tuned profile</description>
+    <message>Authentication is required to verify Tuned profile</message>
+    <defaults>
+      <allow_any>yes</allow_any>
+      <allow_inactive>yes</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.verify_profile_ignore_missing">
+    <description>Verify Tuned profile, ignore missing values</description>
+    <message>Authentication is required to verify Tuned profile</message>
+    <defaults>
+      <allow_any>yes</allow_any>
+      <allow_inactive>yes</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.get_all_plugins">
+    <description>Get plugins which Tuned daemon can acces</description>
+    <message>Authentication is required to get Tuned plugins</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.get_plugin_documentation">
+    <description>Get documentation of tuned plugin</description>
+    <message>Authentication is required to get documentation of tuned plugin</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.redhat.tuned.get_plugin_hints">
+    <description>Get hints for parameters of Tuned plugin</description>
+    <message>Authentication is required to get hints for parameters of Tuned plugin</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+</policyconfig>

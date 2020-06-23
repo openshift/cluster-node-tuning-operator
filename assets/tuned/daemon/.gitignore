@@ -1,0 +1,5 @@
+*.pyc
+*.pyo
+tuned-*.tar.bz2
+*~
+*.html
