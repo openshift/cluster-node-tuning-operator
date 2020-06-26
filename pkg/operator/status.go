@@ -44,9 +44,11 @@ func (c *Controller) syncOperatorStatus() error {
 		}
 	}
 	co.Status.RelatedObjects = []configv1.ObjectReference{
+		// The `resource` property of `relatedObjects` stanza should be the lowercase, plural value like `daemonsets`.
+		// See BZ1851214
 		{Group: "", Resource: "namespaces", Name: tunedMf.Namespace},
-		{Group: "tuned.openshift.io", Resource: tunedMf.Kind, Name: tunedMf.Name, Namespace: tunedMf.Namespace},
-		{Group: "apps", Resource: dsMf.Kind, Name: dsMf.Name, Namespace: dsMf.Namespace},
+		{Group: "tuned.openshift.io", Resource: "tuneds", Name: tunedMf.Name, Namespace: tunedMf.Namespace},
+		{Group: "apps", Resource: "daemonsets", Name: dsMf.Name, Namespace: dsMf.Namespace},
 	}
 
 	if clusteroperator.ConditionsEqual(oldConditions, co.Status.Conditions) {
