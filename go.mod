@@ -3,7 +3,7 @@ module github.com/openshift/cluster-node-tuning-operator
 go 1.13
 
 require (
-	github.com/fsnotify/fsnotify v1.4.7
+	github.com/coreos/ignition v0.33.0
 	github.com/kevinburke/go-bindata v3.16.0+incompatible
 	github.com/onsi/ginkgo v1.11.0
 	github.com/onsi/gomega v1.8.1
@@ -13,6 +13,8 @@ require (
 	github.com/openshift/library-go v0.0.0-20200331103725-0ea6ba4792fa
 	github.com/openshift/machine-config-operator v4.2.0-alpha.0.0.20190917115525-033375cbe820+incompatible
 	github.com/pkg/errors v0.8.1
+	golang.org/x/text v0.3.3 // indirect
+	gopkg.in/fsnotify.v1 v1.4.7
 
 	k8s.io/api v0.18.2
 	k8s.io/apimachinery v0.18.2
