@@ -379,6 +379,32 @@ func (pc *ProfileCalculator) podLabelsDelete() {
 	pc.state.podLabels = map[string]map[string]map[string]string{}
 }
 
+// nodeLabelsDelete removes the reference to any old nodeLabels structure data
+func (pc *ProfileCalculator) nodeLabelsDelete() {
+	pc.state.nodeLabels = map[string]map[string]string{}
+}
+
+// tunedUsesNodeLabels returns true if any of the TunedMatch's tree-like definition
+// of profile matching rules 'match' uses Node labels.
+func (pc *ProfileCalculator) tunedUsesNodeLabels(match []tunedv1.TunedMatch) bool {
+	if len(match) == 0 {
+		// Empty catch-all profile with no Node/Pod labels
+		return false
+	}
+
+	for _, m := range match {
+		if m.Type == nil || (m.Type != nil && *m.Type == "node") { // note the (lower-)case from the API
+			return true
+		}
+		// AND condition, check if subtree matches
+		if pc.tunedUsesNodeLabels(m.Match) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // tunedUsesPodLabels returns true if any of the TunedMatch's tree-like definition
 // of profile matching rules 'match' uses Pod labels.
 func (pc *ProfileCalculator) tunedUsesPodLabels(match []tunedv1.TunedMatch) bool {
@@ -391,12 +417,22 @@ func (pc *ProfileCalculator) tunedUsesPodLabels(match []tunedv1.TunedMatch) bool
 		if m.Type != nil && *m.Type == "pod" { // note the (lower-)case from the API
 			return true
 		}
-		// AND condition, check if subtree matches too
+		// AND condition, check if subtree matches
 		if pc.tunedUsesPodLabels(m.Match) {
 			return true
 		}
 	}
 
+	return false
+}
+
+// tunedsUseNodeLabels returns true if any of the Tuned CRs uses Node labels.
+func (pc *ProfileCalculator) tunedsUseNodeLabels(tunedSlice []*tunedv1.Tuned) bool {
+	for _, recommend := range tunedRecommend(tunedSlice) {
+		if pc.tunedUsesNodeLabels(recommend.Match) {
+			return true
+		}
+	}
 	return false
 }
 

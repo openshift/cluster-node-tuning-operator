@@ -1,6 +1,7 @@
 package v1
 
 import (
+	operatorv1 "github.com/openshift/api/operator/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -39,6 +40,11 @@ type Tuned struct {
 }
 
 type TunedSpec struct {
+	// managementState indicates whether the registry instance represented
+	// by this config instance is under operator management or not.  Valid
+	// values are Force, Managed, Unmanaged, and Removed.
+	// +optional
+	ManagementState operatorv1.ManagementState `json:"managementState,omitempty" protobuf:"bytes,1,opt,name=managementState,casttype=github.com/openshift/api/operator/v1.ManagementState"`
 	// Tuned profiles.
 	Profile []TunedProfile `json:"profile"`
 	// Selection logic for all tuned profiles.
@@ -124,6 +130,7 @@ type ProfileConfig struct {
 // ProfileStatus is the status for a Profile resource
 type ProfileStatus struct {
 	// kernel parameters calculated by tuned for the active tuned profile
+	// +optional
 	Bootcmdline string `json:"bootcmdline"`
 }
 
