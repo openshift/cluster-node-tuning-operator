@@ -17,9 +17,9 @@ import (
 
 const (
 	// Assets
-	TunedDaemonSetAsset      = "assets/tuned/ds-tuned.yaml"
-	TunedProfileAsset        = "assets/tuned/tuned-profile.yaml"
-	TunedCustomResourceAsset = "assets/tuned/default-cr-tuned.yaml"
+	TunedDaemonSetAsset      = "assets/tuned/manifests/ds-tuned.yaml"
+	TunedProfileAsset        = "assets/tuned/manifests/tuned-profile.yaml"
+	TunedCustomResourceAsset = "assets/tuned/manifests/default-cr-tuned.yaml"
 )
 
 func MustAssetReader(asset string) io.Reader {

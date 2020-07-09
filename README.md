@@ -52,7 +52,7 @@ with pod label matching the functionality will be enabled at that time.
 ## Custom tuning specification
 
 For an example of a tuning specification, refer to
-`/assets/tuned/default-cr-tuned.yaml` in the operator's directory or to
+`/assets/tuned/manifests/default-cr-tuned.yaml` in the operator's directory or to
 the resource created in a live cluster by:
 
 ```

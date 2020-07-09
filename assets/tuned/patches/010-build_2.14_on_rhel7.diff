@@ -1,0 +1,169 @@
+Fixes builds on RHEL and CentOS 7.x
+
+See: https://github.com/redhat-performance/tuned/pull/281
+
+diff --git a/Makefile b/Makefile
+index 4bdcce0a..8f83a44c 100644
+--- a/Makefile
++++ b/Makefile
+@@ -39,7 +39,7 @@ PYLINT = pylint-3
+ ifeq ($(PYTHON),python2)
+ PYLINT = pylint-2
+ endif
+-SHEBANG_REWRITE_REGEX= '1s|^\#!/usr/bin/\<python\>|\#!$(PYTHON)|'
++SHEBANG_REWRITE_REGEX= '1s|^\#!/usr/bin/\<python3\>|\#!$(PYTHON)|'
+ PYTHON_SITELIB = $(shell $(PYTHON) -c 'from distutils.sysconfig import get_python_lib; print(get_python_lib());')
+ ifeq ($(PYTHON_SITELIB),)
+ $(error Failed to determine python library directory)
+diff --git a/tests/unit/exports/__init__.py b/tests/unit/exports/__init__.py
+index 2b05622b..7966e9ac 100644
+--- a/tests/unit/exports/__init__.py
++++ b/tests/unit/exports/__init__.py
+@@ -1 +1 @@
+-import tests.unit.globals
++import globals
+diff --git a/tests/unit/exports/test_controller.py b/tests/unit/exports/test_controller.py
+index 333cff59..0179c59f 100644
+--- a/tests/unit/exports/test_controller.py
++++ b/tests/unit/exports/test_controller.py
+@@ -1,6 +1,8 @@
+ import unittest
+-from unittest.mock import Mock
+-
++try:
++	from unittest.mock import Mock
++except ImportError:
++	from mock import Mock
+ from tuned.exports.controller import ExportsController
+ import tuned.exports as exports
+ 
+diff --git a/tests/unit/hardware/__init__.py b/tests/unit/hardware/__init__.py
+index 2b05622b..7966e9ac 100644
+--- a/tests/unit/hardware/__init__.py
++++ b/tests/unit/hardware/__init__.py
+@@ -1 +1 @@
+-import tests.unit.globals
++import globals
+diff --git a/tests/unit/hardware/test_inventory.py b/tests/unit/hardware/test_inventory.py
+index f8a02402..8490922a 100644
+--- a/tests/unit/hardware/test_inventory.py
++++ b/tests/unit/hardware/test_inventory.py
+@@ -1,5 +1,8 @@
+ import unittest
+-from unittest.mock import Mock
++try:
++	from unittest.mock import Mock
++except ImportError:
++	from mock import Mock
+ import pyudev
+ 
+ from tuned.hardware.inventory import Inventory
+diff --git a/tests/unit/monitors/__init__.py b/tests/unit/monitors/__init__.py
+index 2b05622b..7966e9ac 100644
+--- a/tests/unit/monitors/__init__.py
++++ b/tests/unit/monitors/__init__.py
+@@ -1 +1 @@
+-import tests.unit.globals
++import globals
+diff --git a/tests/unit/plugins/__init__.py b/tests/unit/plugins/__init__.py
+index 2b05622b..7966e9ac 100644
+--- a/tests/unit/plugins/__init__.py
++++ b/tests/unit/plugins/__init__.py
+@@ -1 +1 @@
+-import tests.unit.globals
++import globals
+diff --git a/tests/unit/profiles/__init__.py b/tests/unit/profiles/__init__.py
+index 2b05622b..7966e9ac 100644
+--- a/tests/unit/profiles/__init__.py
++++ b/tests/unit/profiles/__init__.py
+@@ -1 +1 @@
+-import tests.unit.globals
++import globals
+diff --git a/tests/unit/storage/__init__.py b/tests/unit/storage/__init__.py
+index 2b05622b..7966e9ac 100644
+--- a/tests/unit/storage/__init__.py
++++ b/tests/unit/storage/__init__.py
+@@ -1 +1 @@
+-import tests.unit.globals
++import globals
+diff --git a/tests/unit/storage/test_factory.py b/tests/unit/storage/test_factory.py
+index 3c700ab1..2a5c492a 100644
+--- a/tests/unit/storage/test_factory.py
++++ b/tests/unit/storage/test_factory.py
+@@ -1,5 +1,8 @@
+ import unittest
+-from unittest.mock import Mock
++try:
++	from unittest.mock import Mock
++except ImportError:
++	from mock import Mock
+ import tuned.storage
+ 
+ class StorageFactoryTestCase(unittest.TestCase):
+diff --git a/tests/unit/storage/test_storage.py b/tests/unit/storage/test_storage.py
+index 2d2709a3..e9df816d 100644
+--- a/tests/unit/storage/test_storage.py
++++ b/tests/unit/storage/test_storage.py
+@@ -1,6 +1,10 @@
+ import unittest
+-from unittest.mock import Mock
+-from unittest.mock import call
++try:
++	from unittest.mock import Mock
++	from unittest.mock import call
++except ImportError:
++	from mock import Mock
++	from mock import call
+ import tuned.storage
+ 
+ class StorageStorageTestCase(unittest.TestCase):
+diff --git a/tests/unit/utils/__init__.py b/tests/unit/utils/__init__.py
+index 2b05622b..7966e9ac 100644
+--- a/tests/unit/utils/__init__.py
++++ b/tests/unit/utils/__init__.py
+@@ -1 +1 @@
+-import tests.unit.globals
++import globals
+diff --git a/tuned.spec b/tuned.spec
+index 60ed55cc..87341aa7 100644
+--- a/tuned.spec
++++ b/tuned.spec
+@@ -19,10 +19,11 @@
+ %global make_python_arg PYTHON=%{__python3}
+ %else
+ %{!?python2_sitelib:%global python2_sitelib %{python_sitelib}}
+-%global make_python_arg PYTHON=%{__python2}
+ %if 0%{?rhel} && 0%{?rhel} < 8
++%global make_python_arg PYTHON=%{__python}
+ %global _py python
+ %else
++%global make_python_arg PYTHON=%{__python2}
+ %global _py python2
+ %endif
+ %endif
+@@ -60,6 +61,10 @@ Requires(preun): systemd
+ Requires(postun): systemd
+ BuildRequires: %{_py}, %{_py}-devel
+ # BuildRequires for 'make test'
++# python-mock is needed for python-2.7, but it's not available on RHEL-7
++%if %{without python3} && ( ! 0%{?rhel} || 0%{?rhel} >= 8 )
++BuildRequires: %{_py}-mock
++%endif
+ BuildRequires: %{_py}-configobj
+ BuildRequires: %{_py}-decorator, %{_py}-pyudev
+ Requires: %{_py}-decorator, %{_py}-pyudev, %{_py}-configobj
+@@ -275,8 +280,13 @@ touch %{buildroot}%{_sysconfdir}/modprobe.d/kvm.rt.tuned.conf
+ # validate desktop file
+ desktop-file-validate %{buildroot}%{_datadir}/applications/tuned-gui.desktop
+ 
++# Run tests on RHEL > 7 or non RHEL
++# We cannot run tests on RHEL-7 because there is no python-mock package and
++# python-2.7 doesn't have mock built-in
++%if 0%{?rhel} > 7 || ! 0%{?rhel}
+ %check
+-make test
++make test %{make_python_arg}
++%endif
+ 
+ %post
+ %systemd_post tuned.service

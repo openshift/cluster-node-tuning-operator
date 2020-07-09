@@ -1,0 +1,82 @@
+.TH "tuned.conf" "5" "13 Mar 2012" "Jan Kaluža" "tuned.conf file format description"
+.SH NAME
+tuned.conf - Tuned profile definition
+.SH DESCRIPTION
+This man page documents format of Tuned 2.0 profile definition files.
+The profile definition is stored in /etc/tuned/<profile_name>/tuned.conf or in
+/usr/lib/tuned/<profile_name>/tuned.conf file where the /etc/tuned/ directory has 
+higher priority.
+
+The \fBtuned.conf\fR configures the profile and it is in ini-file format.
+
+.SH MAIN SECTION
+The main section is called "[main]" and can contain following options:
+
+.TP
+include=
+Includes a profile with the given name. This allows you to base a new profile
+on an already existing profile. In case there are conflicting parameters in the
+new profile and the base profile, the parameters from the new profile are used.
+
+.SH PLUGINS
+Every other section defines one plugin. The name of the section is used as name
+for the plugin and is used in logs to identify the plugin. There can be only
+one plugin of particular type tuning particular device. Conflicts are by
+default fixed by merging the options of both plugins together. This can be
+changed by "replace" option.
+
+Every plugin section can contain following sections:
+
+.TP
+type=
+Plugin type. Currently there are following upstream plugins: audio, bootloader, cpu, disk,
+eeepc_she, modules, mounts, net, script, scsi_host, selinux, scheduler, sysctl,
+sysfs, systemd, usb, video, vm. This list may be incomplete. If you installed
+tuned through RPM you can list upstream plugins by the following command:
+.B rpm -ql tuned | grep 'plugins/plugin_.*.py$'
+Check the plugins directory returned by this command to see all plugins (e.g. plugins
+provided by 3rd party packages).
+
+.TP
+devices=
+Comma separated list of devices which should be tuned by this plugin instance.
+If you omit this option, all found devices will be tuned.
+.TP
+replace=1
+If there is conflict between two plugins (meaning two plugins of the same
+type are trying to configure the same devices), then the plugin defined as
+last replaces all options defined by the previously defined plugin.
+.LP
+Plugins can also have plugin related options.
+
+.SH "EXAMPLE"
+.nf
+[main]
+# Includes plugins defined in "included" profile.
+include=included
+
+# Define my_sysctl plugin
+[my_sysctl]
+type=sysctl
+# This plugin will replace any sysctl plugin defined in "included" profile
+replace=1
+# 256 KB default performs well experimentally.
+net.core.rmem_default = 262144
+net.core.wmem_default = 262144
+
+# Define my_script plugin
+# Both scripts (profile.sh from this profile and script from "included"
+# profile) will be run, because if there is no "replace=1" option the
+# default action is merge.
+[my_script]
+type=script
+script=${i:PROFILE_DIR}/profile.sh
+.fi
+
+.SH "SEE ALSO"
+.LP
+tuned(8)
+.SH AUTHOR
+Written by Jan Kaluža <jkaluza@redhat.com>.
+.SH REPORTING BUGS
+Report bugs to https://bugzilla.redhat.com/.

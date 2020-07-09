@@ -1,0 +1,9 @@
+component: tuned
+contact: Robin Hack <rhack@redhat.com>
+description: |
+    Basic tuned-adm functionality check.
+duration: 5m
+relevancy: |
+    distro = rhel-6: False
+    distro < rhel-7.3: False
+summary: Check functionality of tuned-adm tool.

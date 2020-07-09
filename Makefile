@@ -12,6 +12,11 @@ GO_BUILD_RECIPE=$(GO) build -o $(OUT_DIR)/$(PACKAGE_BIN) -ldflags '-X $(PACKAGE)
 GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
 REV=$(shell git describe --long --tags --match='v*' --always --dirty)
 
+# Upstream tuned daemon variables
+TUNED_REPO:=https://github.com/redhat-performance/tuned.git
+TUNED_TAG:=v2.14.0
+TUNED_DIR:=daemon
+
 # API-related variables
 API_TYPES_DIR:=pkg/apis/tuned/v1
 API_TYPES:=$(wildcard $(API_TYPES_DIR)/*_types.go)
@@ -25,6 +30,12 @@ IMAGE_TAG=openshift/origin-cluster-node-tuning-operator
 IMAGE_REGISTRY=quay.io
 
 all: build
+
+clone-tuned:
+	(cd assets/tuned && \
+	  rm -rf $(TUNED_DIR) && \
+	  git clone -b $(TUNED_TAG) $(TUNED_REPO) $(TUNED_DIR) && \
+	  rm -rf $(TUNED_DIR)/.git)
 
 build: $(BINDATA) pkg/generated
 	$(GO_BUILD_RECIPE)

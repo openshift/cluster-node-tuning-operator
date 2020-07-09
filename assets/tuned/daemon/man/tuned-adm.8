@@ -1,0 +1,126 @@
+.\"/* 
+.\" * All rights reserved
+.\" * Copyright (C) 2009-2017 Red Hat, Inc.
+.\" * Authors: Jaroslav Škarvada, Jan Kaluža, Jan Včelák
+.\" *          Marcela Mašláňová, Phil Knirsch
+.\" *
+.\" * This program is free software; you can redistribute it and/or
+.\" * modify it under the terms of the GNU General Public License
+.\" * as published by the Free Software Foundation; either version 2
+.\" * of the License, or (at your option) any later version.
+.\" *
+.\" * This program is distributed in the hope that it will be useful,
+.\" * but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" * GNU General Public License for more details.
+.\" *
+.\" * You should have received a copy of the GNU General Public License
+.\" * along with this program; if not, write to the Free Software
+.\" * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+.\" */
+.\" 
+.TH TUNED_ADM "8" "30 Mar 2017" "Fedora Power Management SIG" "tuned"
+.SH NAME
+tuned\-adm - command line tool for switching between different tuning profiles
+.SH SYNOPSIS
+.B tuned\-adm 
+.RB [ list " | " active " | " "profile \fI[profile]\fP..." " | " off " | " verify " | " recommend ]
+
+.SH DESCRIPTION
+This command line utility allows you to switch between user definable tuning
+profiles. Several predefined profiles are already included. You can even
+create your own profile, either based on one of the existing ones by copying
+it or make a completely new one. The distribution provided profiles are stored
+in subdirectories below \fI/usr/lib/tuned\fP and the user defined profiles in
+subdirectories below \fI/etc/tuned\fP. If there are profiles with the same name
+in both places, user defined profiles have precedence.
+
+.SH "OPTIONS"
+
+.SS
+.TP
+.B list
+List all available profiles.
+
+.P
+.RS
+.B profiles
+List all available profiles.
+
+.P
+.B plugins
+List all available plugins.
+
+.RS
+.P
+.B -v, --verbose
+List plugin's configuration options and their hints.
+.RE
+.RE
+
+.TP
+.B active
+Show current active profile.
+
+.TP
+.BI "profile " [PROFILE_NAME] ...
+Switches to the given profile. If more than one profile is given, the
+profiles are merged (in case of conflicting settings, the setting from
+the last profile is used) and the resulting profile is applied. If no
+profile is given, then all available profiles are listed. If the
+profile given is not valid, the command gracefully exits without
+performing any operation.
+
+.TP
+.B verify
+Verifies current profile against system settings. Outputs information whether
+system settings match current profile or not (e.g. somebody modified
+a sysfs/sysctl value by hand). Detailed information about what is checked, what
+value is set and what value is expected can be found in the log.
+
+.TP
+.B recommend
+Recommend a profile suitable for your system. Currently only static detection is
+implemented - it decides according to data in \fI/etc/system\-release\-cpe\fP
+and virt\-what output. The rules for autodetection are defined in the file
+\fI/usr/lib/tuned/recommend.d/50-tuned.conf\fP. The default rules recommend profiles
+targeted to the best performance, or the balanced profile if unsure.
+
+The default rules can be overridden by the user by putting a file named
+\fIrecommend.conf\fP into /etc/tuned, or by creating a file in the
+\fI/etc/tuned/recommend.d\fP directory. The file \fI/etc/tuned/recommend.conf\fP
+is evaluated first. If no match is found, the files in the
+\fI/etc/tuned/recommend.d\fP directory are merged with the files in the
+\fI/usr/lib/tuned/recommend.d\fP directory (if there is a file with the same
+name in both directories, the one from \fI/etc/tuned/recommend.d\fP is used)
+and the files are evaluated in alphabetical order. The first matching
+entry is used.
+
+.TP
+.B off
+Unload tunings.
+
+.SH "FILES"
+.nf
+/etc/tuned/*
+/usr/lib/tuned/*
+
+.SH "SEE ALSO"
+.BR tuned (8)
+.BR tuned\-conf (5)
+.BR tuned\-profiles (7)
+.BR tuned\-profiles\-atomic (7)
+.BR tuned\-profiles\-sap (7)
+.BR tuned\-profiles\-sap\-hana (7)
+.BR tuned\-profiles\-oracle (7)
+.BR tuned\-profiles\-realtime (7)
+.BR tuned\-profiles\-nfv\-host (7)
+.BR tuned\-profiles\-nfv\-guest (7)
+.BR tuned\-profiles\-compat (7)
+.SH AUTHOR
+.nf
+Jaroslav Škarvada <jskarvad@redhat.com>
+Jan Kaluža <jkaluza@redhat.com>
+Jan Včelák <jvcelak@redhat.com>
+Marcela Mašláňová <mmaslano@redhat.com>
+Phil Knirsch <pknirsch@redhat.com>
