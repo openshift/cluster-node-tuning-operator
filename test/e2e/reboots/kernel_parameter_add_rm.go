@@ -3,13 +3,11 @@ package e2e
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
 
 	coreapi "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	nutil "github.com/openshift/cluster-node-tuning-operator/pkg/util"
@@ -45,7 +43,6 @@ var _ = ginkgo.Describe("[reboots][kernel_parameter_add_rm] Node Tuning Operator
 		})
 
 		ginkgo.It("kernel parameters set", func() {
-			var explain string
 			const (
 				paramAdd1   = "nto.e2e.child.add1"
 				paramAdd2   = "nto.e2e.child.add2"
@@ -102,28 +99,24 @@ var _ = ginkgo.Describe("[reboots][kernel_parameter_add_rm] Node Tuning Operator
 			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileChild)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By("ensuring the custom worker child profile was set")
-			err = wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
-				cmdlineNew, err = util.GetFileInPod(pod, procCmdline)
-				if err != nil {
-					explain = err.Error()
-					return false, nil
-				}
+			// By creating the custom child profile, we will first see worker-rt MachineConfigPool UpdatedMachineCount drop to 0 first...
+			ginkgo.By("waiting for worker-rt MachineConfigPool UpdatedMachineCount == 0")
+			err = util.WaitForPoolUpdatedMachineCount(cs, "worker-rt", 0)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			// ...and go up to 1 again next.
+			ginkgo.By("waiting for worker-rt MachineConfigPool UpdatedMachineCount == 1")
+			err = util.WaitForPoolUpdatedMachineCount(cs, "worker-rt", 1)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				if strings.Contains(cmdlineNew, paramRemove) {
-					explain = fmt.Sprintf("found '%s' in %s: %s", paramRemove, procCmdline, cmdlineNew)
-					return false, nil
-				}
-				for _, v := range []string{paramAdd1, paramAdd2, paramKeep} {
-					if !strings.Contains(cmdlineNew, v) {
-						explain = fmt.Sprintf("missing '%s' in %s: %s", v, procCmdline, cmdlineNew)
-						return false, nil
-					}
-				}
-				return true, nil
-			})
-			gomega.Expect(err).NotTo(gomega.HaveOccurred(), explain)
+			ginkgo.By(fmt.Sprintf("getting the current %s value in pod %s", procCmdline, pod.Name))
+			cmdlineNew, err = util.GetFileInPod(pod, procCmdline)
 			util.Logf("%s has %s: %s", pod.Name, procCmdline, cmdlineNew)
+
+			ginkgo.By("ensuring the custom worker child profile was set")
+			gomega.Expect(strings.Contains(cmdlineNew, paramRemove)).NotTo(gomega.BeTrue(), "found '%s' in %s: %s", paramRemove, procCmdline, cmdlineNew)
+			for _, v := range []string{paramAdd1, paramAdd2, paramKeep} {
+				gomega.Expect(strings.Contains(cmdlineNew, v)).To(gomega.BeTrue(), "missing '%s' in %s: %s", v, procCmdline, cmdlineNew)
+			}
 
 			// Node label needs to be removed first, and we also need to wait for the worker pool to complete the update;
 			// otherwise worker-rt MachineConfigPool deletion would cause Degraded state of the worker pool.

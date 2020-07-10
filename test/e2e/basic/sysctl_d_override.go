@@ -10,6 +10,7 @@ import (
 	coreapi "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 
+	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	util "github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 )
 
@@ -31,7 +32,7 @@ var _ = ginkgo.Describe("[basic][sysctl_d_override] Node Tuning Operator /etc/sy
 			ginkgo.By("cluster changes rollback")
 
 			if pod != nil {
-				util.ExecAndLogCommand("oc", "exec", pod.Name, "--", "rm", sysctlFile)
+				util.ExecAndLogCommand("oc", "exec", "-n", ntoconfig.OperatorNamespace(), pod.Name, "--", "rm", sysctlFile)
 			}
 		})
 
@@ -53,12 +54,12 @@ var _ = ginkgo.Describe("[basic][sysctl_d_override] Node Tuning Operator /etc/sy
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("writing %s override file on the host with %s=%s", sysctlFile, sysctlVar, sysctlValSet))
-			_, _, err = util.ExecAndLogCommand("oc", "exec", pod.Name, "--", "sh", "-c",
+			_, _, err = util.ExecAndLogCommand("oc", "exec", "-n", ntoconfig.OperatorNamespace(), pod.Name, "--", "sh", "-c",
 				fmt.Sprintf("echo %s=%s > %s", sysctlVar, sysctlValSet, sysctlFile))
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("deleting pod %s", pod.Name))
-			_, _, err = util.ExecAndLogCommand("oc", "delete", "pod", pod.Name, "--wait")
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "pod", pod.Name, "--wait")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("waiting for a new tuned pod to be ready on node %s", node.Name))
@@ -77,11 +78,11 @@ var _ = ginkgo.Describe("[basic][sysctl_d_override] Node Tuning Operator /etc/sy
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("removing %s override file on the host", sysctlFile))
-			_, _, err = util.ExecAndLogCommand("oc", "exec", pod.Name, "--", "rm", sysctlFile)
+			_, _, err = util.ExecAndLogCommand("oc", "exec", "-n", ntoconfig.OperatorNamespace(), pod.Name, "--", "rm", sysctlFile)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("deleting pod %s", pod.Name))
-			_, _, err = util.ExecAndLogCommand("oc", "delete", "pod", pod.Name, "--wait")
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "pod", pod.Name, "--wait")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("waiting for a new tuned pod to be ready on node %s", node.Name))
