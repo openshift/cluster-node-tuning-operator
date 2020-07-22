@@ -8,11 +8,12 @@ WORKDIR /root
 COPY assets/tuned /root
 RUN INSTALL_PKGS=" \
       git rpm-build make desktop-file-utils patch \
+      python3 python3-configobj python3-pyudev \
       " && \
     yum install --setopt=tsflags=nodocs -y $INSTALL_PKGS && \
     cd daemon && \
     LC_COLLATE=C cat ../patches/*.diff | patch -Np1 && \
-    make rpm PYTHON=/usr/bin/python && \
+    make rpm PYTHON=/usr/bin/python3 && \
     rm -rf /root/rpmbuild/RPMS/noarch/{tuned-gtk*,tuned-utils*,tuned-profiles-compat*,tuned-profiles-nfv*}
 
 FROM registry.svc.ci.openshift.org/ocp/4.6:base

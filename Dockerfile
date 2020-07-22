@@ -26,12 +26,11 @@ COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_o
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/assets ${APP_ROOT}
 COPY --from=tuned   /root/rpmbuild/RPMS/noarch /root/rpms
 RUN INSTALL_PKGS=" \
-      tuna socat \
+      socat \
       " && \
-    ARCH_DEP_PKGS=$(if [ "$(uname -m)" != "s390x" ]; then echo -n hdparm kernel-tools ; fi) && \
     mkdir -p /etc/grub.d/ /boot && \
-    yum install --setopt=tsflags=nodocs -y $INSTALL_PKGS $ARCH_DEP_PKGS && \
-    rpm -V $INSTALL_PKGS $ARCH_DEP_PKGS && \
+    yum install --setopt=tsflags=nodocs -y $INSTALL_PKGS && \
+    rpm -V $INSTALL_PKGS && \
     yum --setopt=tsflags=nodocs -y install /root/rpms/*.rpm && \
     touch /etc/sysctl.conf && \
     yum clean all && \
