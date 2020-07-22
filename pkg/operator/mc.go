@@ -1,16 +1,18 @@
 package operator
 
 import (
+	"encoding/json"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 
-	igntypes "github.com/coreos/ignition/config/v2_2/types"
+	igntypes "github.com/coreos/ignition/v2/config/v3_1/types"
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
 
@@ -32,6 +34,11 @@ func newMachineConfig(name string, annotations map[string]string, labels map[str
 			Version: igntypes.MaxVersion.String(),
 		},
 	}
+	rawNewIgnCfg, err := json.Marshal(ignTypesCfg)
+	if err != nil {
+		// This should never happen
+		panic(err)
+	}
 
 	return &mcfgv1.MachineConfig{
 		TypeMeta: metav1.TypeMeta{
@@ -43,7 +50,9 @@ func newMachineConfig(name string, annotations map[string]string, labels map[str
 			Labels:      labels,
 		},
 		Spec: mcfgv1.MachineConfigSpec{
-			Config:          ignTypesCfg,
+			Config: runtime.RawExtension{
+				Raw: rawNewIgnCfg,
+			},
 			KernelArguments: kernelArguments,
 		},
 	}
