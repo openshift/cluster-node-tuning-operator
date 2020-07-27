@@ -3,7 +3,8 @@ module github.com/openshift/cluster-node-tuning-operator
 go 1.13
 
 require (
-	github.com/coreos/ignition v0.33.0
+	github.com/coreos/ignition v0.35.0 // indirect
+	github.com/coreos/ignition/v2 v2.4.1
 	github.com/kevinburke/go-bindata v3.16.0+incompatible
 	github.com/onsi/ginkgo v1.11.0
 	github.com/onsi/gomega v1.8.1
@@ -12,10 +13,10 @@ require (
 	github.com/openshift/crd-schema-gen v1.0.0
 	github.com/openshift/library-go v0.0.0-20200331103725-0ea6ba4792fa
 	github.com/openshift/machine-config-operator v4.2.0-alpha.0.0.20190917115525-033375cbe820+incompatible
-	github.com/pkg/errors v0.8.1
+	github.com/pkg/errors v0.9.1
+	github.com/vincent-petithory/dataurl v0.0.0-20191104211930-d1553a71de50 // indirect
 	golang.org/x/text v0.3.3 // indirect
 	gopkg.in/fsnotify.v1 v1.4.7
-
 	k8s.io/api v0.18.2
 	k8s.io/apimachinery v0.18.2
 	k8s.io/client-go v0.18.2
@@ -53,6 +54,5 @@ replace (
 // Other pinned deps
 replace (
 	github.com/go-log/log => github.com/go-log/log v0.1.0
-
-	github.com/openshift/machine-config-operator => github.com/openshift/machine-config-operator v0.0.1-0.20200330105503-0b9a800d8490
+	github.com/openshift/machine-config-operator => github.com/openshift/machine-config-operator v0.0.1-0.20200618004043-7b1eb84e0083 // release-4.5
 )
