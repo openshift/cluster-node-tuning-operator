@@ -1,0 +1,30 @@
+From f511ad5d48f4f2ae3b2616463bc3a17bae5bdb90 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Jaroslav=20=C5=A0karvada?= <jskarvad@redhat.com>
+Date: Tue, 30 Jun 2020 15:39:18 +0200
+Subject: [PATCH] throughput-performance: fix performance regression on AMD
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+It turned out that disablement of the numa_balancing could result in
+upto 20% performance drop on some loads.
+
+Related: rhbz#1746957
+
+Signed-off-by: Jaroslav Škarvada <jskarvad@redhat.com>
+---
+ profiles/throughput-performance/tuned.conf | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/profiles/throughput-performance/tuned.conf b/profiles/throughput-performance/tuned.conf
+index f1a6f1a..3cc6fd1 100644
+--- a/profiles/throughput-performance/tuned.conf
++++ b/profiles/throughput-performance/tuned.conf
+@@ -85,4 +85,3 @@ type=sysctl
+ uname_regex=x86_64
+ cpuinfo_regex=${amd_cpuinfo_regex}
+ kernel.sched_migration_cost_ns=5000000
+-kernel.numa_balancing=0
+-- 
+2.25.4
+
