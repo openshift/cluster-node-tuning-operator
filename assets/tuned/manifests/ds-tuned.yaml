@@ -11,7 +11,7 @@ spec:
       openshift-app: tuned
   updateStrategy:
     rollingUpdate:
-      maxUnavailable: 1
+      maxUnavailable: 10%
     type: RollingUpdate
   template:
     metadata:
