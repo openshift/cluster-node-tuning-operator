@@ -16,9 +16,8 @@ spec:
       not_isolated_cores_expanded=${f:cpulist_invert:${isolated_cores_expanded}}
       [bootloader]
       cmdline_ocp_realtime=+systemd.cpu_affinity=${not_isolated_cores_expanded}
-      #[service]
-      #service.stalld=start,enable
-      #service.stalld=start,enable,file:/host/etc/tuned/openshift-realtime/stalld.conf
+      [service]
+      service.stalld=start,enable
     name: openshift-realtime
 
   recommend:
