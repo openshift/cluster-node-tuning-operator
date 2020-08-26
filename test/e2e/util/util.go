@@ -85,7 +85,7 @@ func GetSysctl(sysctlVar string, pod *corev1.Pod) (string, error) {
 		out, err = exec.Command("oc", "rsh", "-n", ntoconfig.OperatorNamespace(), pod.Name,
 			"sysctl", "-n", sysctlVar).CombinedOutput()
 		if err != nil {
-			explain = fmt.Sprintf("failed to query sysctl %s on %s", sysctlVar, pod.Name)
+			explain = fmt.Sprintf("out=%s; err=%s", string(out), err.Error())
 			return false, nil
 		}
 		val = strings.TrimSpace(string(out))
