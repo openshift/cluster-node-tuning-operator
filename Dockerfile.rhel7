@@ -26,7 +26,7 @@ COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_o
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/assets ${APP_ROOT}
 COPY --from=tuned   /root/rpmbuild/RPMS/noarch /root/rpms
 RUN INSTALL_PKGS=" \
-      socat \
+      socat procps-ng \
       " && \
     mkdir -p /etc/grub.d/ /boot && \
     yum install --setopt=tsflags=nodocs -y $INSTALL_PKGS && \
