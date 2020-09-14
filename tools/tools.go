@@ -6,9 +6,7 @@
 package tools
 
 import (
-	_ "github.com/kevinburke/go-bindata/go-bindata"
-	_ "k8s.io/code-generator"
-
-	// required by hack/codegen/update-crd.sh
-	_ "github.com/openshift/crd-schema-gen/cmd/crd-schema-gen"
+	_ "github.com/kevinburke/go-bindata/go-bindata"     // To generate bindata from /assets/tuned/manifests
+	_ "k8s.io/code-generator"                           // To generate DeepCopy fns() for API, clientsets/listers/informers
+	_ "sigs.k8s.io/controller-tools/cmd/controller-gen" // To generate tuned.openshift.io CRDs
 )

@@ -18,6 +18,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: Profile is a specification for a Profile resource
+        type: object
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -32,29 +33,28 @@ spec:
           metadata:
             type: object
           spec:
+            type: object
+            required:
+            - config
             properties:
               config:
+                type: object
+                required:
+                - tunedProfile
                 properties:
                   tunedProfile:
                     description: tuned profile to apply
                     type: string
-                required:
-                - tunedProfile
-                type: object
-            required:
-            - config
-            type: object
           status:
             description: ProfileStatus is the status for a Profile resource; the status
               is for internal use only and its fields may be changed/removed in the
               future.
+            type: object
             properties:
               bootcmdline:
-                description: kernel parameters calculated by tuned for the active tuned
-                  profile
+                description: kernel parameters calculated by tuned for the active
+                  tuned profile
                 type: string
               stalld:
                 description: 'deploy stall daemon: https://github.com/bristot/stalld/'
                 type: boolean
-            type: object
-        type: object
