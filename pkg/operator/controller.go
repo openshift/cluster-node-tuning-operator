@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -35,9 +36,11 @@ import (
 	tunedset "github.com/openshift/cluster-node-tuning-operator/pkg/generated/clientset/versioned"
 	tunedinformers "github.com/openshift/cluster-node-tuning-operator/pkg/generated/informers/externalversions"
 	ntomf "github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/tuned"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/openshift/cluster-node-tuning-operator/version"
 
+	ign3types "github.com/coreos/ignition/v2/config/v3_1/types"
 	mcfgclientset "github.com/openshift/machine-config-operator/pkg/generated/clientset/versioned"
 	mcfginformers "github.com/openshift/machine-config-operator/pkg/generated/informers/externalversions"
 )
@@ -539,7 +542,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		// The tuned profile "tunedProfileName" for nodeName matched with MachineConfig
 		// labels set for additional machine configuration.  Sync the operator-created
 		// MachineConfig for MachineConfigPools 'pools'.
-		err := c.syncMachineConfig(getMachineConfigNameForPools(pools), mcLabels, profile.Status.Bootcmdline)
+		err := c.syncMachineConfig(getMachineConfigNameForPools(pools), mcLabels, profile.Status.Bootcmdline, profile.Status.Stalld)
 		if err != nil {
 			return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
 		}
@@ -561,10 +564,35 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	return nil
 }
 
-func (c *Controller) syncMachineConfig(name string, labels map[string]string, bootcmdline string) error {
-	var kernelArguments []string
+func (c *Controller) syncMachineConfig(name string, labels map[string]string, bootcmdline string, stalld bool) error {
+	var (
+		kernelArguments []string
+		ignFiles        []ign3types.File
+		ignUnits        []ign3types.Unit
+	)
+	logline := func(bIgn, bCmdline bool, bootcmdline string) string {
+		var (
+			sb strings.Builder
+		)
 
+		if bIgn {
+			sb.WriteString(" ignition")
+			if bCmdline {
+				sb.WriteString(" and")
+			}
+		}
+
+		if bCmdline {
+			sb.WriteString(" kernel parameters: [")
+			sb.WriteString(bootcmdline)
+			sb.WriteString("]")
+		}
+
+		return sb.String()
+	}
 	kernelArguments = util.SplitKernelArguments(bootcmdline)
+	ignFiles = tuned.ProvideIgnitionFiles(stalld)
+	ignUnits = tuned.ProvideSystemdUnits(stalld)
 
 	annotations := map[string]string{GeneratedByControllerVersionAnnotationKey: version.Version}
 
@@ -572,37 +600,48 @@ func (c *Controller) syncMachineConfig(name string, labels map[string]string, bo
 	if err != nil {
 		if errors.IsNotFound(err) {
 			klog.V(2).Infof("syncMachineConfig(): MachineConfig %s not found, creating one", name)
-			mc = newMachineConfig(name, annotations, labels, kernelArguments)
-			if len(bootcmdline) == 0 {
-				// Creating a new MachineConfig with empty kernelArguments only causes unnecessary node
+			haveIgnition := len(ignFiles) != 0 || len(ignUnits) != 0
+			if len(bootcmdline) == 0 && !haveIgnition {
+				// Creating a new MachineConfig with empty kernelArguments/Ignition only causes unnecessary node
 				// reboots.
-				klog.V(2).Infof("not creating a MachineConfig with empty kernelArguments")
+				klog.V(2).Infof("not creating a MachineConfig with empty kernelArguments/Ignition")
 				return nil
 			}
+			mc = newMachineConfig(name, annotations, labels, kernelArguments, ignFiles, ignUnits)
 			_, err = c.clients.MC.MachineconfigurationV1().MachineConfigs().Create(context.TODO(), mc, metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to create MachineConfig %s: %v", mc.ObjectMeta.Name, err)
 			}
-			klog.Infof("created MachineConfig %s with kernelArguments: %v", mc.ObjectMeta.Name, kernelArguments)
+			klog.Infof("created MachineConfig %s with%s", mc.ObjectMeta.Name, logline(haveIgnition, len(bootcmdline) != 0, bootcmdline))
 			return nil
 		}
 		return err
 	}
 
-	if util.StringSlicesEqual(mc.Spec.KernelArguments, kernelArguments) {
+	mcNew := newMachineConfig(name, annotations, labels, kernelArguments, ignFiles, ignUnits)
+
+	ignEq, err := ignEqual(mc, mcNew)
+	if err != nil {
+		return fmt.Errorf("failed to sync MachineConfig %s: %v", mc.ObjectMeta.Name, err)
+	}
+	kernelArgsEq := util.StringSlicesEqual(mc.Spec.KernelArguments, kernelArguments)
+	if kernelArgsEq && ignEq {
 		// No update needed
 		klog.V(2).Infof("syncMachineConfig(): MachineConfig %s doesn't need updating", mc.ObjectMeta.Name)
 		return nil
 	}
-
+	mc = mc.DeepCopy() // never update the objects from cache
 	mc.Spec.KernelArguments = kernelArguments
+	mc.Spec.Config = mcNew.Spec.Config
 
-	klog.V(2).Infof("syncMachineConfig(): updating MachineConfig %s with kernelArguments: %s", mc.ObjectMeta.Name, bootcmdline)
+	l := logline(!ignEq, !kernelArgsEq, bootcmdline)
+	klog.V(2).Infof("syncMachineConfig(): updating MachineConfig %s with%s", mc.ObjectMeta.Name, l)
 	_, err = c.clients.MC.MachineconfigurationV1().MachineConfigs().Update(context.TODO(), mc, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update MachineConfig %s: %v", mc.ObjectMeta.Name, err)
 	}
-	klog.Infof("updated MachineConfig %s with kernelArguments: %v", mc.ObjectMeta.Name, kernelArguments)
+
+	klog.Infof("updated MachineConfig %s with%s", mc.ObjectMeta.Name, l)
 
 	return nil
 }

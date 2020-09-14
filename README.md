@@ -1,6 +1,6 @@
 # Node Tuning Operator
 
-The Node Tuning Operator manages cluster node-level tuning for
+The Node Tuning Operator (NTO) manages cluster node-level tuning for
 [OpenShift](https://openshift.io/).
 
 The majority of high-performance applications require some
@@ -260,18 +260,42 @@ in the `profile:` section of the Tuned CR:
 * modules
 * mounts
 * net
+* rtentsk
 * scheduler
 * scsi_host
 * selinux
+* service
 * sysctl
 * sysfs
+* systemd
 * usb
 * video
 * vm
 
 with the exception of dynamic tuning functionality provided by some of the plug-ins.
-The following Tuned plug-ins are currently not supported:
+The following Tuned plug-ins are currently not fully supported:
 
 * bootloader
 * script
-* systemd
+
+
+## Additional tuning on fully-managed hosts
+Support for the [stall daemon](https://github.com/bristot/stalld)
+(stalld) has been added to complement tuning performed by Tuned realtime
+profiles. Currently, only hosts fully-managed by the
+[Machine Config Operator](https://github.com/openshift/machine-config-operator)
+(MCO) can benefit from this functionality. To deploy stalld on such hosts,
+the following line needs to be added to the Tuned service plugin.
+
+```
+service.stalld=start,enable
+```
+
+A host-supplied configuration file can be used to override the stalld systemd
+unit created when using the line above in the Tuned service plugin. This
+file can then be referred to by prefixing the absolute path to the overlay
+file on the host by the `/host` prefix.
+
+```
+service.stalld=start,enable,file:/host<absolute_path_to_the_overlay_file_on_the_host>
+```

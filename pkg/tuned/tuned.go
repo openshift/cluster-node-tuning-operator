@@ -37,7 +37,7 @@ import (
 // Constants
 const (
 	operandNamespace       = "openshift-cluster-node-tuning-operator"
-	profileExtractInterval = 1
+	timedUpdaterInterval   = 1
 	programName            = "openshift-tuned"
 	tunedProfilesDir       = "/etc/tuned"
 	tunedActiveProfileFile = tunedProfilesDir + "/active_profile"
@@ -75,16 +75,26 @@ type Controller struct {
 	clients *ntoclient.Clients
 
 	change struct {
-		// did node profile change?
+		// Did the node Profile k8s object change?
 		profile bool
-		// did the "rendered" tuned object change?
+		// Did the "rendered" Tuned k8s object change?
 		rendered bool
-		// did tuned active_profile/bootcmdline change on the filesystem?
-		cfg bool
+		// Did tunedBootcmdlineFile change on the filesystem?
+		// It is set to false on successful Profile update.
+		bootcmdline bool
+	}
+
+	daemon struct {
+		// reloading is true during the Tuned daemon reload
+		reloading bool
+		// reloaded is true immediately after the Tuned daemon finished reloading
+		// and the node Profile k8s object's Status needs to be set for the operator;
+		// it is set to false on successful Profile update
+		reloaded bool
 	}
 
 	tunedCmd  *exec.Cmd       // external command (tuned) being prepared or run
-	tunedExit chan bool       // bi-directional channel to signal and register tuned daemon exit
+	tunedExit chan bool       // bi-directional channel to signal and register Tuned daemon exit
 	stopCh    <-chan struct{} // receive-only channel to stop the openshift-tuned controller
 }
 
@@ -148,7 +158,7 @@ func newController(stopCh <-chan struct{}) (*Controller, error) {
 	return controller, nil
 }
 
-// eventProcessor is a long-running function that will continually
+// eventProcessor is a long-running method that will continually
 // read and process a message on the workqueue.
 func (c *Controller) eventProcessor() {
 	for {
@@ -261,14 +271,14 @@ func disableSystemTuned() {
 	}
 }
 
-// profilesExtract extracts tuned daemon profiles to the daemon configuration directory.
+// profilesExtract extracts Tuned daemon profiles to the daemon configuration directory.
 // If the data in the to be extracted recommended profile is different than the current
 // recommended profile, the function returns true.
 func profilesExtract(profiles []tunedv1.TunedProfile) (bool, error) {
 	var (
 		change bool
 	)
-	klog.Infof("extracting tuned profiles")
+	klog.Infof("extracting Tuned profiles")
 
 	recommendedProfile, err := getRecommendedProfile()
 	if err != nil {
@@ -276,18 +286,18 @@ func profilesExtract(profiles []tunedv1.TunedProfile) (bool, error) {
 	}
 	for index, profile := range profiles {
 		if profile.Name == nil {
-			klog.Warningf("profilesExtract(): profile name missing for profile %v", index)
+			klog.Warningf("profilesExtract(): profile name missing for Profile %v", index)
 			continue
 		}
 		if profile.Data == nil {
-			klog.Warningf("profilesExtract(): profile data missing for profile %v", index)
+			klog.Warningf("profilesExtract(): profile data missing for Profile %v", index)
 			continue
 		}
 		profileDir := fmt.Sprintf("%s/%s", tunedProfilesDir, *profile.Name)
 		profileFile := fmt.Sprintf("%s/%s", profileDir, "tuned.conf")
 
 		if err := mkdir(profileDir); err != nil {
-			return change, fmt.Errorf("failed to create tuned profile directory %q: %v", profileDir, err)
+			return change, fmt.Errorf("failed to create Tuned profile directory %q: %v", profileDir, err)
 		}
 
 		if recommendedProfile == *profile.Name {
@@ -302,16 +312,16 @@ func profilesExtract(profiles []tunedv1.TunedProfile) (bool, error) {
 			if !change {
 				un = "un"
 			}
-			klog.Infof("recommended tuned profile %s content %schanged", recommendedProfile, un)
+			klog.Infof("recommended Tuned profile %s content %schanged", recommendedProfile, un)
 		}
 
 		f, err := os.Create(profileFile)
 		if err != nil {
-			return change, fmt.Errorf("failed to create tuned profile file %q: %v", profileFile, err)
+			return change, fmt.Errorf("failed to create Tuned profile file %q: %v", profileFile, err)
 		}
 		defer f.Close()
 		if _, err = f.WriteString(*profile.Data); err != nil {
-			return change, fmt.Errorf("failed to write tuned profile file %q: %v", profileFile, err)
+			return change, fmt.Errorf("failed to write Tuned profile file %q: %v", profileFile, err)
 		}
 	}
 
@@ -346,7 +356,7 @@ func tunedRecommendFileWrite(profileName string) error {
 	if _, err = f.WriteString(fmt.Sprintf("[%s]\n", profileName)); err != nil {
 		return fmt.Errorf("failed to write file %q: %v", tunedRecommendFile, err)
 	}
-	klog.Infof("written %q to set tuned profile %s", tunedRecommendFile, profileName)
+	klog.Infof("written %q to set Tuned profile %s", tunedRecommendFile, profileName)
 	return nil
 }
 
@@ -370,10 +380,16 @@ func (c *Controller) tunedRun() {
 	scanner := bufio.NewScanner(cmdReader)
 	go func() {
 		for scanner.Scan() {
-			fmt.Printf("%s\n", scanner.Text())
+			l := scanner.Text()
+			if c.daemon.reloading {
+				c.daemon.reloading = !(strings.Index(l, "static tuning from profile") >= 0 && strings.Index(l, "applied") >= 0)
+				c.daemon.reloaded = !c.daemon.reloading
+			}
+			fmt.Printf("%s\n", l)
 		}
 	}()
 
+	c.daemon.reloading = true
 	err = c.tunedCmd.Start()
 	if err != nil {
 		klog.Errorf("error starting tuned: %v", err)
@@ -400,11 +416,11 @@ func (c *Controller) tunedStop(s *sockAccepted) error {
 		c.tunedCmd.Process.Signal(syscall.SIGTERM)
 	} else {
 		// This should never happen
-		return fmt.Errorf("cannot find the tuned process!")
+		return fmt.Errorf("cannot find the Tuned process!")
 	}
-	// Wait for tuned process to stop -- this will enable node-level tuning rollback
+	// Wait for Tuned process to stop -- this will enable node-level tuning rollback
 	<-c.tunedExit
-	klog.V(1).Infof("tuned process terminated")
+	klog.V(1).Infof("Tuned process terminated")
 
 	if s != nil {
 		// This was a socket-initiated shutdown; indicate a successful settings rollback
@@ -431,25 +447,26 @@ func (c *Controller) tunedReload() error {
 	if c.tunedCmd.Process != nil {
 		klog.Infof("sending HUP to PID %d", c.tunedCmd.Process.Pid)
 		err := c.tunedCmd.Process.Signal(syscall.SIGHUP)
+		c.daemon.reloading = true
 		if err != nil {
 			return fmt.Errorf("error sending SIGHUP to PID %d: %v\n", c.tunedCmd.Process.Pid, err)
 		}
 	} else {
 		// This should never happen
-		return fmt.Errorf("cannot find the tuned process!")
+		return fmt.Errorf("cannot find the Tuned process!")
 	}
 
 	return nil
 }
 
-// getActiveProfile returns active profile currently in use by the tuned daemon.
+// getActiveProfile returns active profile currently in use by the Tuned daemon.
 // On error, an empty string is returned.
 func getActiveProfile() (string, error) {
 	var responseString = ""
 
 	f, err := os.Open(tunedActiveProfileFile)
 	if err != nil {
-		return "", fmt.Errorf("error opening tuned active profile file %s: %v", tunedActiveProfileFile, err)
+		return "", fmt.Errorf("error opening Tuned active profile file %s: %v", tunedActiveProfileFile, err)
 	}
 	defer f.Close()
 
@@ -466,7 +483,7 @@ func getBootcmdline() (string, error) {
 
 	f, err := os.Open(tunedBootcmdlineFile)
 	if err != nil {
-		return "", fmt.Errorf("error opening tuned bootcmdline file %s: %v", tunedBootcmdlineFile, err)
+		return "", fmt.Errorf("error opening Tuned bootcmdline file %s: %v", tunedBootcmdlineFile, err)
 	}
 	defer f.Close()
 
@@ -502,12 +519,39 @@ func getRecommendedProfile() (string, error) {
 	return responseString, nil
 }
 
-func (c *Controller) timedTunedReloader() (err error) {
+// Method timedUpdater is called every timedUpdaterInterval seconds provided
+// the Tuned daemon is not already reloading.  It performs k8s Profile object
+// updates and Tuned daemon reloads as needed.
+func (c *Controller) timedUpdater() (err error) {
 	var reload bool
 
-	// Check whether reload of tuned is really necessary due to a profile change
+	if c.daemon.reloading {
+		// This should not be necessary, but keep this here as a reminder.
+		return fmt.Errorf("timedUpdater(): called while the Tuned daemon was reloading")
+	}
+
+	if c.change.bootcmdline || c.daemon.reloaded {
+		// One or both of the following happened:
+		// 1) tunedBootcmdlineFile changed on the filesystem.  This is very likely the result of
+		//    applying a Tuned profile by the Tuned daemon.  Make sure the node Profile k8s object
+		//    is in sync with tunedBootcmdlineFile so the operator can take an appropriate action.
+		// 2) Tuned daemon was reloaded.  Make sure the node Profile k8s object is in sync with
+		//    the active profile, e.g. the Profile indicates the presence of the stall daemon on
+		//    the host if requested by the current active profile.
+		if err = c.updateTunedProfile(); err != nil {
+			// Log this and retry later.
+			klog.Error(err.Error())
+		} else {
+			// The node Profile k8s object was updated successfully.  Clear the flags indicating
+			// a check for syncing the object is needed.
+			c.change.bootcmdline = false
+			c.daemon.reloaded = false
+		}
+	}
+
+	// Check whether reload of the Tuned daemon is really necessary due to a Profile change
 	if c.change.profile {
-		// Profile changed
+		// The node Profile k8s object changed
 		var activeProfile, recommendedProfile string
 		if activeProfile, err = getActiveProfile(); err != nil {
 			return err
@@ -522,7 +566,7 @@ func (c *Controller) timedTunedReloader() (err error) {
 				// Workaround for tuned BZ1774645; do not send SIGHUP to tuned if the profile directory doesn't exist.
 				// Log this as an error for easier debugging.  Persistent non-existence of the profile directory very
 				// likely indicates a custom user profile which references a profile that was not defined.
-				klog.Errorf("tuned profile directory %q does not exist; was %q defined?", recommendedProfileDir, recommendedProfile)
+				klog.Errorf("Tuned profile directory %q does not exist; was %q defined?", recommendedProfileDir, recommendedProfile)
 				return nil // retry later
 			}
 			reload = true
@@ -532,14 +576,9 @@ func (c *Controller) timedTunedReloader() (err error) {
 		c.change.profile = false
 	}
 	if c.change.rendered {
-		// The "rendered" tuned object changed
+		// The "rendered" Tuned k8s object changed.
 		c.change.rendered = false
 		reload = true
-	}
-	if c.change.cfg {
-		// Tuned active_profile/bootcmldine changed on the filesystem
-		c.change.cfg = false
-		c.updateTunedProfile()
 	}
 
 	if reload {
@@ -551,7 +590,7 @@ func (c *Controller) timedTunedReloader() (err error) {
 func getTuned(obj interface{}) (tuned *tunedv1.Tuned, err error) {
 	tuned, ok := obj.(*tunedv1.Tuned)
 	if !ok {
-		return nil, fmt.Errorf("could not convert object to a tuned object: %+v", obj)
+		return nil, fmt.Errorf("could not convert object to a Tuned object: %+v", obj)
 	}
 	return tuned, nil
 }
@@ -559,7 +598,7 @@ func getTuned(obj interface{}) (tuned *tunedv1.Tuned, err error) {
 func getTunedProfile(obj interface{}) (profile *tunedv1.Profile, err error) {
 	profile, ok := obj.(*tunedv1.Profile)
 	if !ok {
-		return nil, fmt.Errorf("could not convert object to a tuned profile object: %+v", obj)
+		return nil, fmt.Errorf("could not convert object to a Tuned Profile object: %+v", obj)
 	}
 
 	return profile, nil
@@ -568,17 +607,86 @@ func getTunedProfile(obj interface{}) (profile *tunedv1.Profile, err error) {
 func getNodeName() string {
 	name := os.Getenv("OCP_NODE_NAME")
 	if len(name) == 0 {
-		// Something is seriously wrong, OCP_NODE_NAME must be defined via tuned DaemonSet
+		// Something is seriously wrong, OCP_NODE_NAME must be defined via Tuned DaemonSet
 		panic("OCP_NODE_NAME unset or empty")
 	}
 	return name
 }
 
+// Note this function searches of any occurrence of the stalld service in all sections
+// of the Tuned profile "data".  This will work but is not ideal.  To search only in
+// the [service] section, a more complete profile parser would have to be written.
+func profileHasStalld(data *string) bool {
+	var idxStart int
+	if data == nil {
+		return false
+	}
+
+	for {
+		idx := strings.Index((*data)[idxStart:], "service.stalld")
+		if idx == -1 {
+			return false
+		}
+		idx += idxStart
+		idxStart = idx + 1
+
+		// A regex "^[ \t]*service.stalld" to ignore comments or similar.
+		for idx > 0 {
+			idx--
+			ch := (*data)[idx]
+			if ch == ' ' || ch == '\t' {
+				continue
+			}
+			if ch == '\n' {
+				return true
+			}
+			break
+		}
+	}
+}
+
+func (c *Controller) stalldRequested(profileName string) (bool, error) {
+	tuned, err := c.listers.TunedResources.Get(tunedv1.TunedRenderedResourceName)
+	if err != nil {
+		return false, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
+	}
+
+	for index, profile := range tuned.Spec.Profile {
+		if profile.Name == nil {
+			klog.Warningf("tunedHasStalld(): profile name missing for Profile %v", index)
+			continue
+		}
+		if *profile.Name != profileName {
+			continue
+		}
+		if profile.Data == nil {
+			klog.Warningf("tunedHasStalld(): profile data missing for Profile %v", index)
+			continue
+		}
+		return profileHasStalld(profile.Data), nil
+	}
+
+	return false, nil
+}
+
+// Method updateTunedProfile updates a Tuned profile with information to report back
+// to the operator.  Note this method must be called only when the Tuned daemon is
+// not reloading.
 func (c *Controller) updateTunedProfile() (err error) {
-	var bootcmdline string
+	var (
+		bootcmdline     string
+		stalldRequested bool
+	)
+
+	if c.daemon.reloading {
+		// This should not be necessary, but keep this here as a reminder.
+		return fmt.Errorf("updateTunedProfile(): called while the Tuned daemon was reloading")
+	}
 
 	if bootcmdline, err = getBootcmdline(); err != nil {
-		return nil
+		// This should never happen unless something is seriously wrong (e.g. Tuned
+		// daemon no longer uses tunedBootcmdlineFile).  Do not continue.
+		return fmt.Errorf("unable to get kernel command-line parameters: %v", err)
 	}
 
 	profile, err := c.listers.TunedProfiles.Get(getNodeName())
@@ -586,8 +694,12 @@ func (c *Controller) updateTunedProfile() (err error) {
 		return fmt.Errorf("failed to get Profile %s: %v", profile.Name, err)
 	}
 
-	if profile.Status.Bootcmdline == bootcmdline {
-		// Do not update node profile unnecessarily (i.e. when bootcmdline did not change)
+	if stalldRequested, err = c.stalldRequested(profile.Spec.Config.TunedProfile); err != nil {
+		return fmt.Errorf("unable to assess whether stalld is requested: %v", err)
+	}
+
+	if profile.Status.Bootcmdline == bootcmdline && profile.Status.Stalld == stalldRequested {
+		// Do not update node profile unnecessarily (e.g. bootcmdline did not change)
 		klog.V(2).Infof("updateTunedProfile(): no need to update Profile %s", profile.Name)
 		return nil
 	}
@@ -595,11 +707,12 @@ func (c *Controller) updateTunedProfile() (err error) {
 	profile = profile.DeepCopy() // never update the objects from cache
 
 	profile.Status.Bootcmdline = bootcmdline
+	profile.Status.Stalld = stalldRequested
 	_, err = c.clients.Tuned.TunedV1().Profiles(operandNamespace).Update(context.TODO(), profile, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update Profile %s status: %v", profile.Name, err)
 	}
-	klog.Infof("updated Profile %s with bootcmdline: %s", profile.Name, bootcmdline)
+	klog.Infof("updated Profile %s stalld=%v, bootcmdline: %s", profile.Name, stalldRequested, bootcmdline)
 
 	return nil
 }
@@ -706,12 +819,12 @@ func (c *Controller) changeWatcher() (err error) {
 	go wait.Until(c.eventProcessor, time.Second, stopCh)
 	klog.Info("started events processor")
 
-	// Create a ticker to extract new profiles and possibly reload tuned;
-	// this also rate-limits reloads to a maximum of profileExtractInterval reloads/s
-	tickerReload := time.NewTicker(time.Second * time.Duration(profileExtractInterval))
-	defer tickerReload.Stop()
+	// Create a ticker to extract new Tuned profiles and possibly reload tuned;
+	// this also rate-limits reloads to a maximum of timedUpdaterInterval reloads/s
+	tickerUpdate := time.NewTicker(time.Second * time.Duration(timedUpdaterInterval))
+	defer tickerUpdate.Stop()
 
-	// Watch for filesystem changes on the /etc/tuned/{active_profile,bootcmdline} files
+	// Watch for filesystem changes on the tunedBootcmdlineFile file
 	wFs, err := fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("failed to create filesystem watcher: %v", err)
@@ -776,22 +889,26 @@ func (c *Controller) changeWatcher() (err error) {
 
 		case <-c.tunedExit:
 			c.tunedCmd = nil // Cmd.Start() cannot be used more than once
-			return fmt.Errorf("tuned process exitted")
+			return fmt.Errorf("Tuned process exitted")
 
 		case fsEvent := <-wFs.Events:
 			klog.V(2).Infof("fsEvent")
 			if fsEvent.Op&fsnotify.Write == fsnotify.Write {
 				klog.V(1).Infof("write event on: %s", fsEvent.Name)
-				c.change.cfg = true
+				c.change.bootcmdline = true
 			}
 
 		case err := <-wFs.Errors:
 			return fmt.Errorf("error watching filesystem: %v", err)
 
-		case <-tickerReload.C:
-			klog.V(2).Infof("tickerReload.C")
+		case <-tickerUpdate.C:
+			klog.V(2).Infof("tickerUpdate.C")
+			if c.daemon.reloading {
+				// Do not reload the Tuned daemon unless it finished reloading
+				continue
+			}
 
-			if err := c.timedTunedReloader(); err != nil {
+			if err := c.timedUpdater(); err != nil {
 				return err
 			}
 		}

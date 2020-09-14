@@ -2,6 +2,8 @@ package operator
 
 import (
 	"encoding/json"
+	"fmt"
+	"reflect"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -12,7 +14,9 @@ import (
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 
-	igntypes "github.com/coreos/ignition/v2/config/v3_1/types"
+	ign3error "github.com/coreos/ignition/v2/config/shared/errors"
+	ign3 "github.com/coreos/ignition/v2/config/v3_1"
+	ign3types "github.com/coreos/ignition/v2/config/v3_1/types"
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
 
@@ -21,7 +25,8 @@ const (
 	MachineConfigPrefix                       string = "50-nto"
 )
 
-func newMachineConfig(name string, annotations map[string]string, labels map[string]string, kernelArguments []string) *mcfgv1.MachineConfig {
+func newMachineConfig(name string, annotations map[string]string, labels map[string]string, kernelArguments []string,
+	ignFiles []ign3types.File, ignUnits []ign3types.Unit) *mcfgv1.MachineConfig {
 	if labels == nil {
 		labels = map[string]string{}
 	}
@@ -29,11 +34,18 @@ func newMachineConfig(name string, annotations map[string]string, labels map[str
 		annotations = map[string]string{}
 	}
 
-	ignTypesCfg := igntypes.Config{
-		Ignition: igntypes.Ignition{
-			Version: igntypes.MaxVersion.String(),
+	ignTypesCfg := ign3types.Config{
+		Ignition: ign3types.Ignition{
+			Version: ign3types.MaxVersion.String(),
 		},
 	}
+	if ignFiles != nil {
+		ignTypesCfg.Storage = ign3types.Storage{Files: ignFiles}
+	}
+	if ignUnits != nil {
+		ignTypesCfg.Systemd = ign3types.Systemd{Units: ignUnits}
+	}
+
 	rawNewIgnCfg, err := json.Marshal(ignTypesCfg)
 	if err != nil {
 		// This should never happen
@@ -56,6 +68,59 @@ func newMachineConfig(name string, annotations map[string]string, labels map[str
 			KernelArguments: kernelArguments,
 		},
 	}
+}
+
+// IgnParseWrapper parses rawIgn for V3.1 ignition config and returns
+// a V3.1 Config or an error.
+func ignParseWrapper(rawIgn []byte) (interface{}, error) {
+	ignCfgV3_1, rptV3_1, errV3_1 := ign3.Parse(rawIgn)
+	if errV3_1 == nil && !rptV3_1.IsFatal() {
+		return ignCfgV3_1, nil
+	}
+	if errV3_1.Error() == ign3error.ErrUnknownVersion.Error() {
+		// NTO handles NTO-created MachineConfigs only.  The first Ignition
+		// version was 2.2.0 and only Ignition version was provided inside
+		// the Ignition config.  Later we switched to version 3.1.0 and started
+		// a support for Storage/Systemd types.  As of 3.1.0 it is safe to ignore
+		// this error and provide Ignition config with only Ignition version without
+		// pulling extra 2.2.0 dependencies for unneeded parsing.  Existing 2.2.0
+		// Ignition configs will automatically be converted to the 3.1.0 version by this.
+		ignTypesCfg := ign3types.Config{
+			Ignition: ign3types.Ignition{
+				Version: ign3types.MaxVersion.String(),
+			},
+		}
+
+		return ignTypesCfg, nil
+	}
+	return ign3types.Config{}, fmt.Errorf("parsing Ignition config spec v3.1 failed with error: %v\nReport: %v", errV3_1, rptV3_1)
+}
+
+func parseAndConvertConfig(rawIgn []byte) (ign3types.Config, error) {
+	ignconfigi, err := ignParseWrapper(rawIgn)
+	if err != nil {
+		return ign3types.Config{}, fmt.Errorf("failed to parse Ignition config: %v", err)
+	}
+
+	switch typedConfig := ignconfigi.(type) {
+	case ign3types.Config:
+		return ignconfigi.(ign3types.Config), nil
+	default:
+		return ign3types.Config{}, fmt.Errorf("unexpected type for ignition config: %v", typedConfig)
+	}
+}
+
+func ignEqual(mcOld, mcNew *mcfgv1.MachineConfig) (bool, error) {
+	ignOld, err := parseAndConvertConfig(mcOld.Spec.Config.Raw)
+	if err != nil {
+		return false, fmt.Errorf("parsing old Ignition config failed with error: %v", err)
+	}
+	ignNew, err := parseAndConvertConfig(mcNew.Spec.Config.Raw)
+	if err != nil {
+		return false, fmt.Errorf("parsing new Ignition config failed with error: %v", err)
+	}
+
+	return reflect.DeepEqual(ignOld.Storage.Files, ignNew.Storage.Files) && reflect.DeepEqual(ignOld.Systemd.Units, ignNew.Systemd.Units), nil
 }
 
 func getMachineConfigNameForPools(pools []*mcfgv1.MachineConfigPool) string {

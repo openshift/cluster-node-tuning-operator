@@ -127,11 +127,15 @@ type ProfileConfig struct {
 	TunedProfile string `json:"tunedProfile"`
 }
 
-// ProfileStatus is the status for a Profile resource
+// ProfileStatus is the status for a Profile resource; the status is for internal use only
+// and its fields may be changed/removed in the future.
 type ProfileStatus struct {
 	// kernel parameters calculated by tuned for the active tuned profile
 	// +optional
 	Bootcmdline string `json:"bootcmdline"`
+	// deploy stall daemon: https://github.com/bristot/stalld/
+	// +optional
+	Stalld bool `json:"stalld"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
