@@ -108,8 +108,12 @@ spec:
                             description: Additional rules governing application of
                               the tuned profile connected by logical AND operator.
                             type: array
-                            items: { type: object }
-                            x-kubernetes-preserve-unknown-fields: true
+                            items:
+                              # Recursively nested "match" sections are dropped without the following.
+                              x-kubernetes-preserve-unknown-fields: true
+                              # OpenAPI v3 validation schemas containing $ref are not permitted => cannot do recursive validation in 1.14
+                              # https://kubernetes.io/docs/tasks/access-kubernetes-api/custom-resources/custom-resource-definitions/#validation
+                              type: object
                           type:
                             description: 'Match type: [node/pod]. If omitted, "node"
                               is assumed.'

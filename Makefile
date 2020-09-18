@@ -75,8 +75,8 @@ pkg/generated: $(API_TYPES)
 	touch $@
 
 crd-schema-gen:
+	# TODO: look into using https://github.com/openshift/build-machinery-go/ and yaml patches
 	$(GO) run ./vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/ schemapatch:manifests=./manifests paths=./pkg/apis/tuned/v1 output:dir=./manifests
-	sed -i 's|items: {}|items: { type: object }|' manifests/02-crd-tuned.yaml # remove this hack once https://github.com/kubernetes-sigs/controller-tools/issues/491 is addressed
 
 $(GOBINDATA_BIN):
 	$(GO) build -o $(GOBINDATA_BIN) ./vendor/github.com/kevinburke/go-bindata/go-bindata
