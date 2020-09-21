@@ -75,7 +75,8 @@ pkg/generated: $(API_TYPES)
 	touch $@
 
 crd-schema-gen:
-	$(GO) run ./vendor/github.com/openshift/crd-schema-gen/cmd/crd-schema-gen/ --apis-dir pkg/apis --manifests-dir manifests/
+	# TODO: look into using https://github.com/openshift/build-machinery-go/ and yaml patches
+	$(GO) run ./vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/ schemapatch:manifests=./manifests paths=./pkg/apis/tuned/v1 output:dir=./manifests
 
 $(GOBINDATA_BIN):
 	$(GO) build -o $(GOBINDATA_BIN) ./vendor/github.com/kevinburke/go-bindata/go-bindata

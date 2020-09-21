@@ -10,8 +10,10 @@ import (
 )
 
 // TunedLister helps list Tuneds.
+// All objects returned here must be treated as read-only.
 type TunedLister interface {
 	// List lists all Tuneds in the indexer.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.Tuned, err error)
 	// Tuneds returns an object that can list and get Tuneds.
 	Tuneds(namespace string) TunedNamespaceLister
@@ -42,10 +44,13 @@ func (s *tunedLister) Tuneds(namespace string) TunedNamespaceLister {
 }
 
 // TunedNamespaceLister helps list and get Tuneds.
+// All objects returned here must be treated as read-only.
 type TunedNamespaceLister interface {
 	// List lists all Tuneds in the indexer for a given namespace.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.Tuned, err error)
 	// Get retrieves the Tuned from the indexer for a given namespace and name.
+	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1.Tuned, error)
 	TunedNamespaceListerExpansion
 }
