@@ -15,6 +15,7 @@ import (
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/clusteroperator"
 	ntomf "github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/metrics"
 )
 
 // syncOperatorStatus computes the operator's current status and therefrom
@@ -39,10 +40,8 @@ func (c *Controller) syncOperatorStatus(tuned *tunedv1.Tuned) error {
 	// every operator must report its version from the payload
 	// if the operator is reporting available, it resets the release version to the present value
 	if releaseVersion := os.Getenv("RELEASE_VERSION"); len(releaseVersion) > 0 {
-		for _, condition := range co.Status.Conditions {
-			if condition.Type == configv1.OperatorAvailable && condition.Status == configv1.ConditionTrue {
-				operatorv1helpers.SetOperandVersion(&co.Status.Versions, configv1.OperandVersion{Name: "operator", Version: releaseVersion})
-			}
+		if conditionTrue(co.Status.Conditions, configv1.OperatorAvailable) {
+			operatorv1helpers.SetOperandVersion(&co.Status.Versions, configv1.OperandVersion{Name: "operator", Version: releaseVersion})
 		}
 	}
 	co.Status.RelatedObjects = []configv1.ObjectReference{
@@ -58,6 +57,7 @@ func (c *Controller) syncOperatorStatus(tuned *tunedv1.Tuned) error {
 		return nil
 	}
 
+	metrics.Degraded(conditionTrue(co.Status.Conditions, configv1.OperatorDegraded))
 	_, err = c.clients.Config.ClusterOperators().UpdateStatus(context.TODO(), co, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("unable to update ClusterOperator: %v", err)
@@ -256,4 +256,14 @@ func initializeClusterOperator(co *configv1.ClusterOperator) {
 			Status: configv1.ConditionUnknown,
 		},
 	}
+}
+
+func conditionTrue(conditions []configv1.ClusterOperatorStatusCondition, condType configv1.ClusterStatusConditionType) bool {
+	for _, condition := range conditions {
+		if condition.Type == condType {
+			return condition.Status == configv1.ConditionTrue
+		}
+	}
+
+	return false
 }

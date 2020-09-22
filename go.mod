@@ -15,6 +15,7 @@ require (
 	github.com/openshift/library-go v0.0.0-20200911100307-610c6e9e90b8
 	github.com/openshift/machine-config-operator v4.2.0-alpha.0.0.20190917115525-033375cbe820+incompatible
 	github.com/pkg/errors v0.9.1
+	github.com/prometheus/client_golang v1.7.1
 	github.com/vincent-petithory/dataurl v0.0.0-20191104211930-d1553a71de50 // indirect
 	golang.org/x/text v0.3.3 // indirect
 	gopkg.in/fsnotify.v1 v1.4.7
