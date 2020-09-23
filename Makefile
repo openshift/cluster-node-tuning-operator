@@ -25,13 +25,13 @@ API_TYPES_GENERATED:=$(API_TYPES_DIR)/$(API_ZZ_GENERATED).go
 API_GO_HEADER_FILE:=pkg/apis/header.go.txt
 
 # Container image-related variables
-IMAGE_BUILD_CMD:= podman build
-IMAGE_PUSH_CMD:= podman push
+IMAGE_BUILD_CMD=podman build
+IMAGE_PUSH_CMD=podman push
 DOCKERFILE=Dockerfile
 REGISTRY=quay.io
 ORG=openshift
 TAG=$(shell git rev-parse --abbrev-ref HEAD)
-IMAGE=$(REGISTRY)/$(ORG)/origin-cluser-node-tuning-operator:$(TAG)
+IMAGE=$(REGISTRY)/$(ORG)/origin-cluster-node-tuning-operator:$(TAG)
 
 all: build
 
