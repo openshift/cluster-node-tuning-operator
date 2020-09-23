@@ -451,18 +451,36 @@ func (pc *ProfileCalculator) tunedsUsePodLabels(tunedSlice []*tunedv1.Tuned) boo
 func tunedRecommend(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedRecommend {
 	var recommendAll []tunedv1.TunedRecommend
 
+	// Tuned profiles should have unique priority across all Tuned CRs and users
+	// will be warned about this.  However, go into some effort to make the profile
+	// selection deterministic even if users create two or more profiles with the
+	// same priority.
+	sort.Slice(tunedSlice, func(i, j int) bool {
+		return tunedSlice[i].Name < tunedSlice[j].Name
+	})
+
 	for _, tuned := range tunedSlice {
 		if tuned.Spec.Recommend != nil {
 			recommendAll = append(recommendAll, tuned.Spec.Recommend...)
 		}
 	}
 
-	sort.Slice(recommendAll, func(i, j int) bool {
+	sort.SliceStable(recommendAll, func(i, j int) bool {
 		if recommendAll[i].Priority != nil && recommendAll[j].Priority != nil {
 			return *recommendAll[i].Priority < *recommendAll[j].Priority
 		}
 		return recommendAll[i].Priority != nil // undefined priority has the lowest priority
 	})
+
+	for i := 0; i < len(recommendAll)-1; i++ {
+		if recommendAll[i].Priority == nil || recommendAll[i+1].Priority == nil {
+			continue
+		}
+		if *recommendAll[i].Priority == *recommendAll[i+1].Priority {
+			klog.Warningf("profiles %s/%s have the same priority %d, please use a different priority for your custom profiles!",
+				*recommendAll[i].Profile, *recommendAll[i+1].Profile, *recommendAll[i].Priority)
+		}
+	}
 
 	return recommendAll
 }
