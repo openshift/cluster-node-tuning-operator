@@ -114,7 +114,7 @@ clean:
 	rm -rf $(BINDATA) $(OUT_DIR)
 
 local-image:
-	$(IMAGE_BUILD_CMD) build -t $(IMAGE) -f $(DOCKERFILE) .
+	$(IMAGE_BUILD_CMD) $(IMAGE_BUILD_EXTRA_OPTS) -t $(IMAGE) -f $(DOCKERFILE) .
 
 local-image-push:
 	$(IMAGE_PUSH_CMD) push $(IMAGE)
