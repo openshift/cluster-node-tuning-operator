@@ -117,6 +117,6 @@ local-image:
 	$(IMAGE_BUILD_CMD) $(IMAGE_BUILD_EXTRA_OPTS) -t $(IMAGE) -f $(DOCKERFILE) .
 
 local-image-push:
-	$(IMAGE_PUSH_CMD) push $(IMAGE)
+	$(IMAGE_PUSH_CMD) $(IMAGE_PUSH_EXTRA_OPTS) $(IMAGE)
 
 .PHONY: all build deepcopy crd-schema-gen test-e2e verify verify-gofmt clean local-image local-image-push
