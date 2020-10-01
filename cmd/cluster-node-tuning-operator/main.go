@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/operator"
