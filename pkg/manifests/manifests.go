@@ -12,7 +12,7 @@ import (
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 const (
