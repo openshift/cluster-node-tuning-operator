@@ -25,9 +25,13 @@ API_TYPES_GENERATED:=$(API_TYPES_DIR)/$(API_ZZ_GENERATED).go
 API_GO_HEADER_FILE:=pkg/apis/header.go.txt
 
 # Container image-related variables
+IMAGE_BUILD_CMD=podman build
+IMAGE_PUSH_CMD=podman push
 DOCKERFILE=Dockerfile
-IMAGE_TAG=openshift/origin-cluster-node-tuning-operator
-IMAGE_REGISTRY=quay.io
+REGISTRY=quay.io
+ORG=openshift
+TAG=$(shell git rev-parse --abbrev-ref HEAD)
+IMAGE=$(REGISTRY)/$(ORG)/origin-cluster-node-tuning-operator:$(TAG)
 
 all: build
 
@@ -111,18 +115,9 @@ clean:
 	rm -rf $(BINDATA) $(OUT_DIR)
 
 local-image:
-ifdef USE_BUILDAH
-	buildah bud $(BUILDAH_OPTS) -t $(IMAGE_TAG) -f $(DOCKERFILE) .
-else
-	sudo docker build -t $(IMAGE_TAG) -f $(DOCKERFILE) .
-endif
+	$(IMAGE_BUILD_CMD) $(IMAGE_BUILD_EXTRA_OPTS) -t $(IMAGE) -f $(DOCKERFILE) .
 
 local-image-push:
-ifdef USE_BUILDAH
-	buildah push $(BUILDAH_OPTS) $(IMAGE_TAG) $(IMAGE_REGISTRY)/$(IMAGE_TAG)
-else
-	sudo docker tag $(IMAGE_TAG) $(IMAGE_REGISTRY)/$(IMAGE_TAG)
-	sudo docker push $(IMAGE_REGISTRY)/$(IMAGE_TAG)
-endif
+	$(IMAGE_PUSH_CMD) $(IMAGE_PUSH_EXTRA_OPTS) $(IMAGE)
 
 .PHONY: all build deepcopy crd-schema-gen test-e2e verify verify-gofmt clean local-image local-image-push
