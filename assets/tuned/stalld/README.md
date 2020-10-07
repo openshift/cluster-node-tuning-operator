@@ -17,9 +17,14 @@ thread then runs and when that timeslice is used, the thread is then
 returned to its original scheduling policy and stalld then
 continues to monitor thread states.
 
+There is now an experimental option to boost using SCHED_FIFO. This
+logic is used if the running kernel does not support the
+SCHED_DEADLINE policy and may be forced by using the -F/--force_fifo
+option.
+
 ## Command Line Options
 
-`Usage: stalld [-l] [-v] [-k] [-s] [-f] [-h]
+`Usage: stalld [-l] [-v] [-k] [-s] [-f] [-h] [-F]
           [-c cpu-list]
           [-p time in ns] [-r time in ns]
           [-d time in seconds] [-t time in seconds]`
@@ -39,6 +44,7 @@ continues to monitor thread states.
 - -p/--boost_period: SCHED_DEADLINE period [ns] that the starving task will receive [1000000000]
 - -r/--boost_runtime: SCHED_DEADLINE runtime [ns] that the starving task will receive [20000]
 - -d/--boost_duration: how long [s] the starving task will run with SCHED_DEADLINE [3]
+- -F/--force_fifo: force using SCHED_FIFO for boosting
 
 ### Monitoring options
 - -t/--starving_threshold: how long [s] the starving task will wait before being boosted [60]

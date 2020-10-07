@@ -119,6 +119,12 @@ unsigned long config_dl_period  = 1000000000;
 unsigned long config_dl_runtime = 20000;
 
 /*
+ * fifo boost parameters
+ */
+unsigned long config_fifo_priority = 98;
+unsigned long config_force_fifo = 0;
+
+/*
  * control loop (time in seconds)
  */
 long config_starving_threshold = 60;
@@ -133,6 +139,11 @@ long config_aggressive = 0;
 int config_monitor_all_cpus = 1;
 char *config_monitored_cpus;
 
+
+/*
+ * boolean to choose between deadline and fifo
+ */
+int boost_policy;
 
 /*
  * print any error messages and exit
@@ -416,6 +427,9 @@ int read_sched_debug(char *buffer, int size)
 
 	} while (retval > 0 && position < size);
 
+	if (position < size)
+		buffer[position] = '\0';
+
 	close(fd);
 
 	return position;
@@ -550,8 +564,17 @@ int fill_waiting_task(char *buffer, struct task_info *task_info, int nr_entries)
 	while (tasks < nr_entries) {
 		task = &task_info[tasks];
 
+		/*
+		 * only care about tasks in the Runnable state
+		 * Note: the actual scheduled task will show up as
+		 * "\n>R" so we will skip it.
+		 *
+		 */
 		start = strstr(start, "\n R");
 
+		/*
+		 * if no match then there are no more Runnable tasks
+		 */
 		if (!start)
 			break;
 
@@ -588,7 +611,7 @@ int fill_waiting_task(char *buffer, struct task_info *task_info, int nr_entries)
 		task->pid = strtol(start, &end, 10);
 
 		/*
-		 * skip the pid
+		 * go to the end of the pid
 		 */
 		start=end;
 
@@ -678,10 +701,8 @@ int parse_cpu_info(struct cpu_info *cpu_info, char *buffer, int buffer_size)
 	cpu_info->nr_running = get_variable_long_value(cpu_buffer, ".nr_running");
 	cpu_info->nr_rt_running = get_variable_long_value(cpu_buffer, ".rt_nr_running");
 
-	cpu_info->starving = malloc(sizeof(struct task_info) * MAX_WAITING_PIDS);
-
-	cpu_info->nr_waiting_tasks = fill_waiting_task(cpu_buffer, cpu_info->starving, MAX_WAITING_PIDS);
-
+	cpu_info->starving = malloc(sizeof(struct task_info) * cpu_info->nr_running);
+	cpu_info->nr_waiting_tasks = fill_waiting_task(cpu_buffer, cpu_info->starving, cpu_info->nr_running);
 	if (old_tasks) {
 		merge_taks_info(old_tasks, nr_old_tasks, cpu_info->starving, cpu_info->nr_waiting_tasks);
 		free(old_tasks);
@@ -692,47 +713,142 @@ int parse_cpu_info(struct cpu_info *cpu_info, char *buffer, int buffer_size)
 	return 0;
 }
 
-int boost_starving_task(int pid)
+int get_current_policy(int pid, struct sched_attr *attr)
+{
+	int ret;
+
+	ret = sched_getattr(pid, attr, sizeof(*attr), 0);
+	if (ret == -1)
+		log_msg("get_current_policy: failed with error %s\n", strerror(errno));
+	return ret;
+}
+
+int boost_with_deadline(int pid)
 {
 	int ret;
 	int flags = 0;
-	struct sched_attr new_attr;
-	struct sched_attr old_attr;
+	struct sched_attr attr;
 
-	memset(&new_attr, 0, sizeof(new_attr));
-	new_attr.size = sizeof(new_attr);
-	new_attr.sched_policy   = SCHED_DEADLINE;
-	new_attr.sched_runtime  = config_dl_runtime;
-	new_attr.sched_deadline = config_dl_period;
-	new_attr.sched_period   = config_dl_period;
+	memset(&attr, 0, sizeof(attr));
+	attr.size = sizeof(attr);
+	attr.sched_policy   = SCHED_DEADLINE;
+	attr.sched_runtime  = config_dl_runtime;
+	attr.sched_deadline = config_dl_period;
+	attr.sched_period   = config_dl_period;
+
+	ret = sched_setattr(pid, &attr, flags);
+	if (ret < 0) {
+	    log_msg("boost_with_deadline failed to boost pid %d: %s\n", pid, strerror(errno));
+	    return ret;
+	}
+	return ret;
+}
+
+int boost_with_fifo(int pid)
+{
+	int ret;
+	int flags = 0;
+	struct sched_attr attr;
+
+	memset(&attr, 0, sizeof(attr));
+	attr.size = sizeof(attr);
+	attr.sched_policy   = SCHED_FIFO;
+	attr.sched_priority = config_fifo_priority;
+
+	ret = sched_setattr(pid, &attr, flags);
+	if (ret < 0) {
+	    log_msg("boost_with_fifo failed to boost pid %d: %s\n", pid, strerror(errno));
+	    return ret;
+	}
+	return ret;
+}
+
+int restore_policy(int pid, struct sched_attr *attr)
+{
+	int ret;
+	int flags = 0;
+
+	ret = sched_setattr(pid, attr, flags);
+	if (ret < 0)
+		log_msg("restore_policy: failed to restore sched policy for pid %d: %s\n",
+			pid, strerror(errno));
+	return ret;
+}
+
+void normalize_timespec(struct timespec *ts)
+{
+        while (ts->tv_nsec >= NS_PER_SEC) {
+                ts->tv_nsec -= NS_PER_SEC;
+                ts->tv_sec++;
+        }
+}
+
+/*
+ * this function emulates the behavior of SCHED_DEADLINE but
+ * using SCHED_FIFO by boosting the thread, sleeping for runtime,
+ * changing the pid policy back to its old policy, then sleeping
+ * for the remainder of the period, repeating until all the
+ * periods are done.
+ */
+void do_fifo_boost(int pid, struct sched_attr *old_attr)
+{
+	int i;
+	int nr_periods = config_boost_duration / config_dl_period;
+	struct timespec runtime_ts;
+	struct timespec remainder_ts;
+	struct timespec ts;
+
+	/*
+	 * setup the runtime sleep
+	 */
+	memset(&runtime_ts, 0, sizeof(runtime_ts));
+	runtime_ts.tv_nsec = config_dl_runtime;
+	normalize_timespec(&runtime_ts);
+
+	/*
+	 * setup the remainder of the period sleep
+	 */
+	memset(&remainder_ts, 0, sizeof(remainder_ts));
+	remainder_ts.tv_nsec = config_dl_period - config_dl_runtime;
+	normalize_timespec(&remainder_ts);
+
+	for (i=0; i < nr_periods; i++) {
+		boost_with_fifo(pid);
+		ts = runtime_ts;
+		clock_nanosleep(CLOCK_MONOTONIC, 0, &ts, 0);
+		restore_policy(pid, old_attr);
+		ts = remainder_ts;
+		clock_nanosleep(CLOCK_MONOTONIC, 0, &ts, 0);
+	}
+}
+
+int boost_starving_task(int pid)
+{
+	int ret;
+	struct sched_attr attr;
 
 	/*
 	 * Get the old prio, to be restored at the end of the
 	 * boosting period.
 	 */
-	ret = sched_getattr(pid, &old_attr, sizeof(old_attr), flags);
+	ret = get_current_policy(pid, &attr);
+	if (ret < 0)
+		return ret;
 
 	/*
 	 * Boost.
 	 */
-	ret = sched_setattr(pid, &new_attr, flags);
-	if (ret < 0) {
-	    log_msg("sched_setattr failed to boost pid %d: %s\n", pid, strerror(errno));
-	    return 1;
+	if (boost_policy == SCHED_DEADLINE) {
+		ret = boost_with_deadline(pid);
+		if (ret < 0)
+			return ret;
+		sleep(config_boost_duration);
+		ret = restore_policy(pid, &attr);
+		if (ret < 0)
+			return ret;
 	}
-
-	/*
-	 * Wait.
-	 *
-	 * XXX: We might want to check if the task suspended before the
-	 * end of the duration.
-	 */
-	sleep(config_boost_duration);
-
-	/*
-	 * Restore the old priority.
-	 */
-	ret = sched_setattr(pid, &old_attr, flags);
+	else
+		do_fifo_boost(pid, &attr);
 
 	/*
 	 * XXX: If the proccess dies, we get an error. Deal with that
@@ -826,6 +942,7 @@ void print_usage(void)
 		"          -p/--boost_period: SCHED_DEADLINE period [ns] that the starving task will receive",
 		"          -r/--boost_runtime: SCHED_DEADLINE runtime [ns] that the starving task will receive",
 		"          -d/--boost_duration: how long [s] the starving task will run with SCHED_DEADLINE",
+		"          -F/--force_fifo: use SCHED_FIFO for boosting",
 		"        monitoring options:",
 		"          -t/--starving_threshold: how long [s] the starving task will wait before being boosted",
 		"          -A/--aggressive_mode: dispatch one thread per run queue, even when there is no starving",
@@ -939,13 +1056,14 @@ int parse_args(int argc, char **argv)
 			{"boost_duration",	required_argument, 0, 'd'},
 			{"starving_threshold",	required_argument, 0, 't'},
 			{"pidfile",             required_argument, 0, 'P'},
+			{"force_fifo", 		no_argument, 	   0, 'F'},
 			{0, 0, 0, 0}
 		};
 
 		/* getopt_long stores the option index here. */
 		int option_index = 0;
 
-		c = getopt_long(argc, argv, "lvkfAhsp:r:d:t:c:",
+		c = getopt_long(argc, argv, "lvkfAhsp:r:d:t:c:F",
 				 long_options, &option_index);
 
 		/* Detect the end of the options. */
@@ -1014,6 +1132,9 @@ int parse_args(int argc, char **argv)
 			break;
 		case 'P':
 			strncpy(pidfile, optarg, sizeof(pidfile)-1);
+			break;
+		case 'F':
+			config_force_fifo = 1;
 			break;
 		case '?':
 			usage("Invalid option");
@@ -1142,7 +1263,8 @@ int conservative_main(struct cpu_info *cpus, int nr_cpus)
 			parse_cpu_info(cpu, buffer, BUFFER_SIZE);
 
 			if (config_verbose)
-				printf("\tchecking cpu %d - rt: %d - starving: %d\n", i, cpu->nr_rt_running, cpu->nr_waiting_tasks);
+				printf("\tchecking cpu %d - rt: %d - starving: %d\n",
+				       i, cpu->nr_rt_running, cpu->nr_waiting_tasks);
 
 			if (check_might_starve_tasks(cpu)) {
 				cpus[i].id = i;
@@ -1156,12 +1278,71 @@ int conservative_main(struct cpu_info *cpus, int nr_cpus)
 }
 
 
+int check_policies(void)
+{
+	int ret;
+	int saved_runtime = config_dl_runtime;
+	int boosted = SCHED_DEADLINE;
+	struct sched_attr attr;
+
+	/*
+	 * if we specified fifo on the command line
+	 * just return false
+	 */
+	if (config_force_fifo) {
+		log_msg("forcing SCHED_FIFO for boosting\n");
+		return SCHED_FIFO;
+	}
+
+	// set runtime to half of period
+	config_dl_runtime = config_dl_period / 2;
+
+	// save off the current policy
+	if (get_current_policy(0, &attr))
+		die("check_policies: unable to get scheduling policy!");
+
+	// try boosting to SCHED_DEADLINE
+	ret = boost_with_deadline(0);
+	if (ret < 0) {
+		// try boosting with fifo to see if we have permission
+		ret = boost_with_fifo(0);
+		if (ret < 0) {
+			log_msg("check_policies: unable to change policy to either deadline or fifo,"
+				"defaulting to logging only\n");
+			config_log_only = 1;
+			boosted = 0;
+		}
+		else
+			boosted = SCHED_FIFO;
+	}
+	// if we successfully boosted to something, restore the old policy
+	if (boosted) {
+		ret = restore_policy(0, &attr);
+		// if we can't restore the policy then quit now
+		if (ret < 0)
+			die("check_policies: unable to restore policy: %s\n", strerror(errno));
+ 	}
+
+	// restore the actual runtime value
+	config_dl_runtime = saved_runtime;
+	if (boosted == SCHED_DEADLINE)
+		log_msg("using SCHED_DEADLINE for boosting\n");
+	else if (boosted == SCHED_FIFO)
+		log_msg("using SCHED_FIFO for boosting\n");
+	return boosted;
+}
+
 int main(int argc, char **argv)
 {
 	struct cpu_info *cpus;
 	int nr_cpus;
 
 	parse_args(argc, argv);
+
+	/*
+	 * see if deadline scheduler is available
+	 */
+	boost_policy = check_policies();
 
 	nr_cpus = sysconf(_SC_NPROCESSORS_CONF);
 	if (nr_cpus < 1)
