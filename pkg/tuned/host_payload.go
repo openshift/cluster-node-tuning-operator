@@ -56,7 +56,9 @@ Environment=BD="-d 3"
 # this value the time the thread must be kept ready but not
 # actually run to decide that the thread is starving
 # ex: THRESH="-t 60"
-Environment=THRESH="-t 60"
+# The default kernel RCU timeout value is 60s.  All available cores are preempted via a NMI when an RCU thread is starving that long.
+# This means stalld must react faster.
+Environment=THRESH="-t 30"
 
 # Logging options
 #
