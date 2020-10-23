@@ -5,6 +5,8 @@ kind: ServiceAccount
 metadata:
   name: cluster-node-tuning-operator
   namespace: openshift-cluster-node-tuning-operator
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
 
 ---
 
@@ -13,6 +15,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: cluster-node-tuning-operator
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
 rules:
 - apiGroups: ["tuned.openshift.io"]
   resources: ["*"]
@@ -59,6 +63,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: cluster-node-tuning-operator
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
 subjects:
 - kind: ServiceAccount
   name: cluster-node-tuning-operator
@@ -77,6 +83,8 @@ kind: ServiceAccount
 metadata:
   name: tuned
   namespace: openshift-cluster-node-tuning-operator
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
 
 ---
 
@@ -85,6 +93,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: cluster-node-tuning:tuned
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
 rules:
 - apiGroups: ["tuned.openshift.io"]
   resources: ["*"]
@@ -101,6 +111,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: cluster-node-tuning:tuned
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
 roleRef:
   kind: ClusterRole
   name: cluster-node-tuning:tuned
