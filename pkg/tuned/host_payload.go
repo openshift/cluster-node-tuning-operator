@@ -58,7 +58,7 @@ Environment=BD="-d 3"
 # ex: THRESH="-t 60"
 # The default kernel RCU timeout value is 60s.  All available cores are preempted via a NMI when an RCU thread is starving that long.
 # This means stalld must react faster.
-Environment=THRESH="-t 30"
+Environment=THRESH="-t 20"
 
 # Logging options
 #
@@ -79,7 +79,7 @@ Environment=FG=--foreground
 # ex: PF=--pidfile /run/stalld.pid
 Environment=PF="--pidfile /run/stalld.pid"
 
-ExecStart=/usr/local/bin/stalld $CLIST $AGGR $BP $BR $BD $THRESH $LOGGING $FG $PF
+ExecStart=/usr/bin/chrt -f 10 /usr/local/bin/stalld $CLIST $AGGR $BP $BR $BD $THRESH $LOGGING $FG $PF
 User=root
 `
 
