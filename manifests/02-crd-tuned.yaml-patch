@@ -1,0 +1,8 @@
+- command: update 
+  path: spec.versions[0].schema.openAPIV3Schema.properties.spec.properties.recommend.items.properties.match.items.properties.match.items
+  value:
+    # Recursively nested "match" sections are dropped without the following.
+    x-kubernetes-preserve-unknown-fields: true
+    # OpenAPI v3 validation schemas containing $ref are not permitted => cannot do recursive validation in 1.14
+    # https://kubernetes.io/docs/tasks/access-kubernetes-api/custom-resources/custom-resource-definitions/#validation
+    type: object

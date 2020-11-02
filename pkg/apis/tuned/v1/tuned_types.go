@@ -88,7 +88,6 @@ type TunedMatch struct {
 	Type *string `json:"type,omitempty"`
 
 	// Additional rules governing application of the tuned profile connected by logical AND operator.
-	// +kubebuilder:pruning:PreserveUnknownFields
 	Match []TunedMatch `json:"match,omitempty"`
 }
 
