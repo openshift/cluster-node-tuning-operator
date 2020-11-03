@@ -18,5 +18,5 @@ spec:
   recommend:
   - match:
     - label: node-role.kubernetes.io/worker-rt
-    priority: 30
+    priority: 20
     profile: openshift-cpu-partitioning

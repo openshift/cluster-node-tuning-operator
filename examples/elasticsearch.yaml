@@ -16,5 +16,5 @@ spec:
   - match:
     - label: tuned.openshift.io/elasticsearch
       type: pod
-    priority: 30
+    priority: 20
     profile: openshift-elasticsearch

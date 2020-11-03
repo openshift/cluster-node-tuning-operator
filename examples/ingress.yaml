@@ -17,5 +17,5 @@ spec:
   - match:
     - label: tuned.openshift.io/ingress
       type: pod
-    priority: 30
+    priority: 20
     profile: openshift-ingress

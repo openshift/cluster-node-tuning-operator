@@ -17,5 +17,5 @@ spec:
   recommend:
   - match:
     - label: tuned.openshift.io/hugepages
-    priority: 30
+    priority: 20
     profile: openshift-hugepages
