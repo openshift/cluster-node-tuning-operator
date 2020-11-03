@@ -82,6 +82,9 @@ type Controller struct {
 		// Did tunedBootcmdlineFile change on the filesystem?
 		// It is set to false on successful Profile update.
 		bootcmdline bool
+		// Did the command-line parameters to run the Tuned daemon change?
+		// In other words, is a complete restart of the Tuned daemon needed?
+		daemon bool
 	}
 
 	daemon struct {
@@ -91,6 +94,8 @@ type Controller struct {
 		// and the node Profile k8s object's Status needs to be set for the operator;
 		// it is set to false on successful Profile update
 		reloaded bool
+		// debugging flag
+		debug bool
 	}
 
 	tunedCmd  *exec.Cmd       // external command (tuned) being prepared or run
@@ -237,6 +242,11 @@ func (c *Controller) sync(key wqKey) error {
 		}
 		c.change.profile = true
 
+		if c.daemon.debug != profile.Spec.Config.Debug {
+			c.change.daemon = true // A complete restart of the Tuned daemon is needed due to a debugging request switched on or off.
+			c.daemon.debug = profile.Spec.Config.Debug
+		}
+
 		return nil
 
 	default:
@@ -360,8 +370,12 @@ func tunedRecommendFileWrite(profileName string) error {
 	return nil
 }
 
-func tunedCreateCmd() *exec.Cmd {
-	return exec.Command("/usr/sbin/tuned", "--no-dbus")
+func (c *Controller) tunedCreateCmd() *exec.Cmd {
+	args := []string{"--no-dbus"}
+	if c.daemon.debug {
+		args = append(args, "--debug")
+	}
+	return exec.Command("/usr/sbin/tuned", args...)
 }
 
 func (c *Controller) tunedRun() {
@@ -437,7 +451,7 @@ func (c *Controller) tunedStop(s *sockAccepted) error {
 func (c *Controller) tunedReload() error {
 	if c.tunedCmd == nil {
 		// Tuned hasn't been started by openshift-tuned, start it
-		c.tunedCmd = tunedCreateCmd()
+		c.tunedCmd = c.tunedCreateCmd()
 		go c.tunedRun()
 		return nil
 	}
@@ -456,6 +470,17 @@ func (c *Controller) tunedReload() error {
 		return fmt.Errorf("cannot find the Tuned process!")
 	}
 
+	return nil
+}
+
+func (c *Controller) tunedRestart() (err error) {
+	if err = c.tunedStop(nil); err != nil {
+		return err
+	}
+	c.tunedCmd = nil // Cmd.Start() cannot be used more than once
+	if err = c.tunedReload(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -528,6 +553,13 @@ func (c *Controller) timedUpdater() (err error) {
 	if c.daemon.reloading {
 		// This should not be necessary, but keep this here as a reminder.
 		return fmt.Errorf("timedUpdater(): called while the Tuned daemon was reloading")
+	}
+
+	if c.change.daemon {
+		// Complete restart of the Tuned daemon needed.
+		c.change.daemon = false
+		c.change.profile = false
+		return c.tunedRestart()
 	}
 
 	if c.change.bootcmdline || c.daemon.reloaded {

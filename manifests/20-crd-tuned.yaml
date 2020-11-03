@@ -20,7 +20,7 @@ spec:
       storage: true
       schema:
         openAPIV3Schema:
-          description: 'Tuned is a collection of rules that allows cluster-wide deployment of node-level sysctls and more flexibility to add custom tuning specified by user needs.  These rules are translated and passed to all containerized tuned daemons running in the cluster in the format that the daemons understand. The responsibility for applying the node-level tuning then lies with the containerized tuned daemons. More info: https://github.com/openshift/cluster-node-tuning-operator'
+          description: 'Tuned is a collection of rules that allows cluster-wide deployment of node-level sysctls and more flexibility to add custom tuning specified by user needs.  These rules are translated and passed to all containerized Tuned daemons running in the cluster in the format that the daemons understand. The responsibility for applying the node-level tuning then lies with the containerized Tuned daemons. More info: https://github.com/openshift/cluster-node-tuning-operator'
           type: object
           properties:
             apiVersion:
@@ -46,23 +46,23 @@ spec:
                   description: Tuned profiles.
                   type: array
                   items:
-                    description: A tuned profile.
+                    description: A Tuned profile.
                     type: object
                     required:
                       - data
                       - name
                     properties:
                       data:
-                        description: Specification of the tuned profile to be consumed by the tuned daemon.
+                        description: Specification of the Tuned profile to be consumed by the Tuned daemon.
                         type: string
                       name:
-                        description: Name of the tuned profile to be used in the recommend section.
+                        description: Name of the Tuned profile to be used in the recommend section.
                         type: string
                 recommend:
-                  description: Selection logic for all tuned profiles.
+                  description: Selection logic for all Tuned profiles.
                   type: array
                   items:
-                    description: Selection logic for a single tuned profile.
+                    description: Selection logic for a single Tuned profile.
                     type: object
                     required:
                       - priority
@@ -74,10 +74,10 @@ spec:
                         additionalProperties:
                           type: string
                       match:
-                        description: Rules governing application of a tuned profile connected by logical OR operator.
+                        description: Rules governing application of a Tuned profile connected by logical OR operator.
                         type: array
                         items:
-                          description: Rules governing application of a tuned profile.
+                          description: Rules governing application of a Tuned profile.
                           type: object
                           required:
                             - label
@@ -103,13 +103,22 @@ spec:
                             value:
                               description: Node or Pod label value. If omitted, the presence of label name is enough to match.
                               type: string
+                      operand:
+                        description: Optional operand configuration.
+                        type: object
+                        required:
+                          - debug
+                        properties:
+                          debug:
+                            description: 'turn debugging on/off for the Tuned daemon: true/false (default is false)'
+                            type: boolean
                       priority:
                         description: Tuned profile priority. Highest priority is 0.
                         type: integer
                         format: int64
                         minimum: 0
                       profile:
-                        description: Name of the tuned profile to recommend.
+                        description: Name of the Tuned profile to recommend.
                         type: string
             status:
               description: TunedStatus is the status for a Tuned resource

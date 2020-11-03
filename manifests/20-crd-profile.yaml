@@ -45,8 +45,11 @@ spec:
                 required:
                 - tunedProfile
                 properties:
+                  debug:
+                    description: option to debug Tuned daemon execution
+                    type: boolean
                   tunedProfile:
-                    description: tuned profile to apply
+                    description: Tuned profile to apply
                     type: string
           status:
             description: ProfileStatus is the status for a Profile resource; the status
@@ -56,7 +59,7 @@ spec:
             properties:
               bootcmdline:
                 description: kernel parameters calculated by tuned for the active
-                  tuned profile
+                  Tuned profile
                 type: string
               stalld:
                 description: 'deploy stall daemon: https://github.com/bristot/stalld/'

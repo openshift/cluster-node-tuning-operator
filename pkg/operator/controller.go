@@ -508,7 +508,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	profileMf.ObjectMeta.OwnerReferences = getDefaultTunedRefs(tuned)
 
 	profileMf.Name = nodeName
-	tunedProfileName, mcLabels, pools, err := c.pc.calculateProfile(nodeName)
+	tunedProfileName, mcLabels, pools, daemonDebug, err := c.pc.calculateProfile(nodeName)
 	if err != nil {
 		return err
 	}
@@ -527,6 +527,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 
 			klog.V(2).Infof("syncProfile(): Profile %s not found, creating one [%s]", profileMf.Name, tunedProfileName)
 			profileMf.Spec.Config.TunedProfile = tunedProfileName
+			profileMf.Spec.Config.Debug = daemonDebug
 			_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Create(context.TODO(), profileMf, metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to create Profile %s: %v", profileMf.Name, err)
@@ -549,12 +550,14 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 			return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
 		}
 	}
-	if profile.Spec.Config.TunedProfile == tunedProfileName {
+	if profile.Spec.Config.TunedProfile == tunedProfileName &&
+		profile.Spec.Config.Debug == daemonDebug {
 		klog.V(2).Infof("syncProfile(): no need to update Profile %s", nodeName)
 		return nil
 	}
 	profile = profile.DeepCopy() // never update the objects from cache
 	profile.Spec.Config.TunedProfile = tunedProfileName
+	profile.Spec.Config.Debug = daemonDebug
 
 	klog.V(2).Infof("syncProfile(): updating Profile %s [%s]", profile.Name, tunedProfileName)
 	_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Update(context.TODO(), profile, metav1.UpdateOptions{})
