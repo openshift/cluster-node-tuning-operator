@@ -17,5 +17,5 @@ spec:
   recommend:
   - machineConfigLabels:
       machineconfiguration.openshift.io/role: "worker-rt"
-    priority: 20
+    priority: 10
     profile: openshift-kernel-parameter-remove-child
