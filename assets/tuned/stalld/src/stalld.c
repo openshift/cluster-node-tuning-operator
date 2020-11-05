@@ -36,72 +36,7 @@
 #include <unistd.h>
 #include <linux/sched.h>
 
-#define BUFFER_SIZE		(1024 * 1000)
-#define MAX_WAITING_PIDS	30
-
-/*
- * See kernel/sched/debug.c:print_task().
- */
-struct task_info {
-	int pid;
-	int prio;
-	int ctxsw;
-	time_t since;
-	char comm[15];
-};
-
-struct cpu_info {
-	int id;
-	int nr_running;
-	int nr_rt_running;
-	int ctxsw;
-	int nr_waiting_tasks;
-	int thread_running;
-	struct task_info *starving;
-	pthread_t thread;
-};
-
-#ifdef __x86_64__
-# define __NR_sched_setattr 314
-# define __NR_sched_getattr 315
-#elif __i386__
-# define __NR_sched_setattr 351
-# define __NR_sched_getattr 352
-#elif __arm__
-# define __NR_sched_setattr 380
-# define __NR_sched_getattr 381
-#elif __aarch64__
-# define __NR_sched_setattr 274
-# define __NR_sched_getattr 275
-#elif __powerpc__
-# define __NR_sched_setattr 355
-# define __NR_sched_getattr 356
-#elif __s390x__
-# define __NR_sched_setattr 345
-# define __NR_sched_getattr 346
-#endif
-
-struct sched_attr {
-	uint32_t size;
-	uint32_t sched_policy;
-	uint64_t sched_flags;
-	int32_t sched_nice;
-	uint32_t sched_priority;
-	uint64_t sched_runtime;
-	uint64_t sched_deadline;
-	uint64_t sched_period;
-};
-
-int sched_setattr(pid_t pid, const struct sched_attr *attr,
-		  unsigned int flags) {
-	return syscall(__NR_sched_setattr, pid, attr, flags);
-}
-
-int sched_getattr(pid_t pid, struct sched_attr *attr,
-		  unsigned int size, unsigned int flags)
-{
-	return syscall (__NR_sched_getattr, pid , attr, size, flags);
-}
+#include "stalld.h"
 
 /*
  * logging.
@@ -131,14 +66,17 @@ long config_starving_threshold = 60;
 long config_boost_duration = 3;
 long config_aggressive = 0;
 
-#define NS_PER_SEC 1000000000
-
 /*
  * XXX: Make it a cpu mask, lazy Daniel!
  */
 int config_monitor_all_cpus = 1;
 char *config_monitored_cpus;
 
+/*
+ * Max known to be enough sched_debug buffer size. It increases if the
+ * file gets larger.
+ */
+int config_buffer_size = BUFFER_SIZE;
 
 /*
  * boolean to choose between deadline and fifo
@@ -146,267 +84,15 @@ char *config_monitored_cpus;
 int boost_policy;
 
 /*
- * print any error messages and exit
+ * variable to indicate if stalld is running or
+ * shutting down
  */
-
-void die(const char *fmt, ...)
-{
-	va_list ap;
-	int ret = errno;
-
-	if (errno)
-		perror("stalld: ");
-	else
-		ret = -1;
-
-	va_start(ap, fmt);
-	fprintf(stderr, "  ");
-	vfprintf(stderr, fmt, ap);
-	va_end(ap);
-
-	fprintf(stderr, "\n");
-	exit(ret);
-}
+int running = 1;
 
 /*
- * path to file for storing daemon pid
+ * read the contents of /proc/sched_debug into
+ * the input buffer
  */
-char pidfile[MAXPATHLEN];
-
-void log_msg(const char *fmt, ...)
-{
-	const char *log_prefix = "stalld: ";
-	char message[1024];
-	char *log;
-	int kmesg_fd;
-	va_list ap;
-
-	log = message + strlen(log_prefix);
-
-	sprintf(message, log_prefix, strlen(log_prefix));
-
-	va_start(ap, fmt);
-	vsprintf(log, fmt, ap);
-	va_end(ap);
-
-	/*
-	 * print the entire message (including PREFIX).
-	 */
-	if (config_verbose)
-		fprintf(stderr, "%s", message);
-
-	/*
-	 * print the entire message (including PREFIX).
-	 */
-	if (config_write_kmesg) {
-		kmesg_fd = open("/dev/kmsg", O_WRONLY);
-
-		/*
-		 * Log iff possible.
-		 */
-		if (kmesg_fd) {
-			if (write(kmesg_fd, message, strlen(message)) < 0)
-				die ("write to klog failed");
-			close(kmesg_fd);
-		}
-	}
-
-	/*
-	 * print the log (syslog adds PREFIX).
-	 */
-	if (config_log_syslog)
-		syslog(LOG_INFO, "%s", log);
-
-}
-
-void write_pidfile(void)
-{
-	FILE *f = fopen(pidfile, "w");
-	if (f != NULL) {
-		fprintf(f, "%d", getpid());
-		fclose(f);
-	}
-	else
-		die("unable to open pidfile %s: %s\n", pidfile, strerror(errno));
-}
-
-
-
-/*
- * Based on:
- * https://github.com/pasce/daemon-skeleton-linux-c
- */
-void deamonize(void)
-{
-	pid_t pid;
-
-	/*
-	 * Fork off the parent process.
-	 */
-	pid = fork();
-
-	/*
-	 * An error occurred.
-	 */
-	if (pid < 0)
-		die("Error while forking the deamon");
-
-	/*
-	 * Success: Let the parent terminate.
-	 */
-	if (pid > 0)
-		exit(EXIT_SUCCESS);
-
-	/*
-	 * On success: The child process becomes session leader.
-	 */
-	if (setsid() < 0)
-		die("Error while creating the deamon (setsid)");
-
-	/*
-	 * Catch, ignore and handle signals.
-	 * XXX: Implement a working signal handler.
-	 */
-	signal(SIGCHLD, SIG_IGN);
-	signal(SIGHUP, SIG_IGN);
-
-	/*
-	 * Fork off for the second time.
-	 */
-	pid = fork();
-
-	/*
-	 * An error occurred.
-	 */
-	if (pid < 0)
-		die("Error while forking the deamon (the second)");
-
-	/*
-	 * Success: Let the parent terminate.
-	 */
-	if (pid > 0)
-		exit(EXIT_SUCCESS);
-
-	/*
-	 * Set new file permissions.
-	 */
-	umask(0);
-
-	/*
-	 * Change the working directory to the root directory.
-	 */
-	if (chdir("/"))
-		die("Cannot change directory to '/'");
-}
-
-/*
- * Set HRTICK and frinds: Based on cyclicdeadline by Steven Rostedt.
- */
-#define _STR(x) #x
-#define STR(x) _STR(x)
-#ifndef MAXPATH
-#define MAXPATH 1024
-#endif
-static int find_mount(const char *mount, char *debugfs)
-{
-	char type[100];
-	FILE *fp;
-
-	if ((fp = fopen("/proc/mounts","r")) == NULL)
-		return 0;
-
-	while (fscanf(fp, "%*s %"
-		      STR(MAXPATH)
-		      "s %99s %*s %*d %*d\n",
-		      debugfs, type) == 2) {
-		if (strcmp(type, mount) == 0)
-			break;
-	}
-	fclose(fp);
-
-	if (strcmp(type, mount) != 0)
-		return 0;
-	return 1;
-}
-
-static const char *find_debugfs(void)
-{
-	static int debugfs_found;
-	static char debugfs[MAXPATH+1];
-
-	if (debugfs_found)
-		return debugfs;
-
-	if (!find_mount("debugfs", debugfs))
-		return "";
-
-	debugfs_found = 1;
-
-	return debugfs;
-}
-
-static int setup_hr_tick(void)
-{
-	const char *debugfs = find_debugfs();
-	char files[strlen(debugfs) + strlen("/sched_features") + 1];
-	char buf[500];
-	struct stat st;
-	static int set = 0;
-	char *p;
-	int ret;
-	int len;
-	int fd;
-
-	if (set)
-		return 1;
-
-	set = 1;
-
-	if (strlen(debugfs) == 0)
-		return 0;
-
-	sprintf(files, "%s/sched_features", debugfs);
-	ret = stat(files, &st);
-	if (ret < 0)
-		return 0;
-
-	fd = open(files, O_RDWR);
-	if (fd < 0) {
-		log_msg("could not open %s to set HRTICK: %s", files, strerror(errno));
-		return 0;
-	}
-
-	len = sizeof(buf);
-
-	ret = read(fd, buf, len);
-	if (ret < 0) {
-		perror(files);
-		close(fd);
-		return 0;
-	}
-	if (ret >= len)
-		ret = len - 1;
-	buf[ret] = 0;
-
-	ret = 1;
-
-	p = strstr(buf, "HRTICK");
-	if (p + 3 >= buf) {
-		p -= 3;
-		if (strncmp(p, "NO_HRTICK", 9) == 0) {
-			log_msg("dl_runtime is shorter than 1ms, setting HRTICK\n");
-			ret = write(fd, "HRTICK", 6);
-			if (ret != 6)
-				ret = 0;
-			else
-				ret = 1;
-		}
-	}
-
-	close(fd);
-	return ret;
-}
-
 int read_sched_debug(char *buffer, int size)
 {
 	int position = 0;
@@ -427,8 +113,12 @@ int read_sched_debug(char *buffer, int size)
 
 	} while (retval > 0 && position < size);
 
-	if (position < size)
-		buffer[position] = '\0';
+	buffer[position-1] = '\0';
+
+	if (position + 100 > config_buffer_size) {
+		config_buffer_size = config_buffer_size * 2;
+		log_msg("sched_debug is getting larger, increasing the buffer to %d\n", config_buffer_size);
+	}
 
 	close(fd);
 
@@ -441,6 +131,10 @@ out_error:
 	return 0;
 }
 
+/*
+ * find the start of a cpu information block in the
+ * input buffer
+ */
 char *get_cpu_info_start(char *buffer, int cpu)
 {
 	/* 'cpu#9999,\0' */
@@ -470,6 +164,9 @@ char *alloc_and_fill_cpu_buffer(int cpu, char *sched_dbg, int sched_dbg_size)
 
 	cpu_start = get_cpu_info_start(sched_dbg, cpu);
 
+	/*
+	 * The CPU might be offline.
+	 */
 	if (!cpu_start)
 		return NULL;
 
@@ -498,55 +195,6 @@ char *alloc_and_fill_cpu_buffer(int cpu, char *sched_dbg, int sched_dbg_size)
 
 	return cpu_buffer;
 }
-
-long get_long_from_str(char *start)
-{
-	long value;
-	char *end;
-
-	errno = 0;
-	value = strtol(start, &end, 10);
-	if (errno || start == end)
-		die("Invalid ID '%s'", value);
-
-	return value;
-}
-
-long get_long_after_colon(char *start)
-{
-	/*
-	 * Find the ":"
-	 */
-	start = strstr(start, ":");
-	if (!start)
-		return -1;
-
-	/*
-	 * skip ":"
-	 */
-	start++;
-
-	return get_long_from_str(start);
-}
-
-long get_variable_long_value(char *buffer, const char *variable)
-{
-	char *start;
-	/*
-	 * Line:
-	 * '  .nr_running                    : 0'
-	 */
-
-	/*
-	 * Find the ".nr_running"
-	 */
-	start = strstr(buffer, variable);
-	if (!start)
-		return -1;
-
-	return get_long_after_colon(start);
-}
-
 /*
  * Example:
  * ' S           task   PID         tree-key  switches  prio     wait-time             sum-exec        sum-sleep'
@@ -596,8 +244,10 @@ int fill_waiting_task(char *buffer, struct task_info *task_info, int nr_entries)
 
 		comm_size = end - start;
 
-		if (comm_size > 15)
-			die("comm_size is too large: %d\n", comm_size);
+		if (comm_size > 15) {
+			warn("comm_size is too large: %d\n", comm_size);
+			comm_size = 15;
+		}
 
 		strncpy(task->comm, start, comm_size);
 
@@ -691,15 +341,36 @@ int parse_cpu_info(struct cpu_info *cpu_info, char *buffer, int buffer_size)
 
 	struct task_info *old_tasks = cpu_info->starving;
 	int nr_old_tasks = cpu_info->nr_waiting_tasks;
+	long nr_running, nr_rt_running;
 	int cpu = cpu_info->id;
 	char *cpu_buffer;
+	int retval = 0;
 
 	cpu_buffer = alloc_and_fill_cpu_buffer(cpu, buffer, buffer_size);
-	if (!cpu_buffer)
-		return -1;
+	/*
+	 * It is not necessarily a problem, the CPU might be offline. Cleanup
+	 * and leave.
+	 */
+	if (!cpu_buffer) {
+		if (old_tasks)
+			free(old_tasks);
+		cpu_info->nr_waiting_tasks = 0;
+		cpu_info->nr_running = 0;
+		cpu_info->nr_rt_running = 0;
+		cpu_info->starving = 0;
+		goto out;
+	}
 
-	cpu_info->nr_running = get_variable_long_value(cpu_buffer, ".nr_running");
-	cpu_info->nr_rt_running = get_variable_long_value(cpu_buffer, ".rt_nr_running");
+	nr_running = get_variable_long_value(cpu_buffer, ".nr_running");
+	nr_rt_running = get_variable_long_value(cpu_buffer, ".rt_nr_running");
+
+	if ((nr_running == -1) || (nr_rt_running == -1)) {
+		retval = -EINVAL;
+		goto out_free;
+	}
+
+	cpu_info->nr_running = nr_running;
+	cpu_info->nr_rt_running = nr_rt_running;
 
 	cpu_info->starving = malloc(sizeof(struct task_info) * cpu_info->nr_running);
 	cpu_info->nr_waiting_tasks = fill_waiting_task(cpu_buffer, cpu_info->starving, cpu_info->nr_running);
@@ -708,9 +379,10 @@ int parse_cpu_info(struct cpu_info *cpu_info, char *buffer, int buffer_size)
 		free(old_tasks);
 	}
 
+out_free:
 	free(cpu_buffer);
-
-	return 0;
+out:
+	return retval;
 }
 
 int get_current_policy(int pid, struct sched_attr *attr)
@@ -741,6 +413,7 @@ int boost_with_deadline(int pid)
 	    log_msg("boost_with_deadline failed to boost pid %d: %s\n", pid, strerror(errno));
 	    return ret;
 	}
+	log_msg("boosted pid %d using SCHED_DEADLINE\n", pid);
 	return ret;
 }
 
@@ -760,6 +433,7 @@ int boost_with_fifo(int pid)
 	    log_msg("boost_with_fifo failed to boost pid %d: %s\n", pid, strerror(errno));
 	    return ret;
 	}
+	log_msg("boosted pid %d using SCHED_FIFO\n", pid);
 	return ret;
 }
 
@@ -773,14 +447,6 @@ int restore_policy(int pid, struct sched_attr *attr)
 		log_msg("restore_policy: failed to restore sched policy for pid %d: %s\n",
 			pid, strerror(errno));
 	return ret;
-}
-
-void normalize_timespec(struct timespec *ts)
-{
-        while (ts->tv_nsec >= NS_PER_SEC) {
-                ts->tv_nsec -= NS_PER_SEC;
-                ts->tv_sec++;
-        }
 }
 
 /*
@@ -903,7 +569,7 @@ int check_might_starve_tasks(struct cpu_info *cpu)
 	int i;
 
 	if (cpu->thread_running)
-		die("checking a running thread!!!???");
+		warn("checking a running thread!!!???");
 
 	for (i = 0; i < cpu->nr_waiting_tasks; i++) {
 		task = &tasks[i];
@@ -921,258 +587,41 @@ int check_might_starve_tasks(struct cpu_info *cpu)
 	return starving;
 }
 
-void print_usage(void)
-{
-	int i;
-
-	char *msg[] = {
-		"stalld: starvation detection and avoidance (with bounds)",
-		"  usage: stalld [-l] [-v] [-k] [-s] [-f] [-h] \\",
-		"          [-c cpu-list] \\",
-		"          [-p time in ns] [-r time in ns] \\",
-		"          [-d time in seconds] [-t time in seconds]",
-		"",
-		"       logging options:",
-		"          -l/--log_only: only log information (do not boost)",
-		"          -v/--verbose: print info to the std output",
-		"          -k/--log_kmsg: print log to the kernel buffer",
-		"          -s/--log_syslog: print log to syslog",
-		"          -f/--foreground: run in foreground [implict when -v]",
-		"        boosting options:",
-		"          -p/--boost_period: SCHED_DEADLINE period [ns] that the starving task will receive",
-		"          -r/--boost_runtime: SCHED_DEADLINE runtime [ns] that the starving task will receive",
-		"          -d/--boost_duration: how long [s] the starving task will run with SCHED_DEADLINE",
-		"          -F/--force_fifo: use SCHED_FIFO for boosting",
-		"        monitoring options:",
-		"          -t/--starving_threshold: how long [s] the starving task will wait before being boosted",
-		"          -A/--aggressive_mode: dispatch one thread per run queue, even when there is no starving",
-		"                               threads on all CPU (uses more CPU/power).",
-		"	misc:",
-		"          --pidfile: write daemon pid to specified file",
-		"          -h/--help: print this menu",
-		NULL,
-	};
-
-	for(i = 0; msg[i]; i++)
-		fprintf(stderr, "%s\n", msg[i]);
-
-}
-
-void usage(const char *fmt, ...)
-{
-	va_list ap;
-
-	print_usage();
-
-	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
-	va_end(ap);
-
-	fprintf(stderr, "\n");
-
-	exit(EINVAL);
-}
-
-void parse_cpu_list(char *cpulist)
-{
-	const char *p;
-	int end_cpu;
-	int nr_cpus;
-	int cpu;
-	int i;
-
-	nr_cpus = sysconf(_SC_NPROCESSORS_CONF);
-
-	config_monitored_cpus = malloc(nr_cpus * sizeof(char));
-	memset(config_monitored_cpus, 0, (nr_cpus * sizeof(char)));
-
-	for (p = cpulist; *p; ) {
-		cpu = atoi(p);
-		if (cpu < 0 || (!cpu && *p != '0') || cpu > nr_cpus)
-			goto err;
-
-		while (isdigit(*p))
-			p++;
-		if (*p == '-') {
-			p++;
-			end_cpu = atoi(p);
-			if (end_cpu < cpu || (!end_cpu && *p != '0'))
-				goto err;
-			while (isdigit(*p))
-				p++;
-		} else
-			end_cpu = cpu;
-
-		if (cpu == end_cpu) {
-			if (config_verbose)
-				printf("cpulist: adding cpu %d\n", cpu);
-			config_monitored_cpus[cpu] = 1;
-		} else {
-			for (i = cpu; i <= end_cpu; i++) {
-				if (config_verbose)
-					printf("cpulist: adding cpu %d\n", i);
-				config_monitored_cpus[i] = 1;
-			}
-		}
-
-		if (*p == ',')
-			p++;
-	}
-
-	return;
-err:
-	die("Error parsing the cpu list %s", cpulist);
-}
-
-int should_monitor(int cpu)
-{
-	if (config_monitor_all_cpus)
-		return 1;
-	if (config_monitored_cpus[cpu])
-		return 1;
-
-	return 0;
-}
-
-int parse_args(int argc, char **argv)
-{
-	int c;
-
-	/* ensure the pidfile is an empty string */
-	pidfile[0] = '\0';
-
-	while (1) {
-		static struct option long_options[] = {
-			{"cpu",			required_argument, 0, 'c'},
-			{"log_only",		no_argument,	   0, 'l'},
-			{"verbose",		no_argument,	   0, 'v'},
-			{"log_kmsg",		no_argument,	   0, 'k'},
-			{"log_syslog",		no_argument,	   0, 's'},
-			{"foreground",		no_argument,	   0, 'f'},
-			{"aggressive_mode",	no_argument,	   0, 'A'},
-			{"help",		no_argument,	   0, 'h'},
-			{"boost_period",	required_argument, 0, 'p'},
-			{"boost_runtime",	required_argument, 0, 'r'},
-			{"boost_duration",	required_argument, 0, 'd'},
-			{"starving_threshold",	required_argument, 0, 't'},
-			{"pidfile",             required_argument, 0, 'P'},
-			{"force_fifo", 		no_argument, 	   0, 'F'},
-			{0, 0, 0, 0}
-		};
-
-		/* getopt_long stores the option index here. */
-		int option_index = 0;
-
-		c = getopt_long(argc, argv, "lvkfAhsp:r:d:t:c:F",
-				 long_options, &option_index);
-
-		/* Detect the end of the options. */
-		if (c == -1)
-			break;
-
-		switch (c) {
-		case 'c':
-			config_monitor_all_cpus = 0;
-			parse_cpu_list(optarg);
-			break;
-		case 'l':
-			config_log_only = 1;
-			break;
-		case 'v':
-			config_verbose = 1;
-			config_foreground = 1;
-			break;
-		case 'k':
-			config_write_kmesg = 1;
-			break;
-		case 's':
-			config_log_syslog = 1;
-			break;
-		case 'f':
-			config_foreground = 1;
-			break;
-		case 'A':
-			config_aggressive = 1;
-			break;
-		case 'p':
-			config_dl_period = get_long_from_str(optarg);
-			if (config_dl_period < 200000000)
-				usage("boost_period should be at least 200 ms");
-			if (config_dl_period > 4000000000)
-				usage("boost_period should be at most 4 s");
-			break;
-		case 'r':
-			config_dl_runtime = get_long_from_str(optarg);
-			if (config_dl_period < 200000000)
-				usage("boost_period should be at least 200 ms");
-			if (config_dl_period > 4000000000)
-				usage("boost_period should be at most 4 seconds");
-			break;
-		case 'd':
-			config_boost_duration = get_long_from_str(optarg);
-			if (config_boost_duration < 1)
-				usage("boost_duration should be at least 1 second");
-
-			if (config_boost_duration > 60)
-				usage("boost_duration should be at most 60 seconds");
-
-			break;
-		case 't':
-			config_starving_threshold = get_long_from_str(optarg);
-			if (config_starving_threshold < 1)
-				usage("starving_threshold should be at least 1 second");
-
-			if (config_starving_threshold > 3600)
-				usage("boost_duration should be at most one hour");
-
-			break;
-		case 'h':
-			print_usage();
-			exit(EXIT_SUCCESS);
-			break;
-		case 'P':
-			strncpy(pidfile, optarg, sizeof(pidfile)-1);
-			break;
-		case 'F':
-			config_force_fifo = 1;
-			break;
-		case '?':
-			usage("Invalid option");
-			break;
-		default:
-			usage("Invalid option");
-		}
-	}
-
-	if (config_dl_period < config_dl_runtime)
-		usage("runtime is longer than the period");
-
-	if (config_dl_period > (config_boost_duration * NS_PER_SEC))
-		usage("the period is longer than the boost_duration: the boosted task might not be able to run");
-
-	if (config_boost_duration > config_starving_threshold)
-		usage("the boost duration cannot be longer than the starving threshold ");
-
-	if (config_dl_runtime < 1000000)
-		setup_hr_tick();
-
-	return(0);
-}
-
 void *cpu_main(void *data)
 {
 	struct cpu_info *cpu = data;
-	char buffer[BUFFER_SIZE];
 	int nothing_to_do = 0;
 	int retval;
 
-	while (cpu->thread_running) {
+	while (cpu->thread_running && running) {
 
-		retval = read_sched_debug(buffer, BUFFER_SIZE);
-		if(!retval)
-			die("fail reading sched debug file!");
+		/*
+		 * Buffer size should increase. See read_sched_debug().
+		 */
+		if (config_buffer_size != cpu->buffer_size) {
+			char *old_buffer = cpu->buffer;
+			cpu->buffer = realloc(cpu->buffer, config_buffer_size);
+			if (!cpu->buffer) {
+				warn("fail to increase the buffer... continue");
+				cpu->buffer = old_buffer;
+			} else {
+				cpu->buffer_size = config_buffer_size;
+			}
+		}
 
-		parse_cpu_info(cpu, buffer, BUFFER_SIZE);
+		retval = read_sched_debug(cpu->buffer, cpu->buffer_size);
+		if(!retval) {
+			warn("fail reading sched debug file");
+			warn("Dazed and confused, but trying to continue");
+			continue;
+		}
+
+		retval = parse_cpu_info(cpu, cpu->buffer, cpu->buffer_size);
+		if (retval) {
+			warn("error parsing CPU info");
+			warn("Dazed and confused, but trying to continue");
+			continue;
+		}
 
 		if (config_verbose)
 			print_waiting_tasks(cpu);
@@ -1208,7 +657,7 @@ static const char *join_thread(pthread_t *thread)
 	return result;
 }
 
-int aggressive_main(struct cpu_info *cpus, int nr_cpus)
+void aggressive_main(struct cpu_info *cpus, int nr_cpus)
 {
 	int i;
 
@@ -1227,18 +676,24 @@ int aggressive_main(struct cpu_info *cpus, int nr_cpus)
 
 		join_thread(&cpus[i].thread);
 	}
-
-	return 0;
 }
 
-int conservative_main(struct cpu_info *cpus, int nr_cpus)
+void conservative_main(struct cpu_info *cpus, int nr_cpus)
 {
-	char buffer[BUFFER_SIZE];
 	pthread_attr_t dettached;
 	struct cpu_info *cpu;
+	char *buffer = NULL;
+	int buffer_size = 0;
 	int retval;
 	int i;
 
+	buffer = malloc(config_buffer_size);
+	if (!buffer)
+		die("cannot allocate buffer");
+
+	buffer_size = config_buffer_size;
+
+	pthread_attr_init(&dettached);
 	pthread_attr_setdetachstate(&dettached, PTHREAD_CREATE_DETACHED);
 
 	for (i = 0; i < nr_cpus; i++) {
@@ -1246,10 +701,27 @@ int conservative_main(struct cpu_info *cpus, int nr_cpus)
 		cpus[i].thread_running = 0;
 	}
 
-	while (1) {
-		retval = read_sched_debug(buffer, BUFFER_SIZE);
-		if(!retval)
-			die("fail reading sched debug file!");
+	while (running) {
+
+		/*
+		 * Buffer size should increase. See read_sched_debug().
+		 */
+		if (config_buffer_size != buffer_size) {
+			char *old_buffer = buffer;
+			buffer = realloc(buffer, config_buffer_size);
+			if (!buffer) {
+				warn("fail to increase the buffer... continue");
+				buffer = old_buffer;
+			} else {
+				buffer_size = config_buffer_size;
+			}
+		}
+
+		retval = read_sched_debug(buffer, buffer_size);
+		if(!retval) {
+			warn("Dazed and confused, but trying to continue");
+			continue;
+		}
 
 		for (i = 0; i < nr_cpus; i++) {
 			if (!should_monitor(i))
@@ -1260,7 +732,12 @@ int conservative_main(struct cpu_info *cpus, int nr_cpus)
 			if (cpu->thread_running)
 				continue;
 
-			parse_cpu_info(cpu, buffer, BUFFER_SIZE);
+			retval = parse_cpu_info(cpu, buffer, buffer_size);
+			if (retval) {
+				warn("error parsing CPU info");
+				warn("Dazed and confused, but trying to continue");
+				continue;
+			}
 
 			if (config_verbose)
 				printf("\tchecking cpu %d - rt: %d - starving: %d\n",
@@ -1336,6 +813,7 @@ int main(int argc, char **argv)
 {
 	struct cpu_info *cpus;
 	int nr_cpus;
+	int i;
 
 	parse_args(argc, argv);
 
@@ -1354,14 +832,24 @@ int main(int argc, char **argv)
 
 	memset(cpus, 0, sizeof(struct cpu_info) * nr_cpus);
 
+	for (i = 0; i < nr_cpus; i++) {
+		cpus[i].buffer = malloc(config_buffer_size);
+		if (!cpus[i].buffer)
+			die("Cannot allocate memory");
+
+		cpus[i].buffer_size = config_buffer_size;
+	}
+
 	if (config_log_syslog)
 		openlog("stalld", 0, LOG_DAEMON);
+
+	setup_signal_handling();
+	turn_off_rt_throttling();
 
 	if (!config_foreground)
 		deamonize();
 
-	if (strlen(pidfile) > 0)
-		write_pidfile();
+	write_pidfile();
 
 	if (config_aggressive)
 		aggressive_main(cpus, nr_cpus);
