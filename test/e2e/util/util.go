@@ -111,23 +111,29 @@ func ExecCmdInPod(pod *corev1.Pod, args ...string) (string, error) {
 	return string(b), nil
 }
 
-// GetFileInPod returns content for file from inside a (tuned) pod.
-func GetFileInPod(pod *corev1.Pod, file string) (string, error) {
+// PollExecCmdInPod executes a command with arguments in a Pod
+// until the command succeeds or times out.
+func PollExecCmdInPod(interval, duration time.Duration, pod *corev1.Pod, args ...string) (string, error) {
 	var val, explain string
-	err := wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
-		out, err := ExecCmdInPod(pod, "cat", file)
+	err := wait.PollImmediate(interval, duration, func() (bool, error) {
+		out, err := ExecCmdInPod(pod, args...)
 		if err != nil {
-			explain = fmt.Sprintf("failed to cat %s", file)
+			explain = fmt.Sprintf("out=%s; err=%s", string(out), err.Error())
 			return false, nil
 		}
-		val = strings.TrimSpace(out)
+		val = out
 		return true, nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to retrieve %s content in pod %s: %s", file, pod.Name, explain)
+		return "", fmt.Errorf("failed to run %q in Pod %s: %s", args, pod.Name, explain)
 	}
 
 	return val, nil
+}
+
+// GetFileInPod returns content for file from inside a (tuned) pod.
+func GetFileInPod(pod *corev1.Pod, file string) (string, error) {
+	return PollExecCmdInPod(5*time.Second, 5*time.Minute, pod, "cat", file)
 }
 
 // EnsureSysctl makes sure a sysctl value for sysctlVar from inside a (tuned) pod
