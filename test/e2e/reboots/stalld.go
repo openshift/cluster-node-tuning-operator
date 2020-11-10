@@ -18,7 +18,6 @@ var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing syste
 		profileRealtime   = "../testing_manifests/stalld.yaml"
 		mcpRealtime       = "../../../examples/realtime-mcp.yaml"
 		nodeLabelRealtime = "node-role.kubernetes.io/worker-rt"
-		procCmdline       = "/proc/cmdline"
 	)
 
 	ginkgo.Context("stalld", func() {
