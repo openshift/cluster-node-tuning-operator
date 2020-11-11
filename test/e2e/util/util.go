@@ -25,7 +25,7 @@ func Logf(format string, args ...interface{}) {
 	fmt.Fprintf(ginkgo.GinkgoWriter, format+"\n", args...)
 }
 
-func ExecAndLogCommand(name string, arg ...string) (bytes.Buffer, bytes.Buffer, error) {
+func execCommand(log bool, name string, arg ...string) (bytes.Buffer, bytes.Buffer, error) {
 	var (
 		stdout bytes.Buffer
 		stderr bytes.Buffer
@@ -35,10 +35,16 @@ func ExecAndLogCommand(name string, arg ...string) (bytes.Buffer, bytes.Buffer, 
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
-	Logf("run command '%s %v':\n  out=%s\n  err=%s\n  ret=%v",
-		name, arg, strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), err)
+	if log {
+		Logf("run command '%s %v':\n  out=%s\n  err=%s\n  ret=%v",
+			name, arg, strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), err)
+	}
 
 	return stdout, stderr, err
+}
+
+func ExecAndLogCommand(name string, arg ...string) (bytes.Buffer, bytes.Buffer, error) {
+	return execCommand(true, name, arg...)
 }
 
 // GetNodesByRole returns a list of nodes that match a given role.
@@ -77,22 +83,21 @@ func GetTunedForNode(cs *framework.ClientSet, node *corev1.Node) (*corev1.Pod, e
 // GetSysctl returns a sysctl value for sysctlVar from inside a (tuned) pod.
 func GetSysctl(sysctlVar string, pod *corev1.Pod) (string, error) {
 	var (
-		val, explain string
-		err          error
+		val          string
+		err, explain error
 	)
 	err = wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
-		var out []byte
-		out, err = exec.Command("oc", "rsh", "-n", ntoconfig.OperatorNamespace(), pod.Name,
-			"sysctl", "-n", sysctlVar).CombinedOutput()
+		var out string
+		out, err = ExecCmdInPod(pod, "sysctl", "-n", sysctlVar)
 		if err != nil {
-			explain = fmt.Sprintf("out=%s; err=%s", string(out), err.Error())
+			explain = fmt.Errorf("out=%s; err=%s", out, err.Error())
 			return false, nil
 		}
-		val = strings.TrimSpace(string(out))
+		val = strings.TrimSpace(out)
 		return true, nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to retrieve sysctl value %s in pod %s: %s", sysctlVar, pod.Name, explain)
+		return "", fmt.Errorf("failed to retrieve sysctl value %s in pod %s: %v", sysctlVar, pod.Name, explain)
 	}
 
 	return val, nil
@@ -104,28 +109,33 @@ func ExecCmdInPod(pod *corev1.Pod, args ...string) (string, error) {
 	cmd := []string{"rsh", "-n", ntoconfig.OperatorNamespace(), pod.Name}
 	cmd = append(cmd, args...)
 
-	b, err := exec.Command(entryPoint, cmd...).CombinedOutput()
+	stdout, stderr, err := execCommand(false, entryPoint, cmd...)
+
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to run %q in Pod %s:\n  out=%s\n  err=%s\n  ret=%v", args, pod.Name, stdout.String(), stderr.String(), err.Error())
 	}
-	return string(b), nil
+
+	return stdout.String(), nil
 }
 
 // PollExecCmdInPod executes a command with arguments in a Pod
 // until the command succeeds or times out.
 func PollExecCmdInPod(interval, duration time.Duration, pod *corev1.Pod, args ...string) (string, error) {
-	var val, explain string
+	var (
+		val     string
+		explain error
+	)
 	err := wait.PollImmediate(interval, duration, func() (bool, error) {
 		out, err := ExecCmdInPod(pod, args...)
 		if err != nil {
-			explain = fmt.Sprintf("out=%s; err=%s", string(out), err.Error())
+			explain = fmt.Errorf("out=%s; err=%s", out, err.Error())
 			return false, nil
 		}
 		val = out
 		return true, nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to run %q in Pod %s: %s", args, pod.Name, explain)
+		return "", fmt.Errorf("failed to run %q in Pod %s: %v", args, pod.Name, explain)
 	}
 
 	return val, nil
@@ -139,11 +149,16 @@ func GetFileInPod(pod *corev1.Pod, file string) (string, error) {
 // EnsureSysctl makes sure a sysctl value for sysctlVar from inside a (tuned) pod
 // is equal to valExp.  Returns an error otherwise.
 func EnsureSysctl(pod *corev1.Pod, sysctlVar string, valExp string) error {
-	var val string
+	var (
+		val     string
+		explain error
+	)
 	wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
 		var err error
 		val, err = GetSysctl(sysctlVar, pod)
+
 		if err != nil {
+			explain = err
 			return false, nil
 		}
 
@@ -153,7 +168,7 @@ func EnsureSysctl(pod *corev1.Pod, sysctlVar string, valExp string) error {
 		return true, nil
 	})
 	if val != valExp {
-		return fmt.Errorf("sysctl %s=%s on %s, expected %s.", sysctlVar, val, pod.Name, valExp)
+		return fmt.Errorf("sysctl %s=%s on %s, expected %s: %v", sysctlVar, val, pod.Name, valExp, explain)
 	}
 
 	return nil
