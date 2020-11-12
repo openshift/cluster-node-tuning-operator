@@ -5,6 +5,7 @@ metadata:
   namespace: openshift-cluster-node-tuning-operator
   annotations:
     include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/ibm-cloud-managed: "true"
 spec:
   replicas: 1
   selector:

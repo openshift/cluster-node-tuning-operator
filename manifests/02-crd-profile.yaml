@@ -4,6 +4,7 @@ metadata:
   name: profiles.tuned.openshift.io
   annotations:
     include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/ibm-cloud-managed: "true"
 spec:
   group: tuned.openshift.io
   names:
