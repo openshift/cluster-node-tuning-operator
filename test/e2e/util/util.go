@@ -112,7 +112,7 @@ func ExecCmdInPod(pod *corev1.Pod, args ...string) (string, error) {
 	stdout, stderr, err := execCommand(false, entryPoint, cmd...)
 
 	if err != nil {
-		return "", fmt.Errorf("failed to run %q in Pod %s:\n  out=%s\n  err=%s\n  ret=%v", args, pod.Name, stdout.String(), stderr.String(), err.Error())
+		return "", fmt.Errorf("failed to run %s in Pod %s:\n  out=%s\n  err=%s\n  ret=%v", args, pod.Name, stdout.String(), stderr.String(), err.Error())
 	}
 
 	return stdout.String(), nil
@@ -135,7 +135,7 @@ func PollExecCmdInPod(interval, duration time.Duration, pod *corev1.Pod, args ..
 		return true, nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to run %q in Pod %s: %v", args, pod.Name, explain)
+		return "", fmt.Errorf("failed to run %s in Pod %s: %v", args, pod.Name, explain)
 	}
 
 	return val, nil
@@ -172,6 +172,35 @@ func EnsureSysctl(pod *corev1.Pod, sysctlVar string, valExp string) error {
 	}
 
 	return nil
+}
+
+// EnsureCmdOutputInPod runs command 'args' in Pod 'pod' at an interval 'interval' and
+// retries for at most duration 'duration' expecting standard output of the command with
+// leadingand trailing whitespace trimmed to match 'valExp'.  The function returns the
+// retrieved value and an error in case the values did not match or the command
+// timed out after 'duration'.
+func EnsureCmdOutputInPod(interval, duration time.Duration, valExp string, pod *corev1.Pod, args ...string) (string, error) {
+	var (
+		val     string
+		explain error
+	)
+	err := wait.PollImmediate(interval, duration, func() (bool, error) {
+		out, err := ExecCmdInPod(pod, args...)
+		if err != nil {
+			explain = fmt.Errorf("out=%s; err=%s", out, err.Error())
+			return false, nil
+		}
+		val = strings.TrimSpace(out)
+		if val != valExp {
+			return false, nil
+		}
+		return true, nil
+	})
+	if val != valExp {
+		return val, fmt.Errorf("command %s outputs (leading/trailing whitespace trimmed) %s in Pod %s, expected %s: %v", args, val, pod.Name, valExp, explain)
+	}
+
+	return val, err
 }
 
 // GetUpdatedMachineCountForPool returns the UpdatedMachineCount for pool 'pool'.

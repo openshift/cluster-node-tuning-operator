@@ -14,7 +14,7 @@ REV=$(shell git describe --long --tags --match='v*' --always --dirty)
 
 # Upstream tuned daemon variables
 TUNED_REPO:=https://github.com/redhat-performance/tuned.git
-TUNED_TAG:=v2.14.0
+TUNED_COMMIT:=23dcbd7ead35048735a6e2d291f385b48330b5ab
 TUNED_DIR:=daemon
 
 # API-related variables
@@ -38,7 +38,8 @@ all: build
 clone-tuned:
 	(cd assets/tuned && \
 	  rm -rf $(TUNED_DIR) && \
-	  git clone -b $(TUNED_TAG) $(TUNED_REPO) $(TUNED_DIR) && \
+	  git clone -n $(TUNED_REPO) $(TUNED_DIR) && \
+	  cd $(TUNED_DIR) && git checkout $(TUNED_COMMIT) && cd .. && \
 	  rm -rf $(TUNED_DIR)/.git)
 
 build: $(BINDATA) pkg/generated
