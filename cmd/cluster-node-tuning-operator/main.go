@@ -9,6 +9,7 @@ import (
 	"k8s.io/klog/v2"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/metrics"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/operator"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/signals"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/tuned"
@@ -47,6 +48,8 @@ func main() {
 			os.Exit(0)
 		}
 
+		go metrics.RunServer(metrics.MetricsPort, stopCh)
+		metrics.RegisterVersion(version.Version)
 		controller, err := operator.NewController()
 		if err != nil {
 			klog.Fatal(err)

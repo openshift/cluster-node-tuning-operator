@@ -1,0 +1,54 @@
+package metrics
+
+import "github.com/prometheus/client_golang/prometheus"
+
+// When adding metric names, see https://prometheus.io/docs/practices/naming/#metric-names
+const (
+	podLabelsUsedQuery = "nto_pod_labels_used_info"
+	profileSetQuery    = "nto_profile_set_total"
+	buildInfoQuery     = "nto_build_info"
+	degradedInfoQuery  = "nto_degraded_info"
+
+	// MetricsPort is the IP port supplied to the HTTP server used for Prometheus,
+	// and matches what is specified in the corresponding Service and ServiceMonitor.
+	MetricsPort = 60000
+)
+
+var (
+	registry      = prometheus.NewRegistry()
+	podLabelsUsed = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: podLabelsUsedQuery,
+			Help: "Is the Pod label functionality turned on (1) or off (0)?",
+		},
+	)
+	profileSet = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: profileSetQuery,
+			Help: "The number of times a Tuned profile was set for a given node.",
+		},
+		[]string{"node", "profile"},
+	)
+	buildInfo = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: buildInfoQuery,
+			Help: "A metric with a constant '1' value labeled version from which Node Tuning Operator was built.",
+		},
+		[]string{"version"},
+	)
+	degradedState = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: degradedInfoQuery,
+			Help: "Indicates whether the Node Tuning Operator is degraded.",
+		},
+	)
+)
+
+func init() {
+	registry.MustRegister(
+		podLabelsUsed,
+		profileSet,
+		buildInfo,
+		degradedState,
+	)
+}

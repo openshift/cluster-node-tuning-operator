@@ -36,6 +36,7 @@ import (
 	tunedset "github.com/openshift/cluster-node-tuning-operator/pkg/generated/clientset/versioned"
 	tunedinformers "github.com/openshift/cluster-node-tuning-operator/pkg/generated/informers/externalversions"
 	ntomf "github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/metrics"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/tuned"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/openshift/cluster-node-tuning-operator/version"
@@ -532,6 +533,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 			}
 			// Profile created successfully
 			klog.Infof("created profile %s [%s]", profileMf.Name, tunedProfileName)
+			metrics.ProfileSet(profileMf.Name, tunedProfileName)
 			return nil
 		}
 
@@ -560,6 +562,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
 	}
 	klog.Infof("updated profile %s [%s]", profile.Name, tunedProfileName)
+	metrics.ProfileSet(nodeName, tunedProfileName)
 
 	return nil
 }
@@ -837,6 +840,7 @@ func (c *Controller) enablePodInformer(enable bool) error {
 	}
 
 	c.pod.informerEnabled = enable
+	metrics.PodLabelsUsed(enable)
 	return nil
 }
 

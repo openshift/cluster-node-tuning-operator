@@ -1,0 +1,116 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    include.release.openshift.io/ibm-cloud-managed: "true"
+    include.release.openshift.io/self-managed-high-availability: "true"
+  name: tuneds.tuned.openshift.io
+spec:
+  group: tuned.openshift.io
+  names:
+    kind: Tuned
+    listKind: TunedList
+    plural: tuneds
+    singular: tuned
+  preserveUnknownFields: false
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          description: 'Tuned is a collection of rules that allows cluster-wide deployment of node-level sysctls and more flexibility to add custom tuning specified by user needs.  These rules are translated and passed to all containerized tuned daemons running in the cluster in the format that the daemons understand. The responsibility for applying the node-level tuning then lies with the containerized tuned daemons. More info: https://github.com/openshift/cluster-node-tuning-operator'
+          type: object
+          properties:
+            apiVersion:
+              description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+              type: string
+            kind:
+              description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: 'spec is the specification of the desired behavior of Tuned. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status'
+              type: object
+              required:
+                - profile
+                - recommend
+              properties:
+                managementState:
+                  description: managementState indicates whether the registry instance represented by this config instance is under operator management or not.  Valid values are Force, Managed, Unmanaged, and Removed.
+                  type: string
+                  pattern: ^(Managed|Unmanaged|Force|Removed)$
+                profile:
+                  description: Tuned profiles.
+                  type: array
+                  items:
+                    description: A tuned profile.
+                    type: object
+                    required:
+                      - data
+                      - name
+                    properties:
+                      data:
+                        description: Specification of the tuned profile to be consumed by the tuned daemon.
+                        type: string
+                      name:
+                        description: Name of the tuned profile to be used in the recommend section.
+                        type: string
+                recommend:
+                  description: Selection logic for all tuned profiles.
+                  type: array
+                  items:
+                    description: Selection logic for a single tuned profile.
+                    type: object
+                    required:
+                      - priority
+                      - profile
+                    properties:
+                      machineConfigLabels:
+                        description: MachineConfigLabels specifies the labels for a MachineConfig. The MachineConfig is created automatically to apply additional host settings (e.g. kernel boot parameters) profile 'Profile' needs and can only be applied by creating a MachineConfig. This involves finding all MachineConfigPools with machineConfigSelector matching the MachineConfigLabels and setting the profile 'Profile' on all nodes that match the MachineConfigPools' nodeSelectors.
+                        type: object
+                        additionalProperties:
+                          type: string
+                      match:
+                        description: Rules governing application of a tuned profile connected by logical OR operator.
+                        type: array
+                        items:
+                          description: Rules governing application of a tuned profile.
+                          type: object
+                          required:
+                            - label
+                          properties:
+                            label:
+                              description: Node or Pod label name.
+                              type: string
+                            match:
+                              description: Additional rules governing application of the tuned profile connected by logical AND operator.
+                              type: array
+                              items:
+                                # Recursively nested "match" sections are dropped without the following.
+                                x-kubernetes-preserve-unknown-fields: true
+                                # OpenAPI v3 validation schemas containing $ref are not permitted => cannot do recursive validation in 1.14
+                                # https://kubernetes.io/docs/tasks/access-kubernetes-api/custom-resources/custom-resource-definitions/#validation
+                                type: object
+                            type:
+                              description: 'Match type: [node/pod]. If omitted, "node" is assumed.'
+                              type: string
+                              enum:
+                                - node
+                                - pod
+                            value:
+                              description: Node or Pod label value. If omitted, the presence of label name is enough to match.
+                              type: string
+                      priority:
+                        description: Tuned profile priority. Highest priority is 0.
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      profile:
+                        description: Name of the tuned profile to recommend.
+                        type: string
+            status:
+              description: TunedStatus is the status for a Tuned resource
+              type: object
