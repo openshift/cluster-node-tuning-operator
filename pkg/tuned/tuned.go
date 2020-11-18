@@ -495,8 +495,9 @@ func (c *Controller) tunedReload() error {
 
 	if c.tunedCmd.Process != nil {
 		klog.Infof("sending HUP to PID %d", c.tunedCmd.Process.Pid)
-		err := c.tunedCmd.Process.Signal(syscall.SIGHUP)
 		c.daemon.reloading = true
+		c.daemon.status = 0 // clear the set out of which Profile status conditions are created
+		err := c.tunedCmd.Process.Signal(syscall.SIGHUP)
 		if err != nil {
 			return fmt.Errorf("error sending SIGHUP to PID %d: %v\n", c.tunedCmd.Process.Pid, err)
 		}
@@ -773,8 +774,18 @@ func (c *Controller) updateTunedProfile() (err error) {
 		return fmt.Errorf("unable to assess whether stalld is requested: %v", err)
 	}
 
-	if profile.Status.Bootcmdline == bootcmdline && profile.Status.Stalld == stalldRequested {
-		// Do not update node profile unnecessarily (e.g. bootcmdline did not change)
+	activeProfile, err := getActiveProfile()
+	if err != nil {
+		return err
+	}
+
+	statusConditions := computeStatusConditions(c.daemon.status, profile.Status.Conditions)
+
+	if profile.Status.Bootcmdline == bootcmdline && profile.Status.Stalld == stalldRequested &&
+		profile.Status.TunedProfile == activeProfile && conditionsEqual(profile.Status.Conditions, statusConditions) {
+		// Do not update node Profile unnecessarily (e.g. bootcmdline did not change).
+		// This will save operator CPU cycles trying to reconcile objects that do not
+		// need reconciling.
 		klog.V(2).Infof("updateTunedProfile(): no need to update Profile %s", profile.Name)
 		return nil
 	}
@@ -783,6 +794,8 @@ func (c *Controller) updateTunedProfile() (err error) {
 
 	profile.Status.Bootcmdline = bootcmdline
 	profile.Status.Stalld = stalldRequested
+	profile.Status.TunedProfile = activeProfile
+	profile.Status.Conditions = statusConditions
 	_, err = c.clients.Tuned.TunedV1().Profiles(operandNamespace).Update(context.TODO(), profile, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update Profile %s status: %v", profile.Name, err)
