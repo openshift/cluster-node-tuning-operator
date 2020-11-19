@@ -19,10 +19,11 @@
 %global make_python_arg PYTHON=%{__python3}
 %else
 %{!?python2_sitelib:%global python2_sitelib %{python_sitelib}}
-%global make_python_arg PYTHON=%{__python2}
 %if 0%{?rhel} && 0%{?rhel} < 8
+%global make_python_arg PYTHON=%{__python}
 %global _py python
 %else
+%global make_python_arg PYTHON=%{__python2}
 %global _py python2
 %endif
 %endif
@@ -60,6 +61,10 @@ Requires(preun): systemd
 Requires(postun): systemd
 BuildRequires: %{_py}, %{_py}-devel
 # BuildRequires for 'make test'
+# python-mock is needed for python-2.7, but it's not available on RHEL-7
+%if %{without python3} && ( ! 0%{?rhel} || 0%{?rhel} >= 8 )
+BuildRequires: %{_py}-mock
+%endif
 BuildRequires: %{_py}-configobj
 BuildRequires: %{_py}-decorator, %{_py}-pyudev
 Requires: %{_py}-decorator, %{_py}-pyudev, %{_py}-configobj
@@ -70,20 +75,20 @@ Requires: %{_py}-schedutils, %{_py}-linux-procfs, %{_py}-perf
 BuildRequires: python3-dbus, python3-gobject-base
 Requires: python3-dbus, python3-gobject-base
 %if 0%{?fedora} > 22 || 0%{?rhel} > 7
-Recommends: python3-dmidecode
+Recommends: dmidecode
 %endif
 %else
 # BuildRequires for 'make test'
 BuildRequires: dbus-python, pygobject3-base
 Requires: dbus-python, pygobject3-base
-%if 0%{?fedora} > 22 || 0%{?rhel} > 7
-Recommends: python-dmidecode
 %endif
-%endif
-Requires: virt-what, ethtool, gawk, hdparm
+Requires: virt-what, ethtool, gawk
 Requires: util-linux, dbus, polkit
 %if 0%{?fedora} > 22 || 0%{?rhel} > 7
+Recommends: dmidecode
+Recommends: hdparm
 Recommends: kernel-tools
+Recommends: kmod
 %endif
 %if 0%{?rhel} > 7
 Requires: python3-syspurpose
@@ -197,11 +202,6 @@ Requires: %{name} = %{version}
 Requires: %{name}-profiles-realtime = %{version}
 Requires: tuna
 Requires: nmap-ncat
-%if 0%{?rhel} == 7
-Requires: qemu-kvm-tools-rhev
-%else
-Recommends: tuned-profiles-nfv-host-bin
-%endif
 
 %description profiles-nfv-host
 Additional tuned profile(s) targeted to Network Function Virtualization (NFV) host.
@@ -237,6 +237,13 @@ Requires: %{name} = %{version}
 %description profiles-compat
 Additional tuned profiles mainly for backward compatibility with tuned 1.0.
 It can be also used to fine tune your system for specific scenarios.
+
+%package profiles-postgresql
+Summary: Additional tuned profile(s) targeted to PostgreSQL server loads
+Requires: %{name} = %{version}
+
+%description profiles-postgresql
+Additional tuned profile(s) targeted to PostgreSQL server loads.
 
 %prep
 %setup -q -n %{name}-%{version}%{?prerel2}
@@ -275,8 +282,13 @@ touch %{buildroot}%{_sysconfdir}/modprobe.d/kvm.rt.tuned.conf
 # validate desktop file
 desktop-file-validate %{buildroot}%{_datadir}/applications/tuned-gui.desktop
 
+# Run tests on RHEL > 7 or non RHEL
+# We cannot run tests on RHEL-7 because there is no python-mock package and
+# python-2.7 doesn't have mock built-in
+%if 0%{?rhel} > 7 || ! 0%{?rhel}
 %check
-make test
+make test %{make_python_arg}
+%endif
 
 %post
 %systemd_post tuned.service
@@ -387,6 +399,7 @@ fi
 %exclude %{_prefix}/lib/tuned/realtime-virtual-host
 %exclude %{_prefix}/lib/tuned/cpu-partitioning
 %exclude %{_prefix}/lib/tuned/spectrumscale-ece
+%exclude %{_prefix}/lib/tuned/postgresql
 %{_prefix}/lib/tuned
 %dir %{_sysconfdir}/tuned
 %dir %{_sysconfdir}/tuned/recommend.d
@@ -513,6 +526,11 @@ fi
 %{_prefix}/lib/tuned/enterprise-storage
 %{_prefix}/lib/tuned/spindown-disk
 %{_mandir}/man7/tuned-profiles-compat.7*
+
+%files profiles-postgresql
+%defattr(-,root,root,-)
+%{_prefix}/lib/tuned/postgresql
+%{_mandir}/man7/tuned-profiles-postgresql.7*
 
 %changelog
 * Mon Jun 15 2020 Jaroslav Škarvada <jskarvad@redhat.com> - 2.14.0-1
