@@ -134,6 +134,8 @@ The individual items of the list:
     <match>                             # an optional list
     priority: <priority>                # profile ordering priority, lower numbers mean higher priority (0 is the highest priority)
     profile: <tuned_profile_name>       # a Tuned profile to apply on a match; for example tuned_profile_1
+    operand:				# optional operand configuration
+      debug: <bool>			# turn debugging on/off for the Tuned daemon: true/false (default is false)
 ```
 
 If `<match>` is omitted, a profile match (i.e. _true_) is assumed.
