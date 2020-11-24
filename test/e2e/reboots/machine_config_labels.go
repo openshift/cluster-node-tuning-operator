@@ -3,6 +3,7 @@ package e2e
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
@@ -10,7 +11,6 @@ import (
 	coreapi "k8s.io/api/core/v1"
 
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
-	nutil "github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 )
 
@@ -41,6 +41,12 @@ var _ = ginkgo.Describe("[reboots][machine_config_labels] Node Tuning Operator m
 		})
 
 		ginkgo.It("kernel parameters set", func() {
+			const (
+				pollInterval = 5 * time.Second
+				waitDuration = 5 * time.Minute
+			)
+			cmdCatCmdline := []string{"cat", procCmdline}
+
 			ginkgo.By("getting a list of worker nodes")
 			nodes, err := util.GetNodesByRole(cs, "worker")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -50,12 +56,12 @@ var _ = ginkgo.Describe("[reboots][machine_config_labels] Node Tuning Operator m
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			node = &nodes[0]
-			ginkgo.By(fmt.Sprintf("getting a tuned pod running on node %s", node.Name))
+			ginkgo.By(fmt.Sprintf("getting a Tuned Pod running on node %s", node.Name))
 			pod, err := util.GetTunedForNode(cs, node)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("getting the current %s value in pod %s", procCmdline, pod.Name))
-			cmdlineOrig, err := util.GetFileInPod(pod, procCmdline)
+			ginkgo.By(fmt.Sprintf("getting the current %s value in Pod %s", procCmdline, pod.Name))
+			cmdlineOrig, err := util.WaitForCmdInPod(pollInterval, waitDuration, pod, cmdCatCmdline...)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			util.Logf(fmt.Sprintf("%s has %s: %s", pod.Name, procCmdline, cmdlineOrig))
 
@@ -75,8 +81,8 @@ var _ = ginkgo.Describe("[reboots][machine_config_labels] Node Tuning Operator m
 			err = util.WaitForPoolUpdatedMachineCount(cs, "worker-rt", 1)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("getting the current %s value in pod %s", procCmdline, pod.Name))
-			cmdlineNew, err := util.GetFileInPod(pod, procCmdline)
+			ginkgo.By(fmt.Sprintf("getting the current %s value in Pod %s", procCmdline, pod.Name))
+			cmdlineNew, err := util.WaitForCmdInPod(pollInterval, waitDuration, pod, cmdCatCmdline...)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			util.Logf("%s has %s: %s", pod.Name, procCmdline, cmdlineNew)
 
@@ -101,14 +107,6 @@ var _ = ginkgo.Describe("[reboots][machine_config_labels] Node Tuning Operator m
 			ginkgo.By(fmt.Sprintf("waiting for worker UpdatedMachineCount == %d", workerMachinesOrig))
 			err = util.WaitForPoolUpdatedMachineCount(cs, "worker", workerMachinesOrig)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
-			ginkgo.By(fmt.Sprintf("getting the current %s value in pod %s", procCmdline, pod.Name))
-			cmdlineNew, err = util.GetFileInPod(pod, procCmdline)
-			util.Logf("%s has %s: %s", pod.Name, procCmdline, cmdlineNew)
-
-			ginkgo.By("ensuring the original kernel command line was restored")
-			gomega.Expect(nutil.KernelArgumentsEqual(cmdlineOrig, cmdlineNew, "ostree")).To(gomega.BeTrue(),
-				"kernel parameters as retrieved from %s after profile rollback do not match", procCmdline)
 
 			ginkgo.By(fmt.Sprintf("deleting custom MachineConfigPool %s", mcpRealtime))
 			_, _, err = util.ExecAndLogCommand("oc", "delete", "-f", mcpRealtime)

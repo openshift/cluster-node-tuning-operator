@@ -37,7 +37,12 @@ var _ = ginkgo.Describe("[basic][modules] Node Tuning Operator load kernel modul
 		})
 
 		ginkgo.It(fmt.Sprintf("modules: %s loaded", moduleName), func() {
+			const (
+				pollInterval = 5 * time.Second
+				waitDuration = 5 * time.Minute
+			)
 			cmdGrepModule := []string{"grep", fmt.Sprintf("^%s ", moduleName), procModules}
+
 			ginkgo.By("getting a list of worker nodes")
 			nodes, err := util.GetNodesByRole(cs, "worker")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -64,7 +69,7 @@ var _ = ginkgo.Describe("[basic][modules] Node Tuning Operator load kernel modul
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("ensuring the %s module is loaded", moduleName))
-			_, err = util.PollExecCmdInPod(5*time.Second, 5*time.Minute, pod, cmdGrepModule...)
+			_, err = util.WaitForCmdInPod(pollInterval, waitDuration, pod, cmdGrepModule...)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("deleting profile %s", profileModules))

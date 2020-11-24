@@ -18,11 +18,16 @@ import (
 )
 
 var _ = ginkgo.Describe("[basic][available] Node Tuning Operator availability", func() {
+	const (
+		pollInterval = 5 * time.Second
+		waitDuration = 5 * time.Minute
+	)
+
 	var explain string
 
 	ginkgo.It(fmt.Sprintf("clusteroperator/%s available", tunedv1.TunedClusterOperatorResourceName), func() {
 		ginkgo.By(fmt.Sprintf("wait for clusteroperator/%s available", tunedv1.TunedClusterOperatorResourceName))
-		err := wait.PollImmediate(1*time.Second, 5*time.Minute, func() (bool, error) {
+		err := wait.PollImmediate(pollInterval, waitDuration, func() (bool, error) {
 			co, err := cs.ClusterOperators().Get(context.TODO(), tunedv1.TunedClusterOperatorResourceName, metav1.GetOptions{})
 			if err != nil {
 				explain = err.Error()
@@ -42,7 +47,7 @@ var _ = ginkgo.Describe("[basic][available] Node Tuning Operator availability", 
 
 	ginkgo.It(fmt.Sprintf("tuned/%s exists", tunedv1.TunedDefaultResourceName), func() {
 		ginkgo.By(fmt.Sprintf("wait for tuned/%s existence", tunedv1.TunedDefaultResourceName))
-		err := wait.PollImmediate(1*time.Second, 5*time.Minute, func() (bool, error) {
+		err := wait.PollImmediate(pollInterval, waitDuration, func() (bool, error) {
 			_, err := cs.Tuneds(ntoconfig.OperatorNamespace()).Get(context.TODO(), tunedv1.TunedDefaultResourceName, metav1.GetOptions{})
 			if err != nil {
 				explain = err.Error()

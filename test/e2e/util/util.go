@@ -21,30 +21,11 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/framework"
 )
 
-func Logf(format string, args ...interface{}) {
-	fmt.Fprintf(ginkgo.GinkgoWriter, format+"\n", args...)
-}
-
-func execCommand(log bool, name string, arg ...string) (bytes.Buffer, bytes.Buffer, error) {
-	var (
-		stdout bytes.Buffer
-		stderr bytes.Buffer
-	)
-
-	cmd := exec.Command(name, arg...)
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if log {
-		Logf("run command '%s %v':\n  out=%s\n  err=%s\n  ret=%v",
-			name, arg, strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), err)
-	}
-
-	return stdout, stderr, err
-}
-
-func ExecAndLogCommand(name string, arg ...string) (bytes.Buffer, bytes.Buffer, error) {
-	return execCommand(true, name, arg...)
+// Logf formats using the default formats for its operands and writes to
+// ginkgo.GinkgoWriter and a newline is appended.  It returns the number of
+// bytes written and any write error encountered.
+func Logf(format string, args ...interface{}) (n int, err error) {
+	return fmt.Fprintf(ginkgo.GinkgoWriter, format+"\n", args...)
 }
 
 // GetNodesByRole returns a list of nodes that match a given role.
@@ -59,7 +40,7 @@ func GetNodesByRole(cs *framework.ClientSet, role string) ([]corev1.Node, error)
 	return nodeList.Items, nil
 }
 
-// GetTunedForNode returns a pod that runs on a given node.
+// GetTunedForNode returns a Pod that runs on a given node.
 func GetTunedForNode(cs *framework.ClientSet, node *corev1.Node) (*corev1.Pod, error) {
 	listOptions := metav1.ListOptions{
 		FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": node.Name}).String(),
@@ -68,142 +49,145 @@ func GetTunedForNode(cs *framework.ClientSet, node *corev1.Node) (*corev1.Pod, e
 
 	podList, err := cs.Pods(ntoconfig.OperatorNamespace()).List(context.TODO(), listOptions)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't get a list of tuned pods: %v", err)
+		return nil, fmt.Errorf("couldn't get a list of Tuned Pods: %v", err)
 	}
 
 	if len(podList.Items) != 1 {
 		if len(podList.Items) == 0 {
-			return nil, fmt.Errorf("failed to find a tuned pod for node %s", node.Name)
+			return nil, fmt.Errorf("failed to find a Tuned Pod for node %s", node.Name)
 		}
-		return nil, fmt.Errorf("too many (%d) tuned pods for node %s", len(podList.Items), node.Name)
+		return nil, fmt.Errorf("too many (%d) Tuned Pods for node %s", len(podList.Items), node.Name)
 	}
 	return &podList.Items[0], nil
 }
 
-// GetSysctl returns a sysctl value for sysctlVar from inside a (tuned) pod.
-func GetSysctl(sysctlVar string, pod *corev1.Pod) (string, error) {
+// execCommand executes command 'name' with arguments 'args' and optionally
+// ('log') logs the output.  Returns captured standard output, standard error
+// and the error returned.
+func execCommand(log bool, name string, args ...string) (bytes.Buffer, bytes.Buffer, error) {
 	var (
-		val          string
-		err, explain error
+		stdout bytes.Buffer
+		stderr bytes.Buffer
 	)
-	err = wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
-		var out string
-		out, err = ExecCmdInPod(pod, "sysctl", "-n", sysctlVar)
-		if err != nil {
-			explain = fmt.Errorf("out=%s; err=%s", out, err.Error())
-			return false, nil
-		}
-		val = strings.TrimSpace(out)
-		return true, nil
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to retrieve sysctl value %s in pod %s: %v", sysctlVar, pod.Name, explain)
+
+	cmd := exec.Command(name, args...)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if log {
+		Logf("run command '%s %v':\n  out=%s\n  err=%s\n  ret=%v",
+			name, args, strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), err)
 	}
 
-	return val, nil
+	return stdout, stderr, err
 }
 
-// ExecCmdInPod executes a command with arguments in a pod.
-func ExecCmdInPod(pod *corev1.Pod, args ...string) (string, error) {
-	entryPoint := "oc"
-	cmd := []string{"rsh", "-n", ntoconfig.OperatorNamespace(), pod.Name}
-	cmd = append(cmd, args...)
+// ExecAndLogCommand executes command 'name' with arguments 'args' and logs
+// the output.  Returns captured standard output, standard error and the error
+// returned.
+func ExecAndLogCommand(name string, args ...string) (bytes.Buffer, bytes.Buffer, error) {
+	return execCommand(true, name, args...)
+}
 
-	stdout, stderr, err := execCommand(false, entryPoint, cmd...)
+// ExecCmdInPod executes command with arguments 'cmd' in Pod 'pod'.
+func ExecCmdInPod(pod *corev1.Pod, cmd ...string) (string, error) {
+	ocArgs := []string{"rsh", "-n", ntoconfig.OperatorNamespace(), pod.Name}
+	ocArgs = append(ocArgs, cmd...)
 
+	stdout, stderr, err := execCommand(false, "oc", ocArgs...)
 	if err != nil {
-		return "", fmt.Errorf("failed to run %s in Pod %s:\n  out=%s\n  err=%s\n  ret=%v", args, pod.Name, stdout.String(), stderr.String(), err.Error())
+		return "", fmt.Errorf("failed to run %s in Pod %s:\n  out=%s\n  err=%s\n  ret=%v", cmd, pod.Name, stdout.String(), stderr.String(), err.Error())
 	}
 
 	return stdout.String(), nil
 }
 
-// PollExecCmdInPod executes a command with arguments in a Pod
-// until the command succeeds or times out.
-func PollExecCmdInPod(interval, duration time.Duration, pod *corev1.Pod, args ...string) (string, error) {
+// waitForCmdOutputInPod runs command with arguments 'cmd' in Pod 'pod' at
+// an interval 'interval' and retries for at most the duration 'duration'.
+// If 'valExp' is not nil, it also expects standard output of the command with
+// leading and trailing whitespace optionally ('trim') trimmed to match 'valExp'.
+// The function returns the retrieved standard output and an error returned when
+// running 'cmd'.  Non-nil error is also returned when standard output of 'cmd'
+// did not match non-nil 'valExp' by the time duration 'duration' elapsed.
+func waitForCmdOutputInPod(interval, duration time.Duration, pod *corev1.Pod, valExp *string, trim bool, cmd ...string) (string, error) {
 	var (
-		val     string
-		explain error
+		val          string
+		err, explain error
 	)
-	err := wait.PollImmediate(interval, duration, func() (bool, error) {
-		out, err := ExecCmdInPod(pod, args...)
-		if err != nil {
-			explain = fmt.Errorf("out=%s; err=%s", out, err.Error())
-			return false, nil
-		}
-		val = out
-		return true, nil
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to run %s in Pod %s: %v", args, pod.Name, explain)
-	}
-
-	return val, nil
-}
-
-// GetFileInPod returns content for file from inside a (tuned) pod.
-func GetFileInPod(pod *corev1.Pod, file string) (string, error) {
-	return PollExecCmdInPod(5*time.Second, 5*time.Minute, pod, "cat", file)
-}
-
-// EnsureSysctl makes sure a sysctl value for sysctlVar from inside a (tuned) pod
-// is equal to valExp.  Returns an error otherwise.
-func EnsureSysctl(pod *corev1.Pod, sysctlVar string, valExp string) error {
-	var (
-		val     string
-		explain error
-	)
-	wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
-		var err error
-		val, err = GetSysctl(sysctlVar, pod)
+	err = wait.PollImmediate(interval, duration, func() (bool, error) {
+		val, err = ExecCmdInPod(pod, cmd...)
 
 		if err != nil {
-			explain = err
+			explain = fmt.Errorf("out=%s; err=%s", val, err.Error())
 			return false, nil
 		}
-
-		if val != valExp {
+		if trim {
+			val = strings.TrimSpace(val)
+		}
+		if valExp != nil && val != *valExp {
 			return false, nil
 		}
 		return true, nil
 	})
-	if val != valExp {
-		return fmt.Errorf("sysctl %s=%s on %s, expected %s: %v", sysctlVar, val, pod.Name, valExp, explain)
-	}
-
-	return nil
-}
-
-// EnsureCmdOutputInPod runs command 'args' in Pod 'pod' at an interval 'interval' and
-// retries for at most duration 'duration' expecting standard output of the command with
-// leadingand trailing whitespace trimmed to match 'valExp'.  The function returns the
-// retrieved value and an error in case the values did not match or the command
-// timed out after 'duration'.
-func EnsureCmdOutputInPod(interval, duration time.Duration, valExp string, pod *corev1.Pod, args ...string) (string, error) {
-	var (
-		val     string
-		explain error
-	)
-	err := wait.PollImmediate(interval, duration, func() (bool, error) {
-		out, err := ExecCmdInPod(pod, args...)
-		if err != nil {
-			explain = fmt.Errorf("out=%s; err=%s", out, err.Error())
-			return false, nil
-		}
-		val = strings.TrimSpace(out)
-		if val != valExp {
-			return false, nil
-		}
-		return true, nil
-	})
-	if val != valExp {
-		return val, fmt.Errorf("command %s outputs (leading/trailing whitespace trimmed) %s in Pod %s, expected %s: %v", args, val, pod.Name, valExp, explain)
+	if valExp != nil && val != *valExp {
+		return val, fmt.Errorf("command %s outputs (leading/trailing whitespace trimmed) %s in Pod %s, expected %s: %v", cmd, val, pod.Name, *valExp, explain)
 	}
 
 	return val, err
 }
 
-// GetUpdatedMachineCountForPool returns the UpdatedMachineCount for pool 'pool'.
+// WaitForCmdInPod runs command with arguments 'cmd' in Pod 'pod' at an interval
+// 'interval' and retries for at most the duration 'duration'.  The function
+// returns the retrieved value of standard output of the command at its first
+// successful ('error' == nil) execution and an error set in case the command
+// did not run successfully by the time duration 'duration' elapsed.
+func WaitForCmdInPod(interval, duration time.Duration, pod *corev1.Pod, cmd ...string) (string, error) {
+	return waitForCmdOutputInPod(interval, duration, pod, nil, false, cmd...)
+}
+
+// WaitForCmdOutputInPod runs command with arguments 'cmd' in Pod 'pod' at an
+// interval 'interval' and retries for at most the duration 'duration' expecting
+// standard output of the command with leading and trailing whitespace optionally
+// ('trim') trimmed to match 'valExp'.  The function returns the retrieved
+// value and an error in case the values did not match by the time duration
+// 'duration' elapsed.
+func WaitForCmdOutputInPod(interval, duration time.Duration, pod *corev1.Pod, valExp string, trim bool, cmd ...string) (string, error) {
+	return waitForCmdOutputInPod(interval, duration, pod, &valExp, trim, cmd...)
+}
+
+// WaitForSysctlInPod waits for a successful ('error' == nil) output of the
+// "sysctl -n 'sysctlVar'" command inside Pod 'pod'.  The execution interval is
+// 'interval' and retries last for at most the duration 'duration'.  Returns the
+// sysctl value retrieved with leading and trailing whitespace removed and an
+// error during the command execution.
+func WaitForSysctlInPod(interval, duration time.Duration, pod *corev1.Pod, sysctlVar string) (string, error) {
+	cmd := []string{"sysctl", "-n", sysctlVar}
+
+	val, err := WaitForCmdInPod(interval, duration, pod, cmd...)
+	if err != nil {
+		return "", fmt.Errorf("failed to retrieve sysctl value %s in Pod %s: %v", sysctlVar, pod.Name, err)
+	}
+
+	return strings.TrimSpace(val), err
+}
+
+// WaitForSysctlValueInPod blocks until the sysctl value for 'sysctlVar' from
+// inside Pod 'pod' is equal to 'valExp'.  The execution interval to check the
+// value is 'interval' and retries last for at most the duration 'duration'.
+// Returns the sysctl value retrieved and an error during the last command
+// execution.
+func WaitForSysctlValueInPod(interval, duration time.Duration, pod *corev1.Pod, sysctlVar string, valExp string) (string, error) {
+	cmd := []string{"sysctl", "-n", sysctlVar}
+
+	val, err := WaitForCmdOutputInPod(interval, duration, pod, valExp, true, cmd...)
+	if val != valExp {
+		return "", fmt.Errorf("sysctl %s=%s in Pod %s, expected %s: %v", sysctlVar, val, pod.Name, valExp, err)
+	}
+
+	return val, err
+}
+
+// GetUpdatedMachineCountForPool returns the UpdatedMachineCount for MCP 'pool'.
 func GetUpdatedMachineCountForPool(cs *framework.ClientSet, pool string) (int32, error) {
 	mcp, err := cs.MachineConfigPools().Get(context.TODO(), pool, metav1.GetOptions{})
 	if err != nil {

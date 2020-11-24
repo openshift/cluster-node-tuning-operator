@@ -67,10 +67,11 @@ spec:
               cpu: 10m
               memory: 20Mi
           volumeMounts:
-            - name: trusted-ca
-              mountPath: /var/run/configmaps/trusted-ca/
+            # Certificates and keys for node-tuning-operator.openshift-cluster-node-tuning-operator.svc
             - name: node-tuning-operator-tls
               mountPath: /etc/secrets
+            - name: trusted-ca
+              mountPath: /var/run/configmaps/trusted-ca/
       volumes:
         - name: node-tuning-operator-tls
           secret:

@@ -37,6 +37,10 @@ var _ = ginkgo.Describe("[basic][sysctl_d_override] Node Tuning Operator /etc/sy
 		})
 
 		ginkgo.It(fmt.Sprintf("%s set", sysctlVar), func() {
+			const (
+				pollInterval = 5 * time.Second
+				waitDuration = 5 * time.Minute
+			)
 			var explain string
 
 			ginkgo.By("getting a list of worker nodes")
@@ -45,12 +49,12 @@ var _ = ginkgo.Describe("[basic][sysctl_d_override] Node Tuning Operator /etc/sy
 			gomega.Expect(len(nodes)).NotTo(gomega.BeZero(), "number of worker nodes is 0")
 
 			node := &nodes[0]
-			ginkgo.By(fmt.Sprintf("getting a tuned pod running on node %s", node.Name))
+			ginkgo.By(fmt.Sprintf("getting a Tuned Pod running on node %s", node.Name))
 			pod, err := util.GetTunedForNode(cs, node)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("getting the current value of %s in pod %s", sysctlVar, pod.Name))
-			valOrig, err := util.GetSysctl(sysctlVar, pod)
+			ginkgo.By(fmt.Sprintf("getting the current value of %s in Pod %s", sysctlVar, pod.Name))
+			valOrig, err := util.WaitForSysctlInPod(pollInterval, waitDuration, pod, sysctlVar)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("writing %s override file on the host with %s=%s", sysctlFile, sysctlVar, sysctlValSet))
@@ -58,12 +62,12 @@ var _ = ginkgo.Describe("[basic][sysctl_d_override] Node Tuning Operator /etc/sy
 				fmt.Sprintf("echo %s=%s > %s", sysctlVar, sysctlValSet, sysctlFile))
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("deleting pod %s", pod.Name))
+			ginkgo.By(fmt.Sprintf("deleting Pod %s", pod.Name))
 			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "pod", pod.Name, "--wait")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("waiting for a new tuned pod to be ready on node %s", node.Name))
-			err = wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
+			ginkgo.By(fmt.Sprintf("waiting for a new tuned Pod to be ready on node %s", node.Name))
+			err = wait.PollImmediate(pollInterval, waitDuration, func() (bool, error) {
 				pod, err = util.GetTunedForNode(cs, node)
 				if err != nil {
 					explain = err.Error()
@@ -73,20 +77,20 @@ var _ = ginkgo.Describe("[basic][sysctl_d_override] Node Tuning Operator /etc/sy
 			})
 			gomega.Expect(err).NotTo(gomega.HaveOccurred(), explain)
 
-			ginkgo.By(fmt.Sprintf("ensuring new %s value (%s) is set in pod %s", sysctlVar, sysctlValSet, pod.Name))
-			err = util.EnsureSysctl(pod, sysctlVar, sysctlValSet)
+			ginkgo.By(fmt.Sprintf("ensuring new %s value (%s) is set in Pod %s", sysctlVar, sysctlValSet, pod.Name))
+			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlVar, sysctlValSet)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("removing %s override file on the host", sysctlFile))
 			_, _, err = util.ExecAndLogCommand("oc", "exec", "-n", ntoconfig.OperatorNamespace(), pod.Name, "--", "rm", sysctlFile)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("deleting pod %s", pod.Name))
+			ginkgo.By(fmt.Sprintf("deleting Pod %s", pod.Name))
 			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "pod", pod.Name, "--wait")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("waiting for a new tuned pod to be ready on node %s", node.Name))
-			err = wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
+			ginkgo.By(fmt.Sprintf("waiting for a new Tuned Pod to be ready on node %s", node.Name))
+			err = wait.PollImmediate(pollInterval, waitDuration, func() (bool, error) {
 				pod, err = util.GetTunedForNode(cs, node)
 				if err != nil {
 					explain = err.Error()
@@ -96,8 +100,8 @@ var _ = ginkgo.Describe("[basic][sysctl_d_override] Node Tuning Operator /etc/sy
 			})
 			gomega.Expect(err).NotTo(gomega.HaveOccurred(), explain)
 
-			ginkgo.By(fmt.Sprintf("ensuring the original %s value (%s) is set in pod %s", sysctlVar, valOrig, pod.Name))
-			err = util.EnsureSysctl(pod, sysctlVar, valOrig)
+			ginkgo.By(fmt.Sprintf("ensuring the original %s value (%s) is set in Pod %s", sysctlVar, valOrig, pod.Name))
+			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlVar, valOrig)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		})
 	})
