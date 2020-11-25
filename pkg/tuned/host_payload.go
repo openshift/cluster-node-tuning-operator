@@ -80,6 +80,7 @@ Environment=FG=--foreground
 Environment=PF="--pidfile /run/stalld.pid"
 
 ExecStart=/usr/bin/chrt -f 10 /usr/local/bin/stalld $CLIST $AGGR $BP $BR $BD $THRESH $LOGGING $FG $PF
+Restart=always
 User=root
 `
 
