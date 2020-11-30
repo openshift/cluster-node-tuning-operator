@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
@@ -15,18 +16,22 @@ var _ = ginkgo.Describe("[basic][default_node_sysctl] Node Tuning Operator defau
 	sysctlVar := "net.ipv4.neigh.default.gc_thresh1"
 
 	ginkgo.It(fmt.Sprintf("%s set", sysctlVar), func() {
+		const (
+			pollInterval = 5 * time.Second
+			waitDuration = 5 * time.Minute
+		)
 		ginkgo.By("getting a list of worker nodes")
 		nodes, err := util.GetNodesByRole(cs, "worker")
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		gomega.Expect(len(nodes)).NotTo(gomega.BeZero(), "number of worker nodes is 0")
 
 		node := nodes[0]
-		ginkgo.By(fmt.Sprintf("getting a tuned pod running on node %s", node.Name))
+		ginkgo.By(fmt.Sprintf("getting a Tuned Pod running on node %s", node.Name))
 		pod, err := util.GetTunedForNode(cs, &node)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		ginkgo.By("ensuring the default worker node profile was set")
-		err = util.EnsureSysctl(pod, sysctlVar, "8192")
+		_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlVar, "8192")
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 })

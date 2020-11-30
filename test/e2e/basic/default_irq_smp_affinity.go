@@ -42,14 +42,19 @@ var _ = ginkgo.Describe("[basic][default_irq_smp_affinity] Node Tuning Operator 
 		})
 
 		ginkgo.It(fmt.Sprintf("default_irq_smp_affinity: %s set", procIrqDefaultSmpAffinity), func() {
+			const (
+				pollInterval = 5 * time.Second
+				waitDuration = 5 * time.Minute
+			)
 			cmdCatAffinity := []string{"cat", procIrqDefaultSmpAffinity}
+
 			ginkgo.By("getting a list of worker nodes")
 			nodes, err := util.GetNodesByRole(cs, "worker")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(len(nodes)).NotTo(gomega.BeZero(), "number of worker nodes is 0")
 
 			node = &nodes[0]
-			ginkgo.By(fmt.Sprintf("getting a tuned pod running on node %s", node.Name))
+			ginkgo.By(fmt.Sprintf("getting a Tuned Pod running on node %s", node.Name))
 			pod, err := util.GetTunedForNode(cs, node)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
@@ -73,7 +78,7 @@ var _ = ginkgo.Describe("[basic][default_irq_smp_affinity] Node Tuning Operator 
 			n &= ^(uint64(1 << 1)) // Mask to leave CPU1 alone wrt. IRQs, e.g. (f & ~(2^1)); make sure this matches the value in profileAffinity file
 			valExp = valOrig[0:len(valOrig)-1] + strconv.FormatUint(n, 16)
 			util.Logf("calculated expected IRQ mask: %s", valExp)
-			_, err = util.EnsureCmdOutputInPod(5*time.Second, 5*time.Minute, valExp, pod, cmdCatAffinity...)
+			_, err = util.WaitForCmdOutputInPod(pollInterval, waitDuration, pod, valExp, true, cmdCatAffinity...)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("applying the custom affinity profile %s", profileAffinity1))
@@ -82,7 +87,7 @@ var _ = ginkgo.Describe("[basic][default_irq_smp_affinity] Node Tuning Operator 
 
 			ginkgo.By(fmt.Sprintf("ensuring the correct value of %s was set in %s", procIrqDefaultSmpAffinity, procIrqDefaultSmpAffinity))
 			valExp = valOrig[0:len(valOrig)-1] + maskExp
-			_, err = util.EnsureCmdOutputInPod(5*time.Second, 5*time.Minute, valExp, pod, cmdCatAffinity...)
+			_, err = util.WaitForCmdOutputInPod(pollInterval, waitDuration, pod, valExp, true, cmdCatAffinity...)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("deleting the custom affinity profile %s", profileAffinity0))
@@ -90,7 +95,7 @@ var _ = ginkgo.Describe("[basic][default_irq_smp_affinity] Node Tuning Operator 
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("ensuring the original value of %s was set in %s", procIrqDefaultSmpAffinity, procIrqDefaultSmpAffinity))
-			_, err = util.EnsureCmdOutputInPod(5*time.Second, 5*time.Minute, valOrig, pod, cmdCatAffinity...)
+			_, err = util.WaitForCmdOutputInPod(pollInterval, waitDuration, pod, valOrig, true, cmdCatAffinity...)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("removing label %s from node %s", nodeLabelAffinity, node.Name))
