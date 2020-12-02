@@ -4,6 +4,7 @@ metadata:
   annotations:
     include.release.openshift.io/ibm-cloud-managed: "true"
     include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
     release.openshift.io/create-only: "true"
   labels:
     config.openshift.io/inject-trusted-cabundle: "true"
@@ -16,6 +17,7 @@ metadata:
   annotations:
     include.release.openshift.io/ibm-cloud-managed: "true"
     include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
     service.alpha.openshift.io/serving-cert-secret-name: node-tuning-operator-tls
   labels:
     name: node-tuning-operator
@@ -36,6 +38,7 @@ metadata:
   annotations:
     include.release.openshift.io/ibm-cloud-managed: "true"
     include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
   name: prometheus-k8s
   namespace: openshift-cluster-node-tuning-operator
 rules:
@@ -56,6 +59,7 @@ metadata:
   annotations:
     include.release.openshift.io/ibm-cloud-managed: "true"
     include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
   name: prometheus-k8s
   namespace: openshift-cluster-node-tuning-operator
 roleRef:
@@ -73,6 +77,7 @@ metadata:
   annotations:
     include.release.openshift.io/ibm-cloud-managed: "true"
     include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
   name: node-tuning-operator
   namespace: openshift-cluster-node-tuning-operator
 spec:
@@ -93,6 +98,7 @@ metadata:
   annotations:
     include.release.openshift.io/ibm-cloud-managed: "true"
     include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
   labels:
     role: alert-rules
   name: node-tuning-operator
