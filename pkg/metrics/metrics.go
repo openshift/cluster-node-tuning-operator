@@ -4,10 +4,10 @@ import "github.com/prometheus/client_golang/prometheus"
 
 // When adding metric names, see https://prometheus.io/docs/practices/naming/#metric-names
 const (
-	podLabelsUsedQuery = "nto_pod_labels_used_info"
-	profileSetQuery    = "nto_profile_set_total"
-	buildInfoQuery     = "nto_build_info"
-	degradedInfoQuery  = "nto_degraded_info"
+	podLabelsUsedQuery     = "nto_pod_labels_used_info"
+	profileCalculatedQuery = "nto_profile_calculated_total"
+	buildInfoQuery         = "nto_build_info"
+	degradedInfoQuery      = "nto_degraded_info"
 
 	// MetricsPort is the IP port supplied to the HTTP server used for Prometheus,
 	// and matches what is specified in the corresponding Service and ServiceMonitor.
@@ -22,10 +22,10 @@ var (
 			Help: "Is the Pod label functionality turned on (1) or off (0)?",
 		},
 	)
-	profileSet = prometheus.NewCounterVec(
+	profileCalculated = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: profileSetQuery,
-			Help: "The number of times a Tuned profile was set for a given node.",
+			Name: profileCalculatedQuery,
+			Help: "The number of times a Tuned profile was calculated for a given node.",
 		},
 		[]string{"node", "profile"},
 	)
@@ -47,7 +47,7 @@ var (
 func init() {
 	registry.MustRegister(
 		podLabelsUsed,
-		profileSet,
+		profileCalculated,
 		buildInfo,
 		degradedState,
 	)
