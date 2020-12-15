@@ -512,6 +512,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	if err != nil {
 		return err
 	}
+	metrics.ProfileCalculated(profileMf.Name, tunedProfileName)
 
 	profile, err := c.listers.TunedProfiles.Get(profileMf.Name)
 	if err != nil {
@@ -534,7 +535,6 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 			}
 			// Profile created successfully
 			klog.Infof("created profile %s [%s]", profileMf.Name, tunedProfileName)
-			metrics.ProfileSet(profileMf.Name, tunedProfileName)
 			return nil
 		}
 
@@ -565,7 +565,6 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
 	}
 	klog.Infof("updated profile %s [%s]", profile.Name, tunedProfileName)
-	metrics.ProfileSet(nodeName, tunedProfileName)
 
 	return nil
 }

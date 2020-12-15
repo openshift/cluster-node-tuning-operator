@@ -58,10 +58,10 @@ func PodLabelsUsed(enable bool) {
 	podLabelsUsed.Set(0)
 }
 
-// ProfileSet keeps track of the number of times a given Tuned profile
-// resource was set for node 'nodeName'.
-func ProfileSet(nodeName, profileName string) {
-	profileSet.With(map[string]string{"node": nodeName, "profile": profileName}).Inc()
+// ProfileCalculated keeps track of the number of times a given Tuned profile
+// resource was calculated for node 'nodeName'.
+func ProfileCalculated(nodeName, profileName string) {
+	profileCalculated.With(map[string]string{"node": nodeName, "profile": profileName}).Inc()
 }
 
 // RegisterVersion exposes the Operator build version.
