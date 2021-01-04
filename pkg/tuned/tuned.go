@@ -9,7 +9,7 @@ import (
 	"io/ioutil" // ioutil.ReadFile()
 	"math"      // math.Pow()
 	"net"       // net.Conn
-	"os"        // os.Exit(), os.Signal, os.Stderr, ...
+	"os"        // os.Exit(), os.Stderr, ...
 	"os/exec"   // os.Exec()
 	"strconv"   // strconv
 	"strings"   // strings.Join()
@@ -45,9 +45,12 @@ const (
 	tunedRecommendFile     = tunedRecommendDir + "/50-openshift.conf"
 	tunedBootcmdlineEnvVar = "TUNED_BOOT_CMDLINE"
 	tunedBootcmdlineFile   = tunedProfilesDir + "/bootcmdline"
-	openshiftTunedRunDir   = "/run/" + programName
-	openshiftTunedPidFile  = openshiftTunedRunDir + "/" + programName + ".pid"
-	openshiftTunedSocket   = "/var/lib/tuned/openshift-tuned.sock"
+	// a couple of seconds should be more than enough for Tuned daemon to gracefully stop;
+	// be generous and give it 10s
+	tunedGracefulExitWait = time.Second * time.Duration(10)
+	openshiftTunedRunDir  = "/run/" + programName
+	openshiftTunedPidFile = openshiftTunedRunDir + "/" + programName + ".pid"
+	openshiftTunedSocket  = "/var/lib/tuned/openshift-tuned.sock"
 	// With the DefaultControllerRateLimiter, retries will happen at 5ms*2^(retry_n-1)
 	// 5ms, 10ms, 20ms, 40ms, 80ms, 160ms, 320ms, 640ms, 1.3s, 2.6s, 5.1s, 10.2s, 20.4s, 41s, 82s
 	maxRetries = 15
@@ -382,7 +385,7 @@ func (c *Controller) tunedRun() {
 	klog.Infof("starting tuned...")
 
 	defer func() {
-		c.tunedExit <- true
+		close(c.tunedExit)
 	}()
 
 	cmdReader, err := c.tunedCmd.StderrPipe()
@@ -420,32 +423,36 @@ func (c *Controller) tunedRun() {
 	return
 }
 
-func (c *Controller) tunedStop(s *sockAccepted) error {
+// tunedStop tries to gracefully stop the Tuned daemon process by sending it SIGTERM.
+// If the Tuned daemon does not respond by terminating within tunedGracefulExitWait
+// duration, SIGKILL is sent.  This method returns an indication whether the Tuned
+// daemon exitted gracefully (true) or SIGTERM had to be sent (false).
+func (c *Controller) tunedStop() (bool, error) {
 	if c.tunedCmd == nil {
 		// Looks like there has been a termination signal prior to starting tuned
-		return nil
+		return false, nil
 	}
 	if c.tunedCmd.Process != nil {
-		klog.V(1).Infof("sending TERM to PID %d", c.tunedCmd.Process.Pid)
+		// The Tuned daemon rolls back the current profile and should terminate on SIGTERM
+		klog.V(1).Infof("sending SIGTERM to PID %d", c.tunedCmd.Process.Pid)
 		c.tunedCmd.Process.Signal(syscall.SIGTERM)
 	} else {
 		// This should never happen
-		return fmt.Errorf("cannot find the Tuned process!")
+		return false, fmt.Errorf("cannot find the Tuned process!")
 	}
 	// Wait for Tuned process to stop -- this will enable node-level tuning rollback
-	<-c.tunedExit
-	klog.V(1).Infof("Tuned process terminated")
-
-	if s != nil {
-		// This was a socket-initiated shutdown; indicate a successful settings rollback
-		ok := []byte{'o', 'k'}
-		_, err := (*s).conn.Write(ok)
-		if err != nil {
-			return fmt.Errorf("cannot write a response via %q: %v", openshiftTunedSocket, err)
-		}
+	select {
+	case <-c.tunedExit:
+	case <-time.After(tunedGracefulExitWait):
+		// It looks like the Tuned daemon refuses to terminate gracefully on SIGTERM
+		// within tunedGracefulExitWait
+		klog.V(1).Infof("sending SIGKILL to PID %d", c.tunedCmd.Process.Pid)
+		c.tunedCmd.Process.Signal(syscall.SIGKILL)
+		return false, nil
 	}
+	klog.V(1).Infof("Tuned process terminated gracefully")
 
-	return nil
+	return true, nil
 }
 
 func (c *Controller) tunedReload() error {
@@ -474,7 +481,7 @@ func (c *Controller) tunedReload() error {
 }
 
 func (c *Controller) tunedRestart() (err error) {
-	if err = c.tunedStop(nil); err != nil {
+	if _, err = c.tunedStop(); err != nil {
 		return err
 	}
 	c.tunedCmd = nil // Cmd.Start() cannot be used more than once
@@ -809,6 +816,10 @@ func (c *Controller) informerEventHandler(workqueueKey wqKey) cache.ResourceEven
 	}
 }
 
+// The changeWatcher method is the main control loop watching for changes to be applied
+// and supervising the Tuned daemon.  On successful (error == nil) exit, no attempt at
+// reentering this control loop should be made as it is an indication of an intentional
+// exit on request.
 func (c *Controller) changeWatcher() (err error) {
 	var (
 		lStop bool
@@ -824,9 +835,6 @@ func (c *Controller) changeWatcher() (err error) {
 		ntoconfig.ResyncPeriod(),
 		tunedinformers.WithNamespace(operandNamespace))
 
-	stopCh := make(chan struct{})
-	defer close(stopCh)
-
 	trInformer := tunedInformerFactory.Tuned().V1().Tuneds()
 	c.listers.TunedResources = trInformer.Lister().Tuneds(operandNamespace)
 	trInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindTuned}))
@@ -835,11 +843,11 @@ func (c *Controller) changeWatcher() (err error) {
 	c.listers.TunedProfiles = tpInformer.Lister().Profiles(operandNamespace)
 	tpInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindProfile}))
 
-	tunedInformerFactory.Start(stopCh) // Tuned/Profile
+	tunedInformerFactory.Start(c.stopCh) // Tuned/Profile
 
 	// Wait for the caches to be synced before starting worker(s)
 	klog.V(1).Info("waiting for informer caches to sync")
-	ok := cache.WaitForCacheSync(stopCh,
+	ok := cache.WaitForCacheSync(c.stopCh,
 		trInformer.Informer().HasSynced,
 		tpInformer.Informer().HasSynced,
 	)
@@ -848,7 +856,7 @@ func (c *Controller) changeWatcher() (err error) {
 	}
 
 	klog.V(1).Info("starting events processor")
-	go wait.Until(c.eventProcessor, time.Second, stopCh)
+	go wait.Until(c.eventProcessor, time.Second, c.stopCh)
 	klog.Info("started events processor")
 
 	// Create a ticker to extract new Tuned profiles and possibly reload tuned;
@@ -896,32 +904,51 @@ func (c *Controller) changeWatcher() (err error) {
 	for {
 		select {
 		case <-c.stopCh:
-			// Termination signal received, stop
-			klog.V(2).Infof("changeWatcher done")
-			if err := c.tunedStop(nil); err != nil {
-				klog.Errorf("%s", err.Error())
-			}
+			klog.Infof("termination signal received, stop")
+
 			return nil
 
 		case s := <-sockConns:
+			const socketCmdStop = "stop"
+			var rolledBack bool
+
 			if s.err != nil {
 				return fmt.Errorf("connection accept error: %v", err)
 			}
 
-			buf := make([]byte, len("stop"))
+			buf := make([]byte, len(socketCmdStop))
 			nr, _ := s.conn.Read(buf)
 			data := buf[0:nr]
 
-			if string(data) == "stop" {
-				if err := c.tunedStop(&s); err != nil {
-					klog.Errorf("%s", err.Error())
-				}
-				return nil
+			if string(data) != socketCmdStop {
+				// We only support one command over the socket interface at this point
+				continue
 			}
+
+			// At this point we know there was a request to exit, do not return any more errors,
+			// just log them.
+			if rolledBack, err = c.tunedStop(); err != nil {
+				klog.Errorf("%s", err.Error())
+			}
+			resp := make([]byte, 2)
+			if rolledBack {
+				// Indicate a successful settings rollback
+				resp = append(resp, 'o', 'k')
+			}
+			_, err := s.conn.Write(resp)
+			if err != nil {
+				klog.Errorf("cannot write a response via %q: %v", openshiftTunedSocket, err)
+			}
+			return nil
 
 		case <-c.tunedExit:
 			c.tunedCmd = nil // Cmd.Start() cannot be used more than once
-			return fmt.Errorf("Tuned process exitted")
+			klog.Infof("Tuned process exitted...")
+
+			// Do not be too aggressive about keeping the Tuned daemon around.
+			// Tuned daemon might have exitted after receiving SIGTERM during
+			// system reboot/shutdown.
+			return nil
 
 		case fsEvent := <-wFs.Events:
 			klog.V(2).Infof("fsEvent")
@@ -947,7 +974,7 @@ func (c *Controller) changeWatcher() (err error) {
 	}
 }
 
-func retryLoop(stopCh <-chan struct{}) (err error) {
+func retryLoop(c *Controller) (err error) {
 	const (
 		errsMax        = 5  // the maximum number of consecutive errors within errsMaxWithinSeconds
 		sleepRetryInit = 10 // the initial retry period [s]
@@ -959,16 +986,25 @@ func retryLoop(stopCh <-chan struct{}) (err error) {
 		errsMaxWithinSeconds int64 = (sleepRetry*int64(math.Pow(2, errsMax)) - sleepRetry) + errsMax*60
 	)
 
-	c, err := newController(stopCh)
-	if err != nil {
-		klog.Fatal(err)
-	}
+	defer func() {
+		if c.tunedCmd == nil {
+			return
+		}
+		if c.tunedCmd.Process != nil {
+			if _, err := c.tunedStop(); err != nil {
+				klog.Errorf("%s", err.Error())
+			}
+		} else {
+			// This should never happen
+			klog.Errorf("cannot find the Tuned process!")
+		}
+	}()
 
 	errsTimeStart := time.Now().Unix()
 	for {
 		err = c.changeWatcher()
 		if err == nil {
-			break
+			return nil
 		}
 
 		select {
@@ -984,7 +1020,7 @@ func retryLoop(stopCh <-chan struct{}) (err error) {
 			now := time.Now().Unix()
 			if (now - errsTimeStart) <= errsMaxWithinSeconds {
 				klog.Errorf("seen %d errors in %d seconds (limit was %d), terminating...", errs, now-errsTimeStart, errsMaxWithinSeconds)
-				break
+				return err
 			}
 			errs = 0
 			sleepRetry = sleepRetryInit
@@ -999,7 +1035,6 @@ func retryLoop(stopCh <-chan struct{}) (err error) {
 			continue
 		}
 	}
-	return err
 }
 
 func Run(stopCh <-chan struct{}, boolVersion *bool, version string) {
@@ -1012,10 +1047,17 @@ func Run(stopCh <-chan struct{}, boolVersion *bool, version string) {
 
 	err := openshiftTunedPidFileWrite()
 	if err != nil {
+		// openshift-tuned PID file is not really used by anything, remove it in the future?
 		panic(err.Error())
 	}
 
-	err = retryLoop(stopCh)
+	c, err := newController(stopCh)
+	if err != nil {
+		// This looks really bad, there was an error creating the Controller
+		panic(err.Error())
+	}
+
+	err = retryLoop(c)
 	if err != nil {
 		panic(err.Error())
 	}

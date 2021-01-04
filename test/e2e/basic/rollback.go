@@ -8,20 +8,21 @@ import (
 	"github.com/onsi/gomega"
 
 	coreapi "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	util "github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 )
 
-// Test the application (and rollback) of a custom profile via Pod labelling.
-var _ = ginkgo.Describe("[basic][custom_pod_labels] Node Tuning Operator custom profile, Pod labels", func() {
+// Test the functionality of the preStop container lifecycle hook -- Tuned settings rollback.
+var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollback", func() {
 	const (
 		profileIngress  = "../../../examples/ingress.yaml"
 		podLabelIngress = "tuned.openshift.io/ingress"
 		sysctlVar       = "net.ipv4.tcp_tw_reuse"
 	)
 
-	ginkgo.Context("custom profile: Pod labels", func() {
+	ginkgo.Context("Tuned settings rollback", func() {
 		var (
 			pod *coreapi.Pod
 		)
@@ -40,6 +41,8 @@ var _ = ginkgo.Describe("[basic][custom_pod_labels] Node Tuning Operator custom 
 				pollInterval = 5 * time.Second
 				waitDuration = 5 * time.Minute
 			)
+			var explain string
+
 			ginkgo.By("getting a list of worker nodes")
 			nodes, err := util.GetNodesByRole(cs, "worker")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -58,7 +61,7 @@ var _ = ginkgo.Describe("[basic][custom_pod_labels] Node Tuning Operator custom 
 			_, _, err = util.ExecAndLogCommand("oc", "label", "pod", "--overwrite", "-n", ntoconfig.OperatorNamespace(), pod.Name, podLabelIngress+"=")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("creating the custom ingress profile %s", profileIngress))
+			ginkgo.By(fmt.Sprintf("creating custom profile %s", profileIngress))
 			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileIngress)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
@@ -66,15 +69,26 @@ var _ = ginkgo.Describe("[basic][custom_pod_labels] Node Tuning Operator custom 
 			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlVar, "1")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("removing label %s from Pod %s", podLabelIngress, pod.Name))
-			_, _, err = util.ExecAndLogCommand("oc", "label", "pod", "--overwrite", "-n", ntoconfig.OperatorNamespace(), pod.Name, podLabelIngress+"-")
+			ginkgo.By(fmt.Sprintf("deleting Pod %s", pod.Name))
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "pod", pod.Name, "--wait")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By(fmt.Sprintf("waiting for a new tuned Pod to be ready on node %s", node.Name))
+			err = wait.PollImmediate(pollInterval, waitDuration, func() (bool, error) {
+				pod, err = util.GetTunedForNode(cs, &node)
+				if err != nil {
+					explain = err.Error()
+					return false, nil
+				}
+				return true, nil
+			})
+			gomega.Expect(err).NotTo(gomega.HaveOccurred(), explain)
 
 			ginkgo.By(fmt.Sprintf("ensuring the original %s value (%s) is set in Pod %s", sysctlVar, valOrig, pod.Name))
 			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlVar, valOrig)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("deleting the custom ingress profile %s", profileIngress))
+			ginkgo.By(fmt.Sprintf("deleting custom profile %s", profileIngress))
 			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileIngress)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		})
