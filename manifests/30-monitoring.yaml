@@ -115,7 +115,7 @@ spec:
     rules:
     - alert: NTOPodsNotReady
       annotations:
-        message: Pod {{"{{"}} $labels.pod {{"}}"}} on node {{"{{"}} $labels.node {{"}}"}} is not ready.
+        message: Pod {{ $labels.pod }} on node {{ $labels.node }} is not ready.
       expr: |
         kube_pod_status_ready{namespace='openshift-cluster-node-tuning-operator', condition='true'} == 0
       for: 30m
