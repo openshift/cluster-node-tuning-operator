@@ -20,6 +20,7 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 		profileIngress  = "../../../examples/ingress.yaml"
 		podLabelIngress = "tuned.openshift.io/ingress"
 		sysctlVar       = "net.ipv4.tcp_tw_reuse"
+		sysctlValDef    = "2" // default value of 'sysctlVar'
 	)
 
 	ginkgo.Context("Tuned settings rollback", func() {
@@ -53,8 +54,8 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 			pod, err = util.GetTunedForNode(cs, &node)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("getting the current value of %s in Pod %s", sysctlVar, pod.Name))
-			valOrig, err := util.WaitForSysctlInPod(pollInterval, waitDuration, pod, sysctlVar)
+			ginkgo.By(fmt.Sprintf("ensuring the default %s value (%s) is set in Pod %s", sysctlVar, sysctlValDef, pod.Name))
+			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlVar, sysctlValDef)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("labelling Pod %s with label %s", pod.Name, podLabelIngress))
@@ -71,6 +72,7 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 
 			ginkgo.By(fmt.Sprintf("deleting Pod %s", pod.Name))
 			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "pod", pod.Name, "--wait")
+			pod = nil
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("waiting for a new tuned Pod to be ready on node %s", node.Name))
@@ -84,8 +86,8 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 			})
 			gomega.Expect(err).NotTo(gomega.HaveOccurred(), explain)
 
-			ginkgo.By(fmt.Sprintf("ensuring the original %s value (%s) is set in Pod %s", sysctlVar, valOrig, pod.Name))
-			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlVar, valOrig)
+			ginkgo.By(fmt.Sprintf("ensuring the default %s value (%s) is set in Pod %s", sysctlVar, sysctlValDef, pod.Name))
+			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlVar, sysctlValDef)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("deleting custom profile %s", profileIngress))

@@ -922,6 +922,7 @@ func (c *Controller) changeWatcher() (err error) {
 
 			if string(data) != socketCmdStop {
 				// We only support one command over the socket interface at this point
+				klog.Warningf("ignoring unsupported command received over socket: %s", string(data))
 				continue
 			}
 
