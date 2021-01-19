@@ -1,0 +1,20 @@
+Lower the threading.Event's wait() timeout.
+
+The current 3600s wait() timeout in the controller's loop is too high.  There
+are known instances of signals not being acted upon.  One known example is
+SIGTERM not being acted upon during system shutdown.  Lowering the timeout
+to 5s allows for this signal to be acted upon right after the timeout.
+
+See: https://github.com/redhat-performance/tuned/pull/319
+
+--- a/tuned/daemon/controller.py
++++ b/tuned/daemon/controller.py
+@@ -61,7 +61,7 @@ class Controller(tuned.exports.interfaces.ExportableInterface):
+ 		if daemon:
+ 			self._terminate.clear()
+ 			# we have to pass some timeout, otherwise signals will not work
+-			while not self._cmd.wait(self._terminate, 3600):
++			while not self._cmd.wait(self._terminate, 5):
+ 				pass
+ 
+ 		log.info("terminating controller")
