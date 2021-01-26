@@ -36,6 +36,15 @@ import (
 
 // Constants
 const (
+	// Constants used for instantiating Profile status conditions;
+	// they will be set to 2^0, 2^1, 2^2, ..., 2^n
+	scApplied Bits = 1 << iota
+	scWarn
+	scError
+)
+
+// Constants
+const (
 	operandNamespace       = "openshift-cluster-node-tuning-operator"
 	timedUpdaterInterval   = 1
 	programName            = "openshift-tuned"
@@ -61,6 +70,8 @@ const (
 
 // Types
 type arrayFlags []string
+
+type Bits uint8
 
 type sockAccepted struct {
 	conn net.Conn
@@ -99,6 +110,8 @@ type Controller struct {
 		reloaded bool
 		// debugging flag
 		debug bool
+		// bit/set representaton of Profile status conditions to report back via API
+		status Bits
 	}
 
 	tunedCmd  *exec.Cmd       // external command (tuned) being prepared or run
@@ -398,23 +411,38 @@ func (c *Controller) tunedRun() {
 	go func() {
 		for scanner.Scan() {
 			l := scanner.Text()
+			profileApplied := strings.Index(l, " tuned.daemon.daemon: static tuning from profile ") >= 0 && strings.Index(l, " applied") >= 0
+			reloadFailed := strings.Index(l, " tuned.daemon.controller: Failed to reload Tuned: ") >= 0
+
+			if profileApplied {
+				c.daemon.status |= scApplied
+			}
+
+			if strings.Index(l, " WARNING ") >= 0 {
+				c.daemon.status |= scWarn
+			}
+
+			if strings.Index(l, " ERROR ") >= 0 {
+				c.daemon.status |= scError
+			}
+
 			if c.daemon.reloading {
-				c.daemon.reloading = !(strings.Index(l, "static tuning from profile") >= 0 && strings.Index(l, "applied") >= 0)
+				c.daemon.reloading = !profileApplied && !reloadFailed
 				c.daemon.reloaded = !c.daemon.reloading
 			}
+
 			fmt.Printf("%s\n", l)
 		}
 	}()
 
 	c.daemon.reloading = true
-	err = c.tunedCmd.Start()
-	if err != nil {
+	c.daemon.status = 0 // clear the set out of which Profile status conditions are created
+	if err = c.tunedCmd.Start(); err != nil {
 		klog.Errorf("error starting tuned: %v", err)
 		return
 	}
 
-	err = c.tunedCmd.Wait()
-	if err != nil {
+	if err = c.tunedCmd.Wait(); err != nil {
 		// The command exited with non 0 exit status, e.g. terminated by a signal
 		klog.Errorf("error waiting for tuned: %v", err)
 		return
@@ -598,7 +626,13 @@ func (c *Controller) timedUpdater() (err error) {
 		if recommendedProfile, err = getRecommendedProfile(); err != nil {
 			return err
 		}
-		if activeProfile != recommendedProfile {
+		if (c.daemon.status & scApplied) == 0 {
+			klog.Infof("re-applying profile (%s) as the previous application did not complete", activeProfile)
+			reload = true
+		} else if (c.daemon.status & scError) != 0 {
+			klog.Infof("re-applying profile (%s) as the previous application ended with error(s)", activeProfile)
+			reload = true
+		} else if activeProfile != recommendedProfile {
 			klog.Infof("active profile (%s) != recommended profile (%s)", activeProfile, recommendedProfile)
 			recommendedProfileDir := tunedProfilesDir + "/" + recommendedProfile
 			if _, err := os.Stat(recommendedProfileDir); os.IsNotExist(err) {
