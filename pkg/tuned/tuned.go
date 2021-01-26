@@ -512,7 +512,9 @@ func (c *Controller) tunedRestart() (err error) {
 	if _, err = c.tunedStop(); err != nil {
 		return err
 	}
-	c.tunedCmd = nil // Cmd.Start() cannot be used more than once
+	c.tunedCmd = nil                 // Cmd.Start() cannot be used more than once
+	c.tunedExit = make(chan bool, 1) // Once tunedStop() terminates, the tunedExit channel is closed!
+
 	if err = c.tunedReload(); err != nil {
 		return err
 	}
