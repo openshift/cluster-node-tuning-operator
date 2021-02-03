@@ -84,8 +84,12 @@ type ControllerConfigSpec struct {
 	// +nullable
 	Infra *configv1.Infrastructure `json:"infra"`
 
-	// kubeletIPv6 is true to force a single-stack IPv6 kubelet config
-	KubeletIPv6 bool `json:"kubeletIPv6,omitempty"`
+	// dns holds the cluster dns details
+	// +nullable
+	DNS *configv1.DNS `json:"dns"`
+
+	// ipFamilies indicates the IP families in use by the cluster network
+	IPFamilies IPFamiliesType `json:"ipFamilies"`
 
 	// networkType holds the type of network the cluster is using
 	// XXX: this is temporary and will be dropped as soon as possible in favor of a better support
@@ -94,6 +98,15 @@ type ControllerConfigSpec struct {
 	// regeneration if this changes.
 	NetworkType string `json:"networkType,omitempty"`
 }
+
+// IPFamiliesType indicates whether the cluster network is IPv4-only, IPv6-only, or dual-stack
+type IPFamiliesType string
+
+const (
+	IPFamiliesIPv4      IPFamiliesType = "IPv4"
+	IPFamiliesIPv6      IPFamiliesType = "IPv6"
+	IPFamiliesDualStack IPFamiliesType = "DualStack"
+)
 
 // ControllerConfigStatus is the status for ControllerConfig
 type ControllerConfigStatus struct {
@@ -338,6 +351,7 @@ type KubeletConfig struct {
 
 // KubeletConfigSpec defines the desired state of KubeletConfig
 type KubeletConfigSpec struct {
+	LogLevel                  *int32                `json:"logLevel,omitempty"`
 	MachineConfigPoolSelector *metav1.LabelSelector `json:"machineConfigPoolSelector,omitempty"`
 	KubeletConfig             *runtime.RawExtension `json:"kubeletConfig,omitempty"`
 }
