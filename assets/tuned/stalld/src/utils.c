@@ -98,6 +98,13 @@ static void set_sig_handler()
 		      strerror(errno));
 		exit(errno);
 	}
+	action.sa_flags = SA_SIGINFO;
+	action.sa_sigaction = inthandler;
+	if (sigaction(SIGTERM, &action, NULL) == -1) {
+		warn("error setting SIGTERM handler: %s\n",
+		      strerror(errno));
+		exit(errno);
+	}
 }
 
 int setup_signal_handling(void)
@@ -190,6 +197,21 @@ void warn(const char *fmt, ...)
 	va_end(ap);
 
 	fprintf(stderr, "\n");
+}
+
+
+/*
+ * print an informational message if config_verbose is true
+ */
+void info(const char *fmt, ...)
+{
+	va_list ap;
+
+	if (config_verbose) {
+		va_start(ap, fmt);
+		vfprintf(stderr, fmt, ap);
+		va_end(ap);
+	}
 }
 
 
@@ -471,12 +493,14 @@ static void print_usage(void)
 		"                               threads on all CPU (uses more CPU/power).",
 		"	misc:",
 		"          --pidfile: write daemon pid to specified file",
+		"          -S/--systemd: running as systemd service, don't fiddle with RT throttling",
 		"          -h/--help: print this menu",
 		NULL,
 	};
 
 	for(i = 0; msg[i]; i++)
 		fprintf(stderr, "%s\n", msg[i]);
+	fprintf(stderr, "  stalld version: %s\n", version);
 
 }
 
@@ -571,13 +595,15 @@ int parse_args(int argc, char **argv)
 			{"starving_threshold",	required_argument, 0, 't'},
 			{"pidfile",             required_argument, 0, 'P'},
 			{"force_fifo", 		no_argument, 	   0, 'F'},
+			{"version", 		no_argument,       0, 'V'},
+			{"systemd",		no_argument,       0, 'S'},
 			{0, 0, 0, 0}
 		};
 
 		/* getopt_long stores the option index here. */
 		int option_index = 0;
 
-		c = getopt_long(argc, argv, "lvkfAhsp:r:d:t:c:F",
+		c = getopt_long(argc, argv, "lvkfAhsp:r:d:t:c:FVS",
 				 long_options, &option_index);
 
 		/* Detect the end of the options. */
@@ -617,10 +643,10 @@ int parse_args(int argc, char **argv)
 			break;
 		case 'r':
 			config_dl_runtime = get_long_from_str(optarg);
-			if (config_dl_period < 200000000)
-				usage("boost_period should be at least 200 ms");
-			if (config_dl_period > 4000000000)
-				usage("boost_period should be at most 4 seconds");
+			if (config_dl_runtime < 8000)
+				usage("boost_runtime should be at least 8 us");
+			if (config_dl_runtime > 1000000)
+				usage("boost_runtime should be at most 1 ms");
 			break;
 		case 'd':
 			config_boost_duration = get_long_from_str(optarg);
@@ -650,6 +676,13 @@ int parse_args(int argc, char **argv)
 		case 'F':
 			config_force_fifo = 1;
 			break;
+		case 'V':
+			puts(version);
+			exit(0);
+			break;
+		case 'S':
+			config_systemd = 1;
+			break;
 		case '?':
 			usage("Invalid option");
 			break;
@@ -667,7 +700,10 @@ int parse_args(int argc, char **argv)
 	if (config_boost_duration > config_starving_threshold)
 		usage("the boost duration cannot be longer than the starving threshold ");
 
-	if (config_dl_runtime < 1000000)
+	/*
+	 * runtime is always < 1 ms, so enable hrtick. Unless config_log_only only is set.
+	 */
+	if (!config_log_only)
 		setup_hr_tick();
 
 	return(0);

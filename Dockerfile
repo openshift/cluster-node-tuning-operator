@@ -36,7 +36,7 @@ RUN INSTALL_PKGS=" \
     rpm -V $INSTALL_PKGS && \
     dnf --setopt=tsflags=nodocs -y install /root/rpms/*.rpm && \
     find /root/rpms -name \*.rpm -exec basename {} .rpm \; | xargs rpm -e --justdb && \
-    cp -a /var/lib/tuned/tuned/stalld/stalld /usr/local/bin && \
+    cp -a /var/lib/tuned/tuned/stalld/{stalld,scripts/throttlectl.sh} /usr/local/bin && \
     rm -rf /var/lib/tuned/tuned && \
     touch /etc/sysctl.conf && \
     dnf clean all && \

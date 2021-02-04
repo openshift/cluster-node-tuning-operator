@@ -9,16 +9,17 @@
 #ifndef __STALLD_H__
 #define __STALLD_H__
 
-#define BUFFER_SIZE		(100*1024)
+#define BUFFER_SIZE		(10*_SC_PAGE_SIZE)
 #define MAX_WAITING_PIDS	30
 
+#define COMM_SIZE		15
 /* informnation about running tasks on a cpu */
 struct task_info {
        int pid;
        int prio;
        int ctxsw;
        time_t since;
-       char comm[15];
+       char comm[COMM_SIZE+1];
 };
 
 /* information about cpus */
@@ -92,13 +93,13 @@ static inline void normalize_timespec(struct timespec *ts)
 
 void die(const char *fmt, ...);
 void warn(const char *fmt, ...);
+void info(const char *fmt, ...);
 void log_msg(const char *fmt, ...);
 
 long get_long_from_str(char *start);
 long get_long_after_colon(char *start);
 long get_variable_long_value(char *buffer, const char *variable);
 
-int turn_off_rt_throttling(void);
 int setup_signal_handling(void);
 void deamonize(void);
 int setup_hr_tick(void);
@@ -106,12 +107,14 @@ int should_monitor(int cpu);
 void usage(const char *fmt, ...);
 void write_pidfile(void);
 int parse_args(int argc, char **argv);
+int rt_throttling_is_off(void);
+int turn_off_rt_throttling(void);
 
 /*
- * shared variables 
+ * shared variables
  */
 extern int running;
-
+extern const char *version;
 extern int config_verbose;
 extern int config_write_kmesg;
 extern int config_log_syslog;
@@ -126,5 +129,6 @@ extern long config_boost_duration;
 extern long config_aggressive;
 extern int config_monitor_all_cpus;
 extern char *config_monitored_cpus;
+extern int config_systemd;
 extern char pidfile[];
 #endif /* __STALLD_H__ */

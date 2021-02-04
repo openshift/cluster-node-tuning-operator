@@ -52,3 +52,10 @@ option.
                           threads on all CPU (uses more CPU/power). [false]
 ### Miscellaneous
 - -h/--help: print this menu
+
+## Repositories
+The repository at https://gitlab.com/rt-linux-tools/stalld is the main
+repository, where the development takes place.
+
+The repository at https://git.kernel.org/pub/scm/utils/stalld/stalld.git is the
+distribution repository, where distros can pick the latest released version.

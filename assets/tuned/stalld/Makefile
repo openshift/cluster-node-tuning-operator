@@ -1,17 +1,23 @@
 NAME	:=	stalld
-VERSION	:=	1.0
+VERSION	:=	1.7
 
 INSTALL	=	install
 CC	:=	gcc
-CFLAGS	:=	-Wall -O2 -g
+FOPTS	:=	-flto=auto -ffat-lto-objects -fexceptions -fstack-protector-strong \
+		-fasynchronous-unwind-tables -fstack-clash-protection -fcf-protection
+MOPTS	:=	-m64 -mtune=generic
+WOPTS	:= 	-Wall -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS
+SOPTS	:= 	-specs=/usr/lib/rpm/redhat/redhat-hardened-cc1 -specs=/usr/lib/rpm/redhat/redhat-annobin-cc1
+
+CFLAGS	:=	-O2 -g -DVERSION=\"$(VERSION)\" $(FOPTS) $(MOPTS) $(WOPTS) $(SOPTS)
 LDFLAGS	:=	-ggdb
 LIBS	:=	 -lpthread
 
 SRC	:=	$(wildcard src/*.c)
 HDR	:=	$(wildcard src/*.h)
 OBJ	:=	$(SRC:.c=.o)
-DIRS	:=	src redhat man
-FILES	:=	Makefile README.md gpl-2.0.txt
+DIRS	:=	src redhat man tests scripts
+FILES	:=	Makefile README.md gpl-2.0.txt scripts/throttlectl.sh
 TARBALL	:=	$(NAME)-$(VERSION).tar.xz
 UPSTREAM_TARBALLS	:= fedorapeople.org:~/public_html/
 BINDIR	:=	/usr/bin
@@ -31,7 +37,6 @@ static: $(OBJ)
 	$(CC) -o stalld-static $(LDFLAGS) --static $(OBJ) $(LIBS)
 
 tests:
-	make -C tests
 
 .PHONY: install
 install:
@@ -50,9 +55,9 @@ clean:
 	@test ! -f stalld-static || rm stalld-static
 	@test ! -f src/stalld.o || rm src/stalld.o
 	@test ! -f $(TARBALL) || rm -f $(TARBALL)
-	@make -C redhat clean
+	@make -C redhat VERSION=$(VERSION) clean
 	@make -C tests clean
-	@rm -rf *~ $(OBJ)
+	@rm -rf *~ $(OBJ) *.tar.xz
 
 tarball:  clean
 	rm -rf $(NAME)-$(VERSION) && mkdir $(NAME)-$(VERSION)
@@ -61,8 +66,8 @@ tarball:  clean
 	rm -rf $(NAME)-$(VERSION)
 
 redhat: tarball
-	$(MAKE) -C redhat
+	$(MAKE) -C redhat VERSION=$(VERSION)
 
 push: tarball
 	scp $(TARBALL) $(UPSTREAM_TARBALLS)
-	make -C redhat push
+	make -C redhat VERSION=$(VERSION) push
