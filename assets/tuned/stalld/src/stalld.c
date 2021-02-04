@@ -35,8 +35,14 @@
 #include <time.h>
 #include <unistd.h>
 #include <linux/sched.h>
+#include <sys/file.h>
 
 #include "stalld.h"
+
+/*
+ * version
+ */
+const char *version = VERSION;
 
 /*
  * logging.
@@ -79,6 +85,16 @@ char *config_monitored_cpus;
 int config_buffer_size = BUFFER_SIZE;
 
 /*
+ * auto-detected task format from /proc/sched_debug
+ */
+int config_task_format;
+
+/*
+ * boolean for if running under systemd
+ */
+int config_systemd;
+
+/*
  * boolean to choose between deadline and fifo
  */
 int boost_policy;
@@ -90,7 +106,7 @@ int boost_policy;
 int running = 1;
 
 /*
- * read the contents of /proc/sched_debug into
+* read the contents of /proc/sched_debug into
  * the input buffer
  */
 int read_sched_debug(char *buffer, int size)
@@ -106,7 +122,7 @@ int read_sched_debug(char *buffer, int size)
 
 	do {
 		retval = read(fd, &buffer[position], size - position);
-		if (read < 0)
+		if (retval < 0)
 			goto out_close_fd;
 
 		position += retval;
@@ -195,19 +211,109 @@ char *alloc_and_fill_cpu_buffer(int cpu, char *sched_dbg, int sched_dbg_size)
 
 	return cpu_buffer;
 }
+
+/*
+ * parsing helpers for skipping whitespace and chars
+ */
+
+static inline char *skipchars(char *str)
+{
+	while (*str && !isspace(*str))
+		str++;
+	return str;
+}
+
+static inline char *skipspaces(char *str)
+{
+	while (*str && isspace(*str))
+		str++;
+	return str;
+}
+
+static inline char *nextline(char *str)
+{
+	char *ptr = strchr(str, '\n');
+	return ptr ? ptr+1 : NULL;
+}
+
+#define OLD_TASK_FORMAT  1
+#define NEW_TASK_FORMAT  2
+#define TASK_MARKER	"runnable tasks:"
+
+/*
+ * read /proc/sched_debug and figure out if it's old or new format
+ * done once so if we fail just exit the program
+ */
+int detect_task_format(void)
+{
+	int bufsiz = BUFFER_SIZE;
+	int size = 0;
+	int fd;
+	char *buffer = malloc(BUFFER_SIZE);
+	char *ptr = buffer;
+	int retval = -1;
+	int status;
+
+	if (buffer == NULL)
+		die("detect_task_format: unable to allocate %d bytes to read /proc/sched_debug");
+
+	if ((fd = open("/proc/sched_debug", O_RDONLY)) < 0)
+		die("detect_task_format: error opening /proc/sched_debug for reading: %s\n", strerror(errno));
+
+	while ((status = read(fd, ptr, BUFFER_SIZE))) {
+		if (status < 0)
+			die ("detect_task_format: error reading /proc/sched_debug: %s\n", strerror(errno));
+		size += status;
+		bufsiz += BUFFER_SIZE;
+		if ((buffer = realloc(buffer, bufsiz)) == NULL)
+			die("detect_task_format: realloc failed for %d size: %s\n", bufsiz, strerror(errno));
+		ptr = buffer + size;
+	}
+	close(fd);
+	buffer[size] = '\0';
+	config_buffer_size = bufsiz;
+	log_msg("initial config_buffer_size set to %d\n", config_buffer_size);
+
+	ptr = strstr(buffer, TASK_MARKER);
+	if (ptr == NULL) {
+		fprintf(stderr, "unable to find 'runnable tasks' in buffer, invalid input\n");
+		exit(-1);
+	}
+	ptr += strlen(TASK_MARKER) + 1;
+	ptr = skipspaces(ptr);
+	if (strncmp(ptr, "task", 4) == 0) {
+		retval = OLD_TASK_FORMAT;
+		log_msg("detected old task format\n");
+	}
+	else if (strncmp(ptr, "S", 1) == 0) {
+		retval = NEW_TASK_FORMAT;
+		log_msg("detected new task format\n");
+	}
+	free(buffer);
+	return retval;
+}
+
+
 /*
  * Example:
  * ' S           task   PID         tree-key  switches  prio     wait-time             sum-exec        sum-sleep'
  * '-----------------------------------------------------------------------------------------------------------'
  * ' I         rcu_gp     3        13.973264         2   100         0.000000         0.004469         0.000000 0 0 /
  */
-int fill_waiting_task(char *buffer, struct task_info *task_info, int nr_entries)
+int parse_new_task_format(char *buffer, struct task_info *task_info, int nr_entries)
 {
 	struct task_info *task;
 	char *start = buffer;
 	int tasks = 0;
 	int comm_size;
 	char *end;
+
+	/*
+	 * if we have less than two tasks on the cpu
+	 * there is no possibility of a stall
+	 */
+	if (nr_entries < 2)
+		return 0;
 
 	while (tasks < nr_entries) {
 		task = &task_info[tasks];
@@ -234,24 +340,23 @@ int fill_waiting_task(char *buffer, struct task_info *task_info, int nr_entries)
 		/*
 		 * skip the spaces.
 		 */
-		while(start[0] == ' ')
-			start++;
+		start = skipspaces(start);
 
-		end = start;
-
-		while(end[0] != ' ')
-			end++;
+		/*
+		 * find the end of the string
+		 */
+		end = skipchars(start);
 
 		comm_size = end - start;
 
-		if (comm_size > 15) {
+		if (comm_size > COMM_SIZE) {
 			warn("comm_size is too large: %d\n", comm_size);
-			comm_size = 15;
+			comm_size = COMM_SIZE;
 		}
 
 		strncpy(task->comm, start, comm_size);
 
-		task->comm[comm_size] = 0;
+		task->comm[comm_size] = '\0';
 
 		/*
 		 * go to the end of the task comm
@@ -268,11 +373,8 @@ int fill_waiting_task(char *buffer, struct task_info *task_info, int nr_entries)
 		/*
 		 * skip the tree-key
 		 */
-		while(start[0] == ' ')
-			start++;
-
-		while(start[0] != ' ')
-			start++;
+		start = skipspaces(start);
+		start = skipchars(start);
 
 		task->ctxsw = strtol(start, &end, 10);
 
@@ -291,6 +393,220 @@ int fill_waiting_task(char *buffer, struct task_info *task_info, int nr_entries)
 	}
 
 	return tasks;
+}
+
+/*
+ * old format of /proc/sched_debug doesn't contain state information so we have
+ * to pick up the pid and then open /proc/<pid>/stat to get the process state.
+ */
+
+static int is_runnable(int pid)
+{
+	int fd, retval, runnable = 0;
+	char stat_path[128], stat[512];
+	char *ptr;
+
+	if (pid == 0)
+		return 0;
+	retval = snprintf(stat_path, sizeof(stat_path), "/proc/%d/stat", pid);
+	if (retval < 0 || retval > sizeof(stat_path)) {
+		warn("stat path for task %d too long\n", pid);
+		goto out_error;
+	}
+	fd = open(stat_path, O_RDONLY);
+	if (!fd) {
+		warn("error opening stat path for task %d\n", pid);
+		goto out_error;
+	}
+	flock(fd, LOCK_SH);
+	retval = read(fd, &stat, sizeof(stat));
+	if (retval < 0) {
+		warn("error reading stat for task %d\n", pid);
+		goto out_close_fd;
+	}
+	if (retval < sizeof(stat))
+		stat[retval] = '\0';
+
+	/*
+	 * the process state is the third white-space delimited
+	 * field in /proc/PID/stat. Skip to there and check what
+	 * the value is.
+	 */
+	ptr = skipchars(stat); // skip first word
+	ptr = skipspaces(ptr); // skip spaces
+	ptr = skipchars(ptr);  // skip second word
+	ptr = skipspaces(ptr); // skip spaces
+
+	switch(*ptr) {
+	case 'R':
+		runnable = 1;
+		break;
+	case 'S':
+	case 'D':
+	case 'Z':
+ 	case 'T':
+		break;
+	default:
+		warn("is_runnable: invalid state(%c) in %s\n", *ptr, stat_path);
+	}
+
+out_close_fd:
+	flock(fd, LOCK_UN);
+	close(fd);
+out_error:
+	return runnable;
+}
+
+static int count_task_lines(char *buffer)
+{
+	char *ptr;
+	int len = strlen(buffer);
+	int lines = 0;
+
+	/* find the runnable tasks: header */
+	ptr = strstr(buffer, TASK_MARKER);
+	if (ptr == NULL)
+		return 0;
+
+	/* skip to the end of the dashed line separator */
+	ptr = strstr(ptr, "-\n");
+	if (ptr == NULL)
+		return 0;
+
+	ptr += 2;
+	while(*ptr && ptr < (buffer+len)) {
+		lines++;
+		ptr = strchr(ptr, '\n');
+		if (ptr == NULL)
+			break;
+		ptr++;
+	}
+	return lines;
+}
+
+/*
+ * Example (old format):
+ * '            task   PID         tree-key  switches  prio     wait-time             sum-exec        sum-sleep
+ * ' ----------------------------------------------------------------------------------------------------------
+ * '     watchdog/35   296       -11.731402      4081     0         0.000000        44.052473         0.000000 /
+ */
+int parse_old_task_format(char *buffer, struct task_info *task_info, int nr_entries)
+{
+	struct task_info *task;
+	char *start = buffer;
+	int waiting_tasks = 0;
+	int comm_size;
+	char *end;
+	char *buffer_end = start+strlen(buffer);
+
+	start = strstr(start, TASK_MARKER);
+	start = strstr(start, "-\n");
+	start++;
+
+	/*
+	 * we can't short-circuit using nr_entries, we have to scan the
+	 * entire list of processes that is on this cpu
+	 */
+	while (*start && start < buffer_end) {
+		int pid, ctxsw, prio;
+		char comm[COMM_SIZE+1];
+		task = &task_info[waiting_tasks];
+		/*
+		 * only care about tasks that are not R (running on a CPU).
+		 */
+		if (start[0] == 'R') {
+			/*
+			 * Go to the end of the line and ignore this
+			 * task.
+			 */
+			start = strchr(start, '\n');
+			start++;
+			continue;
+		}
+		/*
+		 * pick up the comm field
+		 */
+		start = skipspaces(start);
+		end = skipchars(start);
+		comm_size = end - start;
+		if (comm_size > COMM_SIZE) {
+			warn("comm_size is too large: %d\n", comm_size);
+			comm_size = COMM_SIZE;
+		}
+		strncpy(comm, start, comm_size);
+		comm[comm_size] = 0;
+		/*
+		 * go to the end of the task comm
+		 */
+		start=end;
+		/*
+		 * now pick up the pid
+		 */
+		pid = strtol(start, &end, 10);
+		/*
+		 * go to the end of the pid
+		 */
+		start=end;
+		/*
+		 * skip the tree-key
+		 */
+		start = skipspaces(start);
+		start = skipchars(start);
+		/*
+		 * pick up the context switch count
+		 */
+		ctxsw = strtol(start, &end, 10);
+		start = end;
+		/*
+		 * get the priority
+		 */
+		prio = strtol(start, &end, 10);
+		if (is_runnable(pid)) {
+			strncpy(task->comm, comm, comm_size);
+			task->comm[comm_size] = 0;
+			task->pid = pid;
+			task->ctxsw = ctxsw;
+			task->prio = prio;
+			task->since = time(NULL);
+			waiting_tasks++;
+		}
+		if ((start = nextline(start)) == NULL)
+			break;
+		if (waiting_tasks >= nr_entries) {
+			break;
+		}
+	}
+
+	return waiting_tasks;
+}
+
+
+int fill_waiting_task(char *buffer, struct cpu_info *cpu_info, int nr_entries)
+{
+	int nr_waiting = -1;
+	int lines;
+
+	switch (config_task_format) {
+	case NEW_TASK_FORMAT:
+		cpu_info->starving = malloc(sizeof(struct task_info) * cpu_info->nr_running);
+		if (cpu_info->starving == NULL) {
+			warn("fill_waiting_task: failed to malloc %d task_info structs", cpu_info->nr_running);
+			return 0;
+		}
+		nr_waiting = parse_new_task_format(buffer, cpu_info->starving, nr_entries);
+		break;
+	case OLD_TASK_FORMAT:
+		/* count the number of tasks listed */
+		lines = count_task_lines(buffer);
+		if (lines <= 0)
+			return 0;
+		cpu_info->starving = malloc(sizeof(struct task_info) * lines);
+		nr_waiting = parse_old_task_format(buffer, cpu_info->starving, nr_entries);
+		break;
+	default:
+		die("fill_waiting_task: invalid value for config_task_format: %d\n", config_task_format);
+	}
+	return nr_waiting;
 }
 
 void print_waiting_tasks(struct cpu_info *cpu_info)
@@ -371,9 +687,7 @@ int parse_cpu_info(struct cpu_info *cpu_info, char *buffer, int buffer_size)
 
 	cpu_info->nr_running = nr_running;
 	cpu_info->nr_rt_running = nr_rt_running;
-
-	cpu_info->starving = malloc(sizeof(struct task_info) * cpu_info->nr_running);
-	cpu_info->nr_waiting_tasks = fill_waiting_task(cpu_buffer, cpu_info->starving, cpu_info->nr_running);
+	cpu_info->nr_waiting_tasks = fill_waiting_task(cpu_buffer, cpu_info, cpu_info->nr_running);
 	if (old_tasks) {
 		merge_taks_info(old_tasks, nr_old_tasks, cpu_info->starving, cpu_info->nr_waiting_tasks);
 		free(old_tasks);
@@ -818,9 +1132,27 @@ int main(int argc, char **argv)
 	parse_args(argc, argv);
 
 	/*
+	 * check RT throttling
+	 * if --systemd was specified then RT throttling should already be off
+	 * otherwise turn it off
+	 * in both cases verify that it actually got turned off since we can't
+	 * run with it on.
+	 */
+	if (config_systemd) {
+		if (!config_log_only && !rt_throttling_is_off())
+			die ("RT throttling is on! stalld cannot run...\n");
+	}
+	else if (!config_log_only) {
+		turn_off_rt_throttling();
+		if (!rt_throttling_is_off())
+			die("turning off RT throttling failed, stalld cannot run\n");
+	}
+
+	/*
 	 * see if deadline scheduler is available
 	 */
-	boost_policy = check_policies();
+	if (!config_log_only)
+		boost_policy = check_policies();
 
 	nr_cpus = sysconf(_SC_NPROCESSORS_CONF);
 	if (nr_cpus < 1)
@@ -843,8 +1175,11 @@ int main(int argc, char **argv)
 	if (config_log_syslog)
 		openlog("stalld", 0, LOG_DAEMON);
 
+	config_task_format = detect_task_format();
+
 	setup_signal_handling();
-	turn_off_rt_throttling();
+
+
 
 	if (!config_foreground)
 		deamonize();

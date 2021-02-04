@@ -11,19 +11,16 @@ import (
 	ign3types "github.com/coreos/ignition/v2/config/v3_1/types"
 )
 
-func stalldIgnitionFile() ign3types.File {
-	const stalldPath = "/usr/local/bin/stalld"
-	mode := 0755
-
-	stalldBytes, err := ioutil.ReadFile(stalldPath)
+func ignitionFile(path string, mode int) ign3types.File {
+	stalldBytes, err := ioutil.ReadFile(path)
 	if err != nil {
-		klog.Errorf("failed to read %s: %v", stalldPath, err)
+		klog.Errorf("failed to read %s: %v", path, err)
 		return ign3types.File{}
 	}
 	payload := fmt.Sprintf("data:application/octet-stream;base64,%s", base64.StdEncoding.EncodeToString(stalldBytes))
 
 	return ign3types.File{
-		Node:          ign3types.Node{Path: stalldPath},
+		Node:          ign3types.Node{Path: path},
 		FileEmbedded1: ign3types.FileEmbedded1{Contents: ign3types.Resource{Source: &payload}, Mode: &mode}}
 }
 
@@ -79,7 +76,9 @@ Environment=FG=--foreground
 # ex: PF=--pidfile /run/stalld.pid
 Environment=PF="--pidfile /run/stalld.pid"
 
-ExecStart=/usr/bin/chrt -f 10 /usr/local/bin/stalld $CLIST $AGGR $BP $BR $BD $THRESH $LOGGING $FG $PF
+ExecStartPre=/usr/local/bin/throttlectl.sh off
+ExecStart=/usr/bin/chrt -f 10 /usr/local/bin/stalld --systemd $CLIST $AGGR $BP $BR $BD $THRESH $LOGGING $FG $PF
+ExecStopPost=/usr/local/bin/throttlectl.sh on
 Restart=always
 User=root
 `
@@ -94,7 +93,8 @@ func ProvideIgnitionFiles(stalld bool) []ign3types.File {
 	files := []ign3types.File{}
 
 	if stalld {
-		files = append(files, stalldIgnitionFile())
+		files = append(files, ignitionFile("/usr/local/bin/stalld", 0755))
+		files = append(files, ignitionFile("/usr/local/bin/throttlectl.sh", 0755))
 	}
 
 	return files
