@@ -25,7 +25,7 @@ API_TYPES_GENERATED:=$(API_TYPES_DIR)/$(API_ZZ_GENERATED).go
 API_GO_HEADER_FILE:=pkg/apis/header.go.txt
 
 # Container image-related variables
-IMAGE_BUILD_CMD=podman build
+IMAGE_BUILD_CMD=podman build --no-cache
 IMAGE_PUSH_CMD=podman push
 DOCKERFILE=Dockerfile
 REGISTRY=quay.io

@@ -9,14 +9,17 @@ import (
 	"time"
 
 	"github.com/onsi/ginkgo"
-
 	"github.com/pkg/errors"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 
+	configv1 "github.com/openshift/api/config/v1"
+
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/test/framework"
 )
@@ -44,8 +47,8 @@ func GetNodesByRole(cs *framework.ClientSet, role string) ([]corev1.Node, error)
 func GetTunedForNode(cs *framework.ClientSet, node *corev1.Node) (*corev1.Pod, error) {
 	listOptions := metav1.ListOptions{
 		FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": node.Name}).String(),
+		LabelSelector: labels.SelectorFromSet(labels.Set{"openshift-app": "tuned"}).String(),
 	}
-	listOptions.LabelSelector = labels.SelectorFromSet(labels.Set{"openshift-app": "tuned"}).String()
 
 	podList, err := cs.Pods(ntoconfig.OperatorNamespace()).List(context.TODO(), listOptions)
 	if err != nil {
@@ -185,6 +188,66 @@ func WaitForSysctlValueInPod(interval, duration time.Duration, pod *corev1.Pod, 
 	}
 
 	return val, err
+}
+
+// WaitForClusterOperatorConditionStatus blocks until the NTO ClusterOperator
+// condition 'conditionType' Status is equal to the value of 'conditionStatus'.
+// The execution interval to check the value is 'interval' and retries last
+// for at most the duration 'duration'.
+func WaitForClusterOperatorConditionStatus(cs *framework.ClientSet, interval, duration time.Duration,
+	conditionType configv1.ClusterStatusConditionType, conditionStatus configv1.ConditionStatus) error {
+	var explain error
+
+	startTime := time.Now()
+	if err := wait.PollImmediate(interval, duration, func() (bool, error) {
+		co, err := cs.ClusterOperators().Get(context.TODO(), tunedv1.TunedClusterOperatorResourceName, metav1.GetOptions{})
+		if err != nil {
+			explain = err
+			return false, nil
+		}
+
+		for _, cond := range co.Status.Conditions {
+			if cond.Type == conditionType &&
+				cond.Status == conditionStatus {
+				return true, nil
+			}
+		}
+		return false, nil
+	}); err != nil {
+		return errors.Wrapf(err, "failed to wait for ClusterOperator/%s condition %s status %s (waited %s): %v",
+			tunedv1.TunedClusterOperatorResourceName, conditionType, conditionStatus, time.Since(startTime), explain)
+	}
+	return nil
+}
+
+// WaitForClusterOperatorConditionReason blocks until the NTO ClusterOperator
+// condition 'conditionType' Reason is equal to the value of 'conditionReason'.
+// The execution interval to check the value is 'interval' and retries last
+// for at most the duration 'duration'.
+func WaitForClusterOperatorConditionReason(cs *framework.ClientSet, interval, duration time.Duration,
+	conditionType configv1.ClusterStatusConditionType, conditionReason string) error {
+	var explain error
+
+	startTime := time.Now()
+	if err := wait.PollImmediate(interval, duration, func() (bool, error) {
+		co, err := cs.ClusterOperators().Get(context.TODO(), tunedv1.TunedClusterOperatorResourceName, metav1.GetOptions{})
+		if err != nil {
+			explain = err
+			return false, nil
+		}
+
+		for _, cond := range co.Status.Conditions {
+			if cond.Type == conditionType &&
+				cond.Reason == conditionReason {
+				return true, nil
+			}
+		}
+		return false, nil
+	}); err != nil {
+		return errors.Wrapf(err, "failed to wait for ClusterOperator/%s condition %s reason %s (waited %s): %v",
+			tunedv1.TunedClusterOperatorResourceName, conditionType, conditionReason, time.Since(startTime), explain)
+	}
+	return nil
 }
 
 // GetUpdatedMachineCountForPool returns the UpdatedMachineCount for MCP 'pool'.

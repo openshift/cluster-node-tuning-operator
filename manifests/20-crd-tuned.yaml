@@ -123,5 +123,5 @@ spec:
                         description: Name of the Tuned profile to recommend.
                         type: string
             status:
-              description: TunedStatus is the status for a Tuned resource
+              description: TunedStatus is the status for a Tuned resource.
               type: object

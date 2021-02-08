@@ -8,8 +8,10 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	operatorv1helpers "github.com/openshift/library-go/pkg/operator/v1helpers"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
@@ -20,7 +22,7 @@ import (
 
 // syncOperatorStatus computes the operator's current status and therefrom
 // creates or updates the ClusterOperator resource for the operator.
-func (c *Controller) syncOperatorStatus(tuned *tunedv1.Tuned) error {
+func (c *Controller) syncOperatorStatus(tuned *tunedv1.Tuned, profile *tunedv1.Profile) error {
 	klog.V(2).Infof("syncOperatorStatus()")
 
 	co, err := c.getOrCreateOperatorStatus()
@@ -29,11 +31,8 @@ func (c *Controller) syncOperatorStatus(tuned *tunedv1.Tuned) error {
 	}
 	co = co.DeepCopy() // Never modify objects in cache
 
-	tunedMf := ntomf.TunedCustomResource()
-	dsMf := ntomf.TunedDaemonSet()
-
 	oldConditions := co.Status.Conditions
-	co.Status.Conditions, err = c.computeStatusConditions(tuned, oldConditions, dsMf.Name)
+	co.Status.Conditions, err = c.computeStatusConditions(tuned, oldConditions, profile)
 	if err != nil {
 		return err
 	}
@@ -44,13 +43,7 @@ func (c *Controller) syncOperatorStatus(tuned *tunedv1.Tuned) error {
 			operatorv1helpers.SetOperandVersion(&co.Status.Versions, configv1.OperandVersion{Name: "operator", Version: releaseVersion})
 		}
 	}
-	co.Status.RelatedObjects = []configv1.ObjectReference{
-		// The `resource` property of `relatedObjects` stanza should be the lowercase, plural value like `daemonsets`.
-		// See BZ1851214
-		{Group: "", Resource: "namespaces", Name: tunedMf.Namespace},
-		{Group: "tuned.openshift.io", Resource: "tuneds", Name: tunedMf.Name, Namespace: tunedMf.Namespace},
-		{Group: "apps", Resource: "daemonsets", Name: dsMf.Name, Namespace: dsMf.Namespace},
-	}
+	co.Status.RelatedObjects = getRelatedObjects()
 
 	if clusteroperator.ConditionsEqual(oldConditions, co.Status.Conditions) {
 		klog.V(2).Infof("syncOperatorStatus(): ConditionsEqual")
@@ -76,7 +69,6 @@ func (c *Controller) getOrCreateOperatorStatus() (*configv1.ClusterOperator, err
 		if errors.IsNotFound(err) {
 			// Cluster operator not found, create it
 			co = &configv1.ClusterOperator{ObjectMeta: metav1.ObjectMeta{Name: tunedv1.TunedClusterOperatorResourceName}}
-			initializeClusterOperator(co)
 			co, err = c.clients.Config.ClusterOperators().Create(context.TODO(), co, metav1.CreateOptions{})
 			if err != nil {
 				return nil, fmt.Errorf("failed to create clusteroperator %s: %v", co.Name, err)
@@ -89,14 +81,45 @@ func (c *Controller) getOrCreateOperatorStatus() (*configv1.ClusterOperator, err
 	return co, nil
 }
 
+// profileDegraded returns true if Tuned Profiles 'profile' has not been applied
+// or applied with errors (Degraded).
+func profileDegraded(profile *tunedv1.Profile) bool {
+	if profile == nil {
+		return false
+	}
+
+	for _, sc := range profile.Status.Conditions {
+		if (sc.Type == tunedv1.TunedProfileApplied && sc.Status == corev1.ConditionFalse) ||
+			(sc.Type == tunedv1.TunedDegraded && sc.Status == corev1.ConditionTrue) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// anyProfileDegraded returns true if any of the Tuned Profiles in the slice
+// 'profileList' has not been applied or applied with errors (Degraded).
+func anyProfileDegraded(profileList []*tunedv1.Profile) bool {
+	for _, profile := range profileList {
+		if profileDegraded(profile) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // computeStatusConditions computes the operator's current state.
 func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []configv1.ClusterOperatorStatusCondition,
-	dsName string) ([]configv1.ClusterOperatorStatusCondition, error) {
+	profile *tunedv1.Profile) ([]configv1.ClusterOperatorStatusCondition, error) {
 	const (
 		// maximum number of seconds for the operator to be Unavailable with a unique
 		// Reason/Message before setting the Degraded ClusterOperator condition
 		maxTunedUnavailable = 7200
 	)
+	dsMf := ntomf.TunedDaemonSet()
+
 	availableCondition := configv1.ClusterOperatorStatusCondition{
 		Type: configv1.OperatorAvailable,
 	}
@@ -105,6 +128,16 @@ func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []
 	}
 	degradedCondition := configv1.ClusterOperatorStatusCondition{
 		Type: configv1.OperatorDegraded,
+	}
+
+	copyAvailableCondition := func() {
+		progressingCondition.Status = availableCondition.Status
+		progressingCondition.Reason = availableCondition.Reason
+		progressingCondition.Message = availableCondition.Message
+
+		degradedCondition.Status = availableCondition.Status
+		degradedCondition.Reason = availableCondition.Reason
+		degradedCondition.Message = availableCondition.Message
 	}
 
 	switch tuned.Spec.ManagementState {
@@ -117,7 +150,7 @@ func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []
 		availableCondition.Message = "The operator is removed"
 
 	default:
-		ds, err := c.listers.DaemonSets.Get(dsName)
+		ds, err := c.listers.DaemonSets.Get(dsMf.Name)
 		if err != nil {
 			// There was a problem fetching Tuned daemonset
 			if errors.IsNotFound(err) {
@@ -127,7 +160,7 @@ func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []
 					klog.V(3).Infof("no ClusterOperator conditions set, initializing them.")
 					availableCondition.Status = configv1.ConditionFalse
 					availableCondition.Reason = "TunedUnavailable"
-					availableCondition.Message = fmt.Sprintf("DaemonSet %q unavailable", dsName)
+					availableCondition.Message = fmt.Sprintf("DaemonSet %q unavailable", dsMf.Name)
 
 					progressingCondition.Status = configv1.ConditionTrue
 					progressingCondition.Reason = "Reconciling"
@@ -146,15 +179,9 @@ func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []
 				klog.Errorf("setting all ClusterOperator conditions to Unknown: %v", err)
 				availableCondition.Status = configv1.ConditionUnknown
 				availableCondition.Reason = "Unknown"
-				availableCondition.Message = fmt.Sprintf("Unable to fetch DaemonSet %q: %v", dsName, err)
+				availableCondition.Message = fmt.Sprintf("Unable to fetch DaemonSet %q: %v", dsMf.Name, err)
 
-				progressingCondition.Status = availableCondition.Status
-				progressingCondition.Reason = availableCondition.Reason
-				progressingCondition.Message = availableCondition.Message
-
-				degradedCondition.Status = availableCondition.Status
-				degradedCondition.Reason = availableCondition.Reason
-				degradedCondition.Message = availableCondition.Message
+				copyAvailableCondition()
 			}
 		} else {
 			if ds.Status.NumberAvailable > 0 {
@@ -170,7 +197,7 @@ func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []
 				// No operand maintained by the operator is reported as available in the cluster
 				availableCondition.Status = configv1.ConditionFalse
 				availableCondition.Reason = "TunedUnavailable"
-				availableCondition.Message = fmt.Sprintf("DaemonSet %q has no available Pod(s)", dsName)
+				availableCondition.Message = fmt.Sprintf("DaemonSet %q has no available Pod(s)", dsMf.Name)
 				klog.V(3).Infof("syncOperatorStatus(): %s", availableCondition.Message)
 			}
 
@@ -192,20 +219,44 @@ func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []
 
 			degradedCondition.Status = configv1.ConditionFalse
 			degradedCondition.Reason = "AsExpected"
-			degradedCondition.Message = fmt.Sprintf("DaemonSet %q available", dsName)
+			degradedCondition.Message = fmt.Sprintf("DaemonSet %q available", dsMf.Name)
 		}
 
-		// If the operator is not available for an extensive period of time, set the Degraded operator status
+		// Check the Profile status Degraded conditions.
+		var reportDegraded bool
+		if profile == nil {
+			// No Profile was supplied, list and check all of them
+			profileList, err := c.listers.TunedProfiles.List(labels.Everything())
+			if err != nil {
+				// failed to list Tuned Profiles
+				availableCondition.Status = configv1.ConditionUnknown
+				availableCondition.Reason = "Unknown"
+				availableCondition.Message = fmt.Sprintf("Unable to fetch Tuned Profiles: %v", err)
+
+				copyAvailableCondition()
+			}
+			reportDegraded = anyProfileDegraded(profileList)
+		} else {
+			// Profile supplied, check if Degraded should be reported based on its status conditions
+			reportDegraded = profileDegraded(profile)
+		}
+		if reportDegraded {
+			klog.Infof("at least one Profile application failing")
+			availableCondition.Reason = "ProfileDegraded"
+			availableCondition.Message = fmt.Sprintf("At least one Profile application failing")
+		}
+
+		// If the operator is not available for an extensive period of time, set the Degraded operator status.
 		conditions = clusteroperator.SetStatusCondition(conditions, &availableCondition)
 		now := metav1.Now().Unix()
 		for _, condition := range conditions {
 			if condition.Type == configv1.OperatorAvailable &&
 				condition.Status == configv1.ConditionFalse &&
 				now-condition.LastTransitionTime.Unix() > maxTunedUnavailable {
-				klog.V(3).Infof("operator unavailable for longer than %d seconds, setting Degraded status.", maxTunedUnavailable)
+				klog.Infof("operator unavailable for longer than %d seconds, setting Degraded status.", maxTunedUnavailable)
 				degradedCondition.Status = configv1.ConditionTrue
 				degradedCondition.Reason = "TunedUnavailable"
-				degradedCondition.Message = fmt.Sprintf("DaemonSet %q unavailable for more than %d seconds", dsName, maxTunedUnavailable)
+				degradedCondition.Message = fmt.Sprintf("DaemonSet %q unavailable for more than %d seconds", dsMf.Name, maxTunedUnavailable)
 			}
 		}
 	}
@@ -234,27 +285,16 @@ func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []
 	return conditions, nil
 }
 
-// Populate versions and conditions in cluster operator status as CVO expects these fields.
-func initializeClusterOperator(co *configv1.ClusterOperator) {
-	co.Status.Versions = []configv1.OperandVersion{
-		{
-			Name:    "operator",
-			Version: "unknown",
-		},
-	}
-	co.Status.Conditions = []configv1.ClusterOperatorStatusCondition{
-		{
-			Type:   configv1.OperatorAvailable,
-			Status: configv1.ConditionUnknown,
-		},
-		{
-			Type:   configv1.OperatorProgressing,
-			Status: configv1.ConditionUnknown,
-		},
-		{
-			Type:   configv1.OperatorDegraded,
-			Status: configv1.ConditionUnknown,
-		},
+func getRelatedObjects() []configv1.ObjectReference {
+	tunedMf := ntomf.TunedCustomResource()
+	dsMf := ntomf.TunedDaemonSet()
+
+	return []configv1.ObjectReference{
+		// The `resource` property of `relatedObjects` stanza should be the lowercase, plural value like `daemonsets`.
+		// See BZ1851214
+		{Group: "", Resource: "namespaces", Name: tunedMf.Namespace},
+		{Group: "tuned.openshift.io", Resource: "tuneds", Name: tunedMf.Name, Namespace: tunedMf.Namespace},
+		{Group: "apps", Resource: "daemonsets", Name: dsMf.Name, Namespace: dsMf.Namespace},
 	}
 }
 

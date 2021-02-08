@@ -1,0 +1,17 @@
+apiVersion: tuned.openshift.io/v1
+kind: Tuned
+metadata:
+  name: openshift-cause-tuned-failure
+  namespace: openshift-cluster-node-tuning-operator
+spec:
+  profile:
+  - data: |
+      [main]
+      summary=A Tuned daemon profile that does not exist
+      include=profile-does-not-exist
+    name: openshift-cause-tuned-failure
+  recommend:
+  - match:
+    - label: tuned.openshift.io/cause-tuned-failure
+    priority: 20
+    profile: openshift-cause-tuned-failure

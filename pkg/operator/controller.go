@@ -37,7 +37,7 @@ import (
 	tunedinformers "github.com/openshift/cluster-node-tuning-operator/pkg/generated/informers/externalversions"
 	ntomf "github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/metrics"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/tuned"
+	tunedpkg "github.com/openshift/cluster-node-tuning-operator/pkg/tuned"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/openshift/cluster-node-tuning-operator/version"
 
@@ -268,7 +268,7 @@ func (c *Controller) sync(key wqKey) error {
 		if err != nil {
 			return fmt.Errorf("failed to sync DaemonSet: %v", err)
 		}
-		err = c.syncOperatorStatus(cr)
+		err = c.syncOperatorStatus(cr, nil)
 		if err != nil {
 			return fmt.Errorf("failed to sync OperatorStatus: %v", err)
 		}
@@ -348,7 +348,7 @@ out:
 	if err != nil {
 		lastErr = fmt.Errorf("failed to disable Pod informer: %v", err)
 	}
-	err = c.syncOperatorStatus(cr)
+	err = c.syncOperatorStatus(cr, nil)
 	if err != nil {
 		lastErr = fmt.Errorf("failed to synchronize Operator status: %v", err)
 	}
@@ -359,7 +359,7 @@ out:
 func (c *Controller) enqueueProfileUpdates() error {
 	profileList, err := c.listers.TunedProfiles.List(labels.Everything())
 	if err != nil {
-		return fmt.Errorf("failed to list Tuned profiles: %v", err)
+		return fmt.Errorf("failed to list Tuned Profiles: %v", err)
 	}
 	for _, profile := range profileList {
 		// Enqueue Profile updates into the operator's workqueue
@@ -529,6 +529,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 			klog.V(2).Infof("syncProfile(): Profile %s not found, creating one [%s]", profileMf.Name, tunedProfileName)
 			profileMf.Spec.Config.TunedProfile = tunedProfileName
 			profileMf.Spec.Config.Debug = daemonDebug
+			profileMf.Status.Conditions = tunedpkg.InitializeStatusConditions()
 			_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Create(context.TODO(), profileMf, metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to create Profile %s: %v", profileMf.Name, err)
@@ -541,8 +542,15 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		return fmt.Errorf("failed to get Profile %s: %v", profileMf.Name, err)
 	}
 
+	// Profiles carry status conditions based on which OperatorStatus is also
+	// calculated.
+	err = c.syncOperatorStatus(tuned, profile)
+	if err != nil {
+		return fmt.Errorf("failed to sync OperatorStatus: %v", err)
+	}
+
 	if mcLabels != nil {
-		// The tuned profile "tunedProfileName" for nodeName matched with MachineConfig
+		// The Tuned daemon profile "tunedProfileName" for nodeName matched with MachineConfig
 		// labels set for additional machine configuration.  Sync the operator-created
 		// MachineConfig for MachineConfigPools 'pools'.
 		err := c.syncMachineConfig(getMachineConfigNameForPools(pools), mcLabels, profile.Status.Bootcmdline, profile.Status.Stalld)
@@ -596,8 +604,8 @@ func (c *Controller) syncMachineConfig(name string, labels map[string]string, bo
 		return sb.String()
 	}
 	kernelArguments = util.SplitKernelArguments(bootcmdline)
-	ignFiles = tuned.ProvideIgnitionFiles(stalld)
-	ignUnits = tuned.ProvideSystemdUnits(stalld)
+	ignFiles = tunedpkg.ProvideIgnitionFiles(stalld)
+	ignUnits = tunedpkg.ProvideSystemdUnits(stalld)
 
 	annotations := map[string]string{GeneratedByControllerVersionAnnotationKey: version.Version}
 
@@ -651,7 +659,7 @@ func (c *Controller) syncMachineConfig(name string, labels map[string]string, bo
 	return nil
 }
 
-// pruneMachineConfigs removes any MachineConfigs created by the operator that are not selected by any of the tuned profile.
+// pruneMachineConfigs removes any MachineConfigs created by the operator that are not selected by any of the Tuned daemon profile.
 func (c *Controller) pruneMachineConfigs() error {
 	mcList, err := c.listers.MachineConfigs.List(labels.Everything())
 	if err != nil {
@@ -689,7 +697,7 @@ func (c *Controller) pruneMachineConfigs() error {
 	return nil
 }
 
-// Get all operator MachineConfig names for all tuned profiles.
+// Get all operator MachineConfig names for all Tuned daemon profiles.
 func (c *Controller) getMachineConfigNamesForTuned() (map[string]bool, error) {
 	tunedList, err := c.listers.TunedResources.List(labels.Everything())
 	if err != nil {
@@ -881,7 +889,7 @@ func (c *Controller) removeResources() error {
 
 	profileList, err := c.listers.TunedProfiles.List(labels.Everything())
 	if err != nil {
-		lastErr = fmt.Errorf("failed to list Tuned profiles: %v", err)
+		lastErr = fmt.Errorf("failed to list Tuned Profiles: %v", err)
 	}
 	for _, profile := range profileList {
 		err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Delete(ctx, profile.Name, metav1.DeleteOptions{})
