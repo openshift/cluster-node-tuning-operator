@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
@@ -15,7 +16,8 @@ import (
 // Test the installation of systemd units with the stall daemon.
 var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing systemd units and stalld", func() {
 	const (
-		profileRealtime   = "../testing_manifests/stalld.yaml"
+		profileStalldOn   = "../testing_manifests/stalld.yaml"
+		profileStalldOff  = "../testing_manifests/stalld-disable.yaml"
 		mcpRealtime       = "../../../examples/realtime-mcp.yaml"
 		nodeLabelRealtime = "node-role.kubernetes.io/worker-rt"
 	)
@@ -33,11 +35,16 @@ var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing syste
 			if node != nil {
 				util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelRealtime+"-")
 			}
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileRealtime)
+			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileStalldOn)
 			util.ExecAndLogCommand("oc", "delete", "-f", mcpRealtime)
 		})
 
 		ginkgo.It("stalld process started/stopped", func() {
+			const (
+				pollInterval = 5 * time.Second
+				waitDuration = 5 * time.Minute
+			)
+
 			ginkgo.By("getting a list of worker nodes")
 			nodes, err := util.GetNodesByRole(cs, "worker")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -55,8 +62,9 @@ var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing syste
 			_, _, err = util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelRealtime+"=")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("creating custom realtime profile %s with stalld service", profileRealtime))
-			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileRealtime)
+			// BZ1926903: check for the systemd/Tuned [service] plugin race
+			ginkgo.By(fmt.Sprintf("creating custom realtime profile %s with stalld service stopped,disabled", profileStalldOff))
+			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileStalldOff)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("creating custom MachineConfigPool %s", mcpRealtime))
@@ -67,9 +75,44 @@ var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing syste
 			err = util.WaitForPoolUpdatedMachineCount(cs, "worker-rt", 1)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By("checking the stalld daemon is running on the host")
-			out, err := util.ExecCmdInPod(pod, "pidof", "stalld")
-			util.Logf(fmt.Sprintf("stalld process running on the host with PID %s", out))
+			ginkgo.By(fmt.Sprintf("waiting for the tuned daemon running on node %s", node.Name))
+			out, err := util.WaitForCmdInPod(pollInterval, waitDuration, pod, "test", "-e", "/run/tuned/tuned.pid")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			// 10s is very generous to allow for (now unwanted) stalld service starting
+			ginkgo.By("sleeping 10s to allow for (now unwanted) stalld service starting")
+			time.Sleep(10 * time.Second)
+
+			ginkgo.By(fmt.Sprintf("checking the stalld daemon is not running on node %s", node.Name))
+			out, err = util.ExecCmdInPod(pod, "pidof", "stalld")
+			gomega.Expect(err).To(gomega.HaveOccurred()) // pidof exits 1 when there is no running process found
+
+			// There should be no reboot caused by the following step.
+			// Tuned [service] plugin will handle the stalld service enablement and start.
+			ginkgo.By(fmt.Sprintf("applying custom realtime profile %s with stalld service", profileStalldOn))
+			_, _, err = util.ExecAndLogCommand("oc", "apply", "-n", ntoconfig.OperatorNamespace(), "-f", profileStalldOn)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By(fmt.Sprintf("checking the stalld daemon is running on node %s", node.Name))
+			out, err = util.WaitForCmdInPod(pollInterval, waitDuration, pod, "pidof", "stalld")
+			util.Logf(fmt.Sprintf("stalld process running on node %s with PID %s", node.Name, out))
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By(fmt.Sprintf("stopping the stalld daemon on node %s", node.Name))
+			out, err = util.ExecCmdInPod(pod, "chroot", "/host", "systemctl", "stop", "stalld")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By(fmt.Sprintf("checking the stalld daemon is not running on node %s", node.Name))
+			_, err = util.ExecCmdInPod(pod, "pidof", "stalld")
+			gomega.Expect(err).To(gomega.HaveOccurred()) // pidof exits 1 when there is no running process found
+
+			ginkgo.By(fmt.Sprintf("rebooting node %s with stalld daemon enabled", node.Name))
+			out, err = util.ExecCmdInPod(pod, "chroot", "/host", "reboot")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			// Wait for the host to reboot and the Tuned [service] plugin to start/enable stalld service.
+			ginkgo.By(fmt.Sprintf("checking the stalld daemon is running on node %s", node.Name))
+			out, err = util.WaitForCmdInPod(pollInterval, 20*time.Minute, pod, "pidof", "stalld")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			// Node label needs to be removed first, and we also need to wait for the worker pool to complete the update;
@@ -79,8 +122,8 @@ var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing syste
 			_, _, err = util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelRealtime+"-")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("deleting the custom realtime profile %s with stalld service", profileRealtime))
-			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileRealtime)
+			ginkgo.By(fmt.Sprintf("deleting the custom realtime profile %s with stalld service", profileStalldOn))
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileStalldOn)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			// Wait for the worker machineCount to go to the original value when the node was not part of worker-rt pool.
@@ -88,10 +131,9 @@ var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing syste
 			err = util.WaitForPoolUpdatedMachineCount(cs, "worker", workerMachinesOrig)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By("checking the stalld daemon is not running on the host")
+			ginkgo.By(fmt.Sprintf("checking the stalld daemon is not running on node %s", node.Name))
 			_, err = util.ExecCmdInPod(pod, "pidof", "stalld")
-			// pidof exits 1 when there is no running process found
-			gomega.Expect(err).To(gomega.HaveOccurred())
+			gomega.Expect(err).To(gomega.HaveOccurred()) // pidof exits 1 when there is no running process found
 
 			ginkgo.By(fmt.Sprintf("deleting custom MachineConfigPool %s", mcpRealtime))
 			_, _, err = util.ExecAndLogCommand("oc", "delete", "-f", mcpRealtime)
