@@ -39,7 +39,7 @@ spec:
         tolerationSeconds: 120 # Evict pods within 2 mins.
       containers:
         - name: cluster-node-tuning-operator
-          image: registry.svc.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuning-operator
+          image: registry.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuning-operator
           command:
           - cluster-node-tuning-operator
           args:
@@ -58,7 +58,7 @@ spec:
           - name: RESYNC_PERIOD
             value: "600"
           - name: CLUSTER_NODE_TUNED_IMAGE
-            value: registry.svc.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuning-operator
+            value: registry.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuning-operator
           ports:
           - containerPort: 60000
             name: metrics
