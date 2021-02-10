@@ -20,7 +20,7 @@ RUN INSTALL_PKGS=" \
 
 FROM centos:8
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/cluster-node-tuning-operator /usr/bin/
-COPY manifests /manifests
+COPY manifests/*.yaml manifests/image-references /manifests
 ENV APP_ROOT=/var/lib/tuned
 ENV PATH=${APP_ROOT}/bin:${PATH}
 ENV HOME=${APP_ROOT}
