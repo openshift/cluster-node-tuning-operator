@@ -5,11 +5,10 @@ INSTALL	=	install
 CC	:=	gcc
 FOPTS	:=	-flto=auto -ffat-lto-objects -fexceptions -fstack-protector-strong \
 		-fasynchronous-unwind-tables -fstack-clash-protection
-MOPTS	:=	-m64
 WOPTS	:= 	-Wall -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS
 SOPTS	:= 	-specs=/usr/lib/rpm/redhat/redhat-hardened-cc1 -specs=/usr/lib/rpm/redhat/redhat-annobin-cc1
 
-CFLAGS	:=	-O2 -g -DVERSION=\"$(VERSION)\" $(FOPTS) $(MOPTS) $(WOPTS) $(SOPTS)
+CFLAGS	:=	-O2 -g -DVERSION=\"$(VERSION)\" $(FOPTS) $(WOPTS) $(SOPTS)
 LDFLAGS	:=	-ggdb
 LIBS	:=	 -lpthread
 
