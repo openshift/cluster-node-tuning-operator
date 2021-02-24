@@ -16,6 +16,7 @@ import (
 	"syscall"   // syscall.SIGHUP, ...
 	"time"      // time.Second, ...
 
+	"gopkg.in/ini.v1"
 	kmeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -689,42 +690,66 @@ func getNodeName() string {
 	return name
 }
 
-// Note this function searches of any occurrence of the stalld service in all sections
-// of the Tuned profile "data".  This will work but is not ideal.  To search only in
-// the [service] section, a more complete profile parser would have to be written.
-func profileHasStalld(data *string) bool {
-	var idxStart int
+// getIniFileSectionSlice searches INI file `data` inside [`section`]
+// for key `key`.  It takes the key's value and uses separator
+// `separator` to return a slice of strings.
+func getIniFileSectionSlice(data *string, section, key, separator string) []string {
+	var ret []string
+
 	if data == nil {
-		return false
+		return ret
 	}
 
-	for {
-		idx := strings.Index((*data)[idxStart:], "service.stalld")
-		if idx == -1 {
-			return false
-		}
-		idx += idxStart
-		idxStart = idx + 1
-
-		// A regex "^[ \t]*service.stalld" to ignore comments or similar.
-		for idx > 0 {
-			idx--
-			ch := (*data)[idx]
-			if ch == ' ' || ch == '\t' {
-				continue
-			}
-			if ch == '\n' {
-				return true
-			}
-			break
-		}
+	cfg, err := ini.Load([]byte(*data))
+	if err != nil {
+		// This looks like an invalid INI data or parser error.
+		klog.Errorf("unable to read INI file data: %v", err)
+		return ret
 	}
+
+	if !cfg.Section(section).HasKey(key) {
+		return ret
+	}
+
+	ret = strings.Split(cfg.Section(section).Key(key).String(), separator)
+
+	return ret
 }
 
-func (c *Controller) stalldRequested(profileName string) (bool, error) {
+// profileHasStalld returns pointer to a boolean value.  The dereferenced
+// pointer value depends on the Tuned [service] plugin enabling/disabling
+// the "stalld" service.  If the "stalld" service "service.stalld" key is
+// not found in Tuned [service] section, nil is returned.
+func profileHasStalld(profile *string) *bool {
+	var ret bool
+
+	stalldServiceVal := getIniFileSectionSlice(profile, "service", "service.stalld", ",")
+
+	if len(stalldServiceVal) == 0 {
+		// there was no service.stalld key in [service] section
+		return nil
+	}
+
+	for _, v := range stalldServiceVal {
+		if v == "enable" {
+			ret = true
+			return &ret
+		}
+		if v == "disable" {
+			return &ret
+		}
+	}
+
+	// default to "disable" if "enable" is not present as value by service.stalld key
+	return &ret
+}
+
+func (c *Controller) stalldRequested(profileName string) (*bool, error) {
+	var ret bool
+
 	tuned, err := c.listers.TunedResources.Get(tunedv1.TunedRenderedResourceName)
 	if err != nil {
-		return false, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
+		return &ret, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
 	}
 
 	for index, profile := range tuned.Spec.Profile {
@@ -742,7 +767,7 @@ func (c *Controller) stalldRequested(profileName string) (bool, error) {
 		return profileHasStalld(profile.Data), nil
 	}
 
-	return false, nil
+	return &ret, nil
 }
 
 // Method updateTunedProfile updates a Tuned profile with information to report back
@@ -751,7 +776,7 @@ func (c *Controller) stalldRequested(profileName string) (bool, error) {
 func (c *Controller) updateTunedProfile() (err error) {
 	var (
 		bootcmdline     string
-		stalldRequested bool
+		stalldRequested *bool
 	)
 
 	if c.daemon.reloading {
@@ -781,7 +806,9 @@ func (c *Controller) updateTunedProfile() (err error) {
 
 	statusConditions := computeStatusConditions(c.daemon.status, profile.Status.Conditions)
 
-	if profile.Status.Bootcmdline == bootcmdline && profile.Status.Stalld == stalldRequested &&
+	stalldUnchanged := util.PtrBoolEqual(profile.Status.Stalld, stalldRequested)
+
+	if profile.Status.Bootcmdline == bootcmdline && stalldUnchanged &&
 		profile.Status.TunedProfile == activeProfile && conditionsEqual(profile.Status.Conditions, statusConditions) {
 		// Do not update node Profile unnecessarily (e.g. bootcmdline did not change).
 		// This will save operator CPU cycles trying to reconcile objects that do not
