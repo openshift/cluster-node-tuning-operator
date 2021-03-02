@@ -1,0 +1,34 @@
+NTO currently supports the bootloader plugin only on RHCOS via the integration
+with MCO.  Disable patching of BLS entries and grub configuration files so
+that error messages from the tuned daemon are eliminated and not reported
+further on in k8s objects.
+
+diff --git a/assets/tuned/daemon/tuned/plugins/plugin_bootloader.py b/assets/tuned/daemon/tuned/plugins/plugin_bootloader.py
+index 416df7d6..b0a61905 100644
+--- a/tuned/plugins/plugin_bootloader.py
++++ b/tuned/plugins/plugin_bootloader.py
+@@ -35,7 +35,7 @@
+ 		self._cmdline_val = ""
+ 		self._initrd_val = ""
+ 		self._grub2_cfg_file_names = self._get_grub2_cfg_files()
+-		self._bls = self._bls_enabled()
++		self._bls = False
+ 
+ 	def _instance_cleanup(self, instance):
+ 		pass
+@@ -116,7 +116,6 @@
+ 		if full_rollback:
+ 			log.info("removing grub2 tuning previously added by Tuned")
+ 			self._remove_grub2_tuning()
+-			self._update_grubenv({"tuned_params" : "", "tuned_initrd" : ""})
+ 
+ 	def _grub2_cfg_unpatch(self, grub2_cfg):
+ 		log.debug("unpatching grub.cfg")
+@@ -216,7 +215,6 @@
+ 		return True
+ 
+ 	def _grub2_update(self):
+-		self._grub2_cfg_patch({consts.GRUB2_TUNED_VAR : self._cmdline_val, consts.GRUB2_TUNED_INITRD_VAR : self._initrd_val})
+ 		self._patch_bootcmdline({consts.BOOT_CMDLINE_TUNED_VAR : self._cmdline_val, consts.BOOT_CMDLINE_INITRD_ADD_VAR : self._initrd_val})
+ 
+ 	def _has_bls(self):
