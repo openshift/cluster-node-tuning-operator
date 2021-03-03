@@ -19,7 +19,7 @@ import (
 // Test the creation a Tuned Profile causing the Tuned daemon to bail out with an error message and a recovery after deleting the Profile
 var _ = ginkgo.Describe("[basic][tuned_errors_and_recovery] Cause Tuned daemon errors and recover", func() {
 	const (
-		profileCauseTunedFailure   = "../testing_manifests/cause-tuned-failure.yaml"
+		profileCauseTunedFailure   = "../testing_manifests/cause_tuned_failure.yaml"
 		nodeLabelCauseTunedFailure = "tuned.openshift.io/cause-tuned-failure"
 	)
 
