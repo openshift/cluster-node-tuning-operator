@@ -18,6 +18,7 @@ require (
 	github.com/vincent-petithory/dataurl v0.0.0-20191104211930-d1553a71de50 // indirect
 	go4.org v0.0.0-20201209231011-d4a079459e60 // indirect
 	gopkg.in/fsnotify.v1 v1.4.7
+	gopkg.in/ini.v1 v1.51.0
 	k8s.io/api v0.20.2
 	k8s.io/apimachinery v0.20.2
 	k8s.io/client-go v0.20.2
@@ -55,7 +56,7 @@ replace (
 
 // Other pinned deps
 replace (
-	golang.org/x/text => golang.org/x/text v0.3.5 // Fixes for CVE-2020-28852; see RHBZ1913338
 	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2 // Fixes for CVE-2021-3121; see RHBZ1921650
 	github.com/openshift/machine-config-operator => github.com/openshift/machine-config-operator v0.0.1-0.20210130231751-a060922f97f1 // 4.7 as of 2021-02-01
+	golang.org/x/text => golang.org/x/text v0.3.5 // Fixes for CVE-2020-28852; see RHBZ1913338
 )
