@@ -20,8 +20,8 @@ github.com/coreos/ignition/v2/config/merge
 github.com/coreos/ignition/v2/config/shared/errors
 github.com/coreos/ignition/v2/config/shared/validations
 github.com/coreos/ignition/v2/config/util
-github.com/coreos/ignition/v2/config/v3_1
-github.com/coreos/ignition/v2/config/v3_1/types
+github.com/coreos/ignition/v2/config/v3_2
+github.com/coreos/ignition/v2/config/v3_2/types
 github.com/coreos/ignition/v2/config/validate
 # github.com/coreos/vcontext v0.0.0-20191017033345-260217907eb5
 github.com/coreos/vcontext/json
@@ -685,6 +685,6 @@ sigs.k8s.io/yaml
 # k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.20.2
 # k8s.io/metrics => k8s.io/metrics v0.20.2
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.20.2
-# golang.org/x/text => golang.org/x/text v0.3.5
 # github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
 # github.com/openshift/machine-config-operator => github.com/openshift/machine-config-operator v0.0.1-0.20210130231751-a060922f97f1
+# golang.org/x/text => golang.org/x/text v0.3.5
