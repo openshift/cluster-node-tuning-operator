@@ -8,7 +8,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
 
-	ign3types "github.com/coreos/ignition/v2/config/v3_1/types"
+	ign3types "github.com/coreos/ignition/v2/config/v3_2/types"
 )
 
 func ignitionFile(path string, mode int) ign3types.File {

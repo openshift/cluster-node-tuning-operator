@@ -15,8 +15,8 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 
 	ign3error "github.com/coreos/ignition/v2/config/shared/errors"
-	ign3 "github.com/coreos/ignition/v2/config/v3_1"
-	ign3types "github.com/coreos/ignition/v2/config/v3_1/types"
+	ign3 "github.com/coreos/ignition/v2/config/v3_2"
+	ign3types "github.com/coreos/ignition/v2/config/v3_2/types"
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
 
@@ -70,21 +70,21 @@ func newMachineConfig(name string, annotations map[string]string, labels map[str
 	}
 }
 
-// IgnParseWrapper parses rawIgn for V3.1 ignition config and returns
-// a V3.1 Config or an error.
+// IgnParseWrapper parses rawIgn for V3.2 ignition config and returns
+// a V3.2 Config or an error.
 func ignParseWrapper(rawIgn []byte) (interface{}, error) {
-	ignCfgV3_1, rptV3_1, errV3_1 := ign3.Parse(rawIgn)
-	if errV3_1 == nil && !rptV3_1.IsFatal() {
-		return ignCfgV3_1, nil
+	ignCfgV3_2, rptV3_2, errV3_2 := ign3.Parse(rawIgn)
+	if errV3_2 == nil && !rptV3_2.IsFatal() {
+		return ignCfgV3_2, nil
 	}
-	if errV3_1.Error() == ign3error.ErrUnknownVersion.Error() {
-		// NTO handles NTO-created MachineConfigs only.  The first Ignition
-		// version was 2.2.0 and only Ignition version was provided inside
-		// the Ignition config.  Later we switched to version 3.1.0 and started
-		// a support for Storage/Systemd types.  As of 3.1.0 it is safe to ignore
-		// this error and provide Ignition config with only Ignition version without
-		// pulling extra 2.2.0 dependencies for unneeded parsing.  Existing 2.2.0
-		// Ignition configs will automatically be converted to the 3.1.0 version by this.
+	if errV3_2.Error() == ign3error.ErrUnknownVersion.Error() {
+		// NTO handles NTO-created MachineConfigs only.  The first Ignition version
+		// used was 2.2.0 and only Ignition version was provided by the Ignition
+		// config.  Later a switch to 3.1.0 was made as we started support for
+		// Storage/Systemd types.  As of 3.2.0 it is safe to ignore this error and
+		// provide Ignition config with only Ignition version without pulling old
+		// ignition dependencies for unneeded parsing.  Existing Ignition configs
+		// will automatically be converted to the latest NTO-used Ignition version.
 		ignTypesCfg := ign3types.Config{
 			Ignition: ign3types.Ignition{
 				Version: ign3types.MaxVersion.String(),
@@ -93,7 +93,7 @@ func ignParseWrapper(rawIgn []byte) (interface{}, error) {
 
 		return ignTypesCfg, nil
 	}
-	return ign3types.Config{}, fmt.Errorf("parsing Ignition config spec v3.1 failed with error: %v\nReport: %v", errV3_1, rptV3_1)
+	return ign3types.Config{}, fmt.Errorf("parsing Ignition config spec v3.2 failed with error: %v\nReport: %v", errV3_2, rptV3_2)
 }
 
 func parseAndConvertConfig(rawIgn []byte) (ign3types.Config, error) {
