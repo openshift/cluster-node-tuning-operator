@@ -146,7 +146,7 @@ type ProfileStatus struct {
 	Bootcmdline string `json:"bootcmdline"`
 	// deploy stall daemon: https://github.com/bristot/stalld/
 	// +optional
-	Stalld bool `json:"stalld"`
+	Stalld *bool `json:"stalld"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

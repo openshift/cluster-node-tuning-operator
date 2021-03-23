@@ -24,7 +24,7 @@ func ignitionFile(path string, mode int) ign3types.File {
 		FileEmbedded1: ign3types.FileEmbedded1{Contents: ign3types.Resource{Source: &payload}, Mode: &mode}}
 }
 
-func stalldSystemdUnit() ign3types.Unit {
+func stalldSystemdUnit(enabled bool) ign3types.Unit {
 	const unit = `[Unit]
 Description=Stall Monitor
 
@@ -85,14 +85,14 @@ User=root
 
 	return ign3types.Unit{
 		Contents: pointer.StringPtr(unit),
-		Enabled:  pointer.BoolPtr(true),
+		Enabled:  pointer.BoolPtr(enabled),
 		Name:     "stalld.service"}
 }
 
-func ProvideIgnitionFiles(stalld bool) []ign3types.File {
+func ProvideIgnitionFiles(stalld *bool) []ign3types.File {
 	files := []ign3types.File{}
 
-	if stalld {
+	if stalld != nil {
 		files = append(files, ignitionFile("/usr/local/bin/stalld", 0755))
 		files = append(files, ignitionFile("/usr/local/bin/throttlectl.sh", 0755))
 	}
@@ -100,11 +100,11 @@ func ProvideIgnitionFiles(stalld bool) []ign3types.File {
 	return files
 }
 
-func ProvideSystemdUnits(stalld bool) []ign3types.Unit {
+func ProvideSystemdUnits(stalld *bool) []ign3types.Unit {
 	units := []ign3types.Unit{}
 
-	if stalld {
-		units = append(units, stalldSystemdUnit())
+	if stalld != nil {
+		units = append(units, stalldSystemdUnit(*stalld))
 	}
 
 	return units

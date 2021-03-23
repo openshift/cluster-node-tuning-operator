@@ -569,7 +569,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	return nil
 }
 
-func (c *Controller) syncMachineConfig(name string, labels map[string]string, bootcmdline string, stalld bool) error {
+func (c *Controller) syncMachineConfig(name string, labels map[string]string, bootcmdline string, stalld *bool) error {
 	var (
 		kernelArguments []string
 		ignFiles        []ign3types.File

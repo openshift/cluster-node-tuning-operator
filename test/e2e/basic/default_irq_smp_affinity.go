@@ -21,15 +21,15 @@ var _ = ginkgo.Describe("[basic][default_irq_smp_affinity] Node Tuning Operator 
 	const (
 		profileAffinity0          = "../testing_manifests/default_irq_smp_affinity0.yaml"
 		profileAffinity1          = "../testing_manifests/default_irq_smp_affinity1.yaml"
-		nodeLabelAffinity         = "tuned.openshift.io/default-irq-smp-affinity" // make sure this matches the value in profileAffinity file
+		nodeLabelAffinity         = "tuned.openshift.io/default-irq-smp-affinity" // make sure this matches the value in profileAffinity[01] files
 		procIrqDefaultSmpAffinity = "/proc/irq/default_smp_affinity"
-		maskExp                   = "2" // Mask to restrict IRQs to CPU1 (2^1);  make sure this matches the value in profileAffinity file
+		maskExp1                  = "2" // Mask to restrict IRQs to CPU1 (2^1);  make sure this matches the value in profileAffinity1 file
 	)
 
 	ginkgo.Context("irq default smp affinity", func() {
 		var (
-			valExp string
-			node   *coreapi.Node
+			maskExp0 string
+			node     *coreapi.Node
 		)
 
 		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of ginkgo.It()
@@ -46,7 +46,7 @@ var _ = ginkgo.Describe("[basic][default_irq_smp_affinity] Node Tuning Operator 
 				pollInterval = 5 * time.Second
 				waitDuration = 5 * time.Minute
 			)
-			cmdCatAffinity := []string{"cat", procIrqDefaultSmpAffinity}
+			cmdGrepAffinity := []string{"grep", "-o", ".$", procIrqDefaultSmpAffinity}
 
 			ginkgo.By("getting a list of worker nodes")
 			nodes, err := util.GetNodesByRole(cs, "worker")
@@ -59,10 +59,10 @@ var _ = ginkgo.Describe("[basic][default_irq_smp_affinity] Node Tuning Operator 
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("getting the original value of %s", procIrqDefaultSmpAffinity))
-			valOrig, err := util.ExecCmdInPod(pod, cmdCatAffinity...)
+			valOrig, err := util.ExecCmdInPod(pod, cmdGrepAffinity...)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			valOrig = strings.TrimSpace(valOrig)
-			util.Logf("%s has %s: %s", pod.Name, procIrqDefaultSmpAffinity, valOrig)
+			util.Logf("%s has the last nibble of %s: %s", pod.Name, procIrqDefaultSmpAffinity, valOrig)
 
 			ginkgo.By(fmt.Sprintf("labelling node %s with label %s", node.Name, nodeLabelAffinity))
 			_, _, err = util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelAffinity+"=")
@@ -72,30 +72,30 @@ var _ = ginkgo.Describe("[basic][default_irq_smp_affinity] Node Tuning Operator 
 			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileAffinity0)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("ensuring the correct value of %s was set in %s", procIrqDefaultSmpAffinity, procIrqDefaultSmpAffinity))
+			// Check only the last nibble of the /proc/irq/default_smp_affinity mask.  Some virtualized (Xen) systems have
+			// a four nibbles affinity mask even though they have only 4 vCPUs.
 			n, err := strconv.ParseUint(valOrig[len(valOrig)-1:], 16, 4)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			n &= ^(uint64(1 << 1)) // Mask to leave CPU1 alone wrt. IRQs, e.g. (f & ~(2^1)); make sure this matches the value in profileAffinity file
-			valExp = valOrig[0:len(valOrig)-1] + strconv.FormatUint(n, 16)
-			util.Logf("calculated expected IRQ mask: %s", valExp)
-			_, err = util.WaitForCmdOutputInPod(pollInterval, waitDuration, pod, valExp, true, cmdCatAffinity...)
+			n &= ^(uint64(1 << 1)) // Mask to leave CPU1 alone wrt. IRQs, e.g. (f & ~(2^1)); make sure this matches the value in profileAffinity0 file
+			maskExp0 = strconv.FormatUint(n, 16)
+			ginkgo.By(fmt.Sprintf("ensuring the correct value of %s was set in the last nibble of %s", maskExp0, procIrqDefaultSmpAffinity))
+			_, err = util.WaitForCmdOutputInPod(pollInterval, waitDuration, pod, maskExp0, true, cmdGrepAffinity...)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("applying the custom affinity profile %s", profileAffinity1))
 			_, _, err = util.ExecAndLogCommand("oc", "apply", "-n", ntoconfig.OperatorNamespace(), "-f", profileAffinity1)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("ensuring the correct value of %s was set in %s", procIrqDefaultSmpAffinity, procIrqDefaultSmpAffinity))
-			valExp = valOrig[0:len(valOrig)-1] + maskExp
-			_, err = util.WaitForCmdOutputInPod(pollInterval, waitDuration, pod, valExp, true, cmdCatAffinity...)
+			ginkgo.By(fmt.Sprintf("ensuring the correct value of %s was set in the last nibble of %s", maskExp1, procIrqDefaultSmpAffinity))
+			_, err = util.WaitForCmdOutputInPod(pollInterval, waitDuration, pod, maskExp1, true, cmdGrepAffinity...)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("deleting the custom affinity profile %s", profileAffinity0))
 			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileAffinity0)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("ensuring the original value of %s was set in %s", procIrqDefaultSmpAffinity, procIrqDefaultSmpAffinity))
-			_, err = util.WaitForCmdOutputInPod(pollInterval, waitDuration, pod, valOrig, true, cmdCatAffinity...)
+			ginkgo.By(fmt.Sprintf("ensuring the original value of %s was set in the last nibble of %s", valOrig, procIrqDefaultSmpAffinity))
+			_, err = util.WaitForCmdOutputInPod(pollInterval, waitDuration, pod, valOrig, true, cmdGrepAffinity...)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("removing label %s from node %s", nodeLabelAffinity, node.Name))
