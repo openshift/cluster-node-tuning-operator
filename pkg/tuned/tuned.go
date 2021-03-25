@@ -649,6 +649,12 @@ func (c *Controller) timedUpdater() (err error) {
 			reload = true
 		} else {
 			klog.Infof("active and recommended profile (%s) match; profile change will not trigger profile reload", activeProfile)
+			// We do not need to reload the tuned daemon, however, someone may have tampered with the k8s Profile for this node.
+			// Make sure it is up-to-date.
+			if err = c.updateTunedProfile(); err != nil {
+				klog.Error(err.Error())
+				return nil // retry later
+			}
 		}
 		c.change.profile = false
 	}
