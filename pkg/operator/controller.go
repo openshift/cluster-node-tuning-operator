@@ -566,6 +566,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	profile = profile.DeepCopy() // never update the objects from cache
 	profile.Spec.Config.TunedProfile = tunedProfileName
 	profile.Spec.Config.Debug = daemonDebug
+	profile.Status.Conditions = tunedpkg.InitializeStatusConditions()
 
 	klog.V(2).Infof("syncProfile(): updating Profile %s [%s]", profile.Name, tunedProfileName)
 	_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Update(context.TODO(), profile, metav1.UpdateOptions{})
