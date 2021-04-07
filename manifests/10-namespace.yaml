@@ -7,6 +7,7 @@ metadata:
     include.release.openshift.io/single-node-developer: "true"
     include.release.openshift.io/single-node-production-edge: "true"
     openshift.io/node-selector: ""
+    workload.openshift.io/allowed: "management"
   labels:
     openshift.io/cluster-monitoring: "true"
   name: openshift-cluster-node-tuning-operator
