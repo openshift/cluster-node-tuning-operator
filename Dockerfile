@@ -1,4 +1,4 @@
-FROM registry.ci.openshift.org/openshift/release:golang-1.15 AS builder
+FROM registry.ci.openshift.org/openshift/release:golang-1.16 AS builder
 WORKDIR /go/src/github.com/openshift/cluster-node-tuning-operator
 COPY . .
 RUN make build

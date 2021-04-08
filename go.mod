@@ -1,6 +1,6 @@
 module github.com/openshift/cluster-node-tuning-operator
 
-go 1.15
+go 1.16
 
 require (
 	github.com/coreos/ignition v0.35.0 // indirect
@@ -8,22 +8,22 @@ require (
 	github.com/kevinburke/go-bindata v3.16.0+incompatible
 	github.com/onsi/ginkgo v1.11.0
 	github.com/onsi/gomega v1.8.1
-	github.com/openshift/api v0.0.0-20210112145312-790e0a84e3e0
-	github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47
+	github.com/openshift/api v0.0.0-20210405165116-47be53705a13
+	github.com/openshift/client-go v0.0.0-20210331195552-cf6c2669e01f
 	github.com/openshift/crd-schema-gen v1.0.0 // indirect
-	github.com/openshift/library-go v0.0.0-20210113192829-cfbb3f4c80c2
-	github.com/openshift/machine-config-operator v0.0.1-0.20210130231751-a060922f97f1
+	github.com/openshift/library-go v0.0.0-20210331235027-66936e2fcc52
+	github.com/openshift/machine-config-operator v0.0.0-20210402171109-86270f3375f8
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.7.1
 	github.com/vincent-petithory/dataurl v0.0.0-20191104211930-d1553a71de50 // indirect
 	go4.org v0.0.0-20201209231011-d4a079459e60 // indirect
 	gopkg.in/fsnotify.v1 v1.4.7
 	gopkg.in/ini.v1 v1.51.0
-	k8s.io/api v0.20.2
-	k8s.io/apimachinery v0.20.2
-	k8s.io/client-go v0.20.2
-	k8s.io/code-generator v0.20.2
-	k8s.io/klog/v2 v2.4.0
+	k8s.io/api v0.21.0-rc.0
+	k8s.io/apimachinery v0.21.0-rc.0
+	k8s.io/client-go v0.21.0-rc.0
+	k8s.io/code-generator v0.21.0-rc.0
+	k8s.io/klog/v2 v2.8.0
 	k8s.io/utils v0.0.0-20201110183641-67b214c5f920
 	sigs.k8s.io/controller-tools v0.4.0
 )
@@ -57,6 +57,5 @@ replace (
 // Other pinned deps
 replace (
 	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2 // Fixes for CVE-2021-3121; see RHBZ1921650
-	github.com/openshift/machine-config-operator => github.com/openshift/machine-config-operator v0.0.1-0.20210130231751-a060922f97f1 // 4.7 as of 2021-02-01
 	golang.org/x/text => golang.org/x/text v0.3.5 // Fixes for CVE-2020-28852; see RHBZ1913338
 )

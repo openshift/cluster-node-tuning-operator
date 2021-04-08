@@ -40,7 +40,7 @@ github.com/evanphx/json-patch
 github.com/fatih/color
 # github.com/ghodss/yaml v1.0.0
 github.com/ghodss/yaml
-# github.com/go-logr/logr v0.2.0
+# github.com/go-logr/logr v0.4.0
 github.com/go-logr/logr
 # github.com/go-openapi/jsonpointer v0.19.3
 github.com/go-openapi/jsonpointer
@@ -52,7 +52,7 @@ github.com/go-openapi/spec
 github.com/go-openapi/swag
 # github.com/gobuffalo/flect v0.2.0
 github.com/gobuffalo/flect
-# github.com/gogo/protobuf v1.3.1 => github.com/gogo/protobuf v1.3.2
+# github.com/gogo/protobuf v1.3.2 => github.com/gogo/protobuf v1.3.2
 github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/sortkeys
 # github.com/golang/protobuf v1.4.3
@@ -140,11 +140,11 @@ github.com/onsi/gomega/matchers/support/goraph/edge
 github.com/onsi/gomega/matchers/support/goraph/node
 github.com/onsi/gomega/matchers/support/goraph/util
 github.com/onsi/gomega/types
-# github.com/openshift/api v0.0.0-20210112145312-790e0a84e3e0
+# github.com/openshift/api v0.0.0-20210405165116-47be53705a13
 ## explicit
 github.com/openshift/api/config/v1
 github.com/openshift/api/operator/v1
-# github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47
+# github.com/openshift/client-go v0.0.0-20210331195552-cf6c2669e01f
 ## explicit
 github.com/openshift/client-go/config/clientset/versioned
 github.com/openshift/client-go/config/clientset/versioned/scheme
@@ -156,10 +156,10 @@ github.com/openshift/client-go/config/informers/externalversions/internalinterfa
 github.com/openshift/client-go/config/listers/config/v1
 # github.com/openshift/crd-schema-gen v1.0.0
 ## explicit
-# github.com/openshift/library-go v0.0.0-20210113192829-cfbb3f4c80c2
+# github.com/openshift/library-go v0.0.0-20210331235027-66936e2fcc52
 ## explicit
 github.com/openshift/library-go/pkg/operator/v1helpers
-# github.com/openshift/machine-config-operator v0.0.1-0.20210130231751-a060922f97f1 => github.com/openshift/machine-config-operator v0.0.1-0.20210130231751-a060922f97f1
+# github.com/openshift/machine-config-operator v0.0.0-20210402171109-86270f3375f8
 ## explicit
 github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1
 github.com/openshift/machine-config-operator/pkg/generated/clientset/versioned
@@ -197,12 +197,12 @@ github.com/spf13/pflag
 github.com/vincent-petithory/dataurl
 # go4.org v0.0.0-20201209231011-d4a079459e60
 ## explicit
-# golang.org/x/crypto v0.0.0-20201002170205-7f63de1d35b0
+# golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83
 golang.org/x/crypto/ssh/terminal
 # golang.org/x/mod v0.3.0
 golang.org/x/mod/module
 golang.org/x/mod/semver
-# golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
+# golang.org/x/net v0.0.0-20210224082022-3d97a244fca7
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
 golang.org/x/net/html
@@ -215,10 +215,14 @@ golang.org/x/net/idna
 # golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sys v0.0.0-20201112073958-5cba982894dd
+# golang.org/x/sys v0.0.0-20210225134936-a50acf3fe073
+golang.org/x/sys/execabs
 golang.org/x/sys/internal/unsafeheader
+golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
+# golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1
+golang.org/x/term
 # golang.org/x/text v0.3.4 => golang.org/x/text v0.3.5
 golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
@@ -241,9 +245,9 @@ golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
 golang.org/x/text/width
-# golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
+# golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba
 golang.org/x/time/rate
-# golang.org/x/tools v0.0.0-20210106214847-113979e3529a
+# golang.org/x/tools v0.1.0
 golang.org/x/tools/go/ast/astutil
 golang.org/x/tools/go/gcexportdata
 golang.org/x/tools/go/internal/gcimporter
@@ -315,7 +319,7 @@ gopkg.in/tomb.v1
 gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c
 gopkg.in/yaml.v3
-# k8s.io/api v0.20.2 => k8s.io/api v0.20.2
+# k8s.io/api v0.21.0-rc.0 => k8s.io/api v0.20.2
 ## explicit
 k8s.io/api/admissionregistration/v1
 k8s.io/api/admissionregistration/v1beta1
@@ -360,11 +364,11 @@ k8s.io/api/scheduling/v1beta1
 k8s.io/api/storage/v1
 k8s.io/api/storage/v1alpha1
 k8s.io/api/storage/v1beta1
-# k8s.io/apiextensions-apiserver v0.20.0 => k8s.io/apiextensions-apiserver v0.20.2
+# k8s.io/apiextensions-apiserver v0.21.0-rc.0 => k8s.io/apiextensions-apiserver v0.20.2
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1
-# k8s.io/apimachinery v0.20.2 => k8s.io/apimachinery v0.20.2
+# k8s.io/apimachinery v0.21.0-rc.0 => k8s.io/apimachinery v0.20.2
 ## explicit
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
@@ -409,7 +413,7 @@ k8s.io/apimachinery/pkg/version
 k8s.io/apimachinery/pkg/watch
 k8s.io/apimachinery/third_party/forked/golang/json
 k8s.io/apimachinery/third_party/forked/golang/reflect
-# k8s.io/client-go v0.20.2 => k8s.io/client-go v0.20.2
+# k8s.io/client-go v0.21.0-rc.0 => k8s.io/client-go v0.20.2
 ## explicit
 k8s.io/client-go/discovery
 k8s.io/client-go/discovery/fake
@@ -581,7 +585,7 @@ k8s.io/client-go/util/homedir
 k8s.io/client-go/util/keyutil
 k8s.io/client-go/util/retry
 k8s.io/client-go/util/workqueue
-# k8s.io/code-generator v0.20.2 => k8s.io/code-generator v0.20.2
+# k8s.io/code-generator v0.21.0-rc.0 => k8s.io/code-generator v0.20.2
 ## explicit
 k8s.io/code-generator
 k8s.io/code-generator/cmd/client-gen
@@ -627,7 +631,7 @@ k8s.io/gengo/generator
 k8s.io/gengo/namer
 k8s.io/gengo/parser
 k8s.io/gengo/types
-# k8s.io/klog/v2 v2.4.0
+# k8s.io/klog/v2 v2.8.0
 ## explicit
 k8s.io/klog/v2
 # k8s.io/kube-openapi v0.0.0-20201113171705-d219536bb9fd
@@ -686,5 +690,4 @@ sigs.k8s.io/yaml
 # k8s.io/metrics => k8s.io/metrics v0.20.2
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.20.2
 # github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
-# github.com/openshift/machine-config-operator => github.com/openshift/machine-config-operator v0.0.1-0.20210130231751-a060922f97f1
 # golang.org/x/text => golang.org/x/text v0.3.5
