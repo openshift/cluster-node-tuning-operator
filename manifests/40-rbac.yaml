@@ -7,7 +7,6 @@ metadata:
     include.release.openshift.io/ibm-cloud-managed: "true"
     include.release.openshift.io/self-managed-high-availability: "true"
     include.release.openshift.io/single-node-developer: "true"
-    include.release.openshift.io/single-node-production-edge: "true"
   name: cluster-node-tuning-operator
   namespace: openshift-cluster-node-tuning-operator
 
@@ -21,7 +20,6 @@ metadata:
     include.release.openshift.io/ibm-cloud-managed: "true"
     include.release.openshift.io/self-managed-high-availability: "true"
     include.release.openshift.io/single-node-developer: "true"
-    include.release.openshift.io/single-node-production-edge: "true"
   name: cluster-node-tuning-operator
 rules:
 - apiGroups: ["tuned.openshift.io"]
@@ -72,7 +70,6 @@ metadata:
     include.release.openshift.io/ibm-cloud-managed: "true"
     include.release.openshift.io/self-managed-high-availability: "true"
     include.release.openshift.io/single-node-developer: "true"
-    include.release.openshift.io/single-node-production-edge: "true"
   name: cluster-node-tuning-operator
 subjects:
 - kind: ServiceAccount
@@ -94,7 +91,6 @@ metadata:
     include.release.openshift.io/ibm-cloud-managed: "true"
     include.release.openshift.io/self-managed-high-availability: "true"
     include.release.openshift.io/single-node-developer: "true"
-    include.release.openshift.io/single-node-production-edge: "true"
   name: tuned
   namespace: openshift-cluster-node-tuning-operator
 
@@ -108,7 +104,6 @@ metadata:
     include.release.openshift.io/ibm-cloud-managed: "true"
     include.release.openshift.io/self-managed-high-availability: "true"
     include.release.openshift.io/single-node-developer: "true"
-    include.release.openshift.io/single-node-production-edge: "true"
   name: cluster-node-tuning:tuned
 rules:
 - apiGroups: ["tuned.openshift.io"]
@@ -129,7 +124,6 @@ metadata:
     include.release.openshift.io/ibm-cloud-managed: "true"
     include.release.openshift.io/self-managed-high-availability: "true"
     include.release.openshift.io/single-node-developer: "true"
-    include.release.openshift.io/single-node-production-edge: "true"
   name: cluster-node-tuning:tuned
 roleRef:
   kind: ClusterRole
