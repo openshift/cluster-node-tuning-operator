@@ -67,6 +67,10 @@ const (
 	// workqueue related constants
 	wqKindTuned   = "tuned"
 	wqKindProfile = "profile"
+	// If useSystemStalld is set to true, use the OS-shipped stalld; otherwise, use the
+	// NTO-shipped version.  The aim here is to switch back to the legacy code easily just
+	// by setting this constant to false.
+	useSystemStalld = true
 )
 
 // Types
@@ -801,8 +805,10 @@ func (c *Controller) updateTunedProfile() (err error) {
 		return fmt.Errorf("failed to get Profile %s: %v", profile.Name, err)
 	}
 
-	if stalldRequested, err = c.stalldRequested(profile.Spec.Config.TunedProfile); err != nil {
-		return fmt.Errorf("unable to assess whether stalld is requested: %v", err)
+	if !useSystemStalld {
+		if stalldRequested, err = c.stalldRequested(profile.Spec.Config.TunedProfile); err != nil {
+			return fmt.Errorf("unable to assess whether stalld is requested: %v", err)
+		}
 	}
 
 	activeProfile, err := getActiveProfile()
