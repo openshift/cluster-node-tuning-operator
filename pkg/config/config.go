@@ -12,6 +12,8 @@ const (
 	nodeTunedImageDefault    string = "registry.svc.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuned"
 	operatorNamespaceDefault string = "openshift-cluster-node-tuning-operator"
 	resyncPeriodDefault      int64  = 600
+
+	OperatorLockName string = "node-tuning-operator-lock"
 )
 
 // NodeTunedImage returns the operator's operand/tuned image path.
