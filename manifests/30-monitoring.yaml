@@ -90,7 +90,8 @@ spec:
       caFile: /etc/prometheus/configmaps/serving-certs-ca-bundle/service-ca.crt
       serverName: node-tuning-operator.openshift-cluster-node-tuning-operator.svc
   selector:
-    name: node-tuning-operator
+    matchLabels:
+      name: node-tuning-operator
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
