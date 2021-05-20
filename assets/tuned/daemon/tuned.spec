@@ -59,6 +59,7 @@ BuildRequires: asciidoctor
 Requires(post): systemd, virt-what
 Requires(preun): systemd
 Requires(postun): systemd
+BuildRequires: make
 BuildRequires: %{_py}, %{_py}-devel
 # BuildRequires for 'make test'
 # python-mock is needed for python-2.7, but it's not available on RHEL-7
@@ -68,7 +69,10 @@ BuildRequires: %{_py}-mock
 BuildRequires: %{_py}-configobj
 BuildRequires: %{_py}-decorator, %{_py}-pyudev
 Requires: %{_py}-decorator, %{_py}-pyudev, %{_py}-configobj
-Requires: %{_py}-schedutils, %{_py}-linux-procfs, %{_py}-perf
+Requires: %{_py}-linux-procfs, %{_py}-perf
+%if %{without python3}
+Requires: %{_py}-schedutils
+%endif
 # requires for packages with inconsistent python2/3 names
 %if %{with python3}
 # BuildRequires for 'make test'
@@ -90,8 +94,13 @@ Recommends: hdparm
 Recommends: kernel-tools
 Recommends: kmod
 %endif
+# syspurpose
+%if 0%{?rhel} > 8
+Requires: subscription-manager
+%else
 %if 0%{?rhel} > 7
 Requires: python3-syspurpose
+%endif
 %endif
 
 %description
