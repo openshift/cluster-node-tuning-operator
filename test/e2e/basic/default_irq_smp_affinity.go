@@ -58,6 +58,13 @@ var _ = ginkgo.Describe("[basic][default_irq_smp_affinity] Node Tuning Operator 
 			pod, err := util.GetTunedForNode(cs, node)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
+			ginkgo.By(fmt.Sprintf("getting the number of CPUs on %s", node.Name))
+			nCPUs, err := util.ExecCmdInPod(pod, "nproc", "--all")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			nCPUs = strings.TrimSpace(nCPUs)
+			cpus, err := strconv.ParseUint(nCPUs, 10, 0)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
 			ginkgo.By(fmt.Sprintf("getting the original value of %s", procIrqDefaultSmpAffinity))
 			valOrig, err := util.ExecCmdInPod(pod, cmdGrepAffinity...)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -76,7 +83,8 @@ var _ = ginkgo.Describe("[basic][default_irq_smp_affinity] Node Tuning Operator 
 			// a four nibbles affinity mask even though they have only 4 vCPUs.
 			n, err := strconv.ParseUint(valOrig[len(valOrig)-1:], 16, 4)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			n &= ^(uint64(1 << 1)) // Mask to leave CPU1 alone wrt. IRQs, e.g. (f & ~(2^1)); make sure this matches the value in profileAffinity0 file
+			// Mask to leave CPU1 alone wrt. IRQs, e.g. (f & ~(2^1)); make sure this matches the value in profileAffinity0 file.
+			n &= ^(uint64(1 << 1)) & ((1 << cpus) - 1)
 			maskExp0 = strconv.FormatUint(n, 16)
 			ginkgo.By(fmt.Sprintf("ensuring the correct value of %s was set in the last nibble of %s", maskExp0, procIrqDefaultSmpAffinity))
 			_, err = util.WaitForCmdOutputInPod(pollInterval, waitDuration, pod, maskExp0, true, cmdGrepAffinity...)

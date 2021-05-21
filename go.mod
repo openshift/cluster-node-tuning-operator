@@ -5,6 +5,7 @@ go 1.16
 require (
 	github.com/coreos/ignition v0.35.0 // indirect
 	github.com/coreos/ignition/v2 v2.7.0
+	github.com/google/uuid v1.1.2
 	github.com/kevinburke/go-bindata v3.16.0+incompatible
 	github.com/onsi/ginkgo v1.11.0
 	github.com/onsi/gomega v1.8.1
