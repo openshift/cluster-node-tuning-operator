@@ -15,6 +15,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.7.1
 	github.com/vincent-petithory/dataurl v0.0.0-20191104211930-d1553a71de50 // indirect
+	golang.org/x/net v0.0.0-20210525063256-abc453219eb5 // indirect
 	gopkg.in/fsnotify.v1 v1.4.7
 	gopkg.in/ini.v1 v1.51.0
 	k8s.io/api v0.21.1
@@ -55,5 +56,6 @@ replace (
 // Other pinned deps
 replace (
 	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2 // Fixes for CVE-2021-3121; see RHBZ1921650
+	golang.org/x/net => golang.org/x/net v0.0.0-20210525063256-abc453219eb5 // CVE-2021-33194
 	golang.org/x/text => golang.org/x/text v0.3.6 // Various CVE fixes
 )
