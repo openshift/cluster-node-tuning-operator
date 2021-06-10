@@ -1,0 +1,70 @@
+profiles: fix loading multiple profiles if there are repeating profiles
+
+This fixes the issues when applying a profile with multiple inheritance
+where parents include a common ancestor.
+
+Resolves: rhbz#1825882
+
+diff --git a/tests/unit/profiles/test_locator.py b/tests/unit/profiles/test_locator.py
+index 741abdc1..cce88daa 100644
+--- a/tests/unit/profiles/test_locator.py
++++ b/tests/unit/profiles/test_locator.py
+@@ -46,14 +46,18 @@ def test_get_known_names(self):
+ 	def test_get_config(self):
+ 		config_name = self.locator.get_config("custom")
+ 		self.assertEqual(config_name, os.path.join(self._tmp_load_dirs[1], "custom", "tuned.conf"))
++		# none matched, none skipped
++		config_name = self.locator.get_config("non-existent")
++		self.assertIsNone(config_name)
+ 
+ 	def test_get_config_priority(self):
+ 		customized = self.locator.get_config("balanced")
+ 		self.assertEqual(customized, os.path.join(self._tmp_load_dirs[1], "balanced", "tuned.conf"))
+ 		system = self.locator.get_config("balanced", [customized])
+ 		self.assertEqual(system, os.path.join(self._tmp_load_dirs[0], "balanced", "tuned.conf"))
+-		none = self.locator.get_config("balanced", [customized, system])
+-		self.assertIsNone(none)
++		# none matched, but at least one skipped
++		empty = self.locator.get_config("balanced", [customized, system])
++		self.assertEqual(empty, "")
+ 
+ 	def test_ignore_nonexistent_dirs(self):
+ 		locator = Locator([self._tmp_load_dirs[0], "/tmp/some-dir-which-does-not-exist-for-sure"])
+diff --git a/tuned/profiles/loader.py b/tuned/profiles/loader.py
+index 050c1d8d..7f132b4f 100644
+--- a/tuned/profiles/loader.py
++++ b/tuned/profiles/loader.py
+@@ -77,6 +77,8 @@ def _expand_vars_in_regexes(self, profile):
+ 	def _load_profile(self, profile_names, profiles, processed_files):
+ 		for name in profile_names:
+ 			filename = self._profile_locator.get_config(name, processed_files)
++			if filename == "":
++				continue
+ 			if filename is None:
+ 				raise InvalidProfileException("Cannot find profile '%s' in '%s'." % (name, list(reversed(self._profile_locator._load_directories))))
+ 			processed_files.append(filename)
+diff --git a/tuned/profiles/locator.py b/tuned/profiles/locator.py
+index dcce66e9..3fd46916 100644
+--- a/tuned/profiles/locator.py
++++ b/tuned/profiles/locator.py
+@@ -24,17 +24,19 @@ def _get_config_filename(self, *path_parts):
+ 		return os.path.normpath(config_name)
+ 
+ 	def get_config(self, profile_name, skip_files=None):
++		ret = None
+ 		for dir_name in reversed(self._load_directories):
+ 			# basename is protection not to get out of the path
+ 			config_file = self._get_config_filename(dir_name, os.path.basename(profile_name))
+ 
+ 			if skip_files is not None and config_file in skip_files:
++				ret = ""
+ 				continue
+ 
+ 			if os.path.isfile(config_file):
+ 				return config_file
+ 
+-		return None
++		return ret
+ 
+ 	def check_profile_name_format(self, profile_name):
+ 		return profile_name is not None and profile_name != "" and "/" not in profile_name
