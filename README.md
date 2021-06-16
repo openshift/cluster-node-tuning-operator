@@ -163,7 +163,7 @@ for a MachineConfig. The MachineConfig is created automatically to apply host se
 kernel boot parameters, for the profile `<tuned_profile_name>`. This involves
 finding all MachineConfigPools with machineConfigSelector matching
 `<mcLabels>` and setting the profile `<tuned_profile_name>` on all nodes that
-match the MachineConfigPools' `nodeSelectors`.
+are assigned the found MachineConfigPools.
 
 The list items `match` and `machineConfigLabels` are connected by the logical OR operator.
 The `match` item is evaluated first in a short-circuit manner. Therefore, if it evaluates to
