@@ -48,7 +48,7 @@ rules:
   verbs: ["get"]
 - apiGroups: [""]
   resources: ["events"]
-  verbs: ["create"]
+  verbs: ["create","patch"]
 - apiGroups: ["config.openshift.io"]
   resources: ["clusteroperators"]
   verbs: ["create","get","list","watch"]

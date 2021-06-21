@@ -58,7 +58,7 @@ func (c *Controller) syncOperatorStatus(tuned *tunedv1.Tuned) error {
 	}
 
 	metrics.Degraded(conditionTrue(co.Status.Conditions, configv1.OperatorDegraded))
-	_, err = c.clients.Config.ClusterOperators().UpdateStatus(context.TODO(), co, metav1.UpdateOptions{})
+	_, err = c.clients.ConfigV1Client.ClusterOperators().UpdateStatus(context.TODO(), co, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("unable to update ClusterOperator: %v", err)
 		return err
@@ -77,7 +77,7 @@ func (c *Controller) getOrCreateOperatorStatus() (*configv1.ClusterOperator, err
 			// Cluster operator not found, create it
 			co = &configv1.ClusterOperator{ObjectMeta: metav1.ObjectMeta{Name: tunedv1.TunedClusterOperatorResourceName}}
 			initializeClusterOperator(co)
-			co, err = c.clients.Config.ClusterOperators().Create(context.TODO(), co, metav1.CreateOptions{})
+			co, err = c.clients.ConfigV1Client.ClusterOperators().Create(context.TODO(), co, metav1.CreateOptions{})
 			if err != nil {
 				return nil, fmt.Errorf("failed to create clusteroperator %s: %v", co.Name, err)
 			}
