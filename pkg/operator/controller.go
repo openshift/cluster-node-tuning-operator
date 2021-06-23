@@ -21,13 +21,15 @@ import (
 	coreset "k8s.io/client-go/kubernetes/typed/core/v1"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	configapiv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
-	configset "github.com/openshift/client-go/config/clientset/versioned"
-	configsetv1 "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
+	configclientset "github.com/openshift/client-go/config/clientset/versioned"
+	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	configinformers "github.com/openshift/client-go/config/informers/externalversions"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
@@ -42,6 +44,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/version"
 
 	ign3types "github.com/coreos/ignition/v2/config/v3_1/types"
+	"github.com/google/uuid"
 	mcfgclientset "github.com/openshift/machine-config-operator/pkg/generated/clientset/versioned"
 	mcfginformers "github.com/openshift/machine-config-operator/pkg/generated/informers/externalversions"
 )
@@ -104,6 +107,47 @@ func NewController() (*Controller, error) {
 
 	// Initial event to bootstrap CR if it doesn't exist.
 	controller.workqueue.AddRateLimited(wqKey{kind: wqKindTuned, name: tunedv1.TunedDefaultResourceName})
+
+	controller.clients.Kube, err = kubeset.NewForConfig(controller.kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+
+	// ClusterOperator
+	controller.clients.ConfigV1Client, err = configv1client.NewForConfig(controller.kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+
+	// Tuned
+	controller.clients.Tuned, err = tunedset.NewForConfig(controller.kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+
+	// MachineConfig
+	controller.clients.MC, err = mcfgclientset.NewForConfig(controller.kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+
+	// ConfigMap and Pods (only for leader-election)
+	controller.clients.Core, err = coreset.NewForConfig(controller.kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+
+	// DaemonSet
+	controller.clients.Apps, err = appsset.NewForConfig(controller.kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+
+	// ClusterOperator
+	controller.clients.ConfigClientSet, err = configclientset.NewForConfig(controller.kubeconfig)
+	if err != nil {
+		return nil, err
+	}
 
 	return controller, nil
 }
@@ -900,72 +944,17 @@ func (c *Controller) removeResources() error {
 	return lastErr
 }
 
-// Run will set up the event handlers for types we are interested in, as well
+// run will set up the event handlers for types we are interested in, as well
 // as syncing informer caches and starting workers. It will block until stopCh
 // is closed, at which point it will shutdown the workqueue and wait for
 // workers to finish processing their current work items.
-func (c *Controller) Run(stopCh <-chan struct{}) error {
+func (c *Controller) run(stopCh <-chan struct{}) {
 	defer c.workqueue.ShutDown()
-
-	var err error
-
-	c.clients.Kube, err = kubeset.NewForConfig(c.kubeconfig)
-	if err != nil {
-		return err
-	}
-
-	// ClusterOperator
-	c.clients.Config, err = configsetv1.NewForConfig(c.kubeconfig)
-	if err != nil {
-		return err
-	}
-
-	// Tuned
-	c.clients.Tuned, err = tunedset.NewForConfig(c.kubeconfig)
-	if err != nil {
-		return err
-	}
-
-	// MachineConfig
-	c.clients.MC, err = mcfgclientset.NewForConfig(c.kubeconfig)
-	if err != nil {
-		return err
-	}
-
-	// ConfigMap and Pods (only for leader-election)
-	c.clients.Core, err = coreset.NewForConfig(c.kubeconfig)
-	if err != nil {
-		return err
-	}
-
-	// DaemonSet
-	c.clients.Apps, err = appsset.NewForConfig(c.kubeconfig)
-	if err != nil {
-		return err
-	}
-
-	// ClusterOperator
-	configClient, err := configset.NewForConfig(c.kubeconfig)
-	if err != nil {
-		return err
-	}
-
-	// Become the leader before proceeding
-	klog.Info("trying to become a leader")
-	err = c.becomeLeader(ntoconfig.OperatorNamespace(), "node-tuning-operator-lock")
-	if err != nil {
-		klog.Fatal(err)
-	}
-	klog.Info("became a leader")
-
-	// Remove any leftover ConfigMaps during upgrade from 4.[1-3] installations; drop this hack for 4.5+
-	c.clients.Core.ConfigMaps(ntoconfig.OperatorNamespace()).Delete(context.TODO(), "tuned-profiles", metav1.DeleteOptions{})
-	c.clients.Core.ConfigMaps(ntoconfig.OperatorNamespace()).Delete(context.TODO(), "tuned-recommend", metav1.DeleteOptions{})
 
 	// Start the informer factories to begin populating the informer caches
 	klog.Info("starting Tuned controller")
 
-	configInformerFactory := configinformers.NewSharedInformerFactory(configClient, ntoconfig.ResyncPeriod())
+	configInformerFactory := configinformers.NewSharedInformerFactory(c.clients.ConfigClientSet, ntoconfig.ResyncPeriod())
 	kubeNTOInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.Kube, ntoconfig.ResyncPeriod(), kubeinformers.WithNamespace(ntoconfig.OperatorNamespace()))
 	tunedInformerFactory := tunedinformers.NewSharedInformerFactoryWithOptions(c.clients.Tuned, ntoconfig.ResyncPeriod(), tunedinformers.WithNamespace(ntoconfig.OperatorNamespace()))
 	mcfgInformerFactory := mcfginformers.NewSharedInformerFactory(c.clients.MC, ntoconfig.ResyncPeriod())
@@ -1009,7 +998,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 		mcpInformer.Informer().HasSynced,
 	)
 	if !ok {
-		return fmt.Errorf("failed to wait for caches to sync")
+		klog.Error("failed to wait for caches to sync")
+		return
 	}
 
 	klog.V(1).Info("starting events processor")
@@ -1020,6 +1010,94 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 	c.enableNodeInformer(false)
 	c.enablePodInformer(false)
 	klog.Info("shutting down events processor/controller")
+}
 
-	return nil
+// BecomeLeader uses client-go leader-with-lease election mechanism to
+// select a leader and starts the controller by calling operator run
+// method.
+func (c *Controller) BecomeLeader(stopCh <-chan struct{}) {
+	const (
+		leaseDuration = 30 * time.Second
+		renewDeadline = 15 * time.Second
+		retryPeriod   = 10 * time.Second
+	)
+
+	// Become the leader before proceeding.
+	klog.Info("trying to become a leader")
+
+	// Check the presence of the legacy node-tuning-operator-lock ConfigMap.
+	// If the owner references exist in the ConfigMap, we have an old garbage
+	// collection based locking scheme and we cannot continue until the ConfigMap
+	// is GC or deleted manually.  If the owner references do not exist, just go
+	// ahead with the new client-go leader-election code.
+loop:
+	for {
+		gcLockFound, err := c.usingGCLocking(ntoconfig.OperatorNamespace(), ntoconfig.OperatorLockName)
+
+		switch {
+		case err != nil:
+			klog.Errorf("failed retrieve operator lock %s/%s: %v",
+				ntoconfig.OperatorNamespace(), ntoconfig.OperatorLockName, err)
+		case gcLockFound:
+			klog.Errorf("garbage collector locking scheme found, waiting for operator lock %s/%s removal",
+				ntoconfig.OperatorNamespace(), ntoconfig.OperatorLockName)
+		default:
+			break loop
+		}
+
+		select {
+		case <-time.After(5 * time.Second):
+			continue
+		}
+	}
+
+	// Use a Go context so we can tell the leaderelection code when we
+	// want to step down.
+	ctx, runCancel := context.WithCancel(context.Background())
+	defer runCancel()
+
+	// Generate leader election ID.
+	id, err := os.Hostname()
+	if err != nil {
+		klog.Errorf("os.Hostname() failed, using only UUID for the lock identity: %v", err)
+	}
+	id = id + "_" + uuid.New().String()
+
+	lock := &resourcelock.ConfigMapLock{
+		ConfigMapMeta: metav1.ObjectMeta{
+			Name:      ntoconfig.OperatorLockName,
+			Namespace: ntoconfig.OperatorNamespace(),
+		},
+		Client: c.clients.Core,
+		LockConfig: resourcelock.ResourceLockConfig{
+			Identity: id,
+		},
+	}
+
+	// Start the leader election code loop.
+	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
+		Lock:            lock,
+		ReleaseOnCancel: true,
+		LeaseDuration:   leaseDuration,
+		RenewDeadline:   renewDeadline,
+		RetryPeriod:     retryPeriod,
+		Callbacks: leaderelection.LeaderCallbacks{
+			OnStartedLeading: func(_ context.Context) {
+				klog.Infof("became leader: %s", id)
+				c.run(stopCh)
+				runCancel()
+			},
+			OnStoppedLeading: func() {
+				klog.Infof("leader lost")
+			},
+			OnNewLeader: func(identity string) {
+				// we're notified when new leader elected
+				if identity == id {
+					// we became the leader
+					return
+				}
+				klog.Infof("current leader: %s", identity)
+			},
+		},
+	})
 }

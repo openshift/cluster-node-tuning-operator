@@ -43,7 +43,7 @@ func RunServer(port int, stopCh <-chan struct{}) {
 		}
 	}()
 	<-stopCh
-	if err := srv.Shutdown(context.Background()); err != http.ErrServerClosed {
+	if err := srv.Shutdown(context.Background()); err != nil && err != http.ErrServerClosed {
 		klog.Errorf("error stopping metrics listener: %v", err)
 	}
 }

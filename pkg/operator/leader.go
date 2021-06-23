@@ -166,3 +166,25 @@ func isInCluster() bool {
 	// for the purposes of leader election assume we're running InCluster
 	return true
 }
+
+func (c *Controller) usingGCLocking(ns string, lockName string) (bool, error) {
+	if ns == "" {
+		return false, fmt.Errorf("namespace unset")
+	}
+
+	existing, err := c.clients.Core.ConfigMaps(ns).Get(context.TODO(), lockName, metav1.GetOptions{})
+
+	switch {
+	case err == nil:
+		for _, existingOwner := range existing.GetOwnerReferences() {
+			klog.V(1).Infof("found owner references: %v", existingOwner)
+		}
+		return len(existing.GetOwnerReferences()) > 0, nil
+	case apierrors.IsNotFound(err):
+		klog.V(1).Info("no pre-existing lock was found")
+		return false, nil
+	default:
+		klog.Error(err, "unknown error trying to get ConfigMap")
+		return false, err
+	}
+}

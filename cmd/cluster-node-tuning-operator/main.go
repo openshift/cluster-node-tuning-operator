@@ -55,10 +55,7 @@ func main() {
 			klog.Fatal(err)
 		}
 
-		err = controller.Run(stopCh)
-		if err != nil {
-			klog.Fatalf("error running controller: %s", err.Error())
-		}
+		controller.BecomeLeader(stopCh)
 	case operandFilename:
 		tuned.Run(stopCh, boolVersion, version.Version)
 	default:
