@@ -12,10 +12,43 @@
 #define BUFFER_PAGES		10
 #define MAX_WAITING_PIDS	30
 
-#define COMM_SIZE		15
+/*
+ *workqueue worker names are now more verbose and needs
+ * to be taken into consideration.
+ * Reference - https://lkml.org/lkml/2018/5/17/16
+ * This change is also taken into consideration by
+ * procps-ng
+ * Commit - 2cfdbbe897f0d4e41460c7c2b92acfc5804652c8
+ */
+#define COMM_SIZE		63
+
+/* macros related to the denylisting feature */
+#define SWAPPER 0
+#define IGNORE_THREADS 1
+#define IGNORE_PROCESSES 2
+#define TGID_FIELD 6
+#define REGEXEC_NO_NMATCH 0
+#define REGEXEC_NO_MATCHPTR NULL
+#define REGEXEC_NO_FLAGS 0
+#define TMP_BUFFER_SIZE 100
+
+/*
+ * this macro defines the size of a character array
+ * to save strings of the form "/proc/pid/comm" or
+ * "/proc/pid/status". PIDs can be configured up to
+ * (2^22) on 64 bit systems which maps to 7 digits.
+ * So 30 characters worth of storage should
+ * be enough
+ */
+#define PROC_PID_FILE_PATH_LEN 30
+
+/* Daemon umask value */
+#define DAEMON_UMASK  0x133  /* 0644 */
+
 /* informnation about running tasks on a cpu */
 struct task_info {
        int pid;
+       int tgid;
        int prio;
        int ctxsw;
        time_t since;
@@ -34,7 +67,7 @@ struct cpu_info {
        struct task_info *starving;
        pthread_t thread;
        char *buffer;
-       int buffer_size;
+       size_t buffer_size;
 };
 
 #ifdef __x86_64__
@@ -92,9 +125,14 @@ static inline void normalize_timespec(struct timespec *ts)
  * forward function definitions
  */
 
-void die(const char *fmt, ...);
-void warn(const char *fmt, ...);
-void info(const char *fmt, ...);
+void __die(const char *fmt, ...);
+void __warn(const char *fmt, ...);
+void __info(const char *fmt, ...);
+
+#define die(fmt, ...)	__die("%s: " fmt, __func__, ##__VA_ARGS__)
+#define warn(fmt, ...)	__warn("%s: " fmt, __func__, ##__VA_ARGS__)
+#define info(fmt, ...)	__info("%s: " fmt, __func__, ##__VA_ARGS__)
+
 void log_msg(const char *fmt, ...);
 
 long get_long_from_str(char *start);
@@ -110,6 +148,7 @@ void write_pidfile(void);
 int parse_args(int argc, char **argv);
 int rt_throttling_is_off(void);
 int turn_off_rt_throttling(void);
+void cleanup_regex();
 
 /*
  * shared variables
@@ -121,6 +160,7 @@ extern int config_write_kmesg;
 extern int config_log_syslog;
 extern int config_log_only;
 extern int config_foreground;
+extern int config_ignore;
 extern unsigned long config_dl_period;
 extern unsigned long config_dl_runtime;
 extern unsigned long config_fifo_priority;
@@ -135,4 +175,8 @@ extern long config_granularity;
 extern int config_idle_detection;
 extern int config_single_threaded;
 extern char pidfile[];
+extern unsigned int nr_thread_ignore;
+extern unsigned int nr_process_ignore;
+extern regex_t *compiled_regex_thread;
+extern regex_t *compiled_regex_process;
 #endif /* __STALLD_H__ */

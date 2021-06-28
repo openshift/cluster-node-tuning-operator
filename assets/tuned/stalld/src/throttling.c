@@ -27,6 +27,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <linux/sched.h>
+#include <regex.h>
 
 #include "stalld.h"
 
@@ -42,11 +43,11 @@ static void restore_rt_throttling(int status, void *arg)
 		char buffer[80];
 
 		if (fd < 0)
-			die("restore_rt_throttling: failed to open %s\n", RT_RUNTIME_PATH);
+			die("failed to open %s\n", RT_RUNTIME_PATH);
 		sprintf(buffer, "%ld", rt_runtime_us);
 		retval = write(fd, buffer, strlen(buffer));
 		if (retval < 0)
-			warn("restore_rt_throttling: error restoring rt throttling");
+			warn("error restoring rt throttling");
 
 		close(fd);
 		log_msg("RT Throttling runtime restored to %d\n", rt_runtime_us);
@@ -58,15 +59,13 @@ int turn_off_rt_throttling(void)
 	int fd;
 	char buffer[80];
 	int status;
-	
 
 	/* get the current value of the throttling runtime */
 	fd = open(RT_RUNTIME_PATH, O_RDWR);
 	status = read(fd, buffer, sizeof(buffer));
 	if (status < 0)
-		die("turn_off_rt_throttling: failed to read %s\n",
-		    RT_RUNTIME_PATH);
-	
+		die("failed to read %s\n", RT_RUNTIME_PATH);
+
 	rt_runtime_us = strtol(buffer, NULL, 10);
 
 	if (rt_runtime_us == -1) {
@@ -78,10 +77,10 @@ int turn_off_rt_throttling(void)
 	/* turn off throttling and register an exit handler to restore it */
 	status = lseek(fd, 0, SEEK_SET);
 	if (status < 0)
-		die("turn_off_rt_throttling: unable to seek on %s", RT_RUNTIME_PATH);
+		die("unable to seek on %s", RT_RUNTIME_PATH);
 	status = write(fd, "-1", 2);
 	if (status < 0)
-		die("turn_off_rt_throttling: unable to write -1 to  %s", RT_RUNTIME_PATH);
+		die("unable to write -1 to  %s", RT_RUNTIME_PATH);
 	close(fd);
 	on_exit(restore_rt_throttling, NULL);
 	log_msg("RT Throttling disabled\n");
