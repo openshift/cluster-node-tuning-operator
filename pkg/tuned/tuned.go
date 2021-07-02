@@ -428,7 +428,7 @@ func (c *Controller) tunedRun() {
 		for scanner.Scan() {
 			l := scanner.Text()
 			profileApplied := strings.Index(l, " tuned.daemon.daemon: static tuning from profile ") >= 0 && strings.Index(l, " applied") >= 0
-			reloadFailed := strings.Index(l, " tuned.daemon.controller: Failed to reload Tuned: ") >= 0
+			reloadFailed := strings.Index(l, " tuned.daemon.controller: Failed to reload TuneD: ") >= 0
 
 			if profileApplied {
 				c.daemon.status |= scApplied
