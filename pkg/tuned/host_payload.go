@@ -49,6 +49,20 @@ Environment=BR="-r 10000"
 # ex: BD="-d 3"
 Environment=BD="-d 3"
 
+# Ignore tasks
+# if there are threads by the name thread1,thread2
+# that need be ignored, populate IT as shown below
+# IT="-i thread.*", multiple regexes must be comma
+# separated without any whitespace between them
+Environment=IT=
+
+# Ignore processes
+# if there are processes by the name proc1,proc2
+# that need be ignored, populate IP as shown below
+# IT="-I proc.*", multiple regexes must be comma
+# separated without any whitespace between them
+Environment=IP=
+
 # Starving Threshold in seconds
 # this value the time the thread must be kept ready but not
 # actually run to decide that the thread is starving
@@ -77,8 +91,10 @@ Environment=FG=--foreground
 Environment=PF="--pidfile /run/stalld.pid"
 
 ExecStartPre=/usr/local/bin/throttlectl.sh off
-ExecStart=/usr/bin/chrt -f 10 /usr/local/bin/stalld --systemd $CLIST $AGGR $BP $BR $BD $THRESH $LOGGING $FG $PF
+ExecStart=/usr/local/bin/stalld --systemd $CLIST $AGGR $BP $BR $BD $THRESH $LOGGING $FG $PF $IT $IP
 ExecStopPost=/usr/local/bin/throttlectl.sh on
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=10
 Restart=always
 User=root
 `
