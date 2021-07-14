@@ -93,7 +93,7 @@ char *config_monitored_cpus;
 size_t config_buffer_size;
 
 /*
- * auto-detected task format from sched_debug.
+ * auto-detected task format from /proc/sched_debug
  */
 int config_task_format;
 
@@ -121,14 +121,7 @@ long page_size;
 /*
  * config single threaded: uses less CPU, but has a lower precision.
  */
-int config_single_threaded = 1;
-
-/*
- * config adaptive multi-threaded: use a single thread when nothing
- * is happening, but dispatches a per-cpu thread after a starving
- * thread is waiting for half of the config_starving_threshold.
- */
-int config_adaptive_multi_threaded = 0;
+int config_single_threaded = 0;
 
 /*
  * check the idle time before parsing sched_debug
@@ -147,11 +140,6 @@ regex_t *compiled_regex_thread = NULL;
  */
 unsigned int nr_process_ignore = 0;
 regex_t *compiled_regex_process = NULL;
-
-/*
- * store the current sched_debug file path.
- */
-char *config_sched_debug_path = NULL;
 
 /*
  * API to fetch process name from process group ID
@@ -239,7 +227,8 @@ out_free_mem:
 }
 
 /*
- * read the content of sched_debug into the input buffer.
+ * read the content of /proc/sched_debug into the
+ * input buffer.
  */
 int read_sched_stat(char *buffer, int size)
 {
@@ -420,7 +409,8 @@ int get_cpu_busy_list(struct cpu_info *cpus, int nr_cpus, char *busy_cpu_list)
 	return busy_count;
 }
 /*
- * read the contents of sched_debug into the input buffer.
+ * read the contents of /proc/sched_debug into
+ * the input buffer
  */
 int read_sched_debug(char *buffer, int size)
 {
@@ -428,7 +418,7 @@ int read_sched_debug(char *buffer, int size)
 	int retval;
 	int fd;
 
-	fd = open(config_sched_debug_path, O_RDONLY);
+	fd = open("/proc/sched_debug", O_RDONLY);
 
 	if (!fd)
 		goto out_error;
@@ -554,11 +544,11 @@ static inline char *nextline(char *str)
 #define TASK_MARKER	"runnable tasks:"
 
 /*
- * read sched_debug and figure out if it's old or new format
+ * read /proc/sched_debug and figure out if it's old or new format
  * done once so if we fail just exit the program
  *
  * NOTE: A side effect of this call is to set the initial value for
- * config_buffer_size used when reading sched_debug for
+ * config_buffer_size used when reading /proc/sched_debug for
  * parsing
  */
 int detect_task_format(void)
@@ -577,15 +567,15 @@ int detect_task_format(void)
 	buffer = malloc(bufsiz);
 
 	if (buffer == NULL)
-		die("unable to allocate %d bytes to read sched_debug");
+		die("unable to allocate %d bytes to read /proc/sched_debug");
 
-	if ((fd = open(config_sched_debug_path, O_RDONLY)) < 0)
-		die("error opening sched_debug for reading: %s\n", strerror(errno));
+	if ((fd = open("/proc/sched_debug", O_RDONLY)) < 0)
+		die("error opening /proc/sched_debug for reading: %s\n", strerror(errno));
 
 	ptr = buffer;
 	while ((status = read(fd, ptr, bufincrement))) {
 		if (status < 0)
-			die ("error reading sched_debug: %s\n", strerror(errno));
+			die ("error reading /proc/sched_debug: %s\n", strerror(errno));
 		if (status == 0)
 			break;
 		size += status;
@@ -724,7 +714,7 @@ int parse_new_task_format(char *buffer, struct task_info *task_info, int nr_entr
 }
 
 /*
- * old format of sched_debug doesn't contain state information so we have
+ * old format of /proc/sched_debug doesn't contain state information so we have
  * to pick up the pid and then open /proc/<pid>/stat to get the process state.
  */
 
@@ -976,7 +966,6 @@ struct cpu_starving_task_info {
 	struct task_info task;
 	int pid;
 	time_t since;
-	int overloaded;
 };
 
 struct cpu_starving_task_info *cpu_starving_vector;
@@ -984,13 +973,6 @@ struct cpu_starving_task_info *cpu_starving_vector;
 void update_cpu_starving_vector(int cpu, int pid, time_t since, struct task_info *task)
 {
 	struct cpu_starving_task_info *cpu_info = &cpu_starving_vector[cpu];
-
-	/*
-	 * If there is another thread already here, mark this cpu as
-	 * overloaded.
-	 */
-	if (cpu_info->pid)
-		cpu_info->overloaded = 1;
 
 	/*
 	 * If there is no thread in the vector, or if the in the
@@ -1495,7 +1477,7 @@ void conservative_main(struct cpu_info *cpus, int nr_cpus)
 			has_busy_cpu = get_cpu_busy_list(cpus, nr_cpus, busy_cpu_list);
 			if (!has_busy_cpu) {
 				if (config_verbose)
-					log_msg("all CPUs had idle time, skipping sched_debug parse\n");
+					log_msg("all CPUs had idle time, skipping /proc/sched_debug parse\n");
 				goto skipped;
 			}
 		}
@@ -1563,8 +1545,8 @@ int boost_cpu_starving_vector(struct cpu_starving_task_info *vector, int nr_cpus
 
 		cpu = &cpu_starving_vector[i];
 
-		if (config_verbose && cpu->pid)
-			log_msg("\t cpu %d: pid: %d starving for %llu\n", i, cpu->pid, (now - cpu->since));
+		if (config_verbose)
+			log_msg("boosting cpu %d: pid: %d starving for %llu\n", i, cpu->pid, (now - cpu->since));
 
 		if (cpu->pid != 0 && (now - cpu->since) > config_starving_threshold) {
 			/*
@@ -1622,7 +1604,6 @@ void single_threaded_main(struct cpu_info *cpus, int nr_cpus)
 	struct cpu_info *cpu;
 	char *buffer = NULL;
 	size_t buffer_size = 0;
-	int overloaded = 0;
 	int has_busy_cpu;
 	int boosted = 0;
 	int retval;
@@ -1648,7 +1629,6 @@ void single_threaded_main(struct cpu_info *cpus, int nr_cpus)
 		cpus[i].thread_running = 0;
 		cpu_starving_vector[i].pid = 0;
 		cpu_starving_vector[i].since = 0;
-		cpu_starving_vector[i].overloaded = 0;
 		memset(&cpu_starving_vector[i].task, 0, sizeof(struct task_info));
 	}
 
@@ -1673,7 +1653,7 @@ void single_threaded_main(struct cpu_info *cpus, int nr_cpus)
 			has_busy_cpu = get_cpu_busy_list(cpus, nr_cpus, busy_cpu_list);
 			if (!has_busy_cpu) {
 				if (config_verbose)
-					log_msg("all CPUs had idle time, skipping sched_debug parse\n");
+					log_msg("all CPUs had idle time, skipping /proc/sched_debug parse\n");
 
 				goto skipped;
 			}
@@ -1716,20 +1696,6 @@ void single_threaded_main(struct cpu_info *cpus, int nr_cpus)
 			memset(&(cpu_starving_vector[i].task), 0, sizeof(struct task_info));
 			cpu_starving_vector[i].pid = 0;
 			cpu_starving_vector[i].since = 0;
-			if (cpu_starving_vector[i].overloaded)
-				overloaded = 1;
-			cpu_starving_vector[i].overloaded = 0;
-		}
-
-		/*
-		 * If any CPU had more than one thread starving, the system is overloaded.
-		 * Re-run the loop without sleeping for two reasons: to boost the other
-		 * thread, and to detect other starving threads on other CPUs, given
-		 * that the system seems to be overloaded.
-		 */
-		if (overloaded) {
-			overloaded = 0;
-			continue;
 		}
 
 skipped:
@@ -1830,8 +1796,6 @@ int main(int argc, char **argv)
 
 	parse_args(argc, argv);
 
-	find_sched_debug_path();
-
 	/*
 	 * check RT throttling
 	 * if --systemd was specified then RT throttling should already be off
@@ -1888,15 +1852,12 @@ int main(int argc, char **argv)
 
 	write_pidfile();
 
-	/*
-	 * The less likely first.
-	 */
-	if (config_aggressive)
-		aggressive_main(cpus, nr_cpus);
-	else if (config_adaptive_multi_threaded)
-		conservative_main(cpus, nr_cpus);
-	else
+	if (config_single_threaded)
 		single_threaded_main(cpus, nr_cpus);
+	else if (config_aggressive)
+		aggressive_main(cpus, nr_cpus);
+	else
+		conservative_main(cpus, nr_cpus);
 
 	cleanup_regex(&nr_thread_ignore, &compiled_regex_thread);
 	cleanup_regex(&nr_process_ignore, &compiled_regex_process);
