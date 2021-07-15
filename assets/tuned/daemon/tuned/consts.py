@@ -36,6 +36,7 @@ GRUB2_DEFAULT_ENV_FILE = "/etc/default/grub"
 INITRD_IMAGE_DIR = "/boot"
 BOOT_CMDLINE_TUNED_VAR = "TUNED_BOOT_CMDLINE"
 BOOT_CMDLINE_INITRD_ADD_VAR = "TUNED_BOOT_INITRD_ADD"
+BOOT_CMDLINE_KARGS_DELETED_VAR = "TUNED_BOOT_KARGS_DELETED"
 BOOT_CMDLINE_FILE = "/etc/tuned/bootcmdline"
 PETITBOOT_DETECT_DIR = "/sys/firmware/opal"
 MACHINE_ID_FILE = "/etc/machine-id"
@@ -123,6 +124,8 @@ STR_VERIFY_PROFILE_DEVICE_VALUE_MISSING = "verify: skipped, missing: device %s: 
 STR_VERIFY_PROFILE_VALUE_MISSING = "verify: skipped, missing: '%s'"
 STR_VERIFY_PROFILE_DEVICE_VALUE_FAIL = "verify: failed: device %s: '%s' = '%s', expected '%s'"
 STR_VERIFY_PROFILE_VALUE_FAIL = "verify: failed: '%s' = '%s', expected '%s'"
+STR_VERIFY_PROFILE_CMDLINE_FAIL = "verify: failed: cmdline arg '%s', expected '%s'"
+STR_VERIFY_PROFILE_CMDLINE_FAIL_MISSING = "verify: failed: cmdline arg '%s' is missing, expected '%s'"
 STR_VERIFY_PROFILE_FAIL = "verify: failed: '%s'"
 
 # timout for tuned-adm operations in seconds

@@ -8,6 +8,7 @@ import tuned.consts as consts
 import os
 import re
 import tempfile
+from time import sleep
 
 log = tuned.logs.get()
 
@@ -30,12 +31,15 @@ class BootloaderPlugin(base.Plugin):
 		instance._has_static_tuning = True
 		# controls grub2_cfg rewrites in _instance_post_static
 		self.update_grub2_cfg = False
+		self._skip_grub_config_val = False
 		self._initrd_remove_dir = False
 		self._initrd_dst_img_val = None
 		self._cmdline_val = ""
 		self._initrd_val = ""
 		self._grub2_cfg_file_names = self._get_grub2_cfg_files()
 		self._bls = self._bls_enabled()
+
+		self._rpm_ostree = self._rpm_ostree_status() is not None
 
 	def _instance_cleanup(self, instance):
 		pass
@@ -49,7 +53,99 @@ class BootloaderPlugin(base.Plugin):
 			"initrd_add_dir": None,
 			"initrd_remove_dir": None,
 			"cmdline": None,
+			"skip_grub_config": None,
 		}
+
+	@staticmethod
+	def _options_to_dict(options, omit=""):
+		"""
+		Returns dict created from options
+		e.g.: _options_to_dict("A=A A=B A B=A C=A", "A=B B=A B=B") returns {'A': ['A', None], 'C': ['A']}
+		"""
+		d = {}
+		omit = omit.split()
+		for o in options.split():
+			if o not in omit:
+				arr = o.split('=', 1)
+				d.setdefault(arr[0], []).append(arr[1] if len(arr) > 1 else None)
+		return d
+
+	@staticmethod
+	def _dict_to_options(d):
+		return " ".join([k + "=" + v1 if v1 is not None else k for k, v in d.items() for v1 in v])
+
+	def _rpm_ostree_status(self):
+		"""
+		Returns status of rpm-ostree transactions or None if not run on rpm-ostree system
+		"""
+		(rc, out, err) = self._cmd.execute(['rpm-ostree', 'status'], return_err=True)
+		log.debug("rpm-ostree status output stdout:\n%s\nstderr:\n%s" % (out, err))
+		if rc != 0:
+			return None
+		splited = out.split()
+		if len(splited) < 2 or splited[0] != "State:":
+			log.warn("Exceptional format of rpm-ostree status result:\n%s" % out)
+			return None
+		return splited[1]
+
+	def _wait_till_idle(self):
+		sleep_cycles = 10
+		sleep_secs = 1.0
+		for i in range(sleep_cycles):
+			if self._rpm_ostree_status() == "idle":
+				return True
+			sleep(sleep_secs)
+		if self._rpm_ostree_status() == "idle":
+			return True
+		return False
+
+	def _rpm_ostree_kargs(self, append={}, delete={}):
+		"""
+		Method for appending or deleting rpm-ostree karg
+		returns None if rpm-ostree not present or is run on not ostree system
+		or tuple with new kargs, appended kargs and deleted kargs
+		"""
+		(rc, out, err) = self._cmd.execute(['rpm-ostree', 'kargs'], return_err=True)
+		log.debug("rpm-ostree output stdout:\n%s\nstderr:\n%s" % (out, err))
+		if rc != 0:
+			return None, None, None
+		kargs = self._options_to_dict(out)
+
+		if not self._wait_till_idle():
+			log.error("Cannot wait for transaction end")
+			return None, None, None
+
+		deleted = {}
+		delete_params = self._dict_to_options(delete).split()
+		# Deleting kargs, e.g. deleting added kargs by profile
+		for k, val in delete.items():
+			for v in val:
+				kargs[k].remove(v)
+			deleted[k] = val
+
+		appended = {}
+		append_params = self._dict_to_options(append).split()
+		# Appending kargs, e.g. new kargs by profile or restoring kargs replaced by profile
+		for k, val in append.items():
+			if kargs.get(k):
+				# If there is karg that we add with new value we want to delete it
+				# and store old value for restoring after profile unload
+				log.debug("adding rpm-ostree kargs %s: %s for delete" % (k, kargs[k]))
+				deleted.setdefault(k, []).extend(kargs[k])
+				delete_params.extend([k + "=" + v if v is not None else k for v in kargs[k]])
+				kargs[k] = []
+			kargs.setdefault(k, []).extend(val)
+			appended[k] = val
+
+		log.info("rpm-ostree kargs - appending: '%s'; deleting: '%s'" % (append_params, delete_params))
+		(rc, _, err) = self._cmd.execute(['rpm-ostree', 'kargs'] +
+										 ['--append=%s' % v for v in append_params] +
+										 ['--delete=%s' % v for v in delete_params], return_err=True)
+		if rc != 0:
+			log.error("Something went wrong with rpm-ostree kargs\n%s" % (err))
+			return self._options_to_dict(out), None, None
+		else:
+			return kargs, appended, deleted
 
 	def _get_effective_options(self, options):
 		"""Merge provided options with plugin default options and merge all cmdline.* options."""
@@ -90,7 +186,7 @@ class BootloaderPlugin(base.Plugin):
 		return cfg_files
 
 	def _bls_enabled(self):
-		grub2_default_env = self._cmd.read_file(consts.GRUB2_DEFAULT_ENV_FILE)
+		grub2_default_env = self._cmd.read_file(consts.GRUB2_DEFAULT_ENV_FILE, no_error = True)
 		if len(grub2_default_env) <= 0:
 			log.info("cannot read '%s'" % consts.GRUB2_DEFAULT_ENV_FILE)
 			return False
@@ -112,11 +208,28 @@ class BootloaderPlugin(base.Plugin):
 			log.info("removing initrd image '%s'" % self._initrd_dst_img_val)
 			self._cmd.unlink(self._initrd_dst_img_val)
 
+	def _get_rpm_ostree_changes(self):
+		f = self._cmd.read_file(consts.BOOT_CMDLINE_FILE)
+		appended = re.search(consts.BOOT_CMDLINE_TUNED_VAR + r"=\"(.*)\"", f, flags=re.MULTILINE)
+		appended = appended[1] if appended else ""
+		deleted = re.search(consts.BOOT_CMDLINE_KARGS_DELETED_VAR + r"=\"(.*)\"", f, flags=re.MULTILINE)
+		deleted = deleted[1] if deleted else ""
+		return appended, deleted
+
+	def _remove_rpm_ostree_tuning(self):
+		appended, deleted = self._get_rpm_ostree_changes()
+		self._rpm_ostree_kargs(append=self._options_to_dict(deleted), delete=self._options_to_dict(appended))
+		self._patch_bootcmdline({consts.BOOT_CMDLINE_TUNED_VAR: "", consts.BOOT_CMDLINE_KARGS_DELETED_VAR: ""})
+
 	def _instance_unapply_static(self, instance, full_rollback = False):
-		if full_rollback:
-			log.info("removing grub2 tuning previously added by Tuned")
-			self._remove_grub2_tuning()
-			self._update_grubenv({"tuned_params" : "", "tuned_initrd" : ""})
+		if full_rollback and not self._skip_grub_config_val:
+			if self._rpm_ostree:
+				log.info("removing rpm-ostree tuning previously added by Tuned")
+				self._remove_rpm_ostree_tuning()
+			else:
+				log.info("removing grub2 tuning previously added by Tuned")
+				self._remove_grub2_tuning()
+				self._update_grubenv({"tuned_params" : "", "tuned_initrd" : ""})
 
 	def _grub2_cfg_unpatch(self, grub2_cfg):
 		log.debug("unpatching grub.cfg")
@@ -137,9 +250,9 @@ class BootloaderPlugin(base.Plugin):
 
 		d2 = {"linux" : consts.GRUB2_TUNED_VAR, "initrd" : consts.GRUB2_TUNED_INITRD_VAR}
 		for i in d2:
-			# add tuned parameters to all kernels
+			# add TuneD parameters to all kernels
 			grub2_cfg = re.sub(r"^(\s*" + i + r"(16|efi)?\s+.*)$", r"\1 $" + d2[i], grub2_cfg, flags = re.MULTILINE)
-			# remove tuned parameters from rescue kernels
+			# remove TuneD parameters from rescue kernels
 			grub2_cfg = re.sub(r"^(\s*" + i + r"(?:16|efi)?\s+\S+rescue.*)\$" + d2[i] + r" *(.*)$", r"\1\2", grub2_cfg, flags = re.MULTILINE)
 			# fix whitespaces in rescue kernels
 			grub2_cfg = re.sub(r"^(\s*" + i + r"(?:16|efi)?\s+\S+rescue.*) +$", r"\1", grub2_cfg, flags = re.MULTILINE)
@@ -215,6 +328,16 @@ class BootloaderPlugin(base.Plugin):
 			self._grub2_default_env_patch()
 		return True
 
+	def _rpm_ostree_update(self):
+		appended, _ = self._get_rpm_ostree_changes()
+		_cmdline_dict = self._options_to_dict(self._cmdline_val, appended)
+		if not _cmdline_dict:
+			return None
+		(_, _, d) = self._rpm_ostree_kargs(append=_cmdline_dict)
+		if d is None:
+			return
+		self._patch_bootcmdline({consts.BOOT_CMDLINE_TUNED_VAR : self._cmdline_val, consts.BOOT_CMDLINE_KARGS_DELETED_VAR : self._dict_to_options(d)})
+
 	def _grub2_update(self):
 		self._grub2_cfg_patch({consts.GRUB2_TUNED_VAR : self._cmdline_val, consts.GRUB2_TUNED_INITRD_VAR : self._initrd_val})
 		self._patch_bootcmdline({consts.BOOT_CMDLINE_TUNED_VAR : self._cmdline_val, consts.BOOT_CMDLINE_INITRD_ADD_VAR : self._initrd_val})
@@ -223,12 +346,12 @@ class BootloaderPlugin(base.Plugin):
 		return os.path.exists(consts.BLS_ENTRIES_PATH)
 
 	def _update_grubenv(self, d):
-		log.debug("updating grubenv, setting %s" % str(d));
+		log.debug("updating grubenv, setting %s" % str(d))
 		l = ["%s=%s" % (str(option), str(value)) for option, value in d.items()]
 		(rc, out) = self._cmd.execute(["grub2-editenv", "-", "set"] + l)
 		if rc != 0:
 			log.warn("cannot update grubenv: '%s'" % out)
-			return False;
+			return False
 		return True
 
 	def _bls_entries_patch_initial(self):
@@ -258,6 +381,9 @@ class BootloaderPlugin(base.Plugin):
 		return os.path.isdir(consts.PETITBOOT_DETECT_DIR)
 
 	def _install_initrd(self, img):
+		if self._rpm_ostree:
+			log.warn("Detected rpm-ostree which doesn't support initrd overlays.")
+			return False
 		if self._check_petitboot():
 			log.warn("Detected Petitboot which doesn't support initrd overlays. The initrd overlay will be ignored by bootloader.")
 		log.info("installing initrd image as '%s'" % self._initrd_dst_img_val)
@@ -350,25 +476,54 @@ class BootloaderPlugin(base.Plugin):
 	def _cmdline(self, enabling, value, verify, ignore_missing):
 		v = self._variables.expand(self._cmd.unquote(value))
 		if verify:
-			cmdline = self._cmd.read_file("/proc/cmdline")
+			if self._rpm_ostree:
+				rpm_ostree_kargs = self._rpm_ostree_kargs()[0]
+				cmdline = self._dict_to_options(rpm_ostree_kargs)
+			else:
+				cmdline = self._cmd.read_file("/proc/cmdline")
 			if len(cmdline) == 0:
 				return None
 			cmdline_set = set(cmdline.split())
 			value_set = set(v.split())
-			cmdline_intersect = cmdline_set.intersection(value_set)
-			if cmdline_intersect == value_set:
+			missing_set = value_set - cmdline_set
+			if len(missing_set) == 0:
 				log.info(consts.STR_VERIFY_PROFILE_VALUE_OK % ("cmdline", str(value_set)))
 				return True
 			else:
-				log.error(consts.STR_VERIFY_PROFILE_VALUE_FAIL % ("cmdline", str(cmdline_intersect), str(value_set)))
+				cmdline_dict = {v.split("=", 1)[0]: v for v in cmdline_set}
+				for m in missing_set:
+					arg = m.split("=", 1)[0]
+					if not arg in cmdline_dict:
+						log.error(consts.STR_VERIFY_PROFILE_CMDLINE_FAIL_MISSING % (arg, m))
+					else:
+						log.error(consts.STR_VERIFY_PROFILE_CMDLINE_FAIL % (cmdline_dict[arg], m))
+				present_set = value_set & cmdline_set
+				log.info("expected arguments that are present in cmdline: %s"%(" ".join(present_set),))
 				return False
 		if enabling and value is not None:
 			log.info("installing additional boot command line parameters to grub2")
 			self.update_grub2_cfg = True
 			self._cmdline_val = v
 
+	@command_custom("skip_grub_config", per_device = False, priority = 10)
+	def _skip_grub_config(self, enabling, value, verify, ignore_missing):
+		if verify:
+			return None
+		if enabling and value is not None:
+			if self._cmd.get_bool(value):
+				log.info("skipping any modification of grub config")
+				self._skip_grub_config_val = True
+
 	def _instance_post_static(self, instance, enabling):
-		if enabling and self.update_grub2_cfg:
-			self._grub2_update()
-			self._bls_update()
+		if enabling and self._skip_grub_config_val:
+			if len(self._initrd_val) > 0:
+				log.warn("requested changes to initrd will not be applied!")
+			if len(self._cmdline_val) > 0:
+				log.warn("requested changes to cmdline will not be applied!")
+		elif enabling and self.update_grub2_cfg:
+			if self._rpm_ostree:
+				self._rpm_ostree_update()
+			else:
+				self._grub2_update()
+				self._bls_update()
 			self.update_grub2_cfg = False
