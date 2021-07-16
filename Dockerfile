@@ -7,7 +7,7 @@ FROM centos:8 as tuned
 WORKDIR /root
 COPY assets /root/assets
 RUN INSTALL_PKGS=" \
-      gcc git rpm-build make desktop-file-utils patch dnf-plugins-core \
+      gcc git rpm-build make desktop-file-utils patch dnf-plugins-core kernel-tools-libs-4.18.0-305.3.1.el8_4.x86_64 kernel-tools-4.18.0-305.3.1.el8_4.x86_64 python3-perf-4.18.0-305.3.1.el8_4.x86_64 \
       " && \
     dnf install --setopt=tsflags=nodocs -y $INSTALL_PKGS && \
     cd assets/tuned/daemon && \
@@ -29,7 +29,7 @@ COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_o
 COPY --from=tuned   /root/assets ${APP_ROOT}
 COPY --from=tuned   /root/rpmbuild/RPMS/noarch /root/rpms
 RUN INSTALL_PKGS=" \
-      nmap-ncat procps-ng \
+      nmap-ncat procps-ng kernel-tools-libs-4.18.0-305.3.1.el8_4.x86_64 kernel-tools-4.18.0-305.3.1.el8_4.x86_64 python3-perf-4.18.0-305.3.1.el8_4.x86_64 \
       " && \
     mkdir -p /etc/grub.d/ /boot && \
     dnf install --setopt=tsflags=nodocs -y $INSTALL_PKGS && \
