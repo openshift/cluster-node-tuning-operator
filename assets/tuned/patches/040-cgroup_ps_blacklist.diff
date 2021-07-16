@@ -1,0 +1,111 @@
+scheduler: new option cgroup_ps_blacklist
+
+This option allows skipping processes belonging to the blacklisted
+cgroups. It matches the regular expression against items from the
+/proc/PID/cgroups. Items/lines from the /proc/PID/cgroups are separated
+by commas ','. Each item consists of the:
+hierarchy-ID:controller-list:cgroup-path
+
+Example of the content on which the regular expression is run:
+10:hugetlb:/,9:perf_event:/,8:blkio:/
+
+For cgroups v2 the hierarchy-ID is 0 and the controller-list is ''.
+For details see man cgroups.7. The only difference from the man
+cgroups.7 is that it uses commas for separation of the items instead
+of the new lines. The commas are added by the python-linux-procfs
+(it's the behavior of the python-linux-procfs-0.6.3).
+
+Multiple regular expressions can be separated by the semicolon ';'.
+
+Examples:
+[scheduler]
+isolated_cores=1
+cgroup_ps_blacklist=:/daemons\b
+
+It will move all processes away from the core 1 except processes which
+belongs to the cgroup '/daemons'. The '\b' is regular expression
+metacharacter that matches word boundary (i.e. it matches only
+'/daemons', not e.g. '/daemonset' or '/group/daemons'). In this example
+we do not care about the hierarchy-ID and the controller-list.
+
+[scheduler]
+isolated_cores=1
+cgroup_ps_blacklist=\b8:blkio:/,|$
+
+In this example it skips processes belonging to the cgroup '/',
+with hierarchy-ID 8 and controller-list blkio. The ',|$' is needed
+because the '\b' matches word boundary and the non-alphanumeric
+character '/' is not taken as a word, thus the '\b' will not match there.
+
+[scheduler]
+isolated_cores=1
+cgroup_ps_blacklist=:/daemons\b;:/test\b
+
+In this example two regular expressions are used which tries to match
+'/daemons' and '/test' cgroup-path. If either matches (i.e. the OR operator),
+the process is skipped (i.e. not moved away from the core 1).
+
+Resolves: rhbz#1980715
+
+Signed-off-by: Jaroslav #karvada jskarvad@redhat.com
+
+See: https://github.com/redhat-performance/tuned/pull/368
+
+diff --git a/tuned/plugins/plugin_scheduler.py b/tuned/plugins/plugin_scheduler.py
+index e2f7ca24..8e774171 100644
+--- a/tuned/plugins/plugin_scheduler.py
++++ b/tuned/plugins/plugin_scheduler.py
+@@ -156,6 +156,7 @@ def __init__(self, monitor_repository, storage_factory, hardware_inventory, devi
+ 		# default is to whitelist all and blacklist none
+ 		self._ps_whitelist = ".*"
+ 		self._ps_blacklist = ""
++		self._cgroup_ps_blacklist_re = ""
+ 		self._cpus = perf.cpu_map()
+ 		self._scheduler_storage_key = self._storage_key(
+ 				command_name = "scheduler")
+@@ -251,6 +252,7 @@ def _get_config_options(cls):
+ 			"cgroup_mount_point_init": False,
+ 			"cgroup_groups_init": True,
+ 			"cgroup_for_isolated_cores": None,
++			"cgroup_ps_blacklist": None,
+ 			"ps_whitelist": None,
+ 			"ps_blacklist": None,
+ 			"default_irq_smp_affinity": "calc",
+@@ -811,6 +813,14 @@ def _thread_code(self, instance):
+ 							elif event.type == perf.RECORD_EXIT:
+ 								self._remove_pid(instance, int(event.tid))
+ 
++	@command_custom("cgroup_ps_blacklist", per_device = False)
++	def _cgroup_ps_blacklist(self, enabling, value, verify, ignore_missing):
++		# currently unsupported
++		if verify:
++			return None
++		if enabling and value is not None:
++			self._cgroup_ps_blacklist_re = "|".join(["(%s)" % v for v in re.split(r"(?<!\\);", str(value))])
++
+ 	@command_custom("ps_whitelist", per_device = False)
+ 	def _ps_whitelist(self, enabling, value, verify, ignore_missing):
+ 		# currently unsupported
+@@ -886,6 +896,9 @@ def _set_all_obj_affinity(self, objs, affinity, threads = False):
+ 		if self._ps_blacklist != "":
+ 			psl = [v for v in psl if re.search(self._ps_blacklist,
+ 					self._get_stat_comm(v)) is None]
++		if self._cgroup_ps_blacklist_re != "":
++			psl = [v for v in psl if re.search(self._cgroup_ps_blacklist_re,
++					self._get_stat_cgroup(v)) is None]
+ 		psd = dict([(v.pid, v) for v in psl])
+ 		for pid in psd:
+ 			try:
+@@ -911,6 +924,12 @@ def _set_all_obj_affinity(self, objs, affinity, threads = False):
+ 						psd[pid]["threads"].values(),
+ 						affinity, True)
+ 
++	def _get_stat_cgroup(self, o):
++		try:
++			return o["cgroups"]
++		except (OSError, IOError, KeyError):
++			return ""
++
+ 	def _get_stat_comm(self, o):
+ 		try:
+ 			return o["stat"]["comm"]
