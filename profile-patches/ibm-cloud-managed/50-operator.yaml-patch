@@ -1,0 +1,6 @@
+- op: replace
+  path: /metadata/annotations
+  value:
+    include.release.openshift.io/ibm-cloud-managed: "true"
+- op: remove
+  path: /spec/template/spec/nodeSelector
