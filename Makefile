@@ -33,6 +33,10 @@ ORG=openshift
 TAG=$(shell git rev-parse --abbrev-ref HEAD)
 IMAGE=$(REGISTRY)/$(ORG)/origin-cluster-node-tuning-operator:$(TAG)
 
+include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
+    targets/openshift/operator/profile-manifests.mk \
+)
+
 all: build
 
 clone-tuned:
@@ -121,5 +125,13 @@ local-image:
 
 local-image-push:
 	$(IMAGE_PUSH_CMD) $(IMAGE_PUSH_EXTRA_OPTS) $(IMAGE)
+
+# This will include additional actions on the update and verify targets to ensure that profile patches are applied
+# to manifest files
+# $0 - macro name
+# $1 - target name
+# $2 - profile patches directory
+# $3 - manifests directory
+$(call add-profile-manifests,manifests,./profile-patches,./manifests)
 
 .PHONY: all build deepcopy crd-schema-gen test-e2e verify verify-gofmt clean local-image local-image-push
