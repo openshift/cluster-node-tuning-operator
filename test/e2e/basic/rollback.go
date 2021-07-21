@@ -14,7 +14,7 @@ import (
 	util "github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 )
 
-// Test the functionality of the preStop container lifecycle hook -- Tuned settings rollback.
+// Test the functionality of the preStop container lifecycle hook -- TuneD settings rollback.
 var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollback", func() {
 	const (
 		profileIngress  = "../../../examples/ingress.yaml"
@@ -23,7 +23,7 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 		sysctlValDef    = "2" // default value of 'sysctlVar'
 	)
 
-	ginkgo.Context("Tuned settings rollback", func() {
+	ginkgo.Context("TuneD settings rollback", func() {
 		var (
 			pod *coreapi.Pod
 		)
@@ -50,7 +50,7 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 			gomega.Expect(len(nodes)).NotTo(gomega.BeZero(), "number of worker nodes is 0")
 
 			node := nodes[0]
-			ginkgo.By(fmt.Sprintf("getting a Tuned Pod running on node %s", node.Name))
+			ginkgo.By(fmt.Sprintf("getting a TuneD Pod running on node %s", node.Name))
 			pod, err = util.GetTunedForNode(cs, &node)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
@@ -75,7 +75,7 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 			pod = nil
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("waiting for a new tuned Pod to be ready on node %s", node.Name))
+			ginkgo.By(fmt.Sprintf("waiting for a new TuneD Pod to be ready on node %s", node.Name))
 			err = wait.PollImmediate(pollInterval, waitDuration, func() (bool, error) {
 				pod, err = util.GetTunedForNode(cs, &node)
 				if err != nil {

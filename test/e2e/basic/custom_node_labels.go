@@ -46,7 +46,7 @@ var _ = ginkgo.Describe("[basic][custom_node_labels] Node Tuning Operator custom
 			gomega.Expect(len(nodes)).NotTo(gomega.BeZero(), "number of worker nodes is 0")
 
 			node = &nodes[0]
-			ginkgo.By(fmt.Sprintf("getting a Tuned Pod running on node %s", node.Name))
+			ginkgo.By(fmt.Sprintf("getting a TuneD Pod running on node %s", node.Name))
 			pod, err := util.GetTunedForNode(cs, node)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 

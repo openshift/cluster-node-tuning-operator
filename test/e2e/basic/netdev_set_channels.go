@@ -16,7 +16,7 @@ import (
 	util "github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 )
 
-// Test the tuned daemon functionality to adjust netdev queue count for physical network devices via ethtool.
+// Test the TuneD daemon functionality to adjust netdev queue count for physical network devices via ethtool.
 var _ = ginkgo.Describe("[basic][netdev_set_channels] Node Tuning Operator adjust netdev queue count", func() {
 	const (
 		profileNetdev   = "../testing_manifests/netdev_set_channels.yaml"
@@ -55,7 +55,7 @@ var _ = ginkgo.Describe("[basic][netdev_set_channels] Node Tuning Operator adjus
 			gomega.Expect(len(nodes)).NotTo(gomega.BeZero(), "number of worker nodes is 0")
 
 			node = &nodes[0]
-			ginkgo.By(fmt.Sprintf("getting a tuned Pod running on node %s", node.Name))
+			ginkgo.By(fmt.Sprintf("getting a TuneD Pod running on node %s", node.Name))
 			pod, err := util.GetTunedForNode(cs, node)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			util.Logf("found Pod %s running on node %s", pod.Name, node.Name)

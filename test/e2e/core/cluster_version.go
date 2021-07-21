@@ -24,7 +24,7 @@ var _ = ginkgo.Describe("[core][cluster_version] Node Tuning Operator host, cont
 		gomega.Expect(len(nodes)).NotTo(gomega.BeZero(), "number of worker nodes is 0")
 
 		node = &nodes[0]
-		ginkgo.By(fmt.Sprintf("getting a Tuned Pod running on node %s", node.Name))
+		ginkgo.By(fmt.Sprintf("getting a TuneD Pod running on node %s", node.Name))
 		pod, err := util.GetTunedForNode(cs, node)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
@@ -33,7 +33,7 @@ var _ = ginkgo.Describe("[core][cluster_version] Node Tuning Operator host, cont
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		util.Logf("%s", out)
 
-		ginkgo.By("getting the Tuned container OS version")
+		ginkgo.By("getting the TuneD container OS version")
 		out, err = util.ExecCmdInPod(pod, "cat", "/etc/os-release")
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		util.Logf("%s", out)

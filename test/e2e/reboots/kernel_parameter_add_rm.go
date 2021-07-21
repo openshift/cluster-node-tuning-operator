@@ -62,7 +62,7 @@ var _ = ginkgo.Describe("[reboots][kernel_parameter_add_rm] Node Tuning Operator
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			node = &nodes[0]
-			ginkgo.By(fmt.Sprintf("getting a Tuned Pod running on node %s", node.Name))
+			ginkgo.By(fmt.Sprintf("getting a TuneD Pod running on node %s", node.Name))
 			pod, err := util.GetTunedForNode(cs, node)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 

@@ -52,14 +52,14 @@ func GetTunedForNode(cs *framework.ClientSet, node *corev1.Node) (*corev1.Pod, e
 
 	podList, err := cs.Pods(ntoconfig.OperatorNamespace()).List(context.TODO(), listOptions)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't get a list of Tuned Pods: %v", err)
+		return nil, fmt.Errorf("couldn't get a list of TuneD Pods: %v", err)
 	}
 
 	if len(podList.Items) != 1 {
 		if len(podList.Items) == 0 {
-			return nil, fmt.Errorf("failed to find a Tuned Pod for node %s", node.Name)
+			return nil, fmt.Errorf("failed to find a TuneD Pod for node %s", node.Name)
 		}
-		return nil, fmt.Errorf("too many (%d) Tuned Pods for node %s", len(podList.Items), node.Name)
+		return nil, fmt.Errorf("too many (%d) TuneD Pods for node %s", len(podList.Items), node.Name)
 	}
 	return &podList.Items[0], nil
 }
