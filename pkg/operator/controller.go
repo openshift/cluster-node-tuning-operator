@@ -1030,9 +1030,12 @@ func (c *Controller) run(stopCh <-chan struct{}) {
 // method.
 func (c *Controller) BecomeLeader(stopCh <-chan struct{}) {
 	const (
-		leaseDuration = 30 * time.Second
-		renewDeadline = 15 * time.Second
-		retryPeriod   = 10 * time.Second
+		// values below taken from:
+		// https://github.com/openshift/enhancements/pull/832/files#diff-2e28754e69aa417e5b6d89e99e42f05bfb6330800fa823753383db1d170fbc2fR183
+		// see rhbz#1986477 for more detail
+		leaseDuration = 137 * time.Second
+		renewDeadline = 107 * time.Second
+		retryPeriod   = 26 * time.Second
 	)
 
 	// Become the leader before proceeding.
