@@ -48,7 +48,7 @@ func (c *Controller) syncOperatorStatus(tuned *tunedv1.Tuned) error {
 		// The `resource` property of `relatedObjects` stanza should be the lowercase, plural value like `daemonsets`.
 		// See BZ1851214
 		{Group: "", Resource: "namespaces", Name: tunedMf.Namespace},
-		{Group: "tuned.openshift.io", Resource: "tuneds", Name: tunedMf.Name, Namespace: tunedMf.Namespace},
+		{Group: "tuned.openshift.io", Resource: "tuneds", Name: "", Namespace: tunedMf.Namespace},
 		{Group: "apps", Resource: "daemonsets", Name: dsMf.Name, Namespace: dsMf.Namespace},
 	}
 
