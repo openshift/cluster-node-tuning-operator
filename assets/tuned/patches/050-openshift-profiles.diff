@@ -1,0 +1,345 @@
+Add OpenShift profiles.
+
+See: https://github.com/redhat-performance/tuned/pull/376
+
+diff --git a/man/tuned-adm.8 b/man/tuned-adm.8
+index a8c6dd7f..ace1f162 100644
+--- a/man/tuned-adm.8
++++ b/man/tuned-adm.8
+@@ -118,6 +118,7 @@ Unload tunings.
+ .BR tuned\-profiles\-nfv\-guest (7)
+ .BR tuned\-profiles\-compat (7)
+ .BR tuned\-profiles\-postgresql (7)
++.BR tuned\-profiles\-openshift (7)
+ .SH AUTHOR
+ .nf
+ Jaroslav Škarvada <jskarvad@redhat.com>
+diff --git a/man/tuned-profiles-atomic.7 b/man/tuned-profiles-atomic.7
+index 1aa33628..b939e3e7 100644
+--- a/man/tuned-profiles-atomic.7
++++ b/man/tuned-profiles-atomic.7
+@@ -60,6 +60,7 @@ netfilter connections tracking.
+ .BR tuned\-profiles\-cpu\-partitioning (7)
+ .BR tuned\-profiles\-compat (7)
+ .BR tuned\-profiles\-postgresql (7)
++.BR tuned\-profiles\-openshift (7)
+ .SH AUTHOR
+ .nf
+ Jaroslav Škarvada <jskarvad@redhat.com>
+diff --git a/man/tuned-profiles-mssql.7 b/man/tuned-profiles-mssql.7
+index 63d02209..e56edf02 100644
+--- a/man/tuned-profiles-mssql.7
++++ b/man/tuned-profiles-mssql.7
+@@ -45,6 +45,7 @@ throughput-performance profile.
+ .BR tuned\-profiles\-cpu\-partitioning (7)
+ .BR tuned\-profiles\-compat (7)
+ .BR tuned\-profiles\-postgresql (7)
++.BR tuned\-profiles\-openshift (7)
+ .SH AUTHOR
+ .nf
+ Jaroslav Škarvada <jskarvad@redhat.com>
+diff --git a/man/tuned-profiles-nfv-guest.7 b/man/tuned-profiles-nfv-guest.7
+index 2d5caa63..6706867b 100644
+--- a/man/tuned-profiles-nfv-guest.7
++++ b/man/tuned-profiles-nfv-guest.7
+@@ -51,6 +51,7 @@ Profile optimized for virtual guests based on realtime profile.
+ .BR tuned\-profiles\-cpu\-partitioning (7)
+ .BR tuned\-profiles\-compat (7)
+ .BR tuned\-profiles\-postgresql (7)
++.BR tuned\-profiles\-openshift (7)
+ .SH AUTHOR
+ .nf
+ Jaroslav Škarvada <jskarvad@redhat.com>
+diff --git a/man/tuned-profiles-nfv-host.7 b/man/tuned-profiles-nfv-host.7
+index 63a598be..d483dc26 100644
+--- a/man/tuned-profiles-nfv-host.7
++++ b/man/tuned-profiles-nfv-host.7
+@@ -51,6 +51,7 @@ Profile optimized for virtual hosts based on realtime profile.
+ .BR tuned\-profiles\-cpu\-partitioning (7)
+ .BR tuned\-profiles\-compat (7)
+ .BR tuned\-profiles\-postgresql (7)
++.BR tuned\-profiles\-openshift (7)
+ .SH AUTHOR
+ .nf
+ Jaroslav Škarvada <jskarvad@redhat.com>
+diff --git a/man/tuned-profiles-openshift.7 b/man/tuned-profiles-openshift.7
+new file mode 100644
+index 00000000..9d648ff0
+--- /dev/null
++++ b/man/tuned-profiles-openshift.7
+@@ -0,0 +1,66 @@
++.\"/* 
++.\" * All rights reserved
++.\" * Copyright (C) 2018-2021 Red Hat, Inc.
++.\" * Authors: Jaroslav Škarvada, Jiří Mencák
++.\" *
++.\" * This program is free software; you can redistribute it and/or
++.\" * modify it under the terms of the GNU General Public License
++.\" * as published by the Free Software Foundation; either version 2
++.\" * of the License, or (at your option) any later version.
++.\" *
++.\" * This program is distributed in the hope that it will be useful,
++.\" * but WITHOUT ANY WARRANTY; without even the implied warranty of
++.\" * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++.\" * GNU General Public License for more details.
++.\" *
++.\" * You should have received a copy of the GNU General Public License
++.\" * along with this program; if not, write to the Free Software
++.\" * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
++.\" */
++.\"
++.TH TUNED_PROFILES_OPENSHIFT "8" "02 Aug 2021" "Fedora Power Management SIG" "TuneD"
++.SH NAME
++tuned\-profiles\-openshift - description of profiles provided for the OpenShift platform
++
++.SH DESCRIPTION
++These profiles are provided for the OpenShift platform.
++
++.SH PROFILES
++The following profiles are provided:
++
++.TP
++.BI "openshift"
++Parent profile containing tuning shared by OpenShift control plane and worker nodes.
++
++.TP
++.BI "openshift\-control\-plane"
++Profile optimized for OpenShift control plane.
++
++.TP
++.BI "openshift\-node"
++Profile optimized for general workloads on OpenShift worker nodes.
++
++.SH "FILES"
++.nf
++.I /etc/tuned/*
++.I /usr/lib/tuned/*
++
++.SH "SEE ALSO"
++.BR tuned (8)
++.BR tuned\-adm (8)
++.BR tuned\-profiles (7)
++.BR tuned\-profiles\-sap (7)
++.BR tuned\-profiles\-sap\-hana (7)
++.BR tuned\-profiles\-oracle (7)
++.BR tuned\-profiles\-mssql (7)
++.BR tuned\-profiles\-atomic (7)
++.BR tuned\-profiles\-realtime (7)
++.BR tuned\-profiles\-nfv\-host (7)
++.BR tuned\-profiles\-nfv\-guest (7)
++.BR tuned\-profiles\-cpu\-partitioning (7)
++.BR tuned\-profiles\-compat (7)
++.BR tuned\-profiles\-postgresql (7)
++.SH AUTHOR
++.nf
++Jaroslav Škarvada <jskarvad@redhat.com>
++Jiří Mencák <jmencak@redhat.com>
+diff --git a/man/tuned-profiles-oracle.7 b/man/tuned-profiles-oracle.7
+index 4eb3cf07..94a42a47 100644
+--- a/man/tuned-profiles-oracle.7
++++ b/man/tuned-profiles-oracle.7
+@@ -53,6 +53,7 @@ performance related kernel parameters.
+ .BR tuned\-profiles\-cpu\-partitioning (7)
+ .BR tuned\-profiles\-compat (7)
+ .BR tuned\-profiles\-postgresql (7)
++.BR tuned\-profiles\-openshift (7)
+ .SH AUTHOR
+ .nf
+ Jaroslav Škarvada <jskarvad@redhat.com>
+diff --git a/man/tuned-profiles-postgresql.7 b/man/tuned-profiles-postgresql.7
+index 2650da7f..7e24ee1f 100644
+--- a/man/tuned-profiles-postgresql.7
++++ b/man/tuned-profiles-postgresql.7
+@@ -55,6 +55,7 @@ performance related kernel parameters.
+ .BR tuned\-profiles\-nfv\-guest (7)
+ .BR tuned\-profiles\-cpu\-partitioning (7)
+ .BR tuned\-profiles\-compat (7)
++.BR tuned\-profiles\-openshift (7)
+ .SH AUTHOR
+ .nf
+ Jaroslav Škarvada <jskarvad@redhat.com>
+diff --git a/man/tuned-profiles-realtime.7 b/man/tuned-profiles-realtime.7
+index 99f80c30..6c27bfb7 100644
+--- a/man/tuned-profiles-realtime.7
++++ b/man/tuned-profiles-realtime.7
+@@ -51,6 +51,7 @@ Profile optimized for realtime.
+ .BR tuned\-profiles\-cpu\-partitioning (7)
+ .BR tuned\-profiles\-compat (7)
+ .BR tuned\-profiles\-postgresql (7)
++.BR tuned\-profiles\-openshift (7)
+ .SH AUTHOR
+ .nf
+ Jaroslav Škarvada <jskarvad@redhat.com>
+diff --git a/man/tuned-profiles-sap-hana.7 b/man/tuned-profiles-sap-hana.7
+index 688608f0..9fa250d5 100644
+--- a/man/tuned-profiles-sap-hana.7
++++ b/man/tuned-profiles-sap-hana.7
+@@ -56,6 +56,7 @@ semaphores.
+ .BR tuned\-profiles\-cpu-partitioning (7)
+ .BR tuned\-profiles\-compat (7)
+ .BR tuned\-profiles\-postgresql (7)
++.BR tuned\-profiles\-openshift (7)
+ .SH AUTHOR
+ .nf
+ Jaroslav Škarvada <jskarvad@redhat.com>
+diff --git a/man/tuned-profiles-sap.7 b/man/tuned-profiles-sap.7
+index 8ab0aa8d..64111995 100644
+--- a/man/tuned-profiles-sap.7
++++ b/man/tuned-profiles-sap.7
+@@ -54,6 +54,7 @@ areas a process may have.
+ .BR tuned\-profiles\-cpu\-partitioning (7)
+ .BR tuned\-profiles\-compat (7)
+ .BR tuned\-profiles\-postgresql (7)
++.BR tuned\-profiles\-openshift (7)
+ .SH AUTHOR
+ .nf
+ Jaroslav Škarvada <jskarvad@redhat.com>
+diff --git a/man/tuned-profiles-spectrumscale-ece.7 b/man/tuned-profiles-spectrumscale-ece.7
+index 52152c82..6594ea59 100644
+--- a/man/tuned-profiles-spectrumscale-ece.7
++++ b/man/tuned-profiles-spectrumscale-ece.7
+@@ -54,6 +54,7 @@ performance related kernel parameters.
+ .BR tuned\-profiles\-cpu\-partitioning (7)
+ .BR tuned\-profiles\-compat (7)
+ .BR tuned\-profiles\-postgresql (7)
++.BR tuned\-profiles\-openshift (7)
+ .SH AUTHOR
+ .nf
+ Luis Bolinches <luis.bolinches@fi.ibm.com>
+diff --git a/man/tuned-profiles.7 b/man/tuned-profiles.7
+index 8225d2a8..8b3a3444 100644
+--- a/man/tuned-profiles.7
++++ b/man/tuned-profiles.7
+@@ -154,6 +154,7 @@ profiles (e.g. throughput\-performance profile), example:
+ .BR tuned\-profiles\-cpu\-partitioning (7)
+ .BR tuned\-profiles\-compat (7)
+ .BR tuned\-profiles\-postgresql (7)
++.BR tuned\-profiles\-openshift (7)
+ .SH AUTHOR
+ .nf
+ Jaroslav Škarvada <jskarvad@redhat.com>
+diff --git a/profiles/openshift-control-plane/tuned.conf b/profiles/openshift-control-plane/tuned.conf
+new file mode 100644
+index 00000000..68ece30b
+--- /dev/null
++++ b/profiles/openshift-control-plane/tuned.conf
+@@ -0,0 +1,23 @@
++#
++# tuned configuration
++#
++
++[main]
++summary=Optimize systems running OpenShift control plane
++include=openshift
++
++[scheduler]
++# ktune sysctl settings, maximizing i/o throughput
++#
++# Minimal preemption granularity for CPU-bound tasks:
++# (default: 1 msec#  (1 + ilog(ncpus)), units: nanoseconds)
++sched_min_granularity_ns=10000000
++# The total time the scheduler will consider a migrated process
++# "cache hot" and thus less likely to be re-migrated
++# (system default is 500000, i.e. 0.5 ms)
++sched_migration_cost_ns=5000000
++# SCHED_OTHER wake-up granularity.
++#
++# Preemption granularity when tasks wake up.  Lower the value to
++# improve wake-up latency and throughput for latency critical tasks.
++sched_wakeup_granularity_ns=4000000
+diff --git a/profiles/openshift-node/tuned.conf b/profiles/openshift-node/tuned.conf
+new file mode 100644
+index 00000000..960d130c
+--- /dev/null
++++ b/profiles/openshift-node/tuned.conf
+@@ -0,0 +1,12 @@
++#
++# tuned configuration
++#
++
++[main]
++summary=Optimize systems running OpenShift nodes
++include=openshift
++
++[sysctl]
++net.ipv4.tcp_fastopen=3
++fs.inotify.max_user_watches=65536
++fs.inotify.max_user_instances=8192
+diff --git a/profiles/openshift/tuned.conf b/profiles/openshift/tuned.conf
+new file mode 100644
+index 00000000..af2f2bc6
+--- /dev/null
++++ b/profiles/openshift/tuned.conf
+@@ -0,0 +1,30 @@
++#
++# tuned configuration
++#
++
++[main]
++summary=Optimize systems running OpenShift (parent profile)
++include=${f:virt_check:virtual-guest:throughput-performance}
++
++[selinux]
++avc_cache_threshold=8192
++
++[net]
++nf_conntrack_hashsize=131072
++
++[sysctl]
++net.ipv4.ip_forward=1
++kernel.pid_max=>4194304
++net.netfilter.nf_conntrack_max=1048576
++net.ipv4.conf.all.arp_announce=2
++net.ipv4.neigh.default.gc_thresh1=8192
++net.ipv4.neigh.default.gc_thresh2=32768
++net.ipv4.neigh.default.gc_thresh3=65536
++net.ipv6.neigh.default.gc_thresh1=8192
++net.ipv6.neigh.default.gc_thresh2=32768
++net.ipv6.neigh.default.gc_thresh3=65536
++vm.max_map_count=262144
++
++[scheduler]
++# see rhbz#1979352; exclude containers from aligning to house keeping CPUs
++cgroup_ps_blacklist=/kubepods\.slice/
+diff --git a/tuned.spec b/tuned.spec
+index e3a494fd..feccd54f 100644
+--- a/tuned.spec
++++ b/tuned.spec
+@@ -254,6 +254,13 @@ Requires: %{name} = %{version}
+ %description profiles-postgresql
+ Additional tuned profile(s) targeted to PostgreSQL server loads.
+ 
++%package profiles-openshift
++Summary: Additional TuneD profile(s) optimized for OpenShift
++Requires: %{name} = %{version}
++
++%description profiles-openshift
++Additional TuneD profile(s) optimized for OpenShift.
++
+ %prep
+ %setup -q -n %{name}-%{version}%{?prerel2}
+ 
+@@ -416,6 +423,9 @@ fi
+ %exclude %{_prefix}/lib/tuned/cpu-partitioning
+ %exclude %{_prefix}/lib/tuned/spectrumscale-ece
+ %exclude %{_prefix}/lib/tuned/postgresql
++%exclude %{_prefix}/lib/tuned/openshift
++%exclude %{_prefix}/lib/tuned/openshift-control-plane
++%exclude %{_prefix}/lib/tuned/openshift-node
+ %{_prefix}/lib/tuned
+ %dir %{_sysconfdir}/tuned
+ %dir %{_sysconfdir}/tuned/recommend.d
+@@ -548,6 +558,13 @@ fi
+ %{_prefix}/lib/tuned/postgresql
+ %{_mandir}/man7/tuned-profiles-postgresql.7*
+ 
++%files profiles-openshift
++%defattr(-,root,root,-)
++%{_prefix}/lib/tuned/openshift
++%{_prefix}/lib/tuned/openshift-control-plane
++%{_prefix}/lib/tuned/openshift-node
++%{_mandir}/man7/tuned-profiles-openshift.7*
++
+ %changelog
+ * Wed Jul 21 2021 Jaroslav Škarvada <jskarvad@redhat.com> - 2.16.0-1
+ - new release
