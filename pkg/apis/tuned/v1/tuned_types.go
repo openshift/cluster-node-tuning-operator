@@ -48,8 +48,10 @@ type TunedSpec struct {
 	// +optional
 	ManagementState operatorv1.ManagementState `json:"managementState,omitempty" protobuf:"bytes,1,opt,name=managementState,casttype=github.com/openshift/api/operator/v1.ManagementState"`
 	// Tuned profiles.
+	// +optional
 	Profile []TunedProfile `json:"profile"`
 	// Selection logic for all Tuned profiles.
+	// +optional
 	Recommend []TunedRecommend `json:"recommend"`
 }
 
