@@ -33,13 +33,11 @@ ORG=openshift
 TAG=$(shell git rev-parse --abbrev-ref HEAD)
 IMAGE=$(REGISTRY)/$(ORG)/origin-cluster-node-tuning-operator:$(TAG)
 
-all: build
-
-# Do not put any includes above the "all" target.  We want the default target to build
-# the operator.
 include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
     targets/openshift/operator/profile-manifests.mk \
 )
+
+all: build
 
 clone-tuned:
 	(cd assets/tuned && \

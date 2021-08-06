@@ -35,6 +35,9 @@ spec:
             spec:
               description: 'spec is the specification of the desired behavior of Tuned. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status'
               type: object
+              required:
+                - profile
+                - recommend
               properties:
                 managementState:
                   description: managementState indicates whether the registry instance represented by this config instance is under operator management or not.  Valid values are Force, Managed, Unmanaged, and Removed.

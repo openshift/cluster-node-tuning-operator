@@ -655,6 +655,14 @@ func (c *Controller) changeSyncer() (synced bool, err error) {
 			reload = true
 		} else if activeProfile != recommendedProfile {
 			klog.Infof("active profile (%s) != recommended profile (%s)", activeProfile, recommendedProfile)
+			recommendedProfileDir := tunedProfilesDir + "/" + recommendedProfile
+			if _, err := os.Stat(recommendedProfileDir); os.IsNotExist(err) {
+				// Workaround for tuned BZ1774645; do not send SIGHUP to tuned if the profile directory doesn't exist.
+				// Log this as an error for easier debugging.  Persistent non-existence of the profile directory very
+				// likely indicates a custom user profile which references a profile that was not defined.
+				klog.Errorf("Tuned profile directory %q does not exist; was %q defined?", recommendedProfileDir, recommendedProfile)
+				return false, nil // retry later
+			}
 			reload = true
 		} else {
 			klog.Infof("active and recommended profile (%s) match; profile change will not trigger profile reload", activeProfile)
