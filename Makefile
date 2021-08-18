@@ -18,10 +18,9 @@ TUNED_COMMIT:=bc3f737a0080d38863915217c2e4482bbb77b322
 TUNED_DIR:=daemon
 
 # API-related variables
-API_TYPES_DIR:=pkg/apis/tuned/v1
-API_TYPES:=$(wildcard $(API_TYPES_DIR)/*_types.go)
+API_TYPES_DIR:=pkg/apis
+API_TYPES:=$(wildcard $(API_TYPES_DIR)/*/*/*_types.go)
 API_ZZ_GENERATED:=zz_generated.deepcopy
-API_TYPES_GENERATED:=$(API_TYPES_DIR)/$(API_ZZ_GENERATED).go
 API_GO_HEADER_FILE:=pkg/apis/header.go.txt
 
 # Container image-related variables
@@ -56,13 +55,16 @@ $(BINDATA): $(GOBINDATA_BIN) $(ASSETS)
 	$(GOBINDATA_BIN) -mode 420 -modtime 1 -pkg manifests -o $(BINDATA) assets/...
 	gofmt -s -w $(BINDATA)
 
-pkg/generated: $(API_TYPES)
+generate-deepcopy:
 	$(GO) run k8s.io/code-generator/cmd/deepcopy-gen \
-	  --input-dirs $(PACKAGE)/pkg/apis/tuned/v1 \
+	  --input-dirs $(PACKAGE)/$(API_TYPES_DIR)/tuned/v1,$(PACKAGE)/$(API_TYPES_DIR)/performanceprofile/v1,$(PACKAGE)/$(API_TYPES_DIR)/performanceprofile/v2 \
 	  -O $(API_ZZ_GENERATED) \
 	  --go-header-file $(API_GO_HEADER_FILE) \
 	  --bounding-dirs $(PACKAGE)/pkg/apis \
 	  --output-base tmp
+	tar c tmp | tar x --strip-components=4
+
+pkg/generated:
 	$(GO) run k8s.io/code-generator/cmd/client-gen \
 	  --clientset-name versioned \
 	  --input-base '' \
@@ -87,7 +89,7 @@ pkg/generated: $(API_TYPES)
 
 crd-schema-gen:
 	# TODO: look into using https://github.com/openshift/build-machinery-go/ and yaml patches
-	$(GO) run ./vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/ schemapatch:manifests=./manifests paths=./pkg/apis/tuned/v1 output:dir=./manifests
+	$(GO) run ./vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/ schemapatch:manifests=./manifests paths=./pkg/apis/... output:dir=./manifests
 	yq w -i ./manifests/20-crd-tuned.yaml -s ./manifests/20-crd-tuned.yaml-patch
 
 $(GOBINDATA_BIN):

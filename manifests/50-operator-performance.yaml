@@ -1,0 +1,135 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+    service.beta.openshift.io/serving-cert-secret-name: performance-addon-operator-webhook-cert
+  labels:
+    name: performance-addon-operator-service
+  name: performance-addon-operator-service
+  namespace: openshift-performance-addon-operator
+spec:
+  ports:
+    - name: "443"
+      port: 443
+      protocol: TCP
+      targetPort: 4343
+  selector:
+    name: performance-addon-operator
+  type: ClusterIP
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  annotations:
+    service.beta.openshift.io/inject-cabundle: "true"
+  name: performance-addon-operator
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: performance-addon-operator-service
+      namespace: openshift-performance-addon-operator
+      path: /validate-performance-openshift-io-v2-performanceprofile
+      port: 443
+  failurePolicy: Fail
+  matchPolicy: Equivalent
+  name: vwb.performance.openshift.io
+  rules:
+  - apiGroups:
+    - performance.openshift.io
+    apiVersions:
+    - v2
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - performanceprofiles
+    scope: '*'
+  sideEffects: None
+  timeoutSeconds: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+  name: performance-addon-operator
+  namespace: openshift-performance-addon-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: performance-addon-operator
+  template:
+    metadata:
+      annotations:
+        target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
+      labels:
+        name: performance-addon-operator
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/master
+                    operator: Exists
+      containers:
+      - command:
+        - performance-operator
+        env:
+        - name: WATCH_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: OPERATOR_NAME
+          value: performance-operator
+        - name: OPERATOR_CONDITION_NAME
+          value: performance-addon-operator.v4.9.0
+        image: quay.io/openshift-kni/performance-addon-operator:4.9-snapshot
+        imagePullPolicy: IfNotPresent
+        name: performance-operator
+        resources:
+          requests:
+            cpu: 10m
+            memory: 25Mi
+        terminationMessagePolicy: FallbackToLogsOnError
+        volumeMounts:
+        - mountPath: /apiserver.local.config/certificates
+          name: apiservice-cert
+      serviceAccountName: performance-addon-operator
+      nodeSelector:
+        node-role.kubernetes.io/master: ""
+      priorityClassName: "system-cluster-critical"
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: "NoSchedule"
+      - key: "node.kubernetes.io/unreachable"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 120
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 120
+      volumes:
+      - name: apiservice-cert
+        secret:
+          defaultMode: 420
+          items:
+          - key: tls.crt
+            path: apiserver.crt
+          - key: tls.key
+            path: apiserver.key
+          secretName: performance-addon-operator-webhook-cert
