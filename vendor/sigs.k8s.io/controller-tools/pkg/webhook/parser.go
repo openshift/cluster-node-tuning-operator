@@ -19,7 +19,7 @@ limitations under the License.
 //
 // The markers take the form:
 //
-//  +kubebuilder:webhook:webhookVersions=<[]string>,failurePolicy=<string>,matchPolicy=<string>,groups=<[]string>,resources=<[]string>,verbs=<[]string>,versions=<[]string>,name=<string>,path=<string>,mutating=<bool>,sideEffects=<string>
+//  +kubebuilder:webhook:webhookVersions=<[]string>,failurePolicy=<string>,matchPolicy=<string>,groups=<[]string>,resources=<[]string>,verbs=<[]string>,versions=<[]string>,name=<string>,path=<string>,mutating=<bool>,sideEffects=<string>,admissionReviewVersions=<[]string>
 package webhook
 
 import (
@@ -27,7 +27,6 @@ import (
 	"strings"
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
 
@@ -107,6 +106,12 @@ type Config struct {
 	// WebhookVersions specifies the target API versions of the {Mutating,Validating}WebhookConfiguration objects
 	// itself to generate.  Defaults to v1.
 	WebhookVersions []string `marker:"webhookVersions,optional"`
+
+	// AdmissionReviewVersions is an ordered list of preferred `AdmissionReview`
+	// versions the Webhook expects.
+	// For generating v1 {Mutating,Validating}WebhookConfiguration, this is mandatory.
+	// For generating v1beta1 {Mutating,Validating}WebhookConfiguration, this is optional, and default to v1beta1.
+	AdmissionReviewVersions []string `marker:"admissionReviewVersions,optional"`
 }
 
 // verbToAPIVariant converts a marker's verb to the proper value for the API.
@@ -140,15 +145,13 @@ func (c Config) ToMutatingWebhook() (admissionregv1.MutatingWebhook, error) {
 	}
 
 	return admissionregv1.MutatingWebhook{
-		Name:          c.Name,
-		Rules:         c.rules(),
-		FailurePolicy: c.failurePolicy(),
-		MatchPolicy:   matchPolicy,
-		ClientConfig:  c.clientConfig(),
-		SideEffects:   c.sideEffects(),
-		// TODO(jiachengxu): AdmissionReviewVersions becomes required in admissionregistration/v1, here we default it
-		// to `v1` and `v1beta1`, and we should support to config the `AdmissionReviewVersions` as a marker.
-		AdmissionReviewVersions: []string{defaultWebhookVersion, "v1beta1"},
+		Name:                    c.Name,
+		Rules:                   c.rules(),
+		FailurePolicy:           c.failurePolicy(),
+		MatchPolicy:             matchPolicy,
+		ClientConfig:            c.clientConfig(),
+		SideEffects:             c.sideEffects(),
+		AdmissionReviewVersions: c.AdmissionReviewVersions,
 	}, nil
 }
 
@@ -164,15 +167,13 @@ func (c Config) ToValidatingWebhook() (admissionregv1.ValidatingWebhook, error) 
 	}
 
 	return admissionregv1.ValidatingWebhook{
-		Name:          c.Name,
-		Rules:         c.rules(),
-		FailurePolicy: c.failurePolicy(),
-		MatchPolicy:   matchPolicy,
-		ClientConfig:  c.clientConfig(),
-		SideEffects:   c.sideEffects(),
-		// TODO(jiachengxu): AdmissionReviewVersions becomes required in admissionregistration/v1, here we default it
-		// to `v1` and `v1beta1`, and we should support to config the `AdmissionReviewVersions` as a marker.
-		AdmissionReviewVersions: []string{defaultWebhookVersion, "v1beta1"},
+		Name:                    c.Name,
+		Rules:                   c.rules(),
+		FailurePolicy:           c.failurePolicy(),
+		MatchPolicy:             matchPolicy,
+		ClientConfig:            c.clientConfig(),
+		SideEffects:             c.sideEffects(),
+		AdmissionReviewVersions: c.AdmissionReviewVersions,
 	}, nil
 }
 
@@ -242,10 +243,6 @@ func (c Config) clientConfig() admissionregv1.WebhookClientConfig {
 			Namespace: "system",
 			Path:      &path,
 		},
-		// OpenAPI marks the field as required before 1.13 because of a bug that got fixed in
-		// https://github.com/kubernetes/api/commit/e7d9121e9ffd63cea0288b36a82bcc87b073bd1b
-		// Put "\n" as an placeholder as a workaround til 1.13+ is almost everywhere.
-		CABundle: []byte("\n"),
 	}
 }
 
@@ -334,77 +331,63 @@ func (Generator) Generate(ctx *genall.GenerationContext) error {
 	versionedWebhooks := make(map[string][]interface{}, len(supportedWebhookVersions))
 	for _, version := range supportedWebhookVersions {
 		if cfgs, ok := mutatingCfgs[version]; ok {
-			objRaw := &admissionregv1.MutatingWebhookConfiguration{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "MutatingWebhookConfiguration",
-					APIVersion: admissionregv1.SchemeGroupVersion.String(),
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "mutating-webhook-configuration",
-				},
-				Webhooks: cfgs,
-			}
-			// SideEffects in required in admissionregistration/v1, if this is not set or set to `Some` or `Known`,
-			// we return an error
-			if version == defaultWebhookVersion {
+			// All webhook config versions in supportedWebhookVersions have the same general form, with a few
+			// stricter requirements for v1. Since no conversion scheme exists for webhook configs, the v1
+			// type can be used for all versioned types in this context.
+			objRaw := &admissionregv1.MutatingWebhookConfiguration{}
+			objRaw.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   admissionregv1.SchemeGroupVersion.Group,
+				Version: version,
+				Kind:    "MutatingWebhookConfiguration",
+			})
+			objRaw.SetName("mutating-webhook-configuration")
+			objRaw.Webhooks = cfgs
+			switch version {
+			case admissionregv1.SchemeGroupVersion.Version:
 				for i := range objRaw.Webhooks {
+					// SideEffects is required in admissionregistration/v1, if this is not set or set to `Some` or `Known`,
+					// return an error
 					if err := checkSideEffectsForV1(objRaw.Webhooks[i].SideEffects); err != nil {
 						return err
 					}
+					// AdmissionReviewVersions is required in admissionregistration/v1, if this is not set,
+					// return an error
+					if len(objRaw.Webhooks[i].AdmissionReviewVersions) == 0 {
+						return fmt.Errorf("AdmissionReviewVersions is mandatory for v1 {Mutating,Validating}WebhookConfiguration")
+					}
 				}
 			}
-			// AdmissionReviewVersions is optional in admissionregistration/v1beta1, so let kubernetes to default it.
-			if version == "v1beta1" {
-				for i := range objRaw.Webhooks {
-					objRaw.Webhooks[i].AdmissionReviewVersions = nil
-				}
-			}
-			if version != defaultWebhookVersion {
-				conv, err := MutatingWebhookConfigurationAsVersion(objRaw, schema.GroupVersion{Group: admissionregv1.SchemeGroupVersion.Group, Version: version})
-				versionedWebhooks[version] = append(versionedWebhooks[version], conv)
-				if err != nil {
-					return err
-				}
-			} else {
-				versionedWebhooks[version] = append(versionedWebhooks[version], objRaw)
-			}
+			versionedWebhooks[version] = append(versionedWebhooks[version], objRaw)
 		}
 
 		if cfgs, ok := validatingCfgs[version]; ok {
-			objRaw := &admissionregv1.ValidatingWebhookConfiguration{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "ValidatingWebhookConfiguration",
-					APIVersion: admissionregv1.SchemeGroupVersion.String(),
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "validating-webhook-configuration",
-				},
-				Webhooks: cfgs,
-			}
-			// SideEffects in required in admissionregistration/v1, if this is not set or set to `Some` or `Known`,
-			// we return an error
-			if version == defaultWebhookVersion {
+			// All webhook config versions in supportedWebhookVersions have the same general form, with a few
+			// stricter requirements for v1. Since no conversion scheme exists for webhook configs, the v1
+			// type can be used for all versioned types in this context.
+			objRaw := &admissionregv1.ValidatingWebhookConfiguration{}
+			objRaw.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   admissionregv1.SchemeGroupVersion.Group,
+				Version: version,
+				Kind:    "ValidatingWebhookConfiguration",
+			})
+			objRaw.SetName("validating-webhook-configuration")
+			objRaw.Webhooks = cfgs
+			switch version {
+			case admissionregv1.SchemeGroupVersion.Version:
 				for i := range objRaw.Webhooks {
+					// SideEffects is required in admissionregistration/v1, if this is not set or set to `Some` or `Known`,
+					// return an error
 					if err := checkSideEffectsForV1(objRaw.Webhooks[i].SideEffects); err != nil {
 						return err
 					}
+					// AdmissionReviewVersions is required in admissionregistration/v1, if this is not set,
+					// return an error
+					if len(objRaw.Webhooks[i].AdmissionReviewVersions) == 0 {
+						return fmt.Errorf("AdmissionReviewVersions is mandatory for v1 {Mutating,Validating}WebhookConfiguration")
+					}
 				}
 			}
-			// AdmissionReviewVersions is optional in admissionregistration/v1beta1, so let kubernetes to default it.
-			if version == "v1beta1" {
-				for i := range objRaw.Webhooks {
-					objRaw.Webhooks[i].AdmissionReviewVersions = nil
-				}
-			}
-			if version != defaultWebhookVersion {
-				conv, err := ValidatingWebhookConfigurationAsVersion(objRaw, schema.GroupVersion{Group: admissionregv1.SchemeGroupVersion.Group, Version: version})
-				versionedWebhooks[version] = append(versionedWebhooks[version], conv)
-				if err != nil {
-					return err
-				}
-			} else {
-				versionedWebhooks[version] = append(versionedWebhooks[version], objRaw)
-			}
+			versionedWebhooks[version] = append(versionedWebhooks[version], objRaw)
 		}
 	}
 
