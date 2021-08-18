@@ -1,0 +1,11 @@
+{
+  "version": "1.0.0",
+  "hook": {
+    "path": "/usr/local/bin/low-latency-hooks.sh",
+    "args": ["low-latency-hooks.sh", "{{.RPSMask}}"]
+  },
+  "when": {
+    "always": true
+  },
+  "stages": ["prestart"]
+}
