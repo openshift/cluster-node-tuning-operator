@@ -19,7 +19,6 @@ TUNED_DIR:=daemon
 
 # API-related variables
 API_TYPES_DIR:=pkg/apis
-API_TYPES:=$(wildcard $(API_TYPES_DIR)/*/*/*_types.go)
 API_ZZ_GENERATED:=zz_generated.deepcopy
 API_GO_HEADER_FILE:=pkg/apis/header.go.txt
 
@@ -47,13 +46,16 @@ clone-tuned:
 	  cd $(TUNED_DIR) && git checkout $(TUNED_COMMIT) && cd .. && \
 	  rm -rf $(TUNED_DIR)/.git)
 
-build: $(BINDATA) pkg/generated
+build: $(BINDATA) generate-deepcopy pkg/generated
 	$(GO_BUILD_RECIPE)
 	ln -sf $(PACKAGE_BIN) $(OUT_DIR)/openshift-tuned
 
 $(BINDATA): $(GOBINDATA_BIN) $(ASSETS)
 	$(GOBINDATA_BIN) -mode 420 -modtime 1 -pkg manifests -o $(BINDATA) assets/...
 	gofmt -s -w $(BINDATA)
+
+performance-addon-operator-bin:
+	$(GO) build -o $(OUT_DIR)/performance-addon-operator -ldflags '-X $(PACKAGE)/version.Version=$(REV)' $(PACKAGE)/cmd/performance-addon-operator
 
 generate-deepcopy:
 	$(GO) run k8s.io/code-generator/cmd/deepcopy-gen \
