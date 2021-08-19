@@ -110,7 +110,10 @@ spec:
     rules:
     - alert: NTOPodsNotReady
       annotations:
-        message: Pod {{ $labels.pod }} on node {{ $labels.node }} is not ready.
+        description: |
+          Pod {{ $labels.pod }} is not ready.
+          Review the "Event" objects in "openshift-cluster-node-tuning-operator" namespace for further details.
+        summary: Pod {{ $labels.pod }} is not ready.
       expr: |
         kube_pod_status_ready{namespace='openshift-cluster-node-tuning-operator', condition='true'} == 0
       for: 30m
@@ -118,8 +121,8 @@ spec:
         severity: warning
     - alert: NTODegraded
       annotations:
-        message: |
-          The Node Tuning Operator is degraded. Review the "node-tuning" ClusterOperator object for further details.
+        description: The Node Tuning Operator is degraded. Review the "node-tuning" ClusterOperator object for further details.
+        summary: The Node Tuning Operator is degraded.
       expr: nto_degraded_info == 1
       for: 2h
       labels:
