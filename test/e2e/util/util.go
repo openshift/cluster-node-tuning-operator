@@ -117,6 +117,7 @@ func waitForCmdOutputInPod(interval, duration time.Duration, pod *corev1.Pod, va
 		val, sTrimmed string
 		err, explain  error
 	)
+	startTime := time.Now()
 	err = wait.PollImmediate(interval, duration, func() (bool, error) {
 		val, err = ExecCmdInPod(pod, cmd...)
 
@@ -137,10 +138,12 @@ func waitForCmdOutputInPod(interval, duration time.Duration, pod *corev1.Pod, va
 		sTrimmed = "(leading/trailing whitespace trimmed) "
 	}
 	if valExp != nil && val != *valExp {
-		return val, fmt.Errorf("command %s outputs %s %sin Pod %s, expected %s: %v", cmd, val, sTrimmed, pod.Name, *valExp, explain)
+		return val, fmt.Errorf("command %s outputs %s %sin Pod %s, expected %s (waited %s): %v",
+			cmd, val, sTrimmed, pod.Name, *valExp, time.Since(startTime), explain)
 	}
 	if err != nil {
-		return val, fmt.Errorf("command %s outputs %s %sin Pod %s: %v", cmd, val, sTrimmed, pod.Name, explain)
+		return val, fmt.Errorf("command %s outputs %s %sin Pod %s (waited %s): %v",
+			cmd, val, sTrimmed, pod.Name, time.Since(startTime), explain)
 	}
 
 	return val, nil

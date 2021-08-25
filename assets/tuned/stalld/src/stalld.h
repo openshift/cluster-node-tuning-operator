@@ -183,4 +183,8 @@ extern regex_t *compiled_regex_thread;
 extern regex_t *compiled_regex_process;
 extern char *config_sched_debug_path;
 
+#define MAX_FILE_NAME	1024
+#define MAX_PATH	4096
+#define MAX_DIR_PATH	(MAX_PATH - MAX_FILE_NAME)
+
 #endif /* __STALLD_H__ */
