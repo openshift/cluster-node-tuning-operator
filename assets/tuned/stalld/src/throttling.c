@@ -37,14 +37,17 @@ static long rt_runtime_us = 0;
 
 static void restore_rt_throttling(int status, void *arg)
 {
+	char buffer[80];
 	int retval;
-	if (rt_runtime_us != -1) {
-		int fd = open(RT_RUNTIME_PATH, O_WRONLY);
-		char buffer[80];
+	int fd;
 
+	if (rt_runtime_us != -1) {
+		fd = open(RT_RUNTIME_PATH, O_WRONLY);
 		if (fd < 0)
 			die("failed to open %s\n", RT_RUNTIME_PATH);
+
 		sprintf(buffer, "%ld", rt_runtime_us);
+
 		retval = write(fd, buffer, strlen(buffer));
 		if (retval < 0)
 			warn("error restoring rt throttling");
@@ -56,12 +59,15 @@ static void restore_rt_throttling(int status, void *arg)
 
 int turn_off_rt_throttling(void)
 {
-	int fd;
 	char buffer[80];
 	int status;
+	int fd;
 
 	/* get the current value of the throttling runtime */
 	fd = open(RT_RUNTIME_PATH, O_RDWR);
+	if (fd < 0)
+		die("unable to open %s: %s\n", RT_RUNTIME_PATH, strerror(errno));
+
 	status = read(fd, buffer, sizeof(buffer));
 	if (status < 0)
 		die("failed to read %s\n", RT_RUNTIME_PATH);
@@ -90,17 +96,20 @@ int turn_off_rt_throttling(void)
 
 int rt_throttling_is_off(void)
 {
-	int ret;
-	const char *runtime = "/proc/sys/kernel/sched_rt_runtime_us";
-	int fd = open(runtime, O_RDONLY);
 	char buffer[80];
+	int ret;
+	int fd;
 
+	fd = open(RT_RUNTIME_PATH, O_RDONLY);
 	if (fd < 0)
-		die("unable to open %s to check throttling status: %s\n", runtime, strerror(errno));
+		die("unable to open %s to check throttling status: %s\n",
+		    RT_RUNTIME_PATH, strerror(errno));
 
 	ret = read(fd, buffer, sizeof(buffer));
 	if (ret <= 0)
-		die ("unable to read %s to get runtime status: %s\n", runtime, strerror(errno));
+		die ("unable to read %s to get runtime status: %s\n",
+		     RT_RUNTIME_PATH, strerror(errno));
+
 	close(fd);
 
 	if (ret < sizeof(buffer))

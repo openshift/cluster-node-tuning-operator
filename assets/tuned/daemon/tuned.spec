@@ -36,8 +36,8 @@
 %global git_suffix %{git_date}git%{git_short_commit}
 %endif
 
-%global prerelease rc
-%global prereleasenum 1
+#%%global prerelease rc
+#%%global prereleasenum 1
 
 %global prerel1 %{?prerelease:.%{prerelease}%{prereleasenum}}
 %global prerel2 %{?prerelease:-%{prerelease}.%{prereleasenum}}
@@ -45,7 +45,7 @@
 Summary: A dynamic adaptive system tuning daemon
 Name: tuned
 Version: 2.16.0
-Release: 0.1%{?prerel1}%{?with_snapshot:.%{git_suffix}}%{?dist}
+Release: 1%{?prerel1}%{?with_snapshot:.%{git_suffix}}%{?dist}
 License: GPLv2+
 Source0: https://github.com/redhat-performance/%{name}/archive/v%{version}%{?prerel2}/%{name}-%{version}%{?prerel2}.tar.gz
 URL: http://www.tuned-project.org/
@@ -66,9 +66,8 @@ BuildRequires: %{_py}, %{_py}-devel
 %if %{without python3} && ( ! 0%{?rhel} || 0%{?rhel} >= 8 )
 BuildRequires: %{_py}-mock
 %endif
-BuildRequires: %{_py}-configobj
 BuildRequires: %{_py}-pyudev
-Requires: %{_py}-pyudev, %{_py}-configobj
+Requires: %{_py}-pyudev
 Requires: %{_py}-linux-procfs, %{_py}-perf
 %if %{without python3}
 Requires: %{_py}-schedutils
@@ -254,6 +253,13 @@ Requires: %{name} = %{version}
 %description profiles-postgresql
 Additional tuned profile(s) targeted to PostgreSQL server loads.
 
+%package profiles-openshift
+Summary: Additional TuneD profile(s) optimized for OpenShift
+Requires: %{name} = %{version}
+
+%description profiles-openshift
+Additional TuneD profile(s) optimized for OpenShift.
+
 %prep
 %setup -q -n %{name}-%{version}%{?prerel2}
 
@@ -416,6 +422,9 @@ fi
 %exclude %{_prefix}/lib/tuned/cpu-partitioning
 %exclude %{_prefix}/lib/tuned/spectrumscale-ece
 %exclude %{_prefix}/lib/tuned/postgresql
+%exclude %{_prefix}/lib/tuned/openshift
+%exclude %{_prefix}/lib/tuned/openshift-control-plane
+%exclude %{_prefix}/lib/tuned/openshift-node
 %{_prefix}/lib/tuned
 %dir %{_sysconfdir}/tuned
 %dir %{_sysconfdir}/tuned/recommend.d
@@ -548,7 +557,19 @@ fi
 %{_prefix}/lib/tuned/postgresql
 %{_mandir}/man7/tuned-profiles-postgresql.7*
 
+%files profiles-openshift
+%defattr(-,root,root,-)
+%{_prefix}/lib/tuned/openshift
+%{_prefix}/lib/tuned/openshift-control-plane
+%{_prefix}/lib/tuned/openshift-node
+%{_mandir}/man7/tuned-profiles-openshift.7*
+
 %changelog
+* Wed Jul 21 2021 Jaroslav Škarvada <jskarvad@redhat.com> - 2.16.0-1
+- new release
+  - rebased tuned to latest upstream
+    related: rhbz#1936426
+
 * Wed Jul  7 2021 Jaroslav Škarvada <jskarvad@redhat.com> - 2.16.0-0.1.rc1
 - new release
   - rebased tuned to latest upstream

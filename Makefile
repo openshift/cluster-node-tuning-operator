@@ -14,7 +14,7 @@ REV=$(shell git describe --long --tags --match='v*' --always --dirty)
 
 # Upstream tuned daemon variables
 TUNED_REPO:=https://github.com/redhat-performance/tuned.git
-TUNED_COMMIT:=bc3f737a0080d38863915217c2e4482bbb77b322
+TUNED_COMMIT:=bcbf2a54899d73605aaa7318b6578066de2155f2
 TUNED_DIR:=daemon
 
 # API-related variables
