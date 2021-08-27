@@ -48,6 +48,7 @@ const (
 	operandNamespace       = "openshift-cluster-node-tuning-operator"
 	programName            = "openshift-tuned"
 	tunedProfilesDir       = "/etc/tuned"
+	tunedConfFile          = "tuned.conf"
 	tunedActiveProfileFile = tunedProfilesDir + "/active_profile"
 	tunedRecommendDir      = tunedProfilesDir + "/recommend.d"
 	tunedRecommendFile     = tunedRecommendDir + "/50-openshift.conf"
@@ -313,9 +314,18 @@ func disableSystemTuned() {
 	}
 }
 
+func profilesEqual(profileFile string, profileData string) bool {
+	content, err := ioutil.ReadFile(profileFile)
+	if err != nil {
+		content = []byte{}
+	}
+
+	return profileData == string(content)
+}
+
 // profilesExtract extracts TuneD daemon profiles to the daemon configuration directory.
-// If the data in the to be extracted recommended profile is different than the current
-// recommended profile, the function returns true.
+// If the data in the to-be-extracted recommended profile or the profiles being included
+// from the current recommended profile have changed, the function returns true.
 func profilesExtract(profiles []tunedv1.TunedProfile) (bool, error) {
 	var (
 		change bool
@@ -336,25 +346,25 @@ func profilesExtract(profiles []tunedv1.TunedProfile) (bool, error) {
 			continue
 		}
 		profileDir := fmt.Sprintf("%s/%s", tunedProfilesDir, *profile.Name)
-		profileFile := fmt.Sprintf("%s/%s", profileDir, "tuned.conf")
+		profileFile := fmt.Sprintf("%s/%s", profileDir, tunedConfFile)
 
 		if err := mkdir(profileDir); err != nil {
 			return change, fmt.Errorf("failed to create TuneD profile directory %q: %v", profileDir, err)
 		}
 
-		if recommendedProfile == *profile.Name {
-			// Recommended profile name matches profile of the profile currently being extracted, compare their content.
+		// Get a list of TuneD profiles names the recommended profile depends on.
+		recommendedProfileDeps := profileDepends(recommendedProfile)
+		// Add the recommended profile itself.
+		recommendedProfileDeps[recommendedProfile] = true
+		if recommendedProfileDeps[*profile.Name] {
+			// Recommended profile (dependency) name matches profile name of the profile
+			// currently being extracted, compare their content.
 			var un string
-			content, err := ioutil.ReadFile(profileFile)
-			if err != nil {
-				content = []byte{}
-			}
-
-			change = *profile.Data != string(content)
+			change = change || !profilesEqual(profileFile, *profile.Data)
 			if !change {
 				un = "un"
 			}
-			klog.Infof("recommended TuneD profile %s content %schanged", recommendedProfile, un)
+			klog.Infof("recommended TuneD profile %s content %schanged [%s]", recommendedProfile, un, *profile.Name)
 		}
 
 		f, err := os.Create(profileFile)
@@ -838,6 +848,45 @@ func (c *Controller) stalldRequested(profileName string) (*bool, error) {
 	}
 
 	return &ret, nil
+}
+
+// profileIncludes returns a slice of strings containing TuneD profile names
+// custom (/etc/tuned/<profileName>/) profile 'profileName' includes.
+func profileIncludes(profileName string) []string {
+	profileFile := fmt.Sprintf("%s/%s/%s", tunedProfilesDir, profileName, tunedConfFile)
+
+	content, err := ioutil.ReadFile(profileFile)
+	if err != nil {
+		content = []byte{}
+	}
+
+	s := string(content)
+
+	return getIniFileSectionSlice(&s, "main", "include", ",")
+}
+
+// profileDepends returns "TuneD profile name"->bool map that custom
+// (/etc/tuned/<profileName>/) profile 'profileName' depends on as keys.
+// The dependency is resolved by finding all the "parent" profiles which are
+// included by using the "include" keyword in the profile's [main] section.
+// Note: no expansion of the TuneD functions into profiles names, such as
+// "f:virt_check" is performed by this function.  Only static parsing of
+// the TuneD INI configuration files is performed.
+func profileDepends(profileName string) map[string]bool {
+	return profileDependsLoop(profileName, map[string]bool{})
+}
+
+func profileDependsLoop(profileName string, seenProfiles map[string]bool) map[string]bool {
+	profiles := profileIncludes(profileName)
+	for _, p := range profiles {
+		if seenProfiles[p] {
+			// We have already seen/processed custom profile 'p'.
+			continue
+		}
+		seenProfiles[p] = true
+		seenProfiles = profileDependsLoop(p, seenProfiles)
+	}
+	return seenProfiles
 }
 
 // Method updateTunedProfile updates a Tuned Profile with information to report back
