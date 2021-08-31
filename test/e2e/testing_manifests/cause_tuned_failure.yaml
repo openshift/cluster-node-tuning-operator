@@ -7,8 +7,8 @@ spec:
   profile:
   - data: |
       [main]
-      summary=A Tuned daemon profile that does not exist
-      include=profile-does-not-exist
+      summary=A TuneD daemon profile that includes a dummy profile
+      include=openshift-dummy
     name: openshift-cause-tuned-failure
   recommend:
   - match:
