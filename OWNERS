@@ -1,12 +1,9 @@
 approvers:
   - jmencak
   - kpouget
-  - zvonkok
 reviewers:
   - ArangoGutierrez
-  - cep235
   - jmencak
-  - zvonkok
   - dagrayvid
   - kpouget
 component: "Node Tuning Operator"
