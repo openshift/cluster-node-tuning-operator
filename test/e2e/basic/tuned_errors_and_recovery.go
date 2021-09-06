@@ -16,15 +16,15 @@ import (
 	util "github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 )
 
-// Test the creation a Tuned Profile causing the Tuned daemon to bail out with an error message and a recovery after deleting the Profile
-var _ = ginkgo.Describe("[basic][tuned_errors_and_recovery] Cause Tuned daemon errors and recover", func() {
+// Test the creation a Tuned Profile causing the TuneD daemon to bail out with an error message and a recovery after deleting the Profile
+var _ = ginkgo.Describe("[basic][tuned_errors_and_recovery] Cause TuneD daemon errors and recover", func() {
 	const (
 		profileCauseTunedFailure   = "../testing_manifests/cause_tuned_failure.yaml"
 		profileDummy               = "../testing_manifests/dummy.yaml"
 		nodeLabelCauseTunedFailure = "tuned.openshift.io/cause-tuned-failure"
 	)
 
-	ginkgo.Context("Tuned daemon errors and recovery", func() {
+	ginkgo.Context("TuneD daemon errors and recovery", func() {
 		var (
 			node *coreapi.Node
 		)
@@ -38,7 +38,7 @@ var _ = ginkgo.Describe("[basic][tuned_errors_and_recovery] Cause Tuned daemon e
 			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileCauseTunedFailure)
 		})
 
-		ginkgo.It("Cause Tuned daemon errors on invalid profile load and recover after the profile deletion", func() {
+		ginkgo.It("Cause TuneD daemon errors on invalid profile load and recover after the profile deletion", func() {
 			const (
 				pollInterval          = 5 * time.Second
 				waitDuration          = 5 * time.Minute
