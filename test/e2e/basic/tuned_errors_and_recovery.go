@@ -20,6 +20,7 @@ import (
 var _ = ginkgo.Describe("[basic][tuned_errors_and_recovery] Cause Tuned daemon errors and recover", func() {
 	const (
 		profileCauseTunedFailure   = "../testing_manifests/cause_tuned_failure.yaml"
+		profileDummy               = "../testing_manifests/dummy.yaml"
 		nodeLabelCauseTunedFailure = "tuned.openshift.io/cause-tuned-failure"
 	)
 
@@ -65,6 +66,15 @@ var _ = ginkgo.Describe("[basic][tuned_errors_and_recovery] Cause Tuned daemon e
 
 			ginkgo.By(fmt.Sprintf("waiting for ClusterOperator/%s condition %s reason %s", tunedv1.TunedClusterOperatorResourceName, configv1.OperatorAvailable, reasonProfileDegraded))
 			err = util.WaitForClusterOperatorConditionReason(cs, pollInterval, waitDuration, configv1.OperatorAvailable, reasonProfileDegraded)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By(fmt.Sprintf("creating the custom profile %s", profileDummy))
+			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileDummy)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			// Check for rhbz#1998247, reload TuneD when deps of recommended profile change.
+			ginkgo.By(fmt.Sprintf("waiting for ClusterOperator/%s condition %s reason %s", tunedv1.TunedClusterOperatorResourceName, configv1.OperatorAvailable, reasonAsExpected))
+			err = util.WaitForClusterOperatorConditionReason(cs, pollInterval, waitDuration, configv1.OperatorAvailable, reasonAsExpected)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("deleting the custom profile %s", profileCauseTunedFailure))

@@ -1,0 +1,12 @@
+apiVersion: tuned.openshift.io/v1
+kind: Tuned
+metadata:
+  name: openshift-dummy
+  namespace: openshift-cluster-node-tuning-operator
+spec:
+  profile:
+  - data: |
+      [main]
+      summary=A dummy profile with no settings
+    name: openshift-dummy
+  recommend: []
