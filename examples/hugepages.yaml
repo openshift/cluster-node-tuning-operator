@@ -11,8 +11,10 @@ spec:
       include=openshift-node
       [vm]
       transparent_hugepages=never
+      # Comments that do not start at the beginning of a line as the TuneD
+      # documentation states are currently (2021-09-15) a grey area and likely
       [sysctl]
-      vm.nr_hugepages=16
+      vm.nr_hugepages=16	# a bad idea as rhbz#2004508 shows.
     name: openshift-hugepages
   recommend:
   - match:
