@@ -1,10 +1,6 @@
 import tuned.profiles.profile
 import tuned.profiles.variables
-try:
-	from configparser import ConfigParser, Error
-except ImportError:
-	# python2.7 support, remove RHEL-7 support end
-	from ConfigParser import ConfigParser, Error
+from configobj import ConfigObj, ConfigObjError
 import tuned.consts as consts
 import os.path
 import collections
@@ -100,22 +96,30 @@ class Loader(object):
 
 	def _load_config_data(self, file_name):
 		try:
-			config_obj = ConfigParser()
-			config_obj.optionxform=str
-			with open(file_name) as f:
-				config_obj.readfp(f)
-		except Error as e:
+			config_obj = ConfigObj(file_name, raise_errors = True, list_values = False, interpolation = False)
+		except ConfigObjError as e:
 			raise InvalidProfileException("Cannot parse '%s'." % file_name, e)
 
 		config = collections.OrderedDict()
-		dir_name = os.path.dirname(file_name)
-		for section in list(config_obj.sections()):
+		for section in list(config_obj.keys()):
 			config[section] = collections.OrderedDict()
-			for option in config_obj.options(section):
-				config[section][option] = config_obj.get(section, option, raw=True)
+			try:
+				keys = list(config_obj[section].keys())
+			except AttributeError:
+				raise InvalidProfileException("Error parsing section '%s' in file '%s'." % (section, file_name))
+			for option in keys:
+				config[section][option] = config_obj[section][option]
+
+		dir_name = os.path.dirname(file_name)
+		# TODO: Could we do this in the same place as the expansion of other functions?
+		for section in config:
+			for option in config[section]:
 				config[section][option] = self._expand_profile_dir(dir_name, config[section][option])
-			if config[section].get("script") is not None:
-				script_path = os.path.join(dir_name, config[section]["script"])
-				config[section]["script"] = [os.path.normpath(script_path)]
+
+		# TODO: HACK, this needs to be solved in a better way (better config parser)
+		for unit_name in config:
+			if "script" in config[unit_name] and config[unit_name].get("script", None) is not None:
+				script_path = os.path.join(dir_name, config[unit_name]["script"])
+				config[unit_name]["script"] = [os.path.normpath(script_path)]
 
 		return config

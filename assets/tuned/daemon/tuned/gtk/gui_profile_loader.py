@@ -25,17 +25,10 @@ Created on Mar 13, 2014
 '''
 
 import os
-try:
-    from configparser import ConfigParser, Error
-    from io import StringIO
-except ImportError:
-    # python2.7 support, remove RHEL-7 support end
-    from ConfigParser import ConfigParser, Error
-    from StringIO import StringIO
+import configobj
 import subprocess
 import json
 import sys
-import collections
 
 import tuned.profiles.profile as p
 import tuned.consts
@@ -66,21 +59,14 @@ class GuiProfileLoader(object):
 
         profilePath = self._locate_profile_path(profile_name)
 
+        config_lines = config.split('\n')
+
         if profilePath == tuned.consts.LOAD_DIRECTORIES[1]:
             file_path = profilePath + '/' + profile_name + '/' + tuned.consts.PROFILE_FILE
-            config_parser = ConfigParser()
-            config_parser.optionxform = str
-            config_parser.readfp(StringIO(config))
 
-            config_obj = {
-                'main': collections.OrderedDict(),
-                'filename': file_path,
-                'initial_comment': ('#', 'tuned configuration', '#')
-            }
-            for s in config_parser.sections():
-                config_obj['main'][s] = collections.OrderedDict()
-                for o in config_parser.options(s):
-                    config_obj['main'][s][o] = config_parser.get(s, o, raw=True)
+            config_obj = configobj.ConfigObj(infile=config_lines,list_values = False, interpolation = False)
+            config_obj.filename = file_path
+            config_obj.initial_comment = ('#', 'tuned configuration', '#')
             self._save_profile(config_obj)
             self._refresh_profiles()
         else:
@@ -90,15 +76,8 @@ class GuiProfileLoader(object):
 
     def load_profile_config(self, profile_name, path):
         conf_path = path + '/' + profile_name + '/' + tuned.consts.PROFILE_FILE
-        config = ConfigParser()
-        config.optionxform = str
-        profile_config = collections.OrderedDict()
-        with open(conf_path) as f:
-            config.readfp(f)
-        for s in config.sections():
-            profile_config[s] = collections.OrderedDict()
-            for o in config.options(s):
-                profile_config[s][o] = config.get(s, o, raw=True)
+        profile_config = configobj.ConfigObj(conf_path, list_values = False,
+			interpolation = False)
         return profile_config
 
     def _locate_profile_path(self, profile_name):
@@ -116,11 +95,11 @@ class GuiProfileLoader(object):
                     try:
                         self.profiles[profile] = p.Profile(profile,
                                 self.load_profile_config(profile, d))
-                    except Error:
+                    except configobj.ParseError:
                         pass
 
 #                         print "can not make \""+ profile +"\" profile without correct config on path: " + d
-#                     except:StringIO
+#                     except:
 #                         raise managerException.ManagerException("Can not make profile")
 #                         print "can not make \""+ profile +"\" profile without correct config with path: " + d
 
@@ -134,24 +113,20 @@ class GuiProfileLoader(object):
 
     def save_profile(self, profile):
         path = tuned.consts.LOAD_DIRECTORIES[1] + '/' + profile.name
-        config = {
-            'main': collections.OrderedDict(),
-            'filename': path + '/' + tuned.consts.PROFILE_FILE,
-            'initial_comment': ('#', 'tuned configuration', '#')
-        }
-        config['filename'] = path + '/' + tuned.consts.PROFILE_FILE
-        config['initial_comment'] = ('#', 'tuned configuration', '#')
+        config = configobj.ConfigObj(list_values = False, interpolation = False)
+        config.filename = path + '/' + tuned.consts.PROFILE_FILE
+        config.initial_comment = ('#', 'tuned configuration', '#')
 
         try:
-            config['main']['main'] = profile.options
+            config['main'] = profile.options
         except KeyError:
-            config['main']['main'] = {}
+            config['main'] = ''
 
             # profile dont have main section
 
             pass
         for (name, unit) in list(profile.units.items()):
-            config['main'][name] = unit.options
+            config[name] = unit.options
 
         self._save_profile(config)
 
@@ -173,20 +148,18 @@ class GuiProfileLoader(object):
         if old_profile_name != profile.name:
             self.remove_profile(old_profile_name, is_admin=is_admin)
 
-        config = {
-            'main': collections.OrderedDict(),
-            'filename': path + '/' + tuned.consts.PROFILE_FILE,
-            'initial_comment': ('#', 'tuned configuration', '#')
-        }
+        config = configobj.ConfigObj(list_values = False, interpolation = False)
+        config.filename = path + '/' + tuned.consts.PROFILE_FILE
+        config.initial_comment = ('#', 'tuned configuration', '#')
         try:
-            config['main']['main'] = profile.options
+            config['main'] = profile.options
         except KeyError:
 
             # profile dont have main section
 
             pass
         for (name, unit) in list(profile.units.items()):
-            config['main'][name] = unit.options
+            config[name] = unit.options
 
         self._save_profile(config)
 
