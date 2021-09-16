@@ -4,13 +4,7 @@ import tuned.logs
 from .functions import functions as functions
 import tuned.consts as consts
 from tuned.utils.commands import commands
-try:
-	from configparser import ConfigParser, Error
-	from io import StringIO
-except ImportError:
-	# python2.7 support, remove RHEL-7 support end
-	from ConfigParser import ConfigParser, Error
-	from StringIO import StringIO
+from configobj import ConfigObj, ConfigObjError
 
 log = tuned.logs.get()
 
@@ -46,21 +40,24 @@ class Variables():
 		self._lookup_re[r'(?<!\\)\${' + re.escape(s) + r'}'] = v
 		self._lookup_env[self._add_env_prefix(s, consts.ENV_PREFIX)] = v
 
+	def add_dict(self, d):
+		for item in d:
+			self.add_variable(item, d[item])
+
 	def add_from_file(self, filename):
 		if not os.path.exists(filename):
 			log.error("unable to find variables_file: '%s'" % filename)
 			return
 		try:
-			config = ConfigParser()
-			config.optionxform = str
-			with open(filename) as f:
-				config.readfp(StringIO("[" + consts.MAGIC_HEADER_NAME + "]\n" + f.read()))
-		except Error:
+			config = ConfigObj(filename, raise_errors = True, file_error = True, list_values = False, interpolation = False)
+		except ConfigObjError:
 			log.error("error parsing variables_file: '%s'" % filename)
 			return
-		for s in config.sections():
-			for o in config.options(s):
-				self.add_variable(o, config.get(s, o, raw=True))
+		for item in config:
+			if isinstance(config[item], dict):
+				self.add_dict(config[item])
+			else:
+				self.add_variable(item, config[item])
 
 	def add_from_cfg(self, cfg):
 		for item in cfg:

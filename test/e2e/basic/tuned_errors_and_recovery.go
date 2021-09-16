@@ -36,6 +36,7 @@ var _ = ginkgo.Describe("[basic][tuned_errors_and_recovery] Cause Tuned daemon e
 				util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelCauseTunedFailure+"-")
 			}
 			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileCauseTunedFailure)
+			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileDummy)
 		})
 
 		ginkgo.It("Cause Tuned daemon errors on invalid profile load and recover after the profile deletion", func() {
@@ -79,6 +80,10 @@ var _ = ginkgo.Describe("[basic][tuned_errors_and_recovery] Cause Tuned daemon e
 
 			ginkgo.By(fmt.Sprintf("deleting the custom profile %s", profileCauseTunedFailure))
 			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileCauseTunedFailure)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By(fmt.Sprintf("deleting the custom profile %s", profileDummy))
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileDummy)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("waiting for ClusterOperator/%s condition %s reason %s", tunedv1.TunedClusterOperatorResourceName, configv1.OperatorAvailable, reasonAsExpected))

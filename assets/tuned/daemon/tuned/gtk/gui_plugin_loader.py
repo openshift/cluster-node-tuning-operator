@@ -25,22 +25,24 @@ Created on Mar 30, 2014
 '''
 
 import importlib
+from validate import Validator
 
 import tuned.consts as consts
 import tuned.logs
-try:
-    from configparser import ConfigParser, Error
-    from io import StringIO
-except ImportError:
-    # python2.7 support, remove RHEL-7 support end
-    from ConfigParser import ConfigParser, Error
-    from StringIO import StringIO
+
+import configobj as ConfigObj
 from tuned.exceptions import TunedException
-from tuned.utils.global_config import GlobalConfig
 
 from tuned.admin.dbus_controller import DBusController
 
 __all__ = ['GuiPluginLoader']
+
+global_config_spec = ['dynamic_tuning = boolean(default=%s)'
+                      % consts.CFG_DEF_DYNAMIC_TUNING,
+                      'sleep_interval = integer(default=%s)'
+                      % consts.CFG_DEF_SLEEP_INTERVAL,
+                      'update_interval = integer(default=%s)'
+                      % consts.CFG_DEF_UPDATE_INTERVAL]
 
 
 class GuiPluginLoader():
@@ -82,26 +84,19 @@ class GuiPluginLoader():
         """
 
         try:
-            config_parser = ConfigParser()
-            config_parser.optionxform = str
-            with open(file_name) as f:
-                config_parser.readfp(StringIO("[" + consts.MAGIC_HEADER_NAME + "]\n" + f.read()))
-            config, functions = GlobalConfig.get_global_config_spec()
-            for option in config_parser.options(consts.MAGIC_HEADER_NAME):
-                if option in config:
-                    try:
-                        func = getattr(config_parser, functions[option])
-                        config[option] = func(consts.MAGIC_HEADER_NAME, option)
-                    except Error:
-                        raise TunedException("Global TuneD configuration file '%s' is not valid."
-                                             % file_name)
-                else:
-                    config[option] = config_parser.get(consts.MAGIC_HEADER_NAME, option, raw=True)
+            config = ConfigObj.ConfigObj(file_name,
+                               configspec=global_config_spec,
+                               raise_errors = True, file_error = True, list_values = False, interpolation = False)
         except IOError as e:
             raise TunedException("Global TuneD configuration file '%s' not found."
                                   % file_name)
-        except Error as e:
+        except ConfigObj.ConfigObjError as e:
             raise TunedException("Error parsing global TuneD configuration file '%s'."
                                   % file_name)
+        vdt = Validator()
+        if not config.validate(vdt, copy=True):
+            raise TunedException("Global TuneD configuration file '%s' is not valid."
+                                  % file_name)
         return config
+
 
