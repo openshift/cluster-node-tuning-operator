@@ -1,5 +1,5 @@
-- command: update 
-  path: spec.versions[0].schema.openAPIV3Schema.properties.spec.properties.recommend.items.properties.match.items.properties.match.items
+- op: add
+  path: /spec/versions/0/schema/openAPIV3Schema/properties/spec/properties/recommend/items/properties/match/items/properties/match/items
   value:
     # Recursively nested "match" sections are dropped without the following.
     x-kubernetes-preserve-unknown-fields: true
