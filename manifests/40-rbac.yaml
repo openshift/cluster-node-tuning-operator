@@ -22,40 +22,45 @@ metadata:
     include.release.openshift.io/single-node-developer: "true"
   name: cluster-node-tuning-operator
 rules:
+# We own (the right to perform anything with) tuned.openshift.io
 - apiGroups: ["tuned.openshift.io"]
   resources: ["*"]
   verbs: ["*"]
+# The operator oversees tuned daemonset.  It even needs to be able
+# to delete it when the operator is put into "Removed" state.
 - apiGroups: ["apps"]
   resources: ["daemonsets"]
-  verbs: ["create","get","delete","list","update","watch"]
-- apiGroups: ["rbac.authorization.k8s.io"]
-  resources: ["clusterroles","clusterrolebindings"]
   verbs: ["create","get","delete","list","update","watch"]
 - apiGroups: ["security.openshift.io"]
   resources: ["securitycontextconstraints"]
   verbs: ["use"]
+# ConfigMaps manipulation is needed by the leader election code.
 # "" indicates the core API group
 - apiGroups: [""]
-  resources: ["configmaps","namespaces","secrets","serviceaccounts","services"]
+  resources: ["configmaps"]
   verbs: ["create","get","delete","list","update","watch"]
+# The pod-matching functionality will likely be deprecated in the
+# future.  When it is, remove "pods" below.
 - apiGroups: [""]
   resources: ["nodes","pods"]
   verbs: ["get","list","watch"]
+# Necessary for the implementation of metrics.
 - apiGroups: [""]
   resources: ["nodes/metrics","nodes/specs"]
   verbs: ["get"]
-- apiGroups: [""]
-  resources: ["events"]
-  verbs: ["create","patch"]
+# Needed by every CVO-managed operator.
 - apiGroups: ["config.openshift.io"]
   resources: ["clusteroperators"]
   verbs: ["create","get","list","watch"]
+# Needed by every CVO-managed operator.
 - apiGroups: ["config.openshift.io"]
   resources: ["clusteroperators/status"]
   verbs: ["update"]
+# Needed by the core operator functionality.
 - apiGroups: ["machineconfiguration.openshift.io"]
   resources: ["machineconfigs"]
   verbs: ["create","get","delete","list","update","watch"]
+# Needed by the core operator functionality.
 - apiGroups: ["machineconfiguration.openshift.io"]
   resources: ["machineconfigpools"]
   verbs: ["get","list","watch"]
