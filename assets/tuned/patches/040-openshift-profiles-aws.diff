@@ -17,6 +17,8 @@ index af2f2bc6..9b370ea2 100644
  [scheduler]
  # see rhbz#1979352; exclude containers from aligning to house keeping CPUs
  cgroup_ps_blacklist=/kubepods\.slice/
++# workaround for rhbz#1921738
++runtime=0
 +
 +[sysfs]
 +/sys/module/nvme_core/parameters/io_timeout=4294967295
