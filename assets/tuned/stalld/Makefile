@@ -1,15 +1,14 @@
 NAME	:=	stalld
-VERSION	:=	1.7
+VERSION	:=	1.13
 
 INSTALL	=	install
 CC	:=	gcc
 FOPTS	:=	-flto=auto -ffat-lto-objects -fexceptions -fstack-protector-strong \
 		-fasynchronous-unwind-tables -fstack-clash-protection
-MOPTS	:=	-m64
 WOPTS	:= 	-Wall -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS
 SOPTS	:= 	-specs=/usr/lib/rpm/redhat/redhat-hardened-cc1 -specs=/usr/lib/rpm/redhat/redhat-annobin-cc1
 
-CFLAGS	:=	-O2 -g -DVERSION=\"$(VERSION)\" $(FOPTS) $(MOPTS) $(WOPTS) $(SOPTS)
+CFLAGS	:=	-O2 -g -DVERSION=\"$(VERSION)\" $(FOPTS) $(WOPTS) $(SOPTS)
 LDFLAGS	:=	-ggdb
 LIBS	:=	 -lpthread
 
@@ -18,8 +17,9 @@ HDR	:=	$(wildcard src/*.h)
 OBJ	:=	$(SRC:.c=.o)
 DIRS	:=	src redhat man tests scripts
 FILES	:=	Makefile README.md gpl-2.0.txt scripts/throttlectl.sh
-TARBALL	:=	$(NAME)-$(VERSION).tar.xz
-UPSTREAM_TARBALLS	:= fedorapeople.org:~/public_html/
+CEXT	:=	bz2
+TARBALL	:=	$(NAME)-$(VERSION).tar.$(CEXT)
+TAROPTS	:=	-cvjf $(TARBALL)
 BINDIR	:=	/usr/bin
 DATADIR	:=	/usr/share
 DOCDIR	:=	$(DATADIR)/doc
@@ -57,17 +57,13 @@ clean:
 	@test ! -f $(TARBALL) || rm -f $(TARBALL)
 	@make -C redhat VERSION=$(VERSION) clean
 	@make -C tests clean
-	@rm -rf *~ $(OBJ) *.tar.xz
+	@rm -rf *~ $(OBJ) *.tar.$(CEXT)
 
 tarball:  clean
 	rm -rf $(NAME)-$(VERSION) && mkdir $(NAME)-$(VERSION)
 	cp -r $(DIRS) $(FILES) $(NAME)-$(VERSION)
-	tar -cvJf $(TARBALL) --exclude='*~' $(NAME)-$(VERSION)
+	tar $(TAROPTS) --exclude='*~' $(NAME)-$(VERSION)
 	rm -rf $(NAME)-$(VERSION)
 
 redhat: tarball
-	$(MAKE) -C redhat VERSION=$(VERSION)
-
-push: tarball
-	scp $(TARBALL) $(UPSTREAM_TARBALLS)
-	make -C redhat VERSION=$(VERSION) push
+	$(MAKE) -C redhat VERSION=$(VERSION) CEXT=$(CEXT)

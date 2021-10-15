@@ -75,16 +75,19 @@ var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing syste
 			err = util.WaitForPoolUpdatedMachineCount(cs, "worker-rt", 1)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("waiting for the tuned daemon running on node %s", node.Name))
-			out, err := util.WaitForCmdInPod(pollInterval, waitDuration, pod, "test", "-e", "/run/tuned/tuned.pid")
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			waitForTuneD := func() {
+				ginkgo.By(fmt.Sprintf("waiting for the TuneD daemon running on node %s", node.Name))
+				_, err := util.WaitForCmdInPod(pollInterval, waitDuration, pod, "test", "-e", "/run/tuned/tuned.pid")
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			// 10s is very generous to allow for (now unwanted) stalld service starting
-			ginkgo.By("sleeping 10s to allow for (now unwanted) stalld service starting")
-			time.Sleep(10 * time.Second)
+				// 10s is very generous to allow for stalld service starting (if any)
+				ginkgo.By("sleeping 10s to allow for stalld service starting (if any)")
+				time.Sleep(10 * time.Second)
+			}
+			waitForTuneD()
 
 			ginkgo.By(fmt.Sprintf("checking the stalld daemon is not running on node %s", node.Name))
-			out, err = util.ExecCmdInPod(pod, "pidof", "stalld")
+			out, err := util.ExecCmdInPod(pod, "pidof", "stalld")
 			gomega.Expect(err).To(gomega.HaveOccurred()) // pidof exits 1 when there is no running process found
 
 			ginkgo.By(fmt.Sprintf("applying custom realtime profile %s with stalld service", profileStalldOn))
@@ -96,8 +99,13 @@ var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing syste
 			util.Logf(fmt.Sprintf("stalld process running on node %s with PID %s", node.Name, out))
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
+			// We need to wait for TuneD daemon to start and apply its profile, otherwise it might race
+			// to start 'stalld' after we stop it via systemctl below.
+			waitForTuneD()
+
 			ginkgo.By(fmt.Sprintf("stopping the stalld daemon on node %s", node.Name))
-			out, err = util.ExecCmdInPod(pod, "chroot", "/host", "systemctl", "stop", "stalld")
+			out, err = util.WaitForCmdInPod(pollInterval, waitDuration, pod, "chroot", "/host", "systemctl", "stop", "stalld")
+			util.ExecAndLogCommand("oc", "rsh", "-n", ntoconfig.OperatorNamespace(), pod.Name, "chroot", "/host", "systemctl", "status", "stalld", "-l", "--no-pager")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("checking the stalld daemon is not running on node %s", node.Name))
