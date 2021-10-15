@@ -37,6 +37,8 @@ spec:
       [scheduler]
       # see rhbz#1998120; exclude containers from aligning to house keeping CPUs
       cgroup_ps_blacklist=/kubepods\.slice/
+      # workaround for rhbz#1921738
+      runtime=0
 
   - name: "openshift-control-plane"
     data: |
