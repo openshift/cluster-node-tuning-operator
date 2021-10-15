@@ -57,6 +57,16 @@ const (
 	// A couple of seconds should be more than enough for TuneD daemon to gracefully stop;
 	// be generous and give it 10s.
 	tunedGracefulExitWait = time.Second * time.Duration(10)
+	// TuneD profile application typically takes ~0.5s and should never take more than ~5s.
+	// However, there were cases where TuneD daemon got stuck during application of a profile.
+	// Experience shows that subsequent restarts of TuneD can resolve this in certain situations,
+	// but not in others -- an extreme example is a TuneD profile including a profile that does
+	// not exist.  TuneD itself has no mechanism for restarting a profile application that takes
+	// too long.  The tunedTimeout below is time to wait for "profile applied/reload failed" from
+	// TuneD logs before restarting TuneD and thus retrying the profile application.  Keep this
+	// reasonably low to workaround system/TuneD issues as soon as possible, but not too low
+	// to increase the system load by retrying profile applications that can never succeed.
+	tunedInitialTimeout   = 60 // timeout in seconds
 	openshiftTunedRunDir  = "/run/" + programName
 	openshiftTunedPidFile = openshiftTunedRunDir + "/" + programName + ".pid"
 	openshiftTunedSocket  = "/var/lib/tuned/openshift-tuned.sock"
@@ -118,13 +128,17 @@ type Controller struct {
 		debug bool
 		// bit/set representaton of Profile status conditions to report back via API.
 		status Bits
+		// stopping is true while the controller tries to stop the TuneD daemon.
+		stopping bool
 	}
 
-	tunedCmd    *exec.Cmd       // external command (tuned) being prepared or run
-	tunedExit   chan bool       // bi-directional channel to signal and register TuneD daemon exit
-	stopCh      <-chan struct{} // receive-only channel to stop the openshift-tuned controller
-	changeCh    chan bool       // bi-directional channel to wake-up the main thread to process accrued changes
-	changeChRet chan bool       // bi-directional channel to announce success/failure of change processing
+	tunedCmd     *exec.Cmd       // external command (tuned) being prepared or run
+	tunedExit    chan bool       // bi-directional channel to signal and register TuneD daemon exit
+	stopCh       <-chan struct{} // receive-only channel to stop the openshift-tuned controller
+	changeCh     chan bool       // bi-directional channel to wake-up the main thread to process accrued changes
+	changeChRet  chan bool       // bi-directional channel to announce success/failure of change processing
+	tunedTicker  *time.Ticker    // ticker that fires if TuneD daemon fails to report "profile applied/reload failed" within tunedTimeout
+	tunedTimeout int             // TuneD daemon timeout to report "profile applied/reload failed" [s]
 }
 
 type wqKey struct {
@@ -176,14 +190,17 @@ func newController(stopCh <-chan struct{}) (*Controller, error) {
 	listers := &ntoclient.Listers{}
 	clients := &ntoclient.Clients{}
 	controller := &Controller{
-		kubeconfig:  kubeconfig,
-		listers:     listers,
-		clients:     clients,
-		tunedExit:   make(chan bool, 1),
-		stopCh:      stopCh,
-		changeCh:    make(chan bool, 1),
-		changeChRet: make(chan bool, 1),
+		kubeconfig:   kubeconfig,
+		listers:      listers,
+		clients:      clients,
+		tunedExit:    make(chan bool, 1),
+		stopCh:       stopCh,
+		changeCh:     make(chan bool, 1),
+		changeChRet:  make(chan bool, 1),
+		tunedTicker:  time.NewTicker(tunedInitialTimeout),
+		tunedTimeout: tunedInitialTimeout,
 	}
+	controller.tunedTicker.Stop() // The ticker will be started/reset when TuneD starts.
 
 	return controller, nil
 }
@@ -437,6 +454,18 @@ func (c *Controller) tunedRun() {
 	go func() {
 		for scanner.Scan() {
 			l := scanner.Text()
+
+			fmt.Printf("%s\n", l)
+
+			if c.daemon.stopping {
+				// We have decided to stop TuneD.  Apart from showing the logs it is
+				// now unnecessary/undesirable to perform any of the following actions.
+				// The undesirability comes from extra processing which will come if
+				// TuneD manages to "get unstuck" during this phase before it receives
+				// SIGKILL (note the time window between SIGTERM/SIGKILL).
+				continue
+			}
+
 			profileApplied := strings.Index(l, " tuned.daemon.daemon: static tuning from profile ") >= 0 && strings.Index(l, " applied") >= 0
 			reloadFailed := strings.Index(l, " tuned.daemon.controller: Failed to reload TuneD: ") >= 0
 
@@ -456,12 +485,14 @@ func (c *Controller) tunedRun() {
 				c.daemon.reloading = !profileApplied && !reloadFailed
 				c.daemon.reloaded = !c.daemon.reloading
 				if c.daemon.reloaded {
+					klog.V(2).Infof("profile applied or reload failed, stopping the TuneD watcher")
+					c.tunedTimeout = tunedInitialTimeout // initialize the timeout
+					c.tunedTicker.Stop()                 // profile applied or reload failed, stop the TuneD watcher
+
 					// Notify the event processor that the TuneD daemon finished reloading.
 					c.wqTuneD.Add(wqKey{kind: wqKindDaemon})
 				}
 			}
-
-			fmt.Printf("%s\n", l)
 		}
 	}()
 
@@ -484,8 +515,13 @@ func (c *Controller) tunedRun() {
 // tunedStop tries to gracefully stop the TuneD daemon process by sending it SIGTERM.
 // If the TuneD daemon does not respond by terminating within tunedGracefulExitWait
 // duration, SIGKILL is sent.  This method returns an indication whether the Tuned
-// daemon exitted gracefully (true) or SIGTERM had to be sent (false).
+// daemon exitted gracefully (true) or SIGKILL had to be sent (false).
 func (c *Controller) tunedStop() (bool, error) {
+	c.daemon.stopping = true
+	defer func() {
+		c.daemon.stopping = false
+	}()
+
 	if c.tunedCmd == nil {
 		// Looks like there has been a termination signal prior to starting tuned.
 		return false, nil
@@ -506,6 +542,7 @@ func (c *Controller) tunedStop() (bool, error) {
 		// within tunedGracefulExitWait.
 		klog.V(1).Infof("sending SIGKILL to PID %d", c.tunedCmd.Process.Pid)
 		c.tunedCmd.Process.Signal(syscall.SIGKILL)
+		<-c.tunedExit
 		return false, nil
 	}
 	klog.V(1).Infof("TuneD process terminated gracefully")
@@ -513,9 +550,19 @@ func (c *Controller) tunedStop() (bool, error) {
 	return true, nil
 }
 
-func (c *Controller) tunedReload() error {
+func (c *Controller) tunedReload(timeoutInitiated bool) error {
 	c.daemon.reloading = true
 	c.daemon.status = 0 // clear the set out of which Profile status conditions are created
+	tunedTimeout := time.Second * time.Duration(c.tunedTimeout)
+	if c.tunedTicker == nil {
+		// This should never happen as the ticker is initialized at controller creation time.
+		c.tunedTicker = time.NewTicker(tunedTimeout)
+	} else {
+		c.tunedTicker.Reset(tunedTimeout)
+	}
+	if timeoutInitiated {
+		c.tunedTimeout *= 2
+	}
 
 	if c.tunedCmd == nil {
 		// Tuned hasn't been started by openshift-tuned, start it.
@@ -540,14 +587,16 @@ func (c *Controller) tunedReload() error {
 	return nil
 }
 
-func (c *Controller) tunedRestart() (err error) {
+// tunedRestart restarts the TuneD daemon.  The "stop" part is synchronous
+// to ensure proper termination of TuneD, the "start" part is asynchronous.
+func (c *Controller) tunedRestart(timeoutInitiated bool) (err error) {
 	if _, err = c.tunedStop(); err != nil {
 		return err
 	}
 	c.tunedCmd = nil                 // Cmd.Start() cannot be used more than once
 	c.tunedExit = make(chan bool, 1) // Once tunedStop() terminates, the tunedExit channel is closed!
 
-	if err = c.tunedReload(); err != nil {
+	if err = c.tunedReload(timeoutInitiated); err != nil {
 		return err
 	}
 	return nil
@@ -686,12 +735,12 @@ func (c *Controller) changeSyncer() (synced bool, err error) {
 	if c.change.daemon {
 		// Complete restart of the TuneD daemon needed (e.g. using --debug option).
 		c.change.daemon = false
-		err = c.tunedRestart()
+		err = c.tunedRestart(false)
 		return err == nil, err
 	}
 
 	if reload {
-		err = c.tunedReload()
+		err = c.tunedReload(false)
 	}
 	return err == nil, err
 }
@@ -898,13 +947,8 @@ func (c *Controller) updateTunedProfile() (err error) {
 		stalldRequested *bool
 	)
 
-	if c.daemon.reloading {
-		// This should not be necessary, but keep this here as a reminder.
-		return fmt.Errorf("updateTunedProfile(): called while the TuneD daemon was reloading")
-	}
-
 	if bootcmdline, err = getBootcmdline(); err != nil {
-		// This should never happen unless something is seriously wrong (e.g. Tuned
+		// This should never happen unless something is seriously wrong (e.g. TuneD
 		// daemon no longer uses tunedBootcmdlineFile).  Do not continue.
 		return fmt.Errorf("unable to get kernel command-line parameters: %v", err)
 	}
@@ -1163,9 +1207,31 @@ func (c *Controller) changeWatcher() (err error) {
 		case err := <-wFs.Errors:
 			return fmt.Errorf("error watching filesystem: %v", err)
 
+		case <-c.tunedTicker.C:
+			klog.Errorf("timeout (%d) to apply TuneD profile; restarting TuneD daemon", c.tunedTimeout)
+			err := c.tunedRestart(true)
+			if err != nil {
+				return err
+			}
+			// TuneD profile application is failing, make this visible in "oc get profile" output.
+			if err = c.updateTunedProfile(); err != nil {
+				klog.Error(err.Error())
+			}
+
 		case <-c.changeCh:
 			var synced bool
 			klog.V(2).Infof("changeCh")
+			if c.tunedTimeout > tunedInitialTimeout {
+				// TuneD is "degraded" as the previous profile application did not succeed in
+				// tunedInitialTimeout [s].  There has been a change we must act upon though
+				// fairly quickly.
+				c.tunedTimeout = tunedInitialTimeout
+				klog.Infof("previous application of TuneD profile failed; change detected, scheduling full restart in 1s")
+				c.tunedTicker.Reset(time.Second * time.Duration(1))
+				c.changeChRet <- true
+				continue
+			}
+
 			if c.daemon.reloading {
 				// Do not reload the TuneD daemon unless it finished with the previous reload.
 				c.changeChRet <- false
@@ -1246,6 +1312,7 @@ func retryLoop(c *Controller) (err error) {
 }
 
 func Run(stopCh <-chan struct{}, boolVersion *bool, version string) {
+	klog.Infof("starting %s %s", programName, version)
 	parseCmdOpts()
 
 	if *boolVersion {
