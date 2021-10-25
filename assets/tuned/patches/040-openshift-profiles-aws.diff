@@ -13,7 +13,7 @@ diff --git a/assets/tuned/daemon/profiles/openshift/tuned.conf b/assets/tuned/da
 index af2f2bc6..9b370ea2 100644
 --- a/profiles/openshift/tuned.conf
 +++ b/profiles/openshift/tuned.conf
-@@ -28,3 +28,7 @@ vm.max_map_count=262144
+@@ -28,3 +28,9 @@
  [scheduler]
  # see rhbz#1979352; exclude containers from aligning to house keeping CPUs
  cgroup_ps_blacklist=/kubepods\.slice/
