@@ -18,7 +18,7 @@ TUNED_COMMIT:=88240b597106be01acb7f174113cd9fd4d738853
 TUNED_DIR:=daemon
 
 # API-related variables
-API_TYPES_DIR:=pkg/apis/tuned/v1
+API_TYPES_DIR:=./pkg/apis/tuned/v1
 API_TYPES:=$(wildcard $(API_TYPES_DIR)/*_types.go)
 API_ZZ_GENERATED:=zz_generated.deepcopy
 API_TYPES_GENERATED:=$(API_TYPES_DIR)/$(API_ZZ_GENERATED).go
@@ -39,6 +39,7 @@ all: build
 # the operator.
 include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
     targets/openshift/operator/profile-manifests.mk \
+    targets/openshift/crd-schema-gen.mk \
 )
 
 clone-tuned:
@@ -85,10 +86,6 @@ pkg/generated: $(API_TYPES)
 	tar c tmp | tar x --strip-components=4
 	touch $@
 
-crd-schema-gen:
-	# TODO: look into using https://github.com/openshift/build-machinery-go/ and yaml patches
-	$(GO) run ./vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/ schemapatch:manifests=./manifests paths=./pkg/apis/tuned/v1 output:dir=./manifests
-	yq w -i ./manifests/20-crd-tuned.yaml -s ./manifests/20-crd-tuned.yaml-patch
 
 $(GOBINDATA_BIN):
 	$(GO) build -o $(GOBINDATA_BIN) ./vendor/github.com/kevinburke/go-bindata/go-bindata
@@ -127,6 +124,13 @@ local-image:
 
 local-image-push:
 	$(IMAGE_PUSH_CMD) $(IMAGE_PUSH_EXTRA_OPTS) $(IMAGE)
+
+# This will generate and patch the CRDs. To update the CRDs, run make update-codegen-crds.
+# $1 - target name
+# $2 - apis
+# $3 - manifests
+# $4 - output
+$(call add-crd-gen,tuned,$(API_TYPES_DIR),./manifests,./manifests)
 
 # This will include additional actions on the update and verify targets to ensure that profile patches are applied
 # to manifest files
