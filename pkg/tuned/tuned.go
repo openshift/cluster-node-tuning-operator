@@ -138,7 +138,7 @@ type Controller struct {
 	changeCh     chan bool       // bi-directional channel to wake-up the main thread to process accrued changes
 	changeChRet  chan bool       // bi-directional channel to announce success/failure of change processing
 	tunedTicker  *time.Ticker    // ticker that fires if TuneD daemon fails to report "profile applied/reload failed" within tunedTimeout
-	tunedTimeout int             // TuneD daemon timeout to report "profile applied/reload failed" [s]
+	tunedTimeout int             // timeout for TuneD daemon to report "profile applied/reload failed" [s]
 }
 
 type wqKey struct {
