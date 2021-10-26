@@ -565,7 +565,7 @@ func (c *Controller) tunedReload(timeoutInitiated bool) error {
 	}
 
 	if c.tunedCmd == nil {
-		// Tuned hasn't been started by openshift-tuned, start it.
+		// TuneD hasn't been started by openshift-tuned, start it.
 		c.tunedCmd = c.tunedCreateCmd()
 		go c.tunedRun()
 		return nil
