@@ -514,7 +514,7 @@ func (c *Controller) tunedRun() {
 
 // tunedStop tries to gracefully stop the TuneD daemon process by sending it SIGTERM.
 // If the TuneD daemon does not respond by terminating within tunedGracefulExitWait
-// duration, SIGKILL is sent.  This method returns an indication whether the Tuned
+// duration, SIGKILL is sent.  This method returns an indication whether the TuneD
 // daemon exitted gracefully (true) or SIGKILL had to be sent (false).
 func (c *Controller) tunedStop() (bool, error) {
 	c.daemon.stopping = true
