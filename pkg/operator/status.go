@@ -9,6 +9,7 @@ import (
 	operatorv1 "github.com/openshift/api/operator/v1"
 	operatorv1helpers "github.com/openshift/library-go/pkg/operator/v1helpers"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -19,6 +20,16 @@ import (
 	ntomf "github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/metrics"
 )
+
+const (
+	conditionFailedToSyncTunedDaemonSet  = "FailedToSyncTunedDaemonSet"
+	conditionFailedToSyncDefaultTuned    = "FailedToSyncDefaultTuned"
+	conditionFailedToGetTunedDaemonSet   = "FailedToGetTunedDaemonSet"
+	conditionTunedDaemonSetProgressing   = "TunedDaemonSetProgressing"
+	conditionSucceededToDeployComponents = "SucceededToDeployComponents"
+)
+
+const maxTunedUnavailable = 7200
 
 // syncOperatorStatus computes the operator's current status and therefrom
 // creates or updates the ClusterOperator resource for the operator.
@@ -322,4 +333,106 @@ func conditionTrue(conditions []configv1.ClusterOperatorStatusCondition, condTyp
 	}
 
 	return false
+}
+
+// updateConditions updates the specific condition to have status True and all others conditions to have status False
+// the only exception is Available condition because we should update the Upgradeable condition to True as well
+func updateConditions(
+	conditions []configv1.ClusterOperatorStatusCondition,
+	conditionType configv1.ClusterStatusConditionType,
+	reason string,
+	message string,
+) {
+	now := metav1.Now()
+	for i := range conditions {
+		c := &conditions[i]
+		if c.Type == conditionType {
+			conditions[i] = configv1.ClusterOperatorStatusCondition{
+				Type:               c.Type,
+				Status:             configv1.ConditionTrue,
+				LastTransitionTime: now,
+				Reason:             reason,
+				Message:            message,
+			}
+			continue
+		}
+
+		// once we update the available condition we also should update the cluster operator to be upgradeable
+		if conditionType == configv1.OperatorAvailable && c.Type == configv1.OperatorUpgradeable {
+			conditions[i] = configv1.ClusterOperatorStatusCondition{
+				Type:               c.Type,
+				Status:             configv1.ConditionTrue,
+				LastTransitionTime: now,
+			}
+			continue
+		}
+
+		// for all other conditions the status should be false
+		if !isConditionStatusUpdatedToFalse(c) {
+			conditions[i] = configv1.ClusterOperatorStatusCondition{
+				Type:               c.Type,
+				Status:             configv1.ConditionFalse,
+				LastTransitionTime: now,
+			}
+		}
+	}
+}
+
+// isConditionStatusUpdatedToFalse verifies that the specified condition has status False and
+// empty message and reason fields
+func isConditionStatusUpdatedToFalse(c *configv1.ClusterOperatorStatusCondition) bool {
+	return c.Status == configv1.ConditionFalse && c.Message == "" && c.Reason == ""
+}
+
+func (r *Reconciler) updateClusterOperatorStatus(
+	ctx context.Context,
+	instance *configv1.ClusterOperator,
+	conditionType configv1.ClusterStatusConditionType,
+	reason string,
+	message string,
+) error {
+	copyInstance := instance.DeepCopy()
+	// create default conditions
+	if len(copyInstance.Status.Conditions) == 0 {
+		copyInstance.Status.Conditions = getDefaultConditions()
+	}
+	updateConditions(copyInstance.Status.Conditions, conditionType, reason, message)
+	copyInstance.Status.RelatedObjects = getRelatedObjects()
+
+	if releaseVersion := os.Getenv("RELEASE_VERSION"); len(releaseVersion) > 0 {
+		if conditionTrue(copyInstance.Status.Conditions, configv1.OperatorAvailable) {
+			operatorv1helpers.SetOperandVersion(
+				&copyInstance.Status.Versions,
+				configv1.OperandVersion{Name: "operator", Version: releaseVersion},
+			)
+		}
+	}
+
+	// nothing to update
+	if equality.Semantic.DeepEqual(instance.Status, copyInstance.Status) {
+		return nil
+	}
+
+	return r.Client.Status().Update(ctx, copyInstance)
+}
+
+func getDefaultConditions() []configv1.ClusterOperatorStatusCondition {
+	return []configv1.ClusterOperatorStatusCondition{
+		{
+			Type:   configv1.OperatorAvailable,
+			Status: configv1.ConditionTrue,
+		},
+		{
+			Type:   configv1.OperatorDegraded,
+			Status: configv1.ConditionTrue,
+		},
+		{
+			Type:   configv1.OperatorProgressing,
+			Status: configv1.ConditionTrue,
+		},
+		{
+			Type:   configv1.OperatorUpgradeable,
+			Status: configv1.ConditionTrue,
+		},
+	}
 }
