@@ -26,7 +26,7 @@ func MustAssetReader(asset string) io.Reader {
 	return bytes.NewReader(MustAsset(asset))
 }
 
-func TunedRenderedResource(tunedSlice []*tunedv1.Tuned) *tunedv1.Tuned {
+func TunedRenderedResource(tunedList *tunedv1.TunedList) *tunedv1.Tuned {
 	cr := &tunedv1.Tuned{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      tunedv1.TunedRenderedResourceName,
@@ -40,7 +40,7 @@ func TunedRenderedResource(tunedSlice []*tunedv1.Tuned) *tunedv1.Tuned {
 	tunedProfiles := []tunedv1.TunedProfile{}
 	m := map[string]tunedv1.TunedProfile{}
 
-	for _, tuned := range tunedSlice {
+	for _, tuned := range tunedList.Items {
 		if tuned.Name == tunedv1.TunedRenderedResourceName {
 			// Skip the "rendered" Tuned resource itself
 			continue
@@ -61,7 +61,6 @@ func TunedRenderedResource(tunedSlice []*tunedv1.Tuned) *tunedv1.Tuned {
 	sort.Slice(tunedProfiles, func(i, j int) bool {
 		return *tunedProfiles[i].Name < *tunedProfiles[j].Name
 	})
-
 	cr.Spec.Profile = tunedProfiles
 
 	return cr
@@ -125,7 +124,7 @@ func NewTuned(manifest io.Reader) (*tunedv1.Tuned, error) {
 	return &o, nil
 }
 
-func tunedRenderedProfiles(tuned *tunedv1.Tuned, m map[string]tunedv1.TunedProfile) {
+func tunedRenderedProfiles(tuned tunedv1.Tuned, m map[string]tunedv1.TunedProfile) {
 	if tuned.Spec.Profile != nil {
 		for _, v := range tuned.Spec.Profile {
 			if v.Name != nil && v.Data != nil {

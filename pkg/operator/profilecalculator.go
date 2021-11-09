@@ -1,19 +1,19 @@
 package operator
 
 import (
+	"context"
 	"fmt"
 	"sort"
-	"strings"
-
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/klog/v2"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
+	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
@@ -23,120 +23,9 @@ const (
 	defaultProfile = "openshift-node"
 )
 
-type tunedState struct {
-	nodeLabels map[string]map[string]string
-	// Node name:  ^^^^^^
-	// Node-specific label:   ^^^^^^
-	podLabels map[string]map[string]map[string]string
-	// Node name: ^^^^^^
-	// Namespace/podname:    ^^^^^^
-	// Pod-specific label:              ^^^^^^
-	providerIDs map[string]string
-	// Node name:   ^^^^^^
-	// provider-id         ^^^^^^
-}
-
 type ProfileCalculator struct {
-	listers *ntoclient.Listers
-	clients *ntoclient.Clients
-	state   tunedState
-}
-
-func NewProfileCalculator(listers *ntoclient.Listers, clients *ntoclient.Clients) *ProfileCalculator {
-	pc := &ProfileCalculator{
-		listers: listers,
-		clients: clients,
-	}
-	pc.state.nodeLabels = map[string]map[string]string{}
-	pc.state.podLabels = map[string]map[string]map[string]string{}
-	pc.state.providerIDs = map[string]string{}
-	return pc
-}
-
-// podChangeHandler processes an event for Pod 'podNamespace/podName'.
-//
-// Returns
-// * the name of the Node the Pod is associated with in the
-//   ProfileCalculator internal data structures
-// * an indication whether the event caused a node-wide Pod label change
-// * an error if any
-func (pc *ProfileCalculator) podChangeHandler(podNamespace string, podName string) (string, bool, error) {
-	var sb strings.Builder
-
-	sb.WriteString(podNamespace)
-	sb.WriteString("/")
-	sb.WriteString(podName)
-	podNamespaceName := sb.String()
-
-	nodeName, podLabelsNew, err := pc.podLabelsGet(podNamespace, podName)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			// This is most likely the cause of a delete event;
-			// find any record of a previous run of ns/name Pod, remove it from ProfileCalculator
-			// internal data structures and investigate if this causes a node-wide Pod label change
-			nodeName, change := pc.podRemove(podNamespaceName)
-			return nodeName, change, nil
-		}
-		return "", false, err
-	}
-
-	if nodeName == "" {
-		// Pods in Pending phase (being scheduled/unschedulable, downloading images over the network, ...)
-		return nodeName, false, fmt.Errorf("Pod %s is not scheduled on any node", podNamespaceName)
-	}
-
-	if pc.state.podLabels[nodeName] == nil {
-		pc.state.podLabels[nodeName] = map[string]map[string]string{}
-	}
-	podLabels := pc.state.podLabels[nodeName]
-
-	if !util.MapOfStringsEqual(podLabelsNew, podLabels[podNamespaceName]) {
-		// Pod podName labels on nodeName changed
-		klog.V(3).Infof("Pod %s labels on Node %s changed: %v", podName, nodeName, true)
-		changeNodeWide := podLabelsNodeWideChange(podLabels, podNamespaceName, podLabelsNew)
-		podLabels[podNamespaceName] = podLabelsNew
-
-		return nodeName, changeNodeWide, nil
-	}
-
-	// Pod labels for podNamespace/podName didn't change
-	return nodeName, false, nil
-}
-
-// nodeChangeHandler processes an event for Node 'nodeName'.
-//
-// Returns
-// * an indication whether the event caused a Node label/cloud-provider change
-// * an error if any
-func (pc *ProfileCalculator) nodeChangeHandler(nodeName string) (bool, error) {
-	var change bool
-	node, err := pc.listers.Nodes.Get(nodeName)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			// This is most likely the cause of a delete event;
-			// remove nodeName from ProfileCalculator internal data structures
-			pc.nodeRemove(nodeName)
-			return true, err
-		}
-
-		return false, err
-	}
-
-	if node.Spec.ProviderID != pc.state.providerIDs[nodeName] {
-		pc.state.providerIDs[nodeName] = node.Spec.ProviderID
-		klog.V(3).Infof("Node's %s providerID=%v", nodeName, node.Spec.ProviderID)
-		change = true
-	}
-
-	nodeLabelsNew := util.MapOfStringsCopy(node.Labels)
-
-	if !util.MapOfStringsEqual(nodeLabelsNew, pc.state.nodeLabels[nodeName]) {
-		// Node labels for nodeName changed
-		pc.state.nodeLabels[nodeName] = nodeLabelsNew
-		change = true
-	}
-
-	return change, nil
+	client *client.Client
+	state  tunedState
 }
 
 // calculateProfile calculates a tuned profile for Node nodeName.
@@ -147,18 +36,18 @@ func (pc *ProfileCalculator) nodeChangeHandler(nodeName string) (bool, error) {
 // * MachineConfigPools for 'nodeName' if the profile was selected by machineConfigLabels
 // * whether to run the Tuned daemon in debug mode on node nodeName
 // * an error if any
-func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[string]string, []*mcfgv1.MachineConfigPool, bool, error) {
-	klog.V(3).Infof("calculateProfile(%s)", nodeName)
-	tunedList, err := pc.listers.TunedResources.List(labels.Everything())
+func (r *TunedReconciler) calculateProfile(ctx context.Context, node corev1.Node) (string, map[string]string, []*mcfgv1.MachineConfigPool, bool, error) {
+	klog.V(3).Infof("calculateProfile(%s)", node.GetName())
+	//TODO - we are listing tuned several times in the pipeline . consider listing once and using in all the reconcile procedure once.
+	tunedList := &tunedv1.TunedList{}
+	err := r.Client.List(ctx, tunedList, client.InNamespace(ntoconfig.OperatorNamespace()))
 
 	if err != nil {
 		return "", nil, nil, false, fmt.Errorf("failed to list Tuned: %v", err)
 	}
-
-	for _, recommend := range tunedRecommend(tunedList) {
+	for _, recommend := range tunedRecommend(tunedList.Items) {
 		var (
 			pools []*mcfgv1.MachineConfigPool
-			node  *corev1.Node
 		)
 
 		// Start with node/pod label based matching to MachineConfig matching when
@@ -166,7 +55,7 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[stri
 		// Also note the catch-all functionality when "recommend.Match == nil",
 		// we do not want to call profileMatches() in that case unless machineConfigLabels
 		// is undefined.
-		if (recommend.Match != nil || recommend.MachineConfigLabels == nil) && pc.profileMatches(recommend.Match, nodeName) {
+		if (recommend.Match != nil || recommend.MachineConfigLabels == nil) && r.profileMatches(recommend.Match, node) {
 			return *recommend.Profile, nil, nil, recommend.Operand.Debug, nil
 		}
 
@@ -175,30 +64,27 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[stri
 			continue
 		}
 
-		if node == nil {
-			// We did not retrieve the node object from cache yet -- get it and also the pools
-			// for this node.  Do not move this code outside the for loop, fetching the node/pools
-			// is often unneeded and would likely have a performance impact.
-			node, err = pc.listers.Nodes.Get(nodeName)
-			if err != nil {
-				return "", nil, nil, false, err
-			}
-
-			pools, err = pc.getPoolsForNode(node)
-			if err != nil {
-				return "", nil, nil, false, err
-			}
+		pools, err = r.getPoolsForNode(node)
+		if err != nil {
+			return "", nil, nil, false, err
 		}
 
 		// MachineConfigLabels based matching
-		if pc.machineConfigLabelsMatch(recommend.MachineConfigLabels, pools) {
+		if r.machineConfigLabelsMatch(recommend.MachineConfigLabels, pools) {
 			return *recommend.Profile, recommend.MachineConfigLabels, pools, recommend.Operand.Debug, nil
 		}
 	}
 
 	// This should never happen; the default Tuned CR should always be accessible and with a catch-all rule
 	// in the "recommend" section to select the default profile for the tuned daemon.
-	_, err = pc.listers.TunedResources.Get(tunedv1.TunedDefaultResourceName)
+	tunedDefault := &tunedv1.Tuned{}
+	key := types.NamespacedName{
+		Namespace: ntoconfig.OperatorNamespace(),
+		Name:      tunedv1.TunedDefaultResourceName,
+	}
+
+	err = r.Get(context.TODO(), key, tunedDefault)
+
 	if err != nil {
 		return defaultProfile, nil, nil, false, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
 	}
@@ -209,7 +95,7 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[stri
 // profileMatches returns true, if Node 'nodeName' fulfills all the necessary
 // requirements of TunedMatch's tree-like definition of profile matching
 // rules 'match'.
-func (pc *ProfileCalculator) profileMatches(match []tunedv1.TunedMatch, nodeName string) bool {
+func (r *TunedReconciler) profileMatches(match []tunedv1.TunedMatch, node corev1.Node) bool {
 	if len(match) == 0 {
 		// Empty catch-all profile with no Node/Pod labels
 		return true
@@ -219,15 +105,15 @@ func (pc *ProfileCalculator) profileMatches(match []tunedv1.TunedMatch, nodeName
 		var labelMatches bool
 
 		if m.Type != nil && *m.Type == "pod" { // note the (lower-)case from the API
-			labelMatches = pc.podLabelMatches(m.Label, m.Value, nodeName)
+			labelMatches = r.podLabelMatches(m.Label, m.Value, node.Name)
 		} else {
 			// Assume "node" type match; no types other than "node"/"pod" are allowed.
 			// Unspecified m.Type means "node" type match.
-			labelMatches = pc.nodeLabelMatches(m.Label, m.Value, nodeName)
+			labelMatches = r.nodeLabelMatches(m.Label, m.Value, node)
 		}
 		if labelMatches {
 			// AND condition, check if subtree matches too
-			if pc.profileMatches(m.Match, nodeName) {
+			if r.profileMatches(m.Match, node) {
 				return true
 			}
 		}
@@ -239,13 +125,13 @@ func (pc *ProfileCalculator) profileMatches(match []tunedv1.TunedMatch, nodeName
 // nodeLabelMatches returns true if Node label's 'mNodeLabel' value 'mNodeLabelValue'
 // matches any of the Node labels in the ProfileCalculator internal data structures
 // for Node of the name 'mNodeName'.
-func (pc *ProfileCalculator) nodeLabelMatches(mNodeLabel *string, mNodeLabelValue *string, mNodeName string) bool {
+func (r *TunedReconciler) nodeLabelMatches(mNodeLabel *string, mNodeLabelValue *string, node corev1.Node) bool {
 	if mNodeLabel == nil {
 		// Undefined node label matches
 		return true
 	}
 
-	nodeLabels := pc.state.nodeLabels[mNodeName]
+	nodeLabels := node.GetLabels()
 	for nodeLabel, nodeLabelValue := range nodeLabels {
 		if nodeLabel == *mNodeLabel {
 			if mNodeLabelValue != nil {
@@ -259,34 +145,26 @@ func (pc *ProfileCalculator) nodeLabelMatches(mNodeLabel *string, mNodeLabelValu
 	return false
 }
 
-// podLabelMatches returns true if Pod label's 'mPodLabel' value 'mPodLabelValue'
-// matches any of the Pod labels in the ProfileCalculator internal data structures
-// for any Pod associated with Node of the name 'mNodeName'.
-func (pc *ProfileCalculator) podLabelMatches(mPodLabel *string, mPodLabelValue *string, mNodeName string) bool {
-	if mPodLabel == nil {
-		// Undefined Pod label matches
-		return true
-	}
-
-	podsPerNode := pc.state.podLabels[mNodeName]
-
-	for _, podLabels := range podsPerNode {
-		for podLabel, podLabelValue := range podLabels {
-			if podLabel == *mPodLabel {
-				if mPodLabelValue == nil || (podLabelValue == *mPodLabelValue) {
-					// Undefined Pod label value matches
-					return true
-				}
-				// Pod label value did not match, check the remaining pods on mNodeName
-			}
+func (r *TunedReconciler) podLabelMatches(mPodLabel *string, mPodLabelValue *string, mNodeName string) bool {
+	podList := &corev1.PodList{}
+	labelsMap := map[string]string{}
+	if mPodLabel != nil {
+		if mPodLabelValue != nil {
+			labelsMap[*mPodLabel] = *mPodLabelValue
+		} else {
+			labelsMap[*mPodLabel] = ""
 		}
 	}
-
-	return false
+	err := r.List(context.TODO(), podList, client.MatchingFields{"spec.nodeName": mNodeName}, client.MatchingLabels(labelsMap))
+	if err != nil {
+		klog.Errorf("could not list pods for label matching %v", err)
+		return false
+	}
+	return len(podList.Items) > 0
 }
 
 // machineConfigLabelsMatch returns true if any of the MachineConfigPools 'pools' select 'machineConfigLabels' labels.
-func (pc *ProfileCalculator) machineConfigLabelsMatch(machineConfigLabels map[string]string, pools []*mcfgv1.MachineConfigPool) bool {
+func (r *TunedReconciler) machineConfigLabelsMatch(machineConfigLabels map[string]string, pools []*mcfgv1.MachineConfigPool) bool {
 	if machineConfigLabels == nil || pools == nil {
 		// Undefined MachineConfig labels or no pools provided are not a valid match
 		return false
@@ -321,84 +199,9 @@ func (pc *ProfileCalculator) machineConfigLabelsMatch(machineConfigLabels map[st
 	return false
 }
 
-// nodeLabelsGet fetches labels for Node 'nodeName' from local cache.
-//
-// Returns
-// * a copy of the Node nodeName labels
-// * an error if any
-func (pc *ProfileCalculator) nodeLabelsGet(nodeName string) (map[string]string, error) {
-	node, err := pc.listers.Nodes.Get(nodeName)
-	if err != nil {
-		return nil, err
-	}
-
-	return util.MapOfStringsCopy(node.Labels), nil
-}
-
-// podLabelsGet fetches labels for Pod 'podNamespace/podName' from local cache.
-//
-// Returns
-// * a copy of the Pod podNamespace/podName labels
-// * an error if any
-func (pc *ProfileCalculator) podLabelsGet(podNamespace, podName string) (string, map[string]string, error) {
-	pod, err := pc.listers.Pods.Pods(podNamespace).Get(podName)
-	if err != nil {
-		return "", nil, err
-	}
-
-	return pod.Spec.NodeName, util.MapOfStringsCopy(pod.Labels), nil
-}
-
-// nodeRemove removes all data structures related to node "nodeName" in
-// the ProfileCalculator internal data structures.
-func (pc *ProfileCalculator) nodeRemove(nodeName string) {
-	// Delete all structures related to nodeName in nodeLabels
-	delete(pc.state.nodeLabels, nodeName)
-
-	// Delete all data structures related to nodeName in podLabels
-	delete(pc.state.podLabels, nodeName)
-}
-
-// podRemove removes the reference of a Pod identified by namespace/name
-// from the ProfileCalculator internal data structures.  If such a reference
-// is found, a calculation is made whether the removal causes a Node-wide change
-// in terms of Pod label uniqueness.
-//
-// Returns
-// * the name of the Node the Pod was removed from (empty string if the removal
-//   didn't take place)
-// * an indication whether the Pod removal causes a Node-wide change in terms
-//   of Pod label uniqueness
-func (pc *ProfileCalculator) podRemove(podNamespaceNameRemove string) (string, bool) {
-	for nodeName, podsPerNode := range pc.state.podLabels {
-		for podNamespaceName, podLabels := range podsPerNode {
-			if podNamespaceNameRemove == podNamespaceName {
-				delete(podsPerNode, podNamespaceName)
-				klog.V(3).Infof("removed Pod %s from Node's %s local structures", podNamespaceName, nodeName)
-				uniqueLabels := podLabelsUnique(podsPerNode,
-					podNamespaceName,
-					podLabels)
-
-				return nodeName, len(uniqueLabels) > 0
-			}
-		}
-	}
-	return "", false
-}
-
-// podLabelsDelete removes the reference to any old podLabels structure data
-func (pc *ProfileCalculator) podLabelsDelete() {
-	pc.state.podLabels = map[string]map[string]map[string]string{}
-}
-
-// nodeLabelsDelete removes the reference to any old nodeLabels structure data
-func (pc *ProfileCalculator) nodeLabelsDelete() {
-	pc.state.nodeLabels = map[string]map[string]string{}
-}
-
 // tunedUsesNodeLabels returns true if any of the TunedMatch's tree-like definition
 // of profile matching rules 'match' uses Node labels.
-func (pc *ProfileCalculator) tunedUsesNodeLabels(match []tunedv1.TunedMatch) bool {
+func (r *TunedReconciler) tunedUsesNodeLabels(match []tunedv1.TunedMatch) bool {
 	if len(match) == 0 {
 		// Empty catch-all profile with no Node/Pod labels
 		return false
@@ -409,7 +212,7 @@ func (pc *ProfileCalculator) tunedUsesNodeLabels(match []tunedv1.TunedMatch) boo
 			return true
 		}
 		// AND condition, check if subtree matches
-		if pc.tunedUsesNodeLabels(m.Match) {
+		if r.tunedUsesNodeLabels(m.Match) {
 			return true
 		}
 	}
@@ -419,7 +222,7 @@ func (pc *ProfileCalculator) tunedUsesNodeLabels(match []tunedv1.TunedMatch) boo
 
 // tunedUsesPodLabels returns true if any of the TunedMatch's tree-like definition
 // of profile matching rules 'match' uses Pod labels.
-func (pc *ProfileCalculator) tunedUsesPodLabels(match []tunedv1.TunedMatch) bool {
+func (r *TunedReconciler) tunedUsesPodLabels(match []tunedv1.TunedMatch) bool {
 	if len(match) == 0 {
 		// Empty catch-all profile with no Node/Pod labels
 		return false
@@ -430,7 +233,7 @@ func (pc *ProfileCalculator) tunedUsesPodLabels(match []tunedv1.TunedMatch) bool
 			return true
 		}
 		// AND condition, check if subtree matches
-		if pc.tunedUsesPodLabels(m.Match) {
+		if r.tunedUsesPodLabels(m.Match) {
 			return true
 		}
 	}
@@ -439,9 +242,9 @@ func (pc *ProfileCalculator) tunedUsesPodLabels(match []tunedv1.TunedMatch) bool
 }
 
 // tunedsUseNodeLabels returns true if any of the Tuned CRs uses Node labels.
-func (pc *ProfileCalculator) tunedsUseNodeLabels(tunedSlice []*tunedv1.Tuned) bool {
+func (r *TunedReconciler) tunedsUseNodeLabels(tunedSlice []tunedv1.Tuned) bool {
 	for _, recommend := range tunedRecommend(tunedSlice) {
-		if pc.tunedUsesNodeLabels(recommend.Match) {
+		if r.tunedUsesNodeLabels(recommend.Match) {
 			return true
 		}
 	}
@@ -449,9 +252,9 @@ func (pc *ProfileCalculator) tunedsUseNodeLabels(tunedSlice []*tunedv1.Tuned) bo
 }
 
 // tunedsUsePodLabels returns true if any of the Tuned CRs uses Pod labels.
-func (pc *ProfileCalculator) tunedsUsePodLabels(tunedSlice []*tunedv1.Tuned) bool {
-	for _, recommend := range tunedRecommend(tunedSlice) {
-		if pc.tunedUsesPodLabels(recommend.Match) {
+func (r *TunedReconciler) tunedsUsePodLabels(tunedList *tunedv1.TunedList) bool {
+	for _, recommend := range tunedRecommend(tunedList.Items) {
+		if r.tunedUsesPodLabels(recommend.Match) {
 			return true
 		}
 	}
@@ -460,8 +263,8 @@ func (pc *ProfileCalculator) tunedsUsePodLabels(tunedSlice []*tunedv1.Tuned) boo
 
 // tunedRecommend returns a priority-sorted TunedRecommend slice out of
 // a slice of Tuned objects for profile-calculation purposes.
-func tunedRecommend(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedRecommend {
-	var recommendAll []tunedv1.TunedRecommend
+func tunedRecommend(tunedSlice []tunedv1.Tuned) []tunedv1.TunedRecommend {
+	recommendAll := []tunedv1.TunedRecommend{}
 
 	// Tuned profiles should have unique priority across all Tuned CRs and users
 	// will be warned about this.  However, go into some effort to make the profile
@@ -495,60 +298,4 @@ func tunedRecommend(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedRecommend {
 	}
 
 	return recommendAll
-}
-
-// podLabelsUnique goes through Pod labels of all the Pods on a Node-wide
-// 'podLabelsNodeWide' map and returns a subset of 'podLabels' unique to 'podNsName'
-// Pod; i.e. the retuned labels (key & value) will not exist on any other Pod
-// that is co-located on the same Node as 'podNsName' Pod.
-func podLabelsUnique(podLabelsNodeWide map[string]map[string]string,
-	podNsName string,
-	podLabels map[string]string) map[string]string {
-	unique := map[string]string{}
-
-	if podLabelsNodeWide == nil {
-		return podLabels
-	}
-
-LoopNeedle:
-	for kNeedle, vNeedle := range podLabels {
-		for kHaystack, vHaystack := range podLabelsNodeWide {
-			if kHaystack == podNsName {
-				// Skip the podNsName labels which are part of podLabelsNodeWide
-				continue
-			}
-			if v, ok := vHaystack[kNeedle]; ok && v == vNeedle {
-				// We've found a matching key/value pair label in vHaystack, kNeedle/vNeedle is not unique
-				continue LoopNeedle
-			}
-		}
-
-		// We've found label kNeedle with value vNeedle unique to Pod podNsName
-		unique[kNeedle] = vNeedle
-	}
-
-	return unique
-}
-
-// podLabelsNodeWideChange returns true, if the change in current Pod labels
-// 'podLabels' affects Pod labels Node-wide.  In other words, the function
-// returns true if any of the new or removed labels (key & value) for 'podNsName'
-// Pod do *not* exist on any other Pod that is co-located on the same Node as
-// 'podNsName' Pod.
-func podLabelsNodeWideChange(podLabelsNodeWide map[string]map[string]string,
-	podNsName string,
-	podLabels map[string]string) bool {
-	if podLabelsNodeWide == nil {
-		return podLabels != nil && len(podLabels) > 0
-	}
-
-	// Fetch old labels for Pod podNsName, not found on any other Pod that lives on the same Node
-	oldPodLabelsUnique := podLabelsUnique(podLabelsNodeWide, podNsName, podLabelsNodeWide[podNsName])
-	// Fetch current labels for Pod podNsName, not found on any other Pod that lives on the same Node
-	curPodLabelsUnique := podLabelsUnique(podLabelsNodeWide, podNsName, podLabels)
-	// If there is a difference between old and current unique Pod labels, a unique Pod label was
-	// added/removed or both
-	change := !util.MapOfStringsEqual(oldPodLabelsUnique, curPodLabelsUnique)
-
-	return change
 }

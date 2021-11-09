@@ -1,6 +1,7 @@
 package operator
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -8,6 +9,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
@@ -151,18 +153,19 @@ func getMachineConfigNameForPools(pools []*mcfgv1.MachineConfigPool) string {
 
 // getPoolsForMachineConfigLabels chooses the MachineConfigPools that use MachineConfigs with labels 'mcLabels'.
 // Errors are only returned in cases that warrant event reques (e.g. a failure to list k8s objects).
-func (pc *ProfileCalculator) getPoolsForMachineConfigLabels(mcLabels map[string]string) ([]*mcfgv1.MachineConfigPool, error) {
+func (r *TunedReconciler) getPoolsForMachineConfigLabels(mcLabels map[string]string) ([]*mcfgv1.MachineConfigPool, error) {
 	if len(mcLabels) == 0 {
 		return nil, nil
 	}
 
-	mcpList, err := pc.listers.MachineConfigPools.List(labels.Everything())
-	if err != nil {
+	mcpList := &mcfgv1.MachineConfigPoolList{}
+	if err := r.Client.List(context.TODO(), mcpList); err != nil {
 		return nil, err
 	}
 
 	var pools []*mcfgv1.MachineConfigPool
-	for _, p := range mcpList {
+	for i := range mcpList.Items {
+		p := &mcpList.Items[i]
 		selector, err := metav1.LabelSelectorAsSelector(p.Spec.MachineConfigSelector)
 		if err != nil {
 			klog.Errorf("invalid label selector %s: %v", util.ObjectInfo(selector), err)
@@ -173,7 +176,6 @@ func (pc *ProfileCalculator) getPoolsForMachineConfigLabels(mcLabels map[string]
 		if selector.Empty() || !selector.Matches(labels.Set(mcLabels)) {
 			continue
 		}
-
 		pools = append(pools, p)
 	}
 
@@ -184,14 +186,16 @@ func (pc *ProfileCalculator) getPoolsForMachineConfigLabels(mcLabels map[string]
 // It disambiguates in the case where e.g. a node has both master/worker roles applied,
 // and where a custom role may be used. It returns a slice of all the pools the node belongs to.
 // Errors are only returned in cases that warrant event reques (e.g. a failure to list k8s objects).
-func (pc *ProfileCalculator) getPoolsForNode(node *corev1.Node) ([]*mcfgv1.MachineConfigPool, error) {
-	pl, err := pc.listers.MachineConfigPools.List(labels.Everything())
-	if err != nil {
+func (r *TunedReconciler) getPoolsForNode(node corev1.Node) ([]*mcfgv1.MachineConfigPool, error) {
+
+	pl := &mcfgv1.MachineConfigPoolList{}
+	if err := r.Client.List(context.TODO(), pl); err != nil {
 		return nil, err
 	}
 
 	var pools []*mcfgv1.MachineConfigPool
-	for _, p := range pl {
+	for i := range pl.Items {
+		p := &pl.Items[i]
 		selector, err := metav1.LabelSelectorAsSelector(p.Spec.NodeSelector)
 		if err != nil {
 			klog.Errorf("invalid label selector %s in MachineConfigPool %s: %v", util.ObjectInfo(selector), p.ObjectMeta.Name, err)
@@ -199,7 +203,7 @@ func (pc *ProfileCalculator) getPoolsForNode(node *corev1.Node) ([]*mcfgv1.Machi
 		}
 
 		// A pool with a nil or empty selector matches nothing.
-		if selector.Empty() || !selector.Matches(labels.Set(node.Labels)) {
+		if selector.Empty() || !selector.Matches(labels.Set(node.GetLabels())) {
 			continue
 		}
 
@@ -229,7 +233,7 @@ func (pc *ProfileCalculator) getPoolsForNode(node *corev1.Node) ([]*mcfgv1.Machi
 	} else if len(custom) == 1 {
 		// We don't support making custom pools for masters
 		if master != nil {
-			klog.Errorf("node %s has both master role and custom role %s", node.Name, custom[0].Name)
+			klog.Errorf("node %s has both master role and custom role %s", node.GetName(), custom[0].Name)
 			return nil, nil
 		}
 		// One custom role, let's use its pool
@@ -247,16 +251,4 @@ func (pc *ProfileCalculator) getPoolsForNode(node *corev1.Node) ([]*mcfgv1.Machi
 	}
 	// Otherwise, it's a worker with no custom roles.
 	return []*mcfgv1.MachineConfigPool{worker}, nil
-}
-
-// getPrimaryPoolForNode uses getPoolsForNode and returns the first one which is the one the node targets
-func (pc *ProfileCalculator) getPrimaryPoolForNode(node *corev1.Node) (*mcfgv1.MachineConfigPool, error) {
-	pools, err := pc.getPoolsForNode(node)
-	if err != nil {
-		return nil, err
-	}
-	if pools == nil {
-		return nil, nil
-	}
-	return pools[0], nil
 }
