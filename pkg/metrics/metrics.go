@@ -9,13 +9,13 @@ const (
 	buildInfoQuery         = "nto_build_info"
 	degradedInfoQuery      = "nto_degraded_info"
 
-	// MetricsPort is the IP port supplied to the HTTP server used for Prometheus,
+	// Port is the IP port supplied to the HTTP server used for Prometheus,
 	// and matches what is specified in the corresponding Service and ServiceMonitor.
-	MetricsPort = 60000
+	Port = 60000
 )
 
 var (
-	registry      = prometheus.NewRegistry()
+	Registry      = prometheus.NewRegistry()
 	podLabelsUsed = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: podLabelsUsedQuery,
@@ -45,7 +45,7 @@ var (
 )
 
 func init() {
-	registry.MustRegister(
+	Registry.MustRegister(
 		podLabelsUsed,
 		profileCalculated,
 		buildInfo,

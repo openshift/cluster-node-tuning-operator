@@ -85,7 +85,7 @@ spec:
   - targetPort: 60000
     interval: 60s
     scheme: https
-    path: /metrics
+    path: /nto-metrics
     tlsConfig:
       caFile: /etc/prometheus/configmaps/serving-certs-ca-bundle/service-ca.crt
       serverName: node-tuning-operator.openshift-cluster-node-tuning-operator.svc
