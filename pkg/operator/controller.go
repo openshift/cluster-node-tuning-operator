@@ -876,6 +876,11 @@ func (c *Controller) enableNodeInformer(enable bool) error {
 		informer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindNode}))
 
 		informerFactory.Start(c.node.stopCh)
+		ok := cache.WaitForCacheSync(c.pod.stopCh, informer.Informer().HasSynced)
+		if !ok {
+			klog.Error("failed to wait for caches to sync")
+			return fmt.Errorf("failed to wait for caches to sync")
+		}
 	} else {
 		defer close(c.node.stopCh)
 		c.node.stopCh <- struct{}{}
@@ -905,6 +910,11 @@ func (c *Controller) enablePodInformer(enable bool) error {
 		informer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindPod}))
 
 		informerFactory.Start(c.pod.stopCh)
+		ok := cache.WaitForCacheSync(c.pod.stopCh, informer.Informer().HasSynced)
+		if !ok {
+			klog.Error("failed to wait for caches to sync")
+			return fmt.Errorf("failed to wait for caches to sync")
+		}
 	} else {
 		defer close(c.pod.stopCh)
 		c.pod.stopCh <- struct{}{}
