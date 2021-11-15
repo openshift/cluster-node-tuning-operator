@@ -124,3 +124,5 @@ spec:
       for: 2h
       labels:
         severity: warning
+    - expr: count(nto_profile_calculated_total{profile!~"openshift-node",profile!~"openshift-control-plane",profile!~"openshift"})
+      record: nto_custom_profiles:count
