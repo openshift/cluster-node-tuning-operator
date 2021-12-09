@@ -556,6 +556,15 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	profileMf.ObjectMeta.OwnerReferences = getDefaultTunedRefs(tuned)
 
 	profileMf.Name = nodeName
+	nodeLabels, err := c.pc.nodeLabelsGet(nodeName)
+	if err != nil {
+		return err
+	}
+	if nodeLabels["kubernetes.io/os"] != "linux" {
+		klog.Infof("ignoring non-linux Node %s", nodeName)
+		return nil
+	}
+
 	tunedProfileName, mcLabels, pools, daemonDebug, err := c.pc.calculateProfile(nodeName)
 	if err != nil {
 		return err
