@@ -17,7 +17,6 @@ import (
 	"time"      // time.Second, ...
 
 	fsnotify "gopkg.in/fsnotify.v1"
-	"gopkg.in/ini.v1"
 	kmeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -819,60 +818,6 @@ func getNodeName() string {
 	return name
 }
 
-// getIniFileSectionSlice searches INI file `data` inside [`section`]
-// for key `key`.  It takes the key's value and uses separator
-// `separator` to return a slice of strings.
-func getIniFileSectionSlice(data *string, section, key, separator string) []string {
-	var ret []string
-
-	if data == nil {
-		return ret
-	}
-
-	cfg, err := ini.Load([]byte(*data))
-	if err != nil {
-		// This looks like an invalid INI data or parser error.
-		klog.Errorf("unable to read INI file data: %v", err)
-		return ret
-	}
-
-	if !cfg.Section(section).HasKey(key) {
-		return ret
-	}
-
-	ret = strings.Split(cfg.Section(section).Key(key).String(), separator)
-
-	return ret
-}
-
-// profileHasStalld returns pointer to a boolean value.  The dereferenced
-// pointer value depends on the Tuned [service] plugin enabling/disabling
-// the "stalld" service.  If the "stalld" service "service.stalld" key is
-// not found in Tuned [service] section, nil is returned.
-func profileHasStalld(profile *string) *bool {
-	var ret bool
-
-	stalldServiceVal := getIniFileSectionSlice(profile, "service", "service.stalld", ",")
-
-	if len(stalldServiceVal) == 0 {
-		// There was no service.stalld key in [service] section.
-		return nil
-	}
-
-	for _, v := range stalldServiceVal {
-		if v == "enable" {
-			ret = true
-			return &ret
-		}
-		if v == "disable" {
-			return &ret
-		}
-	}
-
-	// Default to "disable" if "enable" is not present as value by service.stalld key.
-	return &ret
-}
-
 func (c *Controller) stalldRequested(profileName string) (*bool, error) {
 	var ret bool
 
@@ -897,45 +842,6 @@ func (c *Controller) stalldRequested(profileName string) (*bool, error) {
 	}
 
 	return &ret, nil
-}
-
-// profileIncludes returns a slice of strings containing TuneD profile names
-// custom (/etc/tuned/<profileName>/) profile 'profileName' includes.
-func profileIncludes(profileName string) []string {
-	profileFile := fmt.Sprintf("%s/%s/%s", tunedProfilesDir, profileName, tunedConfFile)
-
-	content, err := ioutil.ReadFile(profileFile)
-	if err != nil {
-		content = []byte{}
-	}
-
-	s := string(content)
-
-	return getIniFileSectionSlice(&s, "main", "include", ",")
-}
-
-// profileDepends returns "TuneD profile name"->bool map that custom
-// (/etc/tuned/<profileName>/) profile 'profileName' depends on as keys.
-// The dependency is resolved by finding all the "parent" profiles which are
-// included by using the "include" keyword in the profile's [main] section.
-// Note: no expansion of the TuneD functions into profiles names, such as
-// "f:virt_check" is performed by this function.  Only static parsing of
-// the TuneD INI configuration files is performed.
-func profileDepends(profileName string) map[string]bool {
-	return profileDependsLoop(profileName, map[string]bool{})
-}
-
-func profileDependsLoop(profileName string, seenProfiles map[string]bool) map[string]bool {
-	profiles := profileIncludes(profileName)
-	for _, p := range profiles {
-		if seenProfiles[p] {
-			// We have already seen/processed custom profile 'p'.
-			continue
-		}
-		seenProfiles[p] = true
-		seenProfiles = profileDependsLoop(p, seenProfiles)
-	}
-	return seenProfiles
 }
 
 // Method updateTunedProfile updates a Tuned Profile with information to report back

@@ -112,7 +112,7 @@ endif
 vet: $(BINDATA)
 	$(GO) vet ./...
 
-test:
+test-unit: $(BINDATA)
 	$(GO) test ./cmd/... ./pkg/... -coverprofile cover.out
 
 clean:
