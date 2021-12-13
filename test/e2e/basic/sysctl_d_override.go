@@ -59,8 +59,10 @@ var _ = ginkgo.Describe("[basic][sysctl_d_override] Node Tuning Operator /etc/sy
 
 			ginkgo.By(fmt.Sprintf("writing %s override file on the host with %s=%s", sysctlFile, sysctlVar, sysctlValSet))
 			_, _, err = util.ExecAndLogCommand("oc", "exec", "-n", ntoconfig.OperatorNamespace(), pod.Name, "--", "sh", "-c",
-				fmt.Sprintf("echo %s=%s > %s", sysctlVar, sysctlValSet, sysctlFile))
+				fmt.Sprintf("echo %s=%s > %s; sync %s", sysctlVar, sysctlValSet, sysctlFile, sysctlFile))
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			util.ExecAndLogCommand("oc", "rsh", "-n", ntoconfig.OperatorNamespace(), pod.Name, "cat", sysctlFile)
 
 			ginkgo.By(fmt.Sprintf("deleting Pod %s", pod.Name))
 			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "pod", pod.Name, "--wait")
