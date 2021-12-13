@@ -1,0 +1,17 @@
+apiVersion: tuned.openshift.io/v1
+kind: Tuned
+metadata:
+  name: openshift-tuned-builtin
+  namespace: openshift-cluster-node-tuning-operator
+spec:
+  profile:
+  - data: |
+      [main]
+      summary=An OpenShift profile to test TuneD built-in function expansion
+      include=openshift-node,openshift-${f:exec:echo:-n:huge}pages
+    name: openshift-tuned-builtin
+  recommend:
+  - match:
+    - label: tuned.openshift.io/tuned-built-in
+    priority: 20
+    profile: openshift-tuned-builtin

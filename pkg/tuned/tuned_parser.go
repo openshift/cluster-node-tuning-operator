@@ -1,0 +1,367 @@
+package tuned
+
+import (
+	"fmt"       // Printf()
+	"io"        // io.EOF
+	"io/ioutil" // ioutil.ReadFile()
+	"os/exec"   // os.Exec()
+	"strings"   // strings.Split()
+	"syscall"   // syscall.SIGHUP, ...
+	"time"      // time.Second, ...
+
+	"gopkg.in/ini.v1"
+	"k8s.io/klog/v2"
+)
+
+// getIniFileSectionSlice searches INI file `data` inside [`section`]
+// for key `key`.  It takes the key's value and uses separator
+// `separator` to return a slice of strings.
+func getIniFileSectionSlice(data *string, section, key, separator string) []string {
+	var ret []string
+
+	if data == nil {
+		return ret
+	}
+
+	cfg, err := ini.Load([]byte(*data))
+	if err != nil {
+		// This looks like an invalid INI data or parser error.
+		klog.Errorf("unable to read INI file data: %v", err)
+		return ret
+	}
+
+	if !cfg.Section(section).HasKey(key) {
+		return ret
+	}
+
+	ret = strings.Split(cfg.Section(section).Key(key).String(), separator)
+
+	return ret
+}
+
+// profileHasStalld returns pointer to a boolean value.  The dereferenced
+// pointer value depends on the Tuned [service] plugin enabling/disabling
+// the "stalld" service.  If the "stalld" service "service.stalld" key is
+// not found in Tuned [service] section, nil is returned.
+func profileHasStalld(profile *string) *bool {
+	var ret bool
+
+	stalldServiceVal := getIniFileSectionSlice(profile, "service", "service.stalld", ",")
+
+	if len(stalldServiceVal) == 0 {
+		// There was no service.stalld key in [service] section.
+		return nil
+	}
+
+	for _, v := range stalldServiceVal {
+		if v == "enable" {
+			ret = true
+			return &ret
+		}
+		if v == "disable" {
+			return &ret
+		}
+	}
+
+	// Default to "disable" if "enable" is not present as value by service.stalld key.
+	return &ret
+}
+
+// profileIncludes returns a slice of strings containing TuneD profile names
+// custom (/etc/tuned/<profileName>/) profile 'profileName' includes.
+func profileIncludes(profileName string) []string {
+	profileFile := fmt.Sprintf("%s/%s/%s", tunedProfilesDir, profileName, tunedConfFile)
+
+	content, err := ioutil.ReadFile(profileFile)
+	if err != nil {
+		content = []byte{}
+	}
+
+	s := string(content)
+
+	return getIniFileSectionSlice(&s, "main", "include", ",")
+}
+
+// profileDepends returns "TuneD profile name"->bool map that custom
+// (/etc/tuned/<profileName>/) profile 'profileName' depends on as keys.
+// The dependency is resolved by finding all the "parent" profiles which are
+// included by using the "include" keyword in the profile's [main] section.
+// Note: only basic expansion of TuneD built-in functions into profiles is
+// performed.  See expandTuneDBuiltin for more detail.
+func profileDepends(profileName string) map[string]bool {
+	return profileDependsLoop(profileName, map[string]bool{})
+}
+
+func profileDependsLoop(profileName string, seenProfiles map[string]bool) map[string]bool {
+	profiles := profileIncludes(profileName)
+	for _, profile := range profiles {
+		p := expandTuneDBuiltin(profile)
+		if seenProfiles[p] {
+			// We have already seen/processed custom profile 'p'.
+			continue
+		}
+		seenProfiles[p] = true
+		seenProfiles = profileDependsLoop(p, seenProfiles)
+	}
+	return seenProfiles
+}
+
+// execCmd starts command 'command' and waits for it to complete.
+// Optional arguments for the command start at command[1].
+// If the command does not exit within 'waitSeconds' seconds, SIGTERM
+// is sent to the underlying process.  SIGKILL is sent 'waitSeconds'
+// seconds after if the process still refuses to exit.
+// Returns standard output of the command and an associated error.
+func execCmd(command []string) (string, error) {
+	const (
+		chunkSize   = 4 * 1024
+		waitSeconds = 5
+	)
+	var (
+		err error
+		out string
+		cmd *exec.Cmd
+	)
+
+	chSupervisor := make(chan bool, 1)
+	chReader := make(chan bool, 1)
+	defer func() {
+		close(chSupervisor)
+	}()
+
+	switch len(command) {
+	case 0:
+		return "", fmt.Errorf("called execCmd() with undefined command")
+	case 1:
+		cmd = exec.Command(command[0])
+	default:
+		cmd = exec.Command(command[0], command[1:]...)
+	}
+
+	cmdReader, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", fmt.Errorf("error creating StdoutPipe for command %v: %v\n", command, err)
+	}
+
+	go func(chReader chan bool) {
+		buf := make([]byte, 0, chunkSize)
+		for {
+			n, err := cmdReader.Read(buf[:cap(buf)])
+			buf = buf[:n]
+			if n == 0 {
+				if err == nil {
+					continue
+				}
+				if err == io.EOF {
+					break
+				}
+				// This should never happen
+				klog.Errorf("error reading from pipe: %v", err)
+			}
+
+			out += string(buf)
+		}
+		chReader <- true
+	}(chReader)
+
+	// Supervisor goroutine with process timeout functionality.
+	go func(chSupervisor chan bool) {
+		select {
+		case <-chSupervisor:
+			return
+		case <-time.After(time.Second * waitSeconds):
+			if cmd.Process == nil {
+				// Process doesn't seem to exist any longer.
+				return
+			}
+			// Ask nicely first.
+			cmd.Process.Signal(syscall.SIGTERM)
+		}
+		// Wait for the process to stop.
+		select {
+		case <-chSupervisor:
+		case <-time.After(time.Second * waitSeconds):
+			// The process refused to terminate gracefully on SIGTERM.
+			klog.V(1).Infof("sending SIGKILL to PID %d", cmd.Process.Pid)
+			cmd.Process.Signal(syscall.SIGKILL)
+			return
+		}
+	}(chSupervisor)
+
+	if err = cmd.Start(); err != nil {
+		return out, fmt.Errorf("error starting command %v: %v\n", command, err)
+	}
+
+	<-chReader // Wait for the reader to prevent missing (part of) its output.  Do not move after cmd.Wait()!
+	if err = cmd.Wait(); err != nil {
+		// The command exited with non 0 exit status, e.g. terminated by a signal.
+		return out, fmt.Errorf("error waiting for command %v: %v\n", command, err)
+	}
+
+	return out, nil
+}
+
+// execTuneDBuiltin executes TuneD built-in function 'function' with
+// arguments 'args'.  Returns the result/expansion of running the built-in.
+// If the execution of the built-in fails, returns the string 'onFail'.
+func execTuneDBuiltin(function string, args []string, onFail string) string {
+	switch {
+	case function == "exec":
+		out, err := execCmd(args)
+		if err != nil {
+			klog.Errorf("error calling built-in exec: %v", err)
+			return onFail
+		}
+		return out
+
+	// The virt-what script needed by "virt_check" must be run as root user.
+	// Exclude it from unit testing.
+	case function == "virt_check":
+		// Check whether running inside virtual machine (VM) or on bare metal.
+		// If running inside a VM expand to argument 1, otherwise expand to
+		// argument 2.  Note the expansion to argument 2 is done also on error
+		// to match the semantics of the TuneD "virt_check".
+		if len(args) != 2 {
+			klog.Errorf("built-in \"virt_check\" requires 2 arguments")
+			return onFail
+		}
+		out, err := execCmd([]string{"virt-what"})
+		if err == nil && len(out) > 0 {
+			return args[0]
+		}
+		if err != nil {
+			klog.Errorf("failure calling built-in exec: %v", err)
+		}
+
+		return args[1]
+
+	default:
+		klog.Errorf("calling unsupported built-in: %v", function)
+		// unsupported built-in
+	}
+
+	return onFail
+}
+
+// expandTuneDBuiltin is a naive and incomplete parser of TuneD built-in
+// functions in the form ${f:function(:argN)*}.  A typical use case is
+// evaluating ${f:virt_check:profile-a:profile-b} and ${f:exec(:argN)}
+// TuneD built-in functions in "include" statements.  If (parts of)
+// the expansion fail, the function returns the original string for the
+// parts that failed the expansion.
+func expandTuneDBuiltin(s string) string {
+	const (
+		sInit   = 0
+		sFnName = 1 // ${f:name
+		sFnArg  = 2 // ${f:name:arg
+	)
+	var (
+		esc              bool
+		ret, function    string
+		iDollar, bracket int
+		arguments        []string
+	)
+
+	byteAtIs := func(i int, b byte) bool {
+		if i < 0 || i >= len(s) {
+			return false
+		}
+		return s[i] == b
+	}
+
+	state := sInit
+	for i := 0; i < len(s); i++ {
+		esc = byteAtIs(i-1, '\\')
+
+		switch {
+		case state == sFnName:
+			// ${f:name
+			if s[i] == '$' && byteAtIs(i+1, '{') && !esc {
+				bracket++
+				function += "${"
+				i++
+				continue
+			}
+			if s[i] == '}' && !esc {
+				bracket--
+				if bracket >= 1 {
+					// We do not have enough closing brackets for expansion,
+					// the nesting is still too deep.
+					goto append_fn
+				}
+				// Assert: bracket == 0 && no arguments.
+
+				// End of a function.  We now have a function name without arguments.
+				// Function name possibly needs expanding.
+				functionExpanded := expandTuneDBuiltin(function)
+				ret += execTuneDBuiltin(functionExpanded, arguments, string(s[iDollar:i+1]))
+				goto init
+			}
+			if s[i] == ':' && !esc && bracket == 1 {
+				state = sFnArg
+				arguments = append(arguments, "") // add the first argument
+				continue
+			}
+		append_fn:
+			function += string(s[i])
+		case state == sFnArg:
+			// ${f:name:arg0[:argN]
+			if s[i] == '$' && byteAtIs(i+1, '{') && !esc {
+				bracket++
+				arguments[len(arguments)-1] += "${"
+				i++
+				continue
+			}
+
+			if s[i] == ':' && !esc && bracket == 1 {
+				arguments = append(arguments, "") // add additional argument
+				continue
+			}
+
+			if s[i] == '}' && !esc {
+				bracket--
+				if bracket >= 1 {
+					// We do not have enough closing brackets for expansion,
+					// the nesting is still too deep.
+					goto append_arg
+				}
+				// Assert: bracket == 0.
+
+				// End of a function.  We have a function name and arguments
+				// that possibly also need expanding.
+				for j := 0; j < len(arguments); j++ {
+					arguments[j] = expandTuneDBuiltin(arguments[j])
+				}
+				functionExpanded := expandTuneDBuiltin(function)
+				ret += execTuneDBuiltin(functionExpanded, arguments, string(s[iDollar:i+1]))
+				goto init
+			}
+		append_arg:
+			arguments[len(arguments)-1] += string(s[i])
+		case s[i] == '$' && byteAtIs(i+1, '{') && byteAtIs(i+2, 'f') && byteAtIs(i+3, ':') && !esc:
+			iDollar = i
+			i += 3
+			bracket++
+			state = sFnName
+		default:
+			if state == sInit {
+				ret += string(s[i])
+				continue
+			}
+			ret += string(s[iDollar : i+1])
+			goto init
+		}
+		continue
+
+	init:
+		state = sInit
+		function = ""
+		arguments = []string{}
+	}
+	if state != sInit {
+		// Unterminated function sequence such as "${f:exec"
+		ret += string(s[iDollar:])
+	}
+
+	return ret
+}
