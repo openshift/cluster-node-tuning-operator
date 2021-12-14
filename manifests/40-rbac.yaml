@@ -49,8 +49,9 @@ rules:
   resources: ["nodes/metrics","nodes/specs"]
   verbs: ["get"]
 # Needed by every CVO-managed operator.
+# infrastructures needed for the leader election code to get infra topology
 - apiGroups: ["config.openshift.io"]
-  resources: ["clusteroperators"]
+  resources: ["clusteroperators", "infrastructures"]
   verbs: ["create","get","list","watch"]
 # Needed by every CVO-managed operator.
 - apiGroups: ["config.openshift.io"]
@@ -64,7 +65,6 @@ rules:
 - apiGroups: ["machineconfiguration.openshift.io"]
   resources: ["machineconfigpools"]
   verbs: ["get","list","watch"]
-
 ---
 
 # Bind the operator cluster role to its Service Account.
