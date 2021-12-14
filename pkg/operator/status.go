@@ -81,7 +81,22 @@ func (c *Controller) getOrCreateOperatorStatus() (*configv1.ClusterOperator, err
 	return co, nil
 }
 
-// profileDegraded returns true if Tuned Profiles 'profile' has not been applied
+// profileApplied returns true if Tuned Profile 'profile' has been applied.
+func profileApplied(profile *tunedv1.Profile) bool {
+	if profile == nil || profile.Spec.Config.TunedProfile != profile.Status.TunedProfile {
+		return false
+	}
+
+	for _, sc := range profile.Status.Conditions {
+		if sc.Type == tunedv1.TunedProfileApplied && sc.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+
+	return false
+}
+
+// profileDegraded returns true if Tuned Profile 'profile' has not been applied
 // or applied with errors (Degraded).
 func profileDegraded(profile *tunedv1.Profile) bool {
 	if profile == nil {
