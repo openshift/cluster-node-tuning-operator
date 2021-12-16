@@ -14,7 +14,7 @@ RUN INSTALL_PKGS=" \
     LC_COLLATE=C cat ../patches/*.diff | patch -Np1 && \
     dnf build-dep tuned.spec -y && \
     make rpm PYTHON=/usr/bin/python3 && \
-    rm -rf /root/rpmbuild/RPMS/noarch/{tuned-2.*,tuned-gtk*,tuned-utils*,tuned-profiles-compat*} && \
+    rm -rf /root/rpmbuild/RPMS/noarch/{tuned-gtk*,tuned-utils*,tuned-profiles-compat*} && \
     cd ../stalld && \
     make
 
@@ -28,15 +28,14 @@ WORKDIR ${APP_ROOT}
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/openshift-tuned /usr/bin/
 COPY --from=tuned   /root/assets ${APP_ROOT}
 COPY --from=tuned   /root/rpmbuild/RPMS/noarch /root/rpms
-# TODO: add tuned-profiles-* and remove the local profile install and "rpm -e --justdb" once
-#       tuned-profiles-openshift, tuned-profiles-postgresql and tuned-profiles-spectrumscale ship via CDN
 RUN INSTALL_PKGS=" \
-      nmap-ncat procps-ng tuned" && \
+      tuned tuned-profiles-atomic tuned-profiles-cpu-partitioning tuned-profiles-mssql tuned-profiles-nfv tuned-profiles-nfv-guest \
+      tuned-profiles-nfv-host tuned-profiles-openshift tuned-profiles-oracle tuned-profiles-postgresql tuned-profiles-realtime \
+      tuned-profiles-sap tuned-profiles-sap-hana tuned-profiles-spectrumscale \
+      nmap-ncat procps-ng" && \
     mkdir -p /etc/grub.d/ /boot && \
     dnf install --setopt=tsflags=nodocs -y $INSTALL_PKGS && \
     rpm -V $INSTALL_PKGS && \
-    dnf --setopt=tsflags=nodocs -y install /root/rpms/*.rpm && \
-    find /root/rpms -name \*.rpm -exec basename {} .rpm \; | xargs rpm -e --justdb && \
     cp -a /var/lib/tuned/tuned/stalld/{stalld,scripts/throttlectl.sh} /usr/local/bin && \
     rm -rf /var/lib/tuned/tuned && \
     touch /etc/sysctl.conf && \
