@@ -64,6 +64,26 @@ func GetTunedForNode(cs *framework.ClientSet, node *corev1.Node) (*corev1.Pod, e
 	return &podList.Items[0], nil
 }
 
+// GetNodeTuningOperator returns the node tuning operator Pod.
+// If more than one operator Pod is running will return the first Pod found.
+func GetNodeTuningOperatorPod(cs *framework.ClientSet) (*corev1.Pod, error) {
+	listOptions := metav1.ListOptions{
+		LabelSelector: labels.SelectorFromSet(labels.Set{"name": "cluster-node-tuning-operator"}).String(),
+	}
+
+	podList, err := cs.Pods(ntoconfig.OperatorNamespace()).List(context.TODO(), listOptions)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't list potential NTO operator Pods: %v", err)
+	}
+
+	if len(podList.Items) == 0 {
+		return nil, fmt.Errorf("failed to find the cluster-node-tuning-operator Pods")
+	}
+
+	// Return the first operator pod if multiple are running
+	return &podList.Items[0], nil
+}
+
 // execCommand executes command 'name' with arguments 'args' and optionally
 // ('log') logs the output.  Returns captured standard output, standard error
 // and the error returned.
