@@ -1,4 +1,4 @@
-FROM registry.ci.openshift.org/openshift/release:golang-1.16 AS builder
+FROM registry.ci.openshift.org/openshift/release:golang-1.17 AS builder
 WORKDIR /go/src/github.com/openshift/cluster-node-tuning-operator
 COPY . .
 RUN make build
@@ -20,7 +20,7 @@ RUN INSTALL_PKGS=" \
 
 FROM centos:8
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/cluster-node-tuning-operator /usr/bin/
-COPY manifests/*.yaml manifests/image-references /manifests
+COPY manifests/*.yaml manifests/image-references /manifests/
 ENV APP_ROOT=/var/lib/tuned
 ENV PATH=${APP_ROOT}/bin:${PATH}
 ENV HOME=${APP_ROOT}
