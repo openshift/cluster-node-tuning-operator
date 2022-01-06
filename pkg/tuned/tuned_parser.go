@@ -1,9 +1,11 @@
 package tuned
 
 import (
+	"errors"    // errors.Is()
 	"fmt"       // Printf()
 	"io"        // io.EOF
 	"io/ioutil" // ioutil.ReadFile()
+	"os"        // os.Stat()
 	"os/exec"   // os.Exec()
 	"strings"   // strings.Split()
 	"syscall"   // syscall.SIGHUP, ...
@@ -67,9 +69,10 @@ func profileHasStalld(profile *string) *bool {
 	return &ret
 }
 
-// profileIncludes returns a slice of strings containing TuneD profile names
-// custom (/etc/tuned/<profileName>/) profile 'profileName' includes.
-func profileIncludes(profileName string) []string {
+// profileIncludesRaw returns a slice of strings containing TuneD profile names
+// profile <tunedProfilesDir>/<profileName> includes.  The profile names may
+// contain built-in functions that still need to be expanded.
+func profileIncludesRaw(profileName string, tunedProfilesDir string) []string {
 	profileFile := fmt.Sprintf("%s/%s/%s", tunedProfilesDir, profileName, tunedConfFile)
 
 	content, err := ioutil.ReadFile(profileFile)
@@ -80,6 +83,67 @@ func profileIncludes(profileName string) []string {
 	s := string(content)
 
 	return getIniFileSectionSlice(&s, "main", "include", ",")
+}
+
+// profileIncludes returns a slice of strings containing TuneD profile names
+// profile 'profileName' includes.  Expansion of TuneD built-in functions is
+// performed on the included profile names and optional loading characters
+// ('-') removed.  Only custom <tunedProfilesDirCustom>/<profileName> and/or
+// system <tunedProfilesDirSystem>/<profileName> TuneD profiles are scanned.
+// For a full list of profiles included from other profiles 'profileName'
+// depends on use profileDepends function.
+func profileIncludes(profileName string) []string {
+	var (
+		custom   bool
+		system   bool
+		profiles []string
+		expanded []string
+	)
+
+	if profileExists(profileName, tunedProfilesDirCustom) {
+		custom = true
+		profiles = profileIncludesRaw(profileName, tunedProfilesDirCustom)
+	} else {
+		profiles = profileIncludesRaw(profileName, tunedProfilesDirSystem)
+	}
+
+	realProfileName := func(profile string) string {
+		if profile[0:1] == "-" {
+			// Conditional profile loading, strip the '-' from profile name.
+			profile = profile[1:]
+		}
+
+		return expandTuneDBuiltin(profile)
+	}
+
+	for _, profile := range profiles {
+		p := realProfileName(profile)
+		if profileName == p && custom {
+			// Custom profile 'profileName' includes profile of the same name.
+			// We need to get included profiles from system profile 'profileName' too.
+			system = true
+		}
+		expanded = append(expanded, p)
+	}
+
+	if !system {
+		return expanded
+	}
+
+	for _, profile := range profileIncludesRaw(profileName, tunedProfilesDirSystem) {
+		p := realProfileName(profile)
+		expanded = append(expanded, p)
+	}
+
+	return expanded
+}
+
+// profileExists returns true if TuneD profile <tunedProfilesDir>/<profileName> exists.
+func profileExists(profileName string, tunedProfilesDir string) bool {
+	profileFile := fmt.Sprintf("%s/%s/%s", tunedProfilesDir, profileName, tunedConfFile)
+
+	_, err := os.Stat(profileFile)
+	return !errors.Is(err, os.ErrNotExist)
 }
 
 // profileDepends returns "TuneD profile name"->bool map that custom
@@ -95,13 +159,12 @@ func profileDepends(profileName string) map[string]bool {
 func profileDependsLoop(profileName string, seenProfiles map[string]bool) map[string]bool {
 	profiles := profileIncludes(profileName)
 	for _, profile := range profiles {
-		p := expandTuneDBuiltin(profile)
-		if seenProfiles[p] {
+		if seenProfiles[profile] {
 			// We have already seen/processed custom profile 'p'.
 			continue
 		}
-		seenProfiles[p] = true
-		seenProfiles = profileDependsLoop(p, seenProfiles)
+		seenProfiles[profile] = true
+		seenProfiles = profileDependsLoop(profile, seenProfiles)
 	}
 	return seenProfiles
 }

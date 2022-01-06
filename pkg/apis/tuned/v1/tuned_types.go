@@ -140,6 +140,9 @@ type ProfileConfig struct {
 	// option to debug Tuned daemon execution
 	// +optional
 	Debug bool `json:"debug"`
+	// Name of the cloud provider as taken from the Node providerID: <ProviderName>://<ProviderSpecificNodeID>
+	// +optional
+	ProviderName string `json:"providerName,omitempty"`
 }
 
 // ProfileStatus is the status for a Profile resource; the status is for internal use only
