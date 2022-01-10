@@ -52,3 +52,34 @@ func init() {
 		degradedState,
 	)
 }
+
+// PodLabelsUsed indicates whether the deprecated Pod label matching functionality
+// is turned on.
+func PodLabelsUsed(enable bool) {
+	if enable {
+		podLabelsUsed.Set(1)
+		return
+	}
+	podLabelsUsed.Set(0)
+}
+
+// ProfileCalculated keeps track of the number of times a given Tuned profile
+// resource was calculated for node 'nodeName'.
+func ProfileCalculated(nodeName, profileName string) {
+	profileCalculated.With(map[string]string{"node": nodeName, "profile": profileName}).Inc()
+}
+
+// RegisterVersion exposes the Operator build version.
+func RegisterVersion(version string) {
+	buildInfo.WithLabelValues(version).Set(1)
+}
+
+// Degraded sets the metric that indicates whether the operator is in degraded
+// mode or not.
+func Degraded(deg bool) {
+	if deg {
+		degradedState.Set(1)
+		return
+	}
+	degradedState.Set(0)
+}
