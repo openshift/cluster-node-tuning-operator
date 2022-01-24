@@ -88,7 +88,11 @@ func InitializeStatusConditions() []tunedv1.ProfileStatusCondition {
 // 'status' contains all the information necessary for creating a new slice of
 // conditions apart from LastTransitionTime, which is set based on checking the
 // old conditions.
-func computeStatusConditions(status Bits, conditions []tunedv1.ProfileStatusCondition) []tunedv1.ProfileStatusCondition {
+func computeStatusConditions(status Bits, stderr string, conditions []tunedv1.ProfileStatusCondition) []tunedv1.ProfileStatusCondition {
+	if (status & scUnknown) != 0 {
+		return InitializeStatusConditions()
+	}
+
 	tunedProfileAppliedCondition := tunedv1.ProfileStatusCondition{
 		Type: tunedv1.TunedProfileApplied,
 	}
@@ -99,25 +103,29 @@ func computeStatusConditions(status Bits, conditions []tunedv1.ProfileStatusCond
 	if (status & scApplied) != 0 {
 		tunedProfileAppliedCondition.Status = corev1.ConditionTrue
 		tunedProfileAppliedCondition.Reason = "AsExpected"
-		tunedProfileAppliedCondition.Message = "Tuned profile applied."
+		tunedProfileAppliedCondition.Message = "TuneD profile applied."
 	} else {
 		tunedProfileAppliedCondition.Status = corev1.ConditionFalse
 		tunedProfileAppliedCondition.Reason = "Failed"
-		tunedProfileAppliedCondition.Message = "The Tuned daemon profile application failed."
+		tunedProfileAppliedCondition.Message = "The TuneD daemon profile not yet applied, or application failed."
 	}
 
 	if (status & scError) != 0 {
 		tunedDegradedCondition.Status = corev1.ConditionTrue
 		tunedDegradedCondition.Reason = "TunedError"
-		tunedDegradedCondition.Message = "Tuned daemon issued one or more error message(s) during profile application."
+		tunedDegradedCondition.Message = "TuneD daemon issued one or more error message(s) during profile application. TuneD stderr: " + stderr
 	} else if (status & scWarn) != 0 {
-		tunedDegradedCondition.Status = corev1.ConditionFalse // consider warnings from Tuned as non-fatal
+		tunedDegradedCondition.Status = corev1.ConditionFalse // consider warnings from TuneD as non-fatal
 		tunedDegradedCondition.Reason = "TunedWarning"
-		tunedDegradedCondition.Message = "No error messages observed by applying the Tuned daemon profile, only warning(s)."
+		tunedDegradedCondition.Message = "No error messages observed by applying the TuneD daemon profile, only warning(s). TuneD stderr: " + stderr
+	} else if (status & scTimeout) != 0 {
+		tunedDegradedCondition.Status = corev1.ConditionTrue
+		tunedDegradedCondition.Reason = "TimeoutWaitingForProfileApplied"
+		tunedDegradedCondition.Message = "Timeout waiting for profile to be applied"
 	} else {
 		tunedDegradedCondition.Status = corev1.ConditionFalse
 		tunedDegradedCondition.Reason = "AsExpected"
-		tunedDegradedCondition.Message = "No warning or error messages observed applying the Tuned daemon profile."
+		tunedDegradedCondition.Message = "No warning or error messages observed applying the TuneD daemon profile."
 	}
 
 	conditions = setStatusCondition(conditions, &tunedProfileAppliedCondition)
