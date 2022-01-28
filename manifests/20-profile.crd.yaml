@@ -58,6 +58,9 @@ spec:
                     debug:
                       description: option to debug Tuned daemon execution
                       type: boolean
+                    providerName:
+                      description: 'Name of the cloud provider as taken from the Node providerID: <ProviderName>://<ProviderSpecificNodeID>'
+                      type: string
                     tunedProfile:
                       description: Tuned profile to apply
                       type: string

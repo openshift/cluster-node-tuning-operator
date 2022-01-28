@@ -38,7 +38,7 @@ RUN INSTALL_PKGS=" \
     find /root/rpms -name \*.rpm -exec basename {} .rpm \; | xargs rpm -e --justdb && \
     cp -a /var/lib/tuned/tuned/stalld/{stalld,scripts/throttlectl.sh} /usr/local/bin && \
     rm -rf /var/lib/tuned/tuned && \
-    touch /etc/sysctl.conf && \
+    touch /etc/sysctl.conf $APP_ROOT/provider && \
     dnf clean all && \
     rm -rf /var/cache/yum ~/patches /root/rpms && \
     useradd -r -u 499 cluster-node-tuning-operator

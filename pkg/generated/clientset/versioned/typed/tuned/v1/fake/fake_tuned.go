@@ -101,7 +101,7 @@ func (c *FakeTuneds) UpdateStatus(ctx context.Context, tuned *tunedv1.Tuned, opt
 // Delete takes name of the tuned and deletes it. Returns an error if one occurs.
 func (c *FakeTuneds) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteAction(tunedsResource, c.ns, name), &tunedv1.Tuned{})
+		Invokes(testing.NewDeleteActionWithOptions(tunedsResource, c.ns, name, opts), &tunedv1.Tuned{})
 
 	return err
 }

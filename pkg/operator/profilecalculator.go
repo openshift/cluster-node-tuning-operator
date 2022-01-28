@@ -31,6 +31,9 @@ type tunedState struct {
 	// Node name: ^^^^^^
 	// Namespace/podname:    ^^^^^^
 	// Pod-specific label:              ^^^^^^
+	providerIDs map[string]string
+	// Node name:   ^^^^^^
+	// provider-id         ^^^^^^
 }
 
 type ProfileCalculator struct {
@@ -46,6 +49,7 @@ func NewProfileCalculator(listers *ntoclient.Listers, clients *ntoclient.Clients
 	}
 	pc.state.nodeLabels = map[string]map[string]string{}
 	pc.state.podLabels = map[string]map[string]map[string]string{}
+	pc.state.providerIDs = map[string]string{}
 	return pc
 }
 
@@ -102,10 +106,11 @@ func (pc *ProfileCalculator) podChangeHandler(podNamespace string, podName strin
 // nodeChangeHandler processes an event for Node 'nodeName'.
 //
 // Returns
-// * an indication whether the event caused a Node label change
+// * an indication whether the event caused a Node label/cloud-provider change
 // * an error if any
 func (pc *ProfileCalculator) nodeChangeHandler(nodeName string) (bool, error) {
-	nodeLabelsNew, err := pc.nodeLabelsGet(nodeName)
+	var change bool
+	node, err := pc.listers.Nodes.Get(nodeName)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// This is most likely the cause of a delete event;
@@ -117,15 +122,21 @@ func (pc *ProfileCalculator) nodeChangeHandler(nodeName string) (bool, error) {
 		return false, err
 	}
 
+	if node.Spec.ProviderID != pc.state.providerIDs[nodeName] {
+		pc.state.providerIDs[nodeName] = node.Spec.ProviderID
+		klog.V(3).Infof("Node's %s providerID=%v", nodeName, node.Spec.ProviderID)
+		change = true
+	}
+
+	nodeLabelsNew := util.MapOfStringsCopy(node.Labels)
+
 	if !util.MapOfStringsEqual(nodeLabelsNew, pc.state.nodeLabels[nodeName]) {
 		// Node labels for nodeName changed
 		pc.state.nodeLabels[nodeName] = nodeLabelsNew
-
-		return true, nil
+		change = true
 	}
 
-	// Node labels for nodeName didn't change
-	return false, nil
+	return change, nil
 }
 
 // calculateProfile calculates a tuned profile for Node nodeName.
