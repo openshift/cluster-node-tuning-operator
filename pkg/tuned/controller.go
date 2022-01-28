@@ -46,13 +46,14 @@ const (
 const (
 	operandNamespace       = "openshift-cluster-node-tuning-operator"
 	programName            = "openshift-tuned"
-	tunedProfilesDir       = "/etc/tuned"
+	tunedProfilesDirCustom = "/etc/tuned"
+	tunedProfilesDirSystem = "/usr/lib/tuned"
 	tunedConfFile          = "tuned.conf"
-	tunedActiveProfileFile = tunedProfilesDir + "/active_profile"
-	tunedRecommendDir      = tunedProfilesDir + "/recommend.d"
+	tunedActiveProfileFile = tunedProfilesDirCustom + "/active_profile"
+	tunedRecommendDir      = tunedProfilesDirCustom + "/recommend.d"
 	tunedRecommendFile     = tunedRecommendDir + "/50-openshift.conf"
 	tunedBootcmdlineEnvVar = "TUNED_BOOT_CMDLINE"
-	tunedBootcmdlineFile   = tunedProfilesDir + "/bootcmdline"
+	tunedBootcmdlineFile   = tunedProfilesDirCustom + "/bootcmdline"
 	// A couple of seconds should be more than enough for TuneD daemon to gracefully stop;
 	// be generous and give it 10s.
 	tunedGracefulExitWait = time.Second * time.Duration(10)
@@ -65,10 +66,12 @@ const (
 	// TuneD logs before restarting TuneD and thus retrying the profile application.  Keep this
 	// reasonably low to workaround system/TuneD issues as soon as possible, but not too low
 	// to increase the system load by retrying profile applications that can never succeed.
-	tunedInitialTimeout   = 60 // timeout in seconds
-	openshiftTunedRunDir  = "/run/" + programName
-	openshiftTunedPidFile = openshiftTunedRunDir + "/" + programName + ".pid"
-	openshiftTunedSocket  = "/var/lib/tuned/openshift-tuned.sock"
+	openshiftTunedHome     = "/var/lib/tuned"
+	openshiftTunedRunDir   = "/run/" + programName
+	openshiftTunedPidFile  = openshiftTunedRunDir + "/" + programName + ".pid"
+	openshiftTunedProvider = openshiftTunedHome + "/provider"
+	openshiftTunedSocket   = openshiftTunedHome + "/openshift-tuned.sock"
+	tunedInitialTimeout    = 60 // timeout in seconds
 	// With the less aggressive rate limiter, retries will happen at 100ms*2^(retry_n-1):
 	// 100ms, 200ms, 400ms, 800ms, 1.6s, 3.2s, 6.4s, 12.8s, 25.6s, 51.2s, 102.4s, 3.4m, 6.8m, 13.7m, 27.3m
 	maxRetries = 15
@@ -283,6 +286,11 @@ func (c *Controller) sync(key wqKey) error {
 			return fmt.Errorf("failed to get Profile %s: %v", key.name, err)
 		}
 
+		err = providerExtract(profile.Spec.Config.ProviderName)
+		if err != nil {
+			return err
+		}
+
 		err = tunedRecommendFileWrite(profile.Spec.Config.TunedProfile)
 		if err != nil {
 			return err
@@ -361,7 +369,7 @@ func profilesExtract(profiles []tunedv1.TunedProfile) (bool, error) {
 			klog.Warningf("profilesExtract(): profile data missing for Profile %v", index)
 			continue
 		}
-		profileDir := fmt.Sprintf("%s/%s", tunedProfilesDir, *profile.Name)
+		profileDir := fmt.Sprintf("%s/%s", tunedProfilesDirCustom, *profile.Name)
 		profileFile := fmt.Sprintf("%s/%s", profileDir, tunedConfFile)
 
 		if err := mkdir(profileDir); err != nil {
@@ -394,6 +402,22 @@ func profilesExtract(profiles []tunedv1.TunedProfile) (bool, error) {
 	}
 
 	return change, nil
+}
+
+// providerExtract extracts Cloud Provider name into openshiftTunedProvider file.
+func providerExtract(provider string) error {
+	klog.Infof("extracting cloud provider name to %v", openshiftTunedProvider)
+
+	f, err := os.Create(openshiftTunedProvider)
+	if err != nil {
+		return fmt.Errorf("failed to create cloud provider name file %q: %v", openshiftTunedProvider, err)
+	}
+	defer f.Close()
+	if _, err = f.WriteString(provider); err != nil {
+		return fmt.Errorf("failed to write cloud provider name file %q: %v", openshiftTunedProvider, err)
+	}
+
+	return nil
 }
 
 func openshiftTunedPidFileWrite() error {

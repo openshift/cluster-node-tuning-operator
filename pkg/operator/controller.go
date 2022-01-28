@@ -606,6 +606,10 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		return fmt.Errorf("failed to sync OperatorStatus: %v", err)
 	}
 
+	providerName, err := c.getProviderName(nodeName)
+	if err != nil {
+		return fmt.Errorf("failed to get ProviderName: %v", err)
+	}
 	if mcLabels != nil {
 		// The Tuned daemon profile 'tunedProfileName' for nodeName matched with MachineConfig
 		// labels set for additional machine configuration.  Sync the operator-created
@@ -619,14 +623,17 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 			}
 		}
 	}
+
 	if profile.Spec.Config.TunedProfile == tunedProfileName &&
-		profile.Spec.Config.Debug == daemonDebug {
+		profile.Spec.Config.Debug == daemonDebug &&
+		profile.Spec.Config.ProviderName == providerName {
 		klog.V(2).Infof("syncProfile(): no need to update Profile %s", nodeName)
 		return nil
 	}
 	profile = profile.DeepCopy() // never update the objects from cache
 	profile.Spec.Config.TunedProfile = tunedProfileName
 	profile.Spec.Config.Debug = daemonDebug
+	profile.Spec.Config.ProviderName = providerName
 	profile.Status.Conditions = tunedpkg.InitializeStatusConditions()
 
 	klog.V(2).Infof("syncProfile(): updating Profile %s [%s]", profile.Name, tunedProfileName)
@@ -637,6 +644,15 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	klog.Infof("updated profile %s [%s]", profile.Name, tunedProfileName)
 
 	return nil
+}
+
+func (c *Controller) getProviderName(nodeName string) (string, error) {
+	node, err := c.listers.Nodes.Get(nodeName)
+	if err != nil {
+		return "", err
+	}
+
+	return util.GetProviderName(node.Spec.ProviderID), nil
 }
 
 func (c *Controller) syncMachineConfig(name string, labels map[string]string, bootcmdline string, stalld *bool) error {
