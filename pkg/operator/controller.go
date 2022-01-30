@@ -65,12 +65,35 @@ func (r *TunedReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		},
 	}
 
+	nodePredicates := predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if !r.validateUpdateEvent(&e) {
+				return false
+			}
+			nodeOld := e.ObjectOld.(*corev1.Node)
+			nodeNew := e.ObjectNew.(*corev1.Node)
+			return !reflect.DeepEqual(nodeOld.GetLabels(), nodeNew.GetLabels()) ||
+				!reflect.DeepEqual(nodeOld.Spec.ProviderID, nodeNew.Spec.ProviderID)
+		},
+	}
+
 	podPredicates := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			return r.state.podEventsEnabled
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			return r.state.podEventsEnabled
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if !r.state.podEventsEnabled {
+				return false
+			}
+			if !r.validateUpdateEvent(&e) {
+				return false
+			}
+			podOld := e.ObjectOld.(*corev1.Pod)
+			podNew := e.ObjectNew.(*corev1.Pod)
+			return !reflect.DeepEqual(podOld.GetLabels(), podNew.GetLabels())
 		},
 	}
 
@@ -95,6 +118,8 @@ func (r *TunedReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 
+	r.state.podEventsEnabled = false
+
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&tunedv1.Tuned{}).
 		Owns(&tunedv1.Profile{}, builder.WithPredicates(profilePredicates)).
@@ -102,15 +127,11 @@ func (r *TunedReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&source.Kind{Type: &corev1.Node{}},
 			handler.EnqueueRequestsFromMapFunc(r.defaultTunedRequests),
 			//TODO - consider using builder.OnlyMetadata instead these perdicats
-			builder.WithPredicates(predicate.LabelChangedPredicate{})).
+			builder.WithPredicates(nodePredicates)).
 		Watches(
 			&source.Kind{Type: &corev1.Pod{}},
 			handler.EnqueueRequestsFromMapFunc(r.podLabelsToTuned),
-			builder.WithPredicates(podPredicates,
-				predicate.And(
-					predicate.Funcs{UpdateFunc: func(e event.UpdateEvent) bool {
-						return r.state.podEventsEnabled
-					}}, predicate.LabelChangedPredicate{}))).
+			builder.WithPredicates(podPredicates)).
 		Watches(
 			&source.Kind{Type: &mcov1.MachineConfigPool{}},
 			handler.EnqueueRequestsFromMapFunc(r.defaultTunedRequests),
@@ -119,7 +140,6 @@ func (r *TunedReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err != nil {
 		return err
 	}
-	r.state.podEventsEnabled = false
 	return nil
 }
 
@@ -396,6 +416,8 @@ func (r *TunedReconciler) syncProfile(ctx context.Context, defaultTuned *tunedv1
 		return fmt.Errorf("failed to get Profile %s: %v", profileMf.Name, err)
 	}
 
+	providerName := util.GetProviderName(node.Spec.ProviderID)
+
 	if mcLabels != nil {
 		// The Tuned daemon profile 'tunedProfileName' for nodeName matched with MachineConfig
 		// labels set for additional machine configuration.
@@ -410,13 +432,15 @@ func (r *TunedReconciler) syncProfile(ctx context.Context, defaultTuned *tunedv1
 		}
 	}
 	if profile.Spec.Config.TunedProfile == tunedProfileName &&
-		profile.Spec.Config.Debug == daemonDebug {
+		profile.Spec.Config.Debug == daemonDebug &&
+		profile.Spec.Config.ProviderName == providerName {
 		klog.V(2).Infof("syncProfile(): no need to update Profile %s [%s]", node.GetName(), profile.Spec.Config.TunedProfile)
 		return nil
 	}
 	profile = profile.DeepCopy()
 	profile.Spec.Config.TunedProfile = tunedProfileName
 	profile.Spec.Config.Debug = daemonDebug
+	profile.Spec.Config.ProviderName = providerName
 	profile.Status.Conditions = tunedpkg.InitializeStatusConditions()
 
 	klog.V(2).Infof("syncProfile(): updating Profile %s [%s]", profile.Name, tunedProfileName)
