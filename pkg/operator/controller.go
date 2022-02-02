@@ -9,11 +9,11 @@ import (
 	ign3types "github.com/coreos/ignition/v2/config/v3_2/types"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	errors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 
 	corev1 "k8s.io/api/core/v1"
@@ -27,9 +27,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	ntomf "github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/metrics"
 	tunedpkg "github.com/openshift/cluster-node-tuning-operator/pkg/tuned"
@@ -44,9 +44,9 @@ type tunedState struct {
 // TunedReconciler reconciles a Tuned object.
 type TunedReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
-	state    tunedState
+	Scheme    *runtime.Scheme
+	Namespace string
+	state     tunedState
 }
 
 // SetupWithManager creates a new Tuned Controller and adds it to the Manager.
@@ -109,6 +109,67 @@ func (r *TunedReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			return !reflect.DeepEqual(mcpOld.Spec, mcpNew.Spec)
 		}})
 
+	dsPredicates := predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			if e.Object == nil {
+				klog.Error("create event has no runtime object to create")
+				return false
+			}
+
+			return e.Object.GetNamespace() == r.Namespace
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if e.ObjectOld.GetNamespace() != r.Namespace ||
+				e.ObjectNew.GetNamespace() != r.Namespace {
+				return false
+			}
+			if !validateUpdateEvent(&e) {
+				return false
+			}
+
+			dsOld := e.ObjectOld.(*appsv1.DaemonSet)
+			dsNew := e.ObjectNew.(*appsv1.DaemonSet)
+
+			return !equality.Semantic.DeepEqual(dsOld.Status, dsNew.Status) ||
+				!equality.Semantic.DeepEqual(dsOld.Spec, dsNew.Spec)
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			if e.Object == nil {
+				klog.Error("delete event has no runtime object to delete")
+				return false
+			}
+
+			return e.Object.GetNamespace() == r.Namespace
+		},
+	}
+
+	cvoPredicates := predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			if e.Object == nil {
+				klog.Error("create event has no runtime object to create")
+				return false
+			}
+
+			return e.Object.GetName() == tunedv1.TunedClusterOperatorResourceName
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if !validateUpdateEvent(&e) {
+				return false
+			}
+
+			return e.ObjectNew.GetName() == tunedv1.TunedClusterOperatorResourceName &&
+				e.ObjectOld.GetName() == tunedv1.TunedClusterOperatorResourceName
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			if e.Object == nil {
+				klog.Error("delete event has no runtime object to delete")
+				return false
+			}
+
+			return e.Object.GetName() == tunedv1.TunedClusterOperatorResourceName
+		},
+	}
+
 	// Field indexer is required for listing pods matching the spec.nodeName field.
 	// The alternative is to use an uncached client.
 	if err := mgr.GetFieldIndexer().IndexField(context.TODO(), &corev1.Pod{}, "spec.nodeName", func(o client.Object) []string {
@@ -136,6 +197,14 @@ func (r *TunedReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&source.Kind{Type: &mcov1.MachineConfigPool{}},
 			handler.EnqueueRequestsFromMapFunc(r.defaultTunedRequests),
 			builder.WithPredicates(mcpPredicates)).
+		Watches(
+			&source.Kind{Type: &appsv1.DaemonSet{}},
+			handler.EnqueueRequestsFromMapFunc(r.defaultTunedRequests),
+			builder.WithPredicates(dsPredicates)).
+		Watches(
+			&source.Kind{Type: &configv1.ClusterOperator{}},
+			handler.EnqueueRequestsFromMapFunc(r.defaultTunedRequests),
+			builder.WithPredicates(cvoPredicates)).
 		Complete(r)
 	if err != nil {
 		return err
@@ -192,25 +261,31 @@ func (r *TunedReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			return reconcile.Result{}, err
 		}
 	}
-	err = r.reconcileResource(ctx, tunedInstance)
+	klog.V(2).Infof("reconcileResource(): Kind %s: %s/%s", tunedInstance.Kind, tunedInstance.Namespace, tunedInstance.Name)
+
+	defaultTuned, err := r.getDefaultTuned(ctx)
+	if err != nil {
+		klog.Errorf("failed to get default Tuned CR: %v", err)
+		return reconcile.Result{}, err
+	}
+
+	err = r.reconcileResource(ctx, tunedInstance, defaultTuned)
 
 	if err != nil {
 		klog.Errorf("failed to reconcile Tuned %q: %v", tunedInstance.Name, err)
-		r.Recorder.Eventf(tunedInstance, corev1.EventTypeWarning, "Creation failed", "Failed to create all components: %v", err)
+		return reconcile.Result{}, err
+	}
+
+	err = r.syncOperatorStatus(defaultTuned)
+	if err != nil {
+		klog.Errorf("failed to sync OperatorStatus: %v", err)
 		return reconcile.Result{}, err
 	}
 
 	return reconcile.Result{}, nil
 }
 
-func (r *TunedReconciler) reconcileResource(ctx context.Context, tuned *tunedv1.Tuned) error {
-	klog.V(2).Infof("reconcileResource(): Kind %s: %s/%s", tuned.Kind, tuned.Namespace, tuned.Name)
-	defaultTuned, err := r.getDefaultTuned(ctx)
-
-	if err != nil {
-		return fmt.Errorf("failed to get default Tuned CR: %v", err)
-	}
-
+func (r *TunedReconciler) reconcileResource(ctx context.Context, tuned *tunedv1.Tuned, defaultTuned *tunedv1.Tuned) error {
 	switch defaultTuned.Spec.ManagementState {
 	case operatorv1.Force:
 		// Use the same logic as Managed.
@@ -232,7 +307,7 @@ func (r *TunedReconciler) reconcileResource(ctx context.Context, tuned *tunedv1.
 	// Operator is in Force or Managed state.
 
 	klog.V(2).Infof("sync(): Tuned %s", tunedv1.TunedRenderedResourceName)
-	err = r.syncTunedRendered(ctx, defaultTuned)
+	err := r.syncTunedRendered(ctx, defaultTuned)
 	if err != nil {
 		return fmt.Errorf("failed to sync Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
 	}
@@ -269,7 +344,7 @@ func (r *TunedReconciler) reconcileResource(ctx context.Context, tuned *tunedv1.
 func (r *TunedReconciler) getDefaultTuned(ctx context.Context) (*tunedv1.Tuned, error) {
 	defaultTuned := &tunedv1.Tuned{}
 	key := types.NamespacedName{
-		Namespace: ntoconfig.OperatorNamespace(),
+		Namespace: r.Namespace,
 		Name:      tunedv1.TunedDefaultResourceName,
 	}
 	err := r.Get(ctx, key, defaultTuned)
@@ -281,7 +356,7 @@ func (r *TunedReconciler) getDefaultTuned(ctx context.Context) (*tunedv1.Tuned, 
 
 func (r *TunedReconciler) syncTunedRendered(ctx context.Context, defaultTuned *tunedv1.Tuned) error {
 	tunedList := &tunedv1.TunedList{}
-	if err := r.List(ctx, tunedList, client.InNamespace(ntoconfig.OperatorNamespace())); err != nil {
+	if err := r.List(ctx, tunedList, client.InNamespace(r.Namespace)); err != nil {
 		return fmt.Errorf("failed to list Tuned: %v", err)
 	}
 
@@ -299,7 +374,7 @@ func (r *TunedReconciler) syncTunedRendered(ctx context.Context, defaultTuned *t
 
 	cr := &tunedv1.Tuned{}
 	key := types.NamespacedName{
-		Namespace: ntoconfig.OperatorNamespace(),
+		Namespace: r.Namespace,
 		Name:      tunedv1.TunedRenderedResourceName,
 	}
 	err := r.Get(ctx, key, cr)
@@ -361,7 +436,7 @@ func (r *TunedReconciler) syncProfiles(ctx context.Context, tuned *tunedv1.Tuned
 	}
 
 	profileList := &tunedv1.ProfileList{}
-	if err := r.List(ctx, profileList, client.InNamespace(ntoconfig.OperatorNamespace())); err != nil {
+	if err := r.List(ctx, profileList, client.InNamespace(r.Namespace)); err != nil {
 		return fmt.Errorf("failed to list Profiles: %v", err)
 	}
 
@@ -395,7 +470,7 @@ func (r *TunedReconciler) syncProfile(ctx context.Context, defaultTuned *tunedv1
 	metrics.ProfileCalculated(profileMf.Name, tunedProfileName)
 	profile := &tunedv1.Profile{}
 	key := types.NamespacedName{
-		Namespace: ntoconfig.OperatorNamespace(),
+		Namespace: r.Namespace,
 		Name:      profileMf.Name,
 	}
 	err = r.Get(ctx, key, profile)
@@ -575,7 +650,7 @@ func (r *TunedReconciler) pruneMachineConfigs(ctx context.Context) error {
 // Get all operator MachineConfig names for all Tuned daemon profiles.
 func (r *TunedReconciler) getMachineConfigNamesForTuned(ctx context.Context) (map[string]bool, error) {
 	tunedList := &tunedv1.TunedList{}
-	if err := r.List(ctx, tunedList, client.InNamespace(ntoconfig.OperatorNamespace())); err != nil {
+	if err := r.List(ctx, tunedList, client.InNamespace(r.Namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list Tuned: %v", err)
 	}
 
@@ -605,7 +680,7 @@ func (r *TunedReconciler) removeResources(ctx context.Context) error {
 	ds := &appsv1.DaemonSet{}
 	key := types.NamespacedName{
 		Name:      dsMf.Name,
-		Namespace: ntoconfig.OperatorNamespace(),
+		Namespace: r.Namespace,
 	}
 
 	err := r.Get(ctx, key, ds)
@@ -624,7 +699,7 @@ func (r *TunedReconciler) removeResources(ctx context.Context) error {
 
 	tunedRendered := &tunedv1.Tuned{}
 	key = types.NamespacedName{
-		Namespace: ntoconfig.OperatorNamespace(),
+		Namespace: r.Namespace,
 		Name:      tunedv1.TunedRenderedResourceName,
 	}
 
@@ -643,7 +718,7 @@ func (r *TunedReconciler) removeResources(ctx context.Context) error {
 	}
 
 	listOpts := []client.ListOption{
-		client.InNamespace(ntoconfig.OperatorNamespace()),
+		client.InNamespace(r.Namespace),
 	}
 	profileList := &tunedv1.ProfileList{}
 	err = r.List(ctx, profileList, listOpts...)

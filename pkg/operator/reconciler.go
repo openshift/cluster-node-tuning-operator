@@ -20,13 +20,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 	ntomf "github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 )
@@ -81,78 +78,10 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 			!equality.Semantic.DeepEqual(dsOld.Spec, dsNew.Spec)
 	}}
 
-	tunedPredicates := predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
-			if e.Object == nil {
-				klog.Error("create event has no runtime object to create")
-				return false
-			}
-			tuned := e.Object.(*tunedv1.Tuned)
-			return tuned.Spec.ManagementState != ""
-		},
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			if !validateUpdateEvent(&e) {
-				return false
-			}
-
-			tunedOld := e.ObjectOld.(*tunedv1.Tuned)
-			tunedNew := e.ObjectNew.(*tunedv1.Tuned)
-
-			return !reflect.DeepEqual(tunedOld.Spec.ManagementState, tunedNew.Spec.ManagementState)
-		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
-			tuned := e.Object.(*tunedv1.Tuned)
-			return !e.DeleteStateUnknown && tuned.Spec.ManagementState != ""
-		},
-	}
-
-	profilePredicates := predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
-			if e.Object == nil {
-				klog.Error("create event has no runtime object to create")
-				return false
-			}
-			return true
-		},
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			if !validateUpdateEvent(&e) {
-				return false
-			}
-			profileOld := e.ObjectOld.(*tunedv1.Profile)
-			profileNew := e.ObjectNew.(*tunedv1.Profile)
-			return !reflect.DeepEqual(profileOld.Status.Conditions, profileNew.Status.Conditions)
-		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
-			return !e.DeleteStateUnknown
-		},
-	}
-
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&configv1.ClusterOperator{}, builder.WithPredicates(cvoPredicates)).
 		Owns(&appsv1.DaemonSet{}, builder.WithPredicates(dsUpdatePredicate)).
 		Owns(&tunedv1.Tuned{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(
-			&source.Kind{Type: &tunedv1.Tuned{}},
-			handler.EnqueueRequestsFromMapFunc(func(a client.Object) []reconcile.Request {
-				return []reconcile.Request{
-					{NamespacedName: types.NamespacedName{
-						Name:      tunedv1.TunedClusterOperatorResourceName,
-						Namespace: ntoconfig.OperatorNamespace(),
-					}},
-				}
-			}),
-			builder.WithPredicates(tunedPredicates)).
-		Watches(
-			&source.Kind{Type: &tunedv1.Profile{}},
-			handler.EnqueueRequestsFromMapFunc(func(a client.Object) []reconcile.Request {
-				return []reconcile.Request{
-					{NamespacedName: types.NamespacedName{
-						Name:      tunedv1.TunedClusterOperatorResourceName,
-						Namespace: ntoconfig.OperatorNamespace(),
-					}},
-				}
-			}),
-			builder.WithPredicates(profilePredicates)).
 		Complete(r)
 	if err != nil {
 		return err
@@ -188,121 +117,40 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return reconcile.Result{}, err
 	}
 
-	tunedList := &tunedv1.TunedList{}
-	if err := r.Client.List(context.TODO(), tunedList); err != nil {
-		klog.Errorf("failed to list Tuned CRs for cluster operator %q status conditions: %v", err, instance.Name)
-		return reconcile.Result{}, err
-	}
-
-	// First inspect the ManagementState. In case the operator ManagementState is Unmanaged or Removed, update the status and take no further actions.
-	for _, tuned := range tunedList.Items {
-		switch tuned.Spec.ManagementState {
-		case operatorv1.Unmanaged:
-			if err := r.updateClusterOperatorStatus(
-				ctx,
-				instance,
-				configv1.OperatorAvailable,
-				string(operatorv1.Unmanaged),
-				"The operator configuration is set to unmanaged mode",
-			); err != nil {
-				klog.Errorf("failed to update the cluster operator %q status conditions", instance.Name)
-				return reconcile.Result{}, err
-			}
-			return reconcile.Result{}, nil
-		case operatorv1.Removed:
-			if err := r.updateClusterOperatorStatus(
-				ctx,
-				instance,
-				configv1.OperatorAvailable,
-				string(operatorv1.Removed),
-				"The operator is removed",
-			); err != nil {
-				klog.Errorf("failed to update the cluster operator %q status conditions", instance.Name)
-				return reconcile.Result{}, err
-			}
-			return reconcile.Result{}, nil
-		}
-	}
-
 	klog.V(2).Infof("reconciling ClusterOperator %q", instance.Name)
 	if err := r.syncDefaultTuned(ctx, instance); err != nil {
-		if err := r.updateClusterOperatorStatus(
-			ctx,
-			instance,
-			configv1.OperatorDegraded,
-			conditionFailedToSyncDefaultTuned,
-			err.Error(),
-		); err != nil {
-			klog.Errorf("failed to update the cluster operator %q status conditions", instance.Name)
-			return reconcile.Result{}, err
-		}
 		return reconcile.Result{}, err
+	}
+
+	defaultTuned := &tunedv1.Tuned{}
+	if err := r.Client.Get(ctx, client.ObjectKeyFromObject(ntomf.TunedCustomResource()), defaultTuned); err != nil {
+		klog.Errorf("failed to get default Tuned: %v", err)
+		return reconcile.Result{}, err
+	}
+
+	if defaultTuned.Spec.ManagementState == operatorv1.Removed ||
+		defaultTuned.Spec.ManagementState == operatorv1.Unmanaged {
+		return reconcile.Result{}, nil
 	}
 
 	if err := r.syncDaemonSet(ctx, instance); err != nil {
-		if err := r.updateClusterOperatorStatus(
-			ctx,
-			instance,
-			configv1.OperatorDegraded,
-			conditionFailedToSyncTunedDaemonSet,
-			err.Error(),
-		); err != nil {
-			klog.Errorf("failed to update the cluster operator %q status conditions", instance.Name)
-			return reconcile.Result{}, err
-		}
 		return reconcile.Result{}, err
 	}
 
 	tunedDS := manifests.TunedDaemonSet()
 	tunedDS.Namespace = r.Namespace
 	if err := r.Client.Get(ctx, client.ObjectKeyFromObject(tunedDS), tunedDS); err != nil {
-		if err := r.updateClusterOperatorStatus(
-			ctx,
-			instance,
-			configv1.OperatorDegraded,
-			conditionFailedToGetTunedDaemonSet,
-			err.Error(),
-		); err != nil {
-			klog.Errorf("failed to update the cluster operator %q status conditions", instance.Name)
-			return reconcile.Result{}, err
-		}
+		klog.Errorf("failed to get tuned DaemonSet: %v", err)
 		return reconcile.Result{}, err
 	}
 
-	// TODO: I unsure if the current logic is enough to catch all corner cases
-	// might drop that in favor of r.syncOperatorStatus()
+	// TODO: check if the current logic is enough to catch all corner cases
 	if tunedDS.Status.DesiredNumberScheduled != tunedDS.Status.UpdatedNumberScheduled ||
 		tunedDS.Status.DesiredNumberScheduled != tunedDS.Status.NumberReady {
-		if err := r.updateClusterOperatorStatus(
-			ctx,
-			instance,
-			configv1.OperatorProgressing,
-			conditionTunedDaemonSetProgressing,
-			"the number of updated ready daemon set pods does not equal to desired number",
-		); err != nil {
-			klog.Errorf("failed to update the cluster operator %q status conditions", instance.Name)
-			return reconcile.Result{}, err
-		}
+		klog.V(2).Infof("tuned DaemonSet pods are not ready yet. requeue sync operations in 1 minute")
 		return reconcile.Result{RequeueAfter: time.Minute}, nil
 	}
 
-	if err := r.syncOperatorStatus(); err != nil {
-		klog.Errorf("failed to update the cluster operator %q status conditions", instance.Name)
-		return reconcile.Result{}, err
-	}
-
-	/*
-		if err := r.updateClusterOperatorStatus(
-			ctx,
-			instance,
-			configv1.OperatorAvailable,
-			conditionSucceededToDeployComponents,
-			"the operator succeeded to deploy all components",
-		); err != nil {
-			klog.Errorf("failed to update the cluster operator %q status conditions", instance.Name)
-			return reconcile.Result{}, err
-		}
-	*/
 	return reconcile.Result{}, nil
 }
 

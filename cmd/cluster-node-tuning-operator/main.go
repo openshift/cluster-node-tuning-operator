@@ -115,9 +115,9 @@ func main() {
 		}
 
 		if err = (&operator.TunedReconciler{
-			Client:   mgr.GetClient(),
-			Scheme:   mgr.GetScheme(),
-			Recorder: mgr.GetEventRecorderFor("tuned-controller"),
+			Client:    mgr.GetClient(),
+			Scheme:    mgr.GetScheme(),
+			Namespace: ntoNamespace,
 		}).SetupWithManager(mgr); err != nil {
 			klog.Exitf("unable to create Tuned controller: %v", err)
 		}
