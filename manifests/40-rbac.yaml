@@ -59,7 +59,7 @@ rules:
   verbs: ["update"]
 # Needed by the core operator functionality.
 - apiGroups: ["machineconfiguration.openshift.io"]
-  resources: ["machineconfigs"]
+  resources: ["kubeletconfigs", "machineconfigs"]
   verbs: ["create","get","delete","list","update","watch"]
 # Needed by the core operator functionality.
 - apiGroups: ["machineconfiguration.openshift.io"]
@@ -69,6 +69,12 @@ rules:
 - apiGroups: ["coordination.k8s.io"]
   resources: ["leases"]
   verbs: ["create","get","update","patch"]
+- apiGroups: ["node.k8s.io"]
+  resources: ["runtimeclasses"]
+  verbs: ["create","get","delete","list","update","watch"]
+- apiGroups: ["performance.openshift.io"]
+  resources: ["*"]
+  verbs: ["*"]
 ---
 
 # Bind the operator cluster role to its Service Account.
