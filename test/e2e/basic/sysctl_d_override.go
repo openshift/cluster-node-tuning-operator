@@ -17,23 +17,30 @@ import (
 // Test the application (and rollback) of host's /etc/sysctl.d/*.conf override.
 var _ = ginkgo.Describe("[basic][sysctl_d_override] Node Tuning Operator /etc/sysctl.d/*.conf override", func() {
 	const (
-		sysctlVar    = "net.ipv4.neigh.default.gc_thresh1"
-		sysctlValSet = "256"
-		sysctlFile   = "/host/etc/sysctl.d/zzz.conf"
+		sysctlVar               = "net.ipv4.neigh.default.gc_thresh1"
+		sysctlValSet            = "256"
+		sysctlFile              = "/host/etc/sysctl.d/zzz.conf"
+		profileSysctlOverride   = "../testing_manifests/sysctl_override.yaml"
+		nodeLabelSysctlOverride = "tuned.openshift.io/sysctl-override"
 	)
 
 	ginkgo.Context("sysctl.d override", func() {
 		var (
-			pod *coreapi.Pod
+			node *coreapi.Node
+			pod  *coreapi.Pod
 		)
 
 		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of ginkgo.It()
 		ginkgo.AfterEach(func() {
 			ginkgo.By("cluster changes rollback")
 
+			if node != nil {
+				util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelSysctlOverride+"-")
+			}
 			if pod != nil {
 				util.ExecAndLogCommand("oc", "exec", "-n", ntoconfig.OperatorNamespace(), pod.Name, "--", "rm", sysctlFile)
 			}
+			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileSysctlOverride)
 		})
 
 		ginkgo.It(fmt.Sprintf("%s set", sysctlVar), func() {
@@ -81,6 +88,26 @@ var _ = ginkgo.Describe("[basic][sysctl_d_override] Node Tuning Operator /etc/sy
 
 			ginkgo.By(fmt.Sprintf("ensuring new %s value (%s) is set in Pod %s", sysctlVar, sysctlValSet, pod.Name))
 			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlVar, sysctlValSet)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By(fmt.Sprintf("labelling node %s with label %s", node.Name, nodeLabelSysctlOverride))
+			_, _, err = util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelSysctlOverride+"=")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By(fmt.Sprintf("creating the custom profile %s", profileSysctlOverride))
+			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileSysctlOverride)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By("ensuring the custom worker node profile was set")
+			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlVar, "8192") // 8192 comes from the default openshift profile
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By(fmt.Sprintf("removing label %s from node %s", nodeLabelSysctlOverride, node.Name))
+			_, _, err = util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelSysctlOverride+"-")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By(fmt.Sprintf("deleting the custom profile %s", profileSysctlOverride))
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileSysctlOverride)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("removing %s override file on the host", sysctlFile))

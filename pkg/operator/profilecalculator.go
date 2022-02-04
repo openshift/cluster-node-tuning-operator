@@ -147,12 +147,14 @@ func (pc *ProfileCalculator) nodeChangeHandler(nodeName string) (bool, error) {
 // * MachineConfigPools for 'nodeName' if the profile was selected by machineConfigLabels
 // * whether to run the Tuned daemon in debug mode on node nodeName
 // * an error if any
-func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[string]string, []*mcfgv1.MachineConfigPool, bool, error) {
+func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[string]string, []*mcfgv1.MachineConfigPool, tunedv1.OperandConfig, error) {
+	var operand tunedv1.OperandConfig
+
 	klog.V(3).Infof("calculateProfile(%s)", nodeName)
 	tunedList, err := pc.listers.TunedResources.List(labels.Everything())
 
 	if err != nil {
-		return "", nil, nil, false, fmt.Errorf("failed to list Tuned: %v", err)
+		return "", nil, nil, operand, fmt.Errorf("failed to list Tuned: %v", err)
 	}
 
 	for _, recommend := range tunedRecommend(tunedList) {
@@ -167,7 +169,7 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[stri
 		// we do not want to call profileMatches() in that case unless machineConfigLabels
 		// is undefined.
 		if (recommend.Match != nil || recommend.MachineConfigLabels == nil) && pc.profileMatches(recommend.Match, nodeName) {
-			return *recommend.Profile, nil, nil, recommend.Operand.Debug, nil
+			return *recommend.Profile, nil, nil, recommend.Operand, nil
 		}
 
 		if recommend.MachineConfigLabels == nil {
@@ -181,18 +183,18 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[stri
 			// is often unneeded and would likely have a performance impact.
 			node, err = pc.listers.Nodes.Get(nodeName)
 			if err != nil {
-				return "", nil, nil, false, err
+				return "", nil, nil, operand, err
 			}
 
 			pools, err = pc.getPoolsForNode(node)
 			if err != nil {
-				return "", nil, nil, false, err
+				return "", nil, nil, operand, err
 			}
 		}
 
 		// MachineConfigLabels based matching
 		if pc.machineConfigLabelsMatch(recommend.MachineConfigLabels, pools) {
-			return *recommend.Profile, recommend.MachineConfigLabels, pools, recommend.Operand.Debug, nil
+			return *recommend.Profile, recommend.MachineConfigLabels, pools, recommend.Operand, nil
 		}
 	}
 
@@ -200,10 +202,10 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[stri
 	// in the "recommend" section to select the default profile for the tuned daemon.
 	_, err = pc.listers.TunedResources.Get(tunedv1.TunedDefaultResourceName)
 	if err != nil {
-		return defaultProfile, nil, nil, false, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
+		return defaultProfile, nil, nil, operand, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
 	}
 
-	return defaultProfile, nil, nil, false, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
+	return defaultProfile, nil, nil, operand, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
 }
 
 // profileMatches returns true, if Node 'nodeName' fulfills all the necessary
