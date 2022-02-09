@@ -56,13 +56,20 @@ spec:
                     - tunedProfile
                   properties:
                     debug:
-                      description: option to debug Tuned daemon execution
+                      description: option to debug TuneD daemon execution
                       type: boolean
                     providerName:
                       description: 'Name of the cloud provider as taken from the Node providerID: <ProviderName>://<ProviderSpecificNodeID>'
                       type: string
+                    tunedConfig:
+                      description: Global configuration for the TuneD daemon as defined in tuned-main.conf
+                      type: object
+                      properties:
+                        reapply_sysctl:
+                          description: 'turn reapply_sysctl functionality on/off for the TuneD daemon: true/false (default is false)'
+                          type: boolean
                     tunedProfile:
-                      description: Tuned profile to apply
+                      description: TuneD profile to apply
                       type: string
             status:
               description: ProfileStatus is the status for a Profile resource; the status is for internal use only and its fields may be changed/removed in the future.

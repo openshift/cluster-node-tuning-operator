@@ -15,6 +15,72 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// iniFileLoad reads INI file `iniFile` into ini.v1 internal data structures.
+// Returns the internal data structures and error if any.
+func iniFileLoad(iniFile string) (*ini.File, error) {
+	var (
+		err error
+	)
+
+	content, err := ioutil.ReadFile(iniFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file %s: %v", iniFile, err)
+	}
+
+	cfg, err := ini.Load(content)
+	if err != nil || cfg == nil {
+		// This looks like an invalid INI data or parser error.
+		return cfg, fmt.Errorf("failed to read INI data: %v", err)
+	}
+
+	return cfg, nil
+}
+
+// iniFileSave writes INI file `iniFile` from ini.v1 internal data structures `cfg`.
+// Returns an error if any.
+func iniFileSave(iniFile string, cfg *ini.File) error {
+	if cfg == nil {
+		return fmt.Errorf("INI file configuration is empty, refusing to write empty file")
+	}
+
+	err := cfg.SaveTo(iniFile)
+	if err != nil {
+		// This looks like we failed to write the INI file for some reason.
+		return fmt.Errorf("failed to write INI file: %v", err)
+	}
+
+	return nil
+}
+
+// iniCfgSetKey sets value `value` to key `key` ini.v1 internal data structures
+// `cfg` that represent an INI file.  Additionally, conversion for boolean types
+// true -> "1" and false -> "0" is done.  Returns an error if any.
+func iniCfgSetKey(cfg *ini.File, key string, value interface{}) error {
+	if cfg == nil {
+		return fmt.Errorf("unable to set %v=%v, INI file configuration is not initialized", key, value)
+	}
+
+	if !cfg.Section("").HasKey(key) {
+		return fmt.Errorf("global TuneD configuration has no key %q", key)
+	}
+
+	b := func(value interface{}) string {
+		switch value.(type) {
+		case bool:
+			if value.(bool) {
+				return "1"
+			}
+			return "0"
+		default:
+			return fmt.Sprintf("%v", value)
+		}
+	}
+
+	cfg.Section("").Key(key).SetValue(b(value))
+
+	return nil
+}
+
 // getIniFileSectionSlice searches INI file `data` inside [`section`]
 // for key `key`.  It takes the key's value and uses separator
 // `separator` to return a slice of strings.
@@ -26,7 +92,7 @@ func getIniFileSectionSlice(data *string, section, key, separator string) []stri
 	}
 
 	cfg, err := ini.Load([]byte(*data))
-	if err != nil {
+	if err != nil || cfg == nil {
 		// This looks like an invalid INI data or parser error.
 		klog.Errorf("unable to read INI file data: %v", err)
 		return ret

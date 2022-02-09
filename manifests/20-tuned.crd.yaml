@@ -118,11 +118,18 @@ spec:
                       description: Optional operand configuration.
                       properties:
                         debug:
-                          description: 'turn debugging on/off for the Tuned daemon:
+                          description: 'turn debugging on/off for the TuneD daemon:
                             true/false (default is false)'
                           type: boolean
-                      required:
-                      - debug
+                        tunedConfig:
+                          description: Global configuration for the TuneD daemon as
+                            defined in tuned-main.conf
+                          properties:
+                            reapply_sysctl:
+                              description: 'turn reapply_sysctl functionality on/off
+                                for the TuneD daemon: true/false (default is false)'
+                              type: boolean
+                          type: object
                       type: object
                     priority:
                       description: Tuned profile priority. Highest priority is 0.

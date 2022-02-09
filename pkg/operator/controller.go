@@ -565,7 +565,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		return nil
 	}
 
-	tunedProfileName, mcLabels, pools, daemonDebug, err := c.pc.calculateProfile(nodeName)
+	tunedProfileName, mcLabels, pools, operand, err := c.pc.calculateProfile(nodeName)
 	if err != nil {
 		return err
 	}
@@ -585,7 +585,8 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 
 			klog.V(2).Infof("syncProfile(): Profile %s not found, creating one [%s]", profileMf.Name, tunedProfileName)
 			profileMf.Spec.Config.TunedProfile = tunedProfileName
-			profileMf.Spec.Config.Debug = daemonDebug
+			profileMf.Spec.Config.Debug = operand.Debug
+			profileMf.Spec.Config.TuneDConfig = operand.TuneDConfig
 			profileMf.Status.Conditions = tunedpkg.InitializeStatusConditions()
 			_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Create(context.TODO(), profileMf, metav1.CreateOptions{})
 			if err != nil {
@@ -625,14 +626,16 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	}
 
 	if profile.Spec.Config.TunedProfile == tunedProfileName &&
-		profile.Spec.Config.Debug == daemonDebug &&
+		profile.Spec.Config.Debug == operand.Debug &&
+		reflect.DeepEqual(profile.Spec.Config.TuneDConfig, operand.TuneDConfig) &&
 		profile.Spec.Config.ProviderName == providerName {
 		klog.V(2).Infof("syncProfile(): no need to update Profile %s", nodeName)
 		return nil
 	}
 	profile = profile.DeepCopy() // never update the objects from cache
 	profile.Spec.Config.TunedProfile = tunedProfileName
-	profile.Spec.Config.Debug = daemonDebug
+	profile.Spec.Config.Debug = operand.Debug
+	profile.Spec.Config.TuneDConfig = operand.TuneDConfig
 	profile.Spec.Config.ProviderName = providerName
 	profile.Status.Conditions = tunedpkg.InitializeStatusConditions()
 
