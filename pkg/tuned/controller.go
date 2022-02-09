@@ -17,6 +17,7 @@ import (
 	"time"      // time.Second, ...
 
 	fsnotify "gopkg.in/fsnotify.v1"
+	"gopkg.in/ini.v1"
 	kmeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -49,6 +50,7 @@ const (
 	tunedProfilesDirCustom = "/etc/tuned"
 	tunedProfilesDirSystem = "/usr/lib/tuned"
 	tunedConfFile          = "tuned.conf"
+	tunedMainConfFile      = "tuned-main.conf"
 	tunedActiveProfileFile = tunedProfilesDirCustom + "/active_profile"
 	tunedRecommendDir      = tunedProfilesDirCustom + "/recommend.d"
 	tunedRecommendFile     = tunedRecommendDir + "/50-openshift.conf"
@@ -141,6 +143,7 @@ type Controller struct {
 	changeChRet  chan bool       // bi-directional channel to announce success/failure of change processing
 	tunedTicker  *time.Ticker    // ticker that fires if TuneD daemon fails to report "profile applied/reload failed" within tunedTimeout
 	tunedTimeout int             // timeout for TuneD daemon to report "profile applied/reload failed" [s]
+	tunedMainCfg *ini.File       // global TuneD configuration as defined in tuned-main.conf
 }
 
 type wqKey struct {
@@ -300,6 +303,17 @@ func (c *Controller) sync(key wqKey) error {
 		if c.daemon.debug != profile.Spec.Config.Debug {
 			c.change.daemon = true // A complete restart of the TuneD daemon is needed due to a debugging request switched on or off.
 			c.daemon.debug = profile.Spec.Config.Debug
+		}
+		if profile.Spec.Config.TuneDConfig.ReapplySysctl != nil {
+			reapplySysctl := c.tunedMainCfg.Section("").Key("reapply_sysctl").MustBool()
+			if *profile.Spec.Config.TuneDConfig.ReapplySysctl != reapplySysctl {
+				iniCfgSetKey(c.tunedMainCfg, "reapply_sysctl", !reapplySysctl)
+				err = iniFileSave(tunedProfilesDirCustom+"/"+tunedMainConfFile, c.tunedMainCfg)
+				if err != nil {
+					return fmt.Errorf("failed to write global TuneD configuration file: %v", err)
+				}
+				c.change.daemon = true // A complete restart of the TuneD daemon is needed due to configuration change in tunedMainConfFile.
+			}
 		}
 		// Notify the event processor that the Profile k8s object containing information about which TuneD profile to apply changed.
 		c.wqTuneD.Add(wqKey{kind: wqKindDaemon})
@@ -995,6 +1009,11 @@ func (c *Controller) changeWatcher() (err error) {
 	var (
 		lStop bool
 	)
+
+	c.tunedMainCfg, err = iniFileLoad(tunedProfilesDirCustom + "/" + tunedMainConfFile)
+	if err != nil {
+		return fmt.Errorf("failed to load global TuneD configuration file: %v", err)
+	}
 
 	// Use less aggressive per-item only exponential rate limiting for both wqKube and wqTuneD.
 	// Start retrying at 100ms with a maximum of 1800s.

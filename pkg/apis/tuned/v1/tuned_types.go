@@ -100,8 +100,19 @@ type TunedMatch struct {
 }
 
 type OperandConfig struct {
-	// turn debugging on/off for the Tuned daemon: true/false (default is false)
-	Debug bool `json:"debug"`
+	// turn debugging on/off for the TuneD daemon: true/false (default is false)
+	// +optional
+	Debug bool `json:"debug,omitempty"`
+
+	// +optional
+	TuneDConfig TuneDConfig `json:"tunedConfig,omitempty"`
+}
+
+// Global configuration for the TuneD daemon as defined in tuned-main.conf
+type TuneDConfig struct {
+	// turn reapply_sysctl functionality on/off for the TuneD daemon: true/false (default is false)
+	// +optional
+	ReapplySysctl *bool `json:"reapply_sysctl"`
 }
 
 // TunedStatus is the status for a Tuned resource.
@@ -135,11 +146,13 @@ type ProfileSpec struct {
 }
 
 type ProfileConfig struct {
-	// Tuned profile to apply
+	// TuneD profile to apply
 	TunedProfile string `json:"tunedProfile"`
-	// option to debug Tuned daemon execution
+	// option to debug TuneD daemon execution
 	// +optional
 	Debug bool `json:"debug"`
+	// +optional
+	TuneDConfig TuneDConfig `json:"tunedConfig,omitempty"`
 	// Name of the cloud provider as taken from the Node providerID: <ProviderName>://<ProviderSpecificNodeID>
 	// +optional
 	ProviderName string `json:"providerName,omitempty"`
