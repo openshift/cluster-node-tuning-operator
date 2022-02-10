@@ -16,9 +16,7 @@ containerized TuneD daemons running in the cluster in the format
 that the daemons understand. The daemons run on all nodes in the
 cluster, one per node.
 
-Node-level settings applied by the containerized TuneD daemon are rolled back
-on an event that triggers a profile change or when the containerized TuneD
-daemon is terminated gracefully by receiving and handling a termination signal.
+The containerized TuneD daemon will roll-back the custom node-level settings when a profile is changed or when the container receives a termination signal.
 
 ## Deploying the Node Tuning Operator
 
