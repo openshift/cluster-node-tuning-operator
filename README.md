@@ -8,16 +8,16 @@ level of kernel tuning. The Operator provides a unified
 management interface to users of node-level sysctls and more
 flexibility to add [custom tuning](#custom-tuning-specification)
 specified by user needs. The Operator manages the containerized
-[Tuned](https://github.com/redhat-performance/tuned/)
+[TuneD](https://github.com/redhat-performance/tuned/)
 daemon for [OpenShift](https://openshift.io/) as
 a Kubernetes DaemonSet. It ensures [custom tuning
 specification](#custom-tuning-specification) is passed to all
-containerized Tuned daemons running in the cluster in the format
+containerized TuneD daemons running in the cluster in the format
 that the daemons understand. The daemons run on all nodes in the
 cluster, one per node.
 
-Node-level settings applied by the containerized Tuned daemon are rolled back
-on an event that triggers a profile change or when the containerized Tuned
+Node-level settings applied by the containerized TuneD daemon are rolled back
+on an event that triggers a profile change or when the containerized TuneD
 daemon is terminated gracefully by receiving and handling a termination signal.
 
 ## Deploying the Node Tuning Operator
@@ -26,7 +26,7 @@ The Operator is deployed by applying the `*.yaml` manifests in the Operator's
 `/manifests` directory in alphanumeric order. It automatically creates a default deployment
 and custom resource
 ([CR](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/))
-for the Tuned daemons. The following shows the default CR created
+for the TuneD daemons. The following shows the default CR created
 by the Operator on a cluster with the Operator installed.
 
 ```
@@ -60,14 +60,14 @@ $ oc get Tuned/default -o yaml
 ```
 
 The CR for the Operator has two major sections. The first
-section, `profile:`, is a list of Tuned profiles and their names. The
+section, `profile:`, is a list of TuneD profiles and their names. The
 second, `recommend:`, defines the profile selection logic.
 
 Multiple custom tuning specifications can co-exist as multiple CRs
 in the Operator's namespace. The existence of new CRs or the deletion
 of old CRs is detected by the Operator. All existing custom tuning
 specifications are merged and appropriate objects for the containerized
-Tuned daemons are updated.
+TuneD daemons are updated.
 
 ### Management state
 
@@ -83,25 +83,25 @@ Management state are as follows:
 
 ### Profile data
 
-The `profile:` section lists Tuned profiles and their names.
+The `profile:` section lists TuneD profiles and their names.
 
 ```
   profile:
   - name: tuned_profile_1
     data: |
-      # Tuned profile specification
+      # TuneD profile specification
       [main]
       summary=Description of tuned_profile_1 profile
 
       [sysctl]
       net.ipv4.ip_forward=1
-      # ... other sysctl's or other Tuned daemon plug-ins supported by the containerized Tuned
+      # ... other sysctl's or other TuneD daemon plug-ins supported by the containerized TuneD
 
   # ...
 
   - name: tuned_profile_n
     data: |
-      # Tuned profile specification
+      # TuneD profile specification
       [main]
       summary=Description of tuned_profile_n profile
 
@@ -109,7 +109,7 @@ The `profile:` section lists Tuned profiles and their names.
 ```
 
 Refer to a list of
-(Tuned plug-ins supported by the Operator)[#supported-tuned-daemon-plug-ins].
+(TuneD plug-ins supported by the Operator)[#supported-tuned-daemon-plug-ins].
 
 
 ### Recommended profiles
@@ -133,9 +133,11 @@ The individual items of the list:
     match:                              # optional; if omitted, profile match is assumed unless a profile with a higher priority matches first or 'machineConfigLabels' is set
     <match>                             # an optional list
     priority: <priority>                # profile ordering priority, lower numbers mean higher priority (0 is the highest priority)
-    profile: <tuned_profile_name>       # a Tuned profile to apply on a match; for example tuned_profile_1
+    profile: <tuned_profile_name>       # a TuneD profile to apply on a match; for example tuned_profile_1
     operand:				# optional operand configuration
-      debug: <bool>			# turn debugging on/off for the Tuned daemon: true/false (default is false)
+      debug: <bool>			# turn debugging on/off for the TuneD daemon: true/false (default is false)
+      tunedConfig:			# global configuration for the TuneD daemon as defined in tuned-main.conf
+        reapply_sysctl: <bool>		# turn reapply_sysctl functionality on/off for the TuneD daemon: true/false
 ```
 
 If `<match>` is omitted, a profile match (i.e. _true_) is assumed.
@@ -190,10 +192,10 @@ The `match` item is evaluated first in a short-circuit manner. Therefore, if it 
     profile: openshift-node
 ```
 
-The CR above is translated for the containerized Tuned daemon into
+The CR above is translated for the containerized TuneD daemon into
 its recommend.conf file based on the profile priorities. The profile
 with the highest priority (10) is openshift-control-plane-es and,
-therefore, it is considered first. The containerized Tuned daemon
+therefore, it is considered first. The containerized TuneD daemon
 running on a given node looks to see if there is a pod running on the
 same node with the tuned.openshift.io/elasticsearch label set. If not,
 the entire `<match>` section evaluates as _false_. If there is such a
@@ -205,7 +207,7 @@ If the labels for the profile with priority 10 matched,
 openshift-control-plane-es profile is applied and no other profile is
 considered. If the node/pod label combination did not match,
 the second highest priority profile (openshift-control-plane) is considered.
-This profile is applied if the containerized Tuned pod runs on a node with
+This profile is applied if the containerized TuneD pod runs on a node with
 labels node-role.kubernetes.io/master OR node-role.kubernetes.io/infra.
 
 Finally, the profile `openshift-node` has the lowest priority of 30.
@@ -248,10 +250,10 @@ _EOF_
 ```
 
 
-## Supported Tuned daemon plug-ins
+## Supported TuneD daemon plug-ins
 
 Aside from the `[main]` section, the following
-[Tuned plug-ins](https://github.com/redhat-performance/tuned/tree/master/tuned/plugins)
+[TuneD plug-ins](https://github.com/redhat-performance/tuned/tree/master/tuned/plugins)
 are supported when using [custom profiles](#custom-tuning-specification) defined
 in the `profile:` section of the Tuned CR:
 
@@ -275,7 +277,7 @@ in the `profile:` section of the Tuned CR:
 * vm
 
 with the exception of dynamic tuning functionality provided by some of the plug-ins.
-The following Tuned plug-ins are currently not fully supported:
+The following TuneD plug-ins are currently not fully supported:
 
 * bootloader
 * script
@@ -283,18 +285,18 @@ The following Tuned plug-ins are currently not fully supported:
 
 ## Additional tuning on fully-managed hosts
 Support for the [stall daemon](https://github.com/bristot/stalld)
-(stalld) has been added to complement tuning performed by Tuned realtime
+(stalld) has been added to complement tuning performed by TuneD realtime
 profiles. Currently, only hosts fully-managed by the
 [Machine Config Operator](https://github.com/openshift/machine-config-operator)
 (MCO) can benefit from this functionality. To deploy stalld on such hosts,
-the following line needs to be added to the Tuned service plugin.
+the following line needs to be added to the TuneD service plugin.
 
 ```
 service.stalld=start,enable
 ```
 
 A host-supplied configuration file can be used to override the stalld systemd
-unit created when using the line above in the Tuned service plugin. This
+unit created when using the line above in the TuneD service plugin. This
 file can then be referred to by prefixing the absolute path to the overlay
 file on the host by the `/host` prefix.
 

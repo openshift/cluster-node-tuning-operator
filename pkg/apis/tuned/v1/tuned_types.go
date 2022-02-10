@@ -110,7 +110,7 @@ type OperandConfig struct {
 
 // Global configuration for the TuneD daemon as defined in tuned-main.conf
 type TuneDConfig struct {
-	// turn reapply_sysctl functionality on/off for the TuneD daemon: true/false (default is false)
+	// turn reapply_sysctl functionality on/off for the TuneD daemon: true/false
 	// +optional
 	ReapplySysctl *bool `json:"reapply_sysctl"`
 }
