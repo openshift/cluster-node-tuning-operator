@@ -10,17 +10,23 @@ import (
 	"k8s.io/klog"
 )
 
-func GetLeaderElectionConfig(ctx context.Context, restcfg *rest.Config) configv1.LeaderElection {
+// GetLeaderElectionConfig returns leader election configs defaults based on the cluster topology
+func GetLeaderElectionConfig(restcfg *rest.Config, enabled bool) configv1.LeaderElection {
 
 	// Defaults follow conventions
-	// https://github.com/openshift/enhancements/pull/832/files#diff-2e28754e69aa417e5b6d89e99e42f05bfb6330800fa823753383db1d170fbc2fR183
-	// see rhbz#1986477 for more detail
+	// https://github.com/openshift/enhancements/blob/master/CONVENTIONS.md#high-availability
 	defaultLeaderElection := leaderelection.LeaderElectionDefaulting(
-		configv1.LeaderElection{},
+		configv1.LeaderElection{
+			Disable: !enabled,
+		},
 		"", "",
 	)
 
-	if infra, err := clusterstatus.GetClusterInfraStatus(ctx, restcfg); err == nil && infra != nil {
+	if !enabled {
+		return defaultLeaderElection
+	}
+
+	if infra, err := clusterstatus.GetClusterInfraStatus(context.TODO(), restcfg); err == nil && infra != nil {
 		if infra.ControlPlaneTopology == configv1.SingleReplicaTopologyMode {
 			return leaderelection.LeaderElectionSNOConfig(defaultLeaderElection)
 		}
