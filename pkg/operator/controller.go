@@ -21,8 +21,6 @@ import (
 	coreset "k8s.io/client-go/kubernetes/typed/core/v1"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/leaderelection"
-	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
@@ -44,7 +42,6 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/version"
 
 	ign3types "github.com/coreos/ignition/v2/config/v3_2/types"
-	"github.com/google/uuid"
 	mcfgclientset "github.com/openshift/machine-config-operator/pkg/generated/clientset/versioned"
 	mcfginformers "github.com/openshift/machine-config-operator/pkg/generated/informers/externalversions"
 )
@@ -993,7 +990,7 @@ func (c *Controller) removeResources() error {
 // as syncing informer caches and starting workers. It will block until stopCh
 // is closed, at which point it will shutdown the workqueue and wait for
 // workers to finish processing their current work items.
-func (c *Controller) run(stopCh <-chan struct{}) {
+func (c *Controller) run(ctx context.Context) {
 	defer c.workqueue.ShutDown()
 
 	// Start the informer factories to begin populating the informer caches
@@ -1027,14 +1024,14 @@ func (c *Controller) run(stopCh <-chan struct{}) {
 	c.listers.MachineConfigPools = mcpInformer.Lister()
 	mcpInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindMachineConfigPool}))
 
-	configInformerFactory.Start(stopCh)  // ClusterOperator
-	kubeNTOInformerFactory.Start(stopCh) // DaemonSet
-	tunedInformerFactory.Start(stopCh)   // Tuned/Profile
-	mcfgInformerFactory.Start(stopCh)    // MachineConfig/MachineConfigPool
+	configInformerFactory.Start(ctx.Done())  // ClusterOperator
+	kubeNTOInformerFactory.Start(ctx.Done()) // DaemonSet
+	tunedInformerFactory.Start(ctx.Done())   // Tuned/Profile
+	mcfgInformerFactory.Start(ctx.Done())    // MachineConfig/MachineConfigPool
 
 	// Wait for the caches to be synced before starting worker(s)
 	klog.V(1).Info("waiting for informer caches to sync")
-	ok := cache.WaitForCacheSync(stopCh,
+	ok := cache.WaitForCacheSync(ctx.Done(),
 		coInformer.Informer().HasSynced,
 		dsInformer.Informer().HasSynced,
 		trInformer.Informer().HasSynced,
@@ -1048,97 +1045,20 @@ func (c *Controller) run(stopCh <-chan struct{}) {
 	}
 
 	klog.V(1).Info("starting events processor")
-	go wait.Until(c.eventProcessor, time.Second, stopCh)
+	go wait.Until(c.eventProcessor, time.Second, ctx.Done())
 	klog.Info("started events processor/controller")
 
-	<-stopCh
+	<-ctx.Done()
 	c.enableNodeInformer(false)
 	c.enablePodInformer(false)
 	klog.Info("shutting down events processor/controller")
 }
 
-// BecomeLeader uses client-go leader-with-lease election mechanism to
-// select a leader and starts the controller by calling operator run
-// method.
-func (c *Controller) BecomeLeader(stopCh <-chan struct{}) {
-	// Become the leader before proceeding.
-	klog.Info("trying to become a leader")
+func (c *Controller) Start(ctx context.Context) error {
+	c.run(ctx)
+	return nil
+}
 
-	// Check the presence of the legacy node-tuning-operator-lock ConfigMap.
-	// If the owner references exist in the ConfigMap, we have an old garbage
-	// collection based locking scheme and we cannot continue until the ConfigMap
-	// is GC or deleted manually.  If the owner references do not exist, just go
-	// ahead with the new client-go leader-election code.
-loop:
-	for {
-		gcLockFound, err := c.usingGCLocking(ntoconfig.OperatorNamespace(), ntoconfig.OperatorLockName)
-
-		switch {
-		case err != nil:
-			klog.Errorf("failed retrieve operator lock %s/%s: %v",
-				ntoconfig.OperatorNamespace(), ntoconfig.OperatorLockName, err)
-		case gcLockFound:
-			klog.Errorf("garbage collector locking scheme found, waiting for operator lock %s/%s removal",
-				ntoconfig.OperatorNamespace(), ntoconfig.OperatorLockName)
-		default:
-			break loop
-		}
-
-		select {
-		case <-time.After(5 * time.Second):
-			continue
-		}
-	}
-
-	// Use a Go context so we can tell the leaderelection code when we
-	// want to step down.
-	ctx, runCancel := context.WithCancel(context.Background())
-	defer runCancel()
-
-	// Generate leader election ID.
-	id, err := os.Hostname()
-	if err != nil {
-		klog.Errorf("os.Hostname() failed, using only UUID for the lock identity: %v", err)
-	}
-	id = id + "_" + uuid.New().String()
-
-	lock := &resourcelock.ConfigMapLock{
-		ConfigMapMeta: metav1.ObjectMeta{
-			Name:      ntoconfig.OperatorLockName,
-			Namespace: ntoconfig.OperatorNamespace(),
-		},
-		Client: c.clients.Core,
-		LockConfig: resourcelock.ResourceLockConfig{
-			Identity: id,
-		},
-	}
-
-	le := util.GetLeaderElectionConfig(ctx, c.kubeconfig)
-
-	// Start the leader election code loop.
-	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
-		Lock:            lock,
-		ReleaseOnCancel: true,
-		LeaseDuration:   le.LeaseDuration.Duration,
-		RenewDeadline:   le.RenewDeadline.Duration,
-		RetryPeriod:     le.RetryPeriod.Duration,
-		Callbacks: leaderelection.LeaderCallbacks{
-			OnStartedLeading: func(_ context.Context) {
-				klog.Infof("became leader: %s", id)
-				c.run(stopCh)
-				runCancel()
-			},
-			OnStoppedLeading: func() {
-				klog.Infof("leader lost")
-			},
-			OnNewLeader: func(identity string) {
-				// we're notified when new leader elected
-				if identity == id {
-					// we became the leader
-					return
-				}
-				klog.Infof("current leader: %s", identity)
-			},
-		},
-	})
+func (c *Controller) NeedLeaderElection() bool {
+	return true
 }

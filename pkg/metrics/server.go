@@ -23,6 +23,9 @@ const (
 	tlsKey       = tlsSecretDir + "/tls.key"
 )
 
+type Server struct {
+}
+
 func buildServer(port int) *http.Server {
 	if port <= 0 {
 		klog.Error("invalid port for metric server")
@@ -63,11 +66,15 @@ func stopServer(srv *http.Server) {
 	}
 }
 
+func (Server) Start(ctx context.Context) error {
+	return RunServer(MetricsPort, ctx)
+}
+
 // RunServer starts the server, and watches the tlsCert and tlsKey for certificate changes.
-func RunServer(port int, stopCh <-chan struct{}) {
+func RunServer(port int, ctx context.Context) error {
 	srv := buildServer(port)
 	if srv == nil {
-		return
+		return fmt.Errorf("failed to build server with port %d", port)
 	}
 
 	go startServer(srv)
@@ -75,11 +82,11 @@ func RunServer(port int, stopCh <-chan struct{}) {
 	// Set up and start the file watcher.
 	watcher, err := fsnotify.NewWatcher()
 	if watcher == nil || err != nil {
-		klog.Errorf("failed to create file watcher, cert/key rotation will be disabled  %v", err)
+		return fmt.Errorf("failed to create file watcher, cert/key rotation will be disabled  %v", err)
 	} else {
 		defer watcher.Close()
 		if err := watcher.Add(tlsSecretDir); err != nil {
-			klog.Errorf("failed to add %v to watcher, cert/key rotation will be disabled: %v", tlsSecretDir, err)
+			return fmt.Errorf("failed to add %v to watcher, cert/key rotation will be disabled: %v", tlsSecretDir, err)
 		}
 	}
 
@@ -88,9 +95,9 @@ func RunServer(port int, stopCh <-chan struct{}) {
 
 	for {
 		select {
-		case <-stopCh:
+		case <-ctx.Done():
 			stopServer(srv)
-			return
+			return nil
 		case event := <-watcher.Events:
 			klog.V(2).Infof("event from filewatcher on file: %v, event: %v", event.Name, event.Op)
 
