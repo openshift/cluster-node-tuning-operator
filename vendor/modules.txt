@@ -733,5 +733,5 @@ sigs.k8s.io/yaml
 # k8s.io/metrics => k8s.io/metrics v0.21.1
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.21.1
 # github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
-# golang.org/x/text => golang.org/x/text v0.3.6
 # golang.org/x/net => golang.org/x/net v0.0.0-20210525063256-abc453219eb5
+# golang.org/x/text => golang.org/x/text v0.3.6
