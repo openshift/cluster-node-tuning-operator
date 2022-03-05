@@ -22,7 +22,7 @@ import (
 
 // syncOperatorStatus computes the operator's current status and therefrom
 // creates or updates the ClusterOperator resource for the operator.
-func (c *Controller) syncOperatorStatus(tuned *tunedv1.Tuned, profile *tunedv1.Profile) error {
+func (c *Controller) syncOperatorStatus(tuned *tunedv1.Tuned) error {
 	klog.V(2).Infof("syncOperatorStatus()")
 
 	co, err := c.getOrCreateOperatorStatus()
@@ -32,7 +32,7 @@ func (c *Controller) syncOperatorStatus(tuned *tunedv1.Tuned, profile *tunedv1.P
 	co = co.DeepCopy() // Never modify objects in cache
 
 	oldConditions := co.Status.Conditions
-	co.Status.Conditions, err = c.computeStatusConditions(tuned, oldConditions, profile)
+	co.Status.Conditions, err = c.computeStatusConditions(tuned, oldConditions)
 	if err != nil {
 		return err
 	}
@@ -96,16 +96,16 @@ func profileApplied(profile *tunedv1.Profile) bool {
 	return false
 }
 
-// profileDegraded returns true if Tuned Profile 'profile' has not been applied
-// or applied with errors (Degraded).
+// profileDegraded returns true if Profile 'profile' is Degraded.
+// The Degraded ProfileStatusCondition occurs when a TuneD reports errors applying
+// the profile or when there is a timeout waiting for the profile to be applied.
 func profileDegraded(profile *tunedv1.Profile) bool {
 	if profile == nil {
 		return false
 	}
 
 	for _, sc := range profile.Status.Conditions {
-		if (sc.Type == tunedv1.TunedProfileApplied && sc.Status == corev1.ConditionFalse) ||
-			(sc.Type == tunedv1.TunedDegraded && sc.Status == corev1.ConditionTrue) {
+		if sc.Type == tunedv1.TunedDegraded && sc.Status == corev1.ConditionTrue {
 			return true
 		}
 	}
@@ -113,21 +113,27 @@ func profileDegraded(profile *tunedv1.Profile) bool {
 	return false
 }
 
-// anyProfileDegraded returns true if any of the Tuned Profiles in the slice
-// 'profileList' has not been applied or applied with errors (Degraded).
-func anyProfileDegraded(profileList []*tunedv1.Profile) bool {
+// numProfilesProgressingDegraded returns two ints which count
+// the number of Profiles in the slice 'profileList' which are
+// waiting to be applied and in a degraded state, respectively.
+func numProfilesProgressingDegraded(profileList []*tunedv1.Profile) (int, int) {
+	numDegraded := 0
+	numProgressing := 0
 	for _, profile := range profileList {
 		if profileDegraded(profile) {
-			return true
+			numDegraded++
+			continue
+		}
+		if !profileApplied(profile) {
+			numProgressing++
 		}
 	}
 
-	return false
+	return numProgressing, numDegraded
 }
 
 // computeStatusConditions computes the operator's current state.
-func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []configv1.ClusterOperatorStatusCondition,
-	profile *tunedv1.Profile) ([]configv1.ClusterOperatorStatusCondition, error) {
+func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []configv1.ClusterOperatorStatusCondition) ([]configv1.ClusterOperatorStatusCondition, error) {
 	const (
 		// maximum number of seconds for the operator to be Unavailable with a unique
 		// Reason/Message before setting the Degraded ClusterOperator condition
@@ -238,27 +244,27 @@ func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []
 		}
 
 		// Check the Profile status Degraded conditions.
-		var reportDegraded bool
-		if profile == nil {
-			// No Profile was supplied, list and check all of them
-			profileList, err := c.listers.TunedProfiles.List(labels.Everything())
-			if err != nil {
-				// failed to list Tuned Profiles
-				availableCondition.Status = configv1.ConditionUnknown
-				availableCondition.Reason = "Unknown"
-				availableCondition.Message = fmt.Sprintf("Unable to fetch Tuned Profiles: %v", err)
+		profileList, err := c.listers.TunedProfiles.List(labels.Everything())
+		if err != nil { // failed to list Tuned Profiles
+			availableCondition.Status = configv1.ConditionUnknown
+			availableCondition.Reason = "Unknown"
+			availableCondition.Message = fmt.Sprintf("Unable to fetch Tuned Profiles: %v", err)
 
-				copyAvailableCondition()
-			}
-			reportDegraded = anyProfileDegraded(profileList)
-		} else {
-			// Profile supplied, check if Degraded should be reported based on its status conditions
-			reportDegraded = profileDegraded(profile)
+			copyAvailableCondition()
 		}
-		if reportDegraded {
-			klog.Infof("at least one Profile application failing")
+
+		numProgressingProfiles, numDegradedProfiles := numProfilesProgressingDegraded(profileList)
+
+		if numProgressingProfiles > 0 {
+			progressingCondition.Status = configv1.ConditionTrue
+			progressingCondition.Reason = "ProfileProgressing"
+			progressingCondition.Message = fmt.Sprintf("Waiting for %v/%v Profiles to be applied", numProgressingProfiles, len(profileList))
+		}
+
+		if numDegradedProfiles > 0 {
+			klog.Infof(fmt.Sprintf("%v/%v Profiles failed to be applied", numDegradedProfiles, len(profileList)))
 			availableCondition.Reason = "ProfileDegraded"
-			availableCondition.Message = fmt.Sprintf("At least one Profile application failing")
+			availableCondition.Message = fmt.Sprintf("%v/%v Profiles failed to be applied", numDegradedProfiles, len(profileList))
 		}
 
 		// If the operator is not available for an extensive period of time, set the Degraded operator status.

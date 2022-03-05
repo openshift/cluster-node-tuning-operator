@@ -313,7 +313,7 @@ func (c *Controller) sync(key wqKey) error {
 		if err != nil {
 			return fmt.Errorf("failed to sync DaemonSet: %v", err)
 		}
-		err = c.syncOperatorStatus(cr, nil)
+		err = c.syncOperatorStatus(cr)
 		if err != nil {
 			return fmt.Errorf("failed to sync OperatorStatus: %v", err)
 		}
@@ -393,7 +393,7 @@ out:
 	if err != nil {
 		lastErr = fmt.Errorf("failed to disable Pod informer: %v", err)
 	}
-	err = c.syncOperatorStatus(cr, nil)
+	err = c.syncOperatorStatus(cr)
 	if err != nil {
 		lastErr = fmt.Errorf("failed to synchronize Operator status: %v", err)
 	}
@@ -599,7 +599,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 
 	// Profiles carry status conditions based on which OperatorStatus is also
 	// calculated.
-	err = c.syncOperatorStatus(tuned, profile)
+	err = c.syncOperatorStatus(tuned)
 	if err != nil {
 		return fmt.Errorf("failed to sync OperatorStatus: %v", err)
 	}
