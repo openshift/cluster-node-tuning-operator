@@ -41,6 +41,8 @@ const (
 	scApplied Bits = 1 << iota
 	scWarn
 	scError
+	scTimeout
+	scUnknown
 )
 
 // Constants
@@ -132,6 +134,8 @@ type Controller struct {
 		debug bool
 		// bit/set representaton of Profile status conditions to report back via API.
 		status Bits
+		// stderr log from TuneD daemon to report back via API.
+		stderr string
 		// stopping is true while the controller tries to stop the TuneD daemon.
 		stopping bool
 	}
@@ -510,12 +514,16 @@ func (c *Controller) tunedRun() {
 				c.daemon.status |= scApplied
 			}
 
-			if strings.Index(l, " WARNING ") >= 0 {
+			strIndex := strings.Index(l, " WARNING ")
+			if strIndex >= 0 {
 				c.daemon.status |= scWarn
+				c.daemon.stderr = l[strIndex:] // trim timestamp from log
 			}
 
-			if strings.Index(l, " ERROR ") >= 0 {
+			strIndex = strings.Index(l, " ERROR ")
+			if strIndex >= 0 {
 				c.daemon.status |= scError
+				c.daemon.stderr = l[strIndex:] // trim timestamp from log
 			}
 
 			if c.daemon.reloading {
@@ -524,6 +532,7 @@ func (c *Controller) tunedRun() {
 				if c.daemon.reloaded {
 					klog.V(2).Infof("profile applied or reload failed, stopping the TuneD watcher")
 					c.tunedTimeout = tunedInitialTimeout // initialize the timeout
+					c.daemon.status &= ^scTimeout        // clear the scTimeout status bit
 					c.tunedTicker.Stop()                 // profile applied or reload failed, stop the TuneD watcher
 
 					// Notify the event processor that the TuneD daemon finished reloading.
@@ -534,7 +543,9 @@ func (c *Controller) tunedRun() {
 	}()
 
 	c.daemon.reloading = true
-	c.daemon.status = 0 // clear the set out of which Profile status conditions are created
+	// Clear the set out of which Profile status conditions are created. Keep timeout condition if already set.
+	c.daemon.status &= scTimeout
+	c.daemon.stderr = ""
 	if err = c.tunedCmd.Start(); err != nil {
 		klog.Errorf("error starting tuned: %v", err)
 		return
@@ -590,6 +601,8 @@ func (c *Controller) tunedStop() (bool, error) {
 func (c *Controller) tunedReload(timeoutInitiated bool) error {
 	c.daemon.reloading = true
 	c.daemon.status = 0 // clear the set out of which Profile status conditions are created
+	c.daemon.stderr = ""
+
 	tunedTimeout := time.Second * time.Duration(c.tunedTimeout)
 	if c.tunedTicker == nil {
 		// This should never happen as the ticker is initialized at controller creation time.
@@ -598,6 +611,7 @@ func (c *Controller) tunedReload(timeoutInitiated bool) error {
 		c.tunedTicker.Reset(tunedTimeout)
 	}
 	if timeoutInitiated {
+		c.daemon.status = scTimeout // timeout waiting for the daemon should be reported to Profile status
 		c.tunedTimeout *= 2
 	}
 
@@ -752,6 +766,7 @@ func (c *Controller) changeSyncer() (synced bool, err error) {
 		} else if activeProfile != recommendedProfile {
 			klog.Infof("active profile (%s) != recommended profile (%s)", activeProfile, recommendedProfile)
 			reload = true
+			c.daemon.status = scUnknown
 		} else {
 			klog.Infof("active and recommended profile (%s) match; profile change will not trigger profile reload", activeProfile)
 			// We do not need to reload the TuneD daemon, however, someone may have tampered with the k8s Profile for this node.
@@ -767,11 +782,13 @@ func (c *Controller) changeSyncer() (synced bool, err error) {
 		// The "rendered" Tuned k8s object changed.
 		c.change.rendered = false
 		reload = true
+		c.daemon.status = scUnknown
 	}
 
 	if c.change.daemon {
 		// Complete restart of the TuneD daemon needed (e.g. using --debug option).
 		c.change.daemon = false
+		c.daemon.status = scUnknown
 		err = c.tunedRestart(false)
 		return err == nil, err
 	}
@@ -913,7 +930,7 @@ func (c *Controller) updateTunedProfile() (err error) {
 		return err
 	}
 
-	statusConditions := computeStatusConditions(c.daemon.status, profile.Status.Conditions)
+	statusConditions := computeStatusConditions(c.daemon.status, c.daemon.stderr, profile.Status.Conditions)
 
 	stalldUnchanged := util.PtrBoolEqual(profile.Status.Stalld, stalldRequested)
 
