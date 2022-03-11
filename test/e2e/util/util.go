@@ -24,6 +24,11 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/framework"
 )
 
+const (
+	// The default worker profile.  See: assets/tuned/manifests/default-cr-tuned.yaml
+	DefaultWorkerProfile = "openshift-node"
+)
+
 // Logf formats using the default formats for its operands and writes to
 // ginkgo.GinkgoWriter and a newline is appended.  It returns the number of
 // bytes written and any write error encountered.
@@ -276,6 +281,42 @@ func WaitForClusterOperatorConditionReason(cs *framework.ClientSet, interval, du
 	}); err != nil {
 		return errors.Wrapf(err, "failed to wait for ClusterOperator/%s condition %s reason %s (waited %s): %v",
 			tunedv1.TunedClusterOperatorResourceName, conditionType, conditionReason, time.Since(startTime), explain)
+	}
+	return nil
+}
+
+// WaitForProfileConditionStatus blocks until Profile with name `profile`
+// is reporting its `conditionType` with the value of 'conditionStatus',
+// for the TuneD profile `profileExpect`.
+// The execution interval to check the value is 'interval' and retries last
+// for at most the duration 'duration'.
+func WaitForProfileConditionStatus(cs *framework.ClientSet, interval, duration time.Duration, profile string, profileExpect string,
+	conditionType tunedv1.ProfileConditionType, conditionStatus corev1.ConditionStatus) error {
+	var explain error
+
+	startTime := time.Now()
+	if err := wait.PollImmediate(interval, duration, func() (bool, error) {
+		p, err := cs.Profiles(ntoconfig.OperatorNamespace()).Get(context.TODO(), profile, metav1.GetOptions{})
+		if err != nil {
+			explain = err
+			return false, nil
+		}
+
+		if p.Status.TunedProfile != profileExpect {
+			explain = fmt.Errorf("Profile/%s reports TuneD profile %s, expected %s", profile, p.Status.TunedProfile, profileExpect)
+			return false, nil
+		}
+
+		for _, cond := range p.Status.Conditions {
+			if cond.Type == conditionType &&
+				cond.Status == conditionStatus {
+				return true, nil
+			}
+		}
+		return false, nil
+	}); err != nil {
+		return errors.Wrapf(err, "failed to wait for Profile/%s condition %s status %s (waited %s): %v",
+			profile, conditionType, conditionStatus, time.Since(startTime), explain)
 	}
 	return nil
 }
