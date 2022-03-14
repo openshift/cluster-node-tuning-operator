@@ -1,0 +1,64 @@
+apiVersion: machineconfiguration.openshift.io/v1
+kind: KubeletConfig
+metadata:
+  creationTimestamp: null
+  name: performance-manual
+  ownerReferences:
+  - apiVersion: ""
+    kind: PerformanceProfile
+    name: manual
+    uid: ""
+spec:
+  kubeletConfig:
+    apiVersion: kubelet.config.k8s.io/v1beta1
+    authentication:
+      anonymous: {}
+      webhook:
+        cacheTTL: 0s
+      x509: {}
+    authorization:
+      webhook:
+        cacheAuthorizedTTL: 0s
+        cacheUnauthorizedTTL: 0s
+    cpuManagerPolicy: static
+    cpuManagerPolicyOptions:
+      full-pcpus-only: "true"
+    cpuManagerReconcilePeriod: 5s
+    evictionHard:
+      memory.available: 100Mi
+    evictionPressureTransitionPeriod: 0s
+    fileCheckFrequency: 0s
+    httpCheckFrequency: 0s
+    imageMinimumGCAge: 0s
+    kind: KubeletConfiguration
+    kubeReserved:
+      memory: 500Mi
+    logging:
+      flushFrequency: 0
+      options:
+        json:
+          infoBufferSize: "0"
+      verbosity: 0
+    memoryManagerPolicy: Static
+    memorySwap: {}
+    nodeStatusReportFrequency: 0s
+    nodeStatusUpdateFrequency: 0s
+    reservedMemory:
+      - limits:
+          memory: 1100Mi
+        numaNode: 0
+    reservedSystemCPUs: "0"
+    runtimeRequestTimeout: 0s
+    shutdownGracePeriod: 0s
+    shutdownGracePeriodCriticalPods: 0s
+    streamingConnectionIdleTimeout: 0s
+    syncFrequency: 0s
+    systemReserved:
+      memory: 500Mi
+    topologyManagerPolicy: single-numa-node
+    volumeStatsAggPeriod: 0s
+  machineConfigPoolSelector:
+    matchLabels:
+      machineconfiguration.openshift.io/role: worker-cnf
+status:
+  conditions: null
