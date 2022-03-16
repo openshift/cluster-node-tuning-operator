@@ -13,9 +13,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
-	testclient "github.com/openshift-kni/performance-addon-operators/functests/utils/client"
-	testlog "github.com/openshift-kni/performance-addon-operators/functests/utils/log"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
+	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/client"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/log"
 	v1 "github.com/openshift/custom-resource-status/conditions/v1"
 )
 

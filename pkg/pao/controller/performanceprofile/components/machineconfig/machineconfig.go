@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"text/template"
 
-	"github.com/openshift-kni/performance-addon-operators/build/assets"
+	assets "github.com/openshift/cluster-node-tuning-operator/assets/pao"
 
 	"github.com/coreos/go-systemd/unit"
 	igntypes "github.com/coreos/ignition/v2/config/v3_2/types"
@@ -17,9 +17,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/pointer"
 
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components"
-	profilecomponent "github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/profile"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components"
+	profilecomponent "github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/profile"
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
 

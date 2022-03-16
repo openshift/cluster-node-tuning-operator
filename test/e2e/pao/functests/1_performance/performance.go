@@ -25,25 +25,24 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	performancev1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v1"
+	performancev1alpha1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v1alpha1"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/machineconfig"
+	componentprofile "github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/profile"
+	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils"
+	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/cluster"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/discovery"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/log"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/mcps"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/nodes"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/pods"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/profiles"
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
-
-	performancev1 "github.com/openshift-kni/performance-addon-operators/api/v1"
-	performancev1alpha1 "github.com/openshift-kni/performance-addon-operators/api/v1alpha1"
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
-	testutils "github.com/openshift-kni/performance-addon-operators/functests/utils"
-	testclient "github.com/openshift-kni/performance-addon-operators/functests/utils/client"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/cluster"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/discovery"
-	testlog "github.com/openshift-kni/performance-addon-operators/functests/utils/log"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/mcps"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/nodes"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/pods"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/profiles"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/machineconfig"
-	componentprofile "github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/profile"
 )
 
 const (
@@ -76,66 +75,6 @@ var _ = Describe("[rfe_id:27368][performance]", func() {
 		Expect(workerRTNodes).ToNot(BeEmpty(), "no nodes with role %q found", testutils.RoleWorkerCNF)
 		profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred(), "cannot get profile by node labels %v", testutils.NodeSelectorLabels)
-	})
-
-	// self-tests; these are only vaguely related to performance becase these are enablement conditions, not actual settings.
-	// For example, running on control plane means we leave more resources for the workload.
-	Context("Performance Operator", func() {
-		It("[test_id:38109] Should run on the control plane nodes", func() {
-			pod, err := pods.GetPerformanceOperatorPod()
-			Expect(err).ToNot(HaveOccurred(), "Failed to find the Performance Addon Operator pod")
-
-			Expect(strings.HasPrefix(pod.Name, "performance-operator")).To(BeTrue(),
-				"Performance Addon Operator pod name should start with performance-operator prefix")
-
-			masterNodes, err := nodes.GetByRole(testutils.RoleMaster)
-			Expect(err).ToNot(HaveOccurred(), "Failed to query the master nodes")
-			for _, node := range masterNodes {
-				if node.Name == pod.Spec.NodeName {
-					return
-				}
-			}
-
-			Fail("Performance Addon Operator is not running in a master node")
-		})
-		It("[test_id:44885] Should have CPU and Memory requests but not limits - BZ 1957291", func() {
-			// https://bugzilla.redhat.com/show_bug.cgi?id=1957291
-			pod, err := pods.GetPerformanceOperatorPod()
-			Expect(err).ToNot(HaveOccurred(), "Failed to find the Performance Addon Operator pod")
-
-			// If workload partitioning is enabled on the node, resources.limits.cpu index is mutated to
-			// resources.limits."management.workload.openshift.io/cores" index
-
-			if _, ok := pod.Spec.Containers[0].Resources.Limits["management.workload.openshift.io/cores"]; !ok {
-				// Ignore limits set for Workload Partition mutation of CPU requests (custom resource)
-				// https://bugzilla.redhat.com/show_bug.cgi?id=2019924
-				// https://bugzilla.redhat.com/show_bug.cgi?id=2018443
-				By("Checking Resources.Limits.Cpu()")
-				Expect(pod.Spec.Containers[0].Resources.Limits.Cpu().IsZero()).To(BeTrue(),
-					"Container has CPU Limit != 0")
-			}
-
-			By("Checking Resource.Limits.Memory()")
-			Expect(pod.Spec.Containers[0].Resources.Limits.Memory().IsZero()).To(BeTrue(),
-				"Container has Memory Limit != 0")
-
-			// If workload partitioning is enabled on the node, resources.requests.cpu index is mutated to
-			// resources.requests."management.workload.openshift.io/cores" index
-
-			if wp_cpu_req, ok := pod.Spec.Containers[0].Resources.Requests["management.workload.openshift.io/cores"]; ok {
-				By("Workload Partitioning enabled, checking custom resource Resources.Requests[\"management.workload.openshift.io/cores\"]")
-				Expect(wp_cpu_req.Sign() == 1).To(BeTrue(), "Container has \"management.workload.openshift.io/cores\" Request <= 0")
-			} else {
-				By("Checking Resources.Requests.Cpu()")
-				Expect(pod.Spec.Containers[0].Resources.Requests.Cpu().Sign() == 1).To(BeTrue(),
-					"Container has CPU Request <= 0")
-			}
-
-			By("Checking Resources.Requests.Memory()")
-			Expect(pod.Spec.Containers[0].Resources.Requests.Memory().Sign() == 1).To(BeTrue(),
-				"Container has Memory Request <= 0")
-
-		})
 	})
 
 	Context("Tuned CRs generated from profile", func() {

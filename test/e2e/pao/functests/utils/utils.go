@@ -9,7 +9,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 
-	testlog "github.com/openshift-kni/performance-addon-operators/functests/utils/log"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/log"
 )
 
 const defaultExecTimeout = 2 * time.Minute

@@ -6,9 +6,9 @@ import (
 	"os"
 	"strconv"
 
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
-	testclient "github.com/openshift-kni/performance-addon-operators/functests/utils/client"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/profiles"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
+	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/profiles"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"

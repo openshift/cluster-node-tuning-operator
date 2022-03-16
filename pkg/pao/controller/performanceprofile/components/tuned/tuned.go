@@ -13,10 +13,10 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"k8s.io/utils/pointer"
 
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
-	"github.com/openshift-kni/performance-addon-operators/build/assets"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components"
-	profilecomponent "github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/profile"
+	assets "github.com/openshift/cluster-node-tuning-operator/assets/pao"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components"
+	profilecomponent "github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/profile"
 )
 
 const (

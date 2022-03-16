@@ -16,16 +16,15 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/machineconfig"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/profile"
+	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/cluster"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/log"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/nodes"
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
-
-	testclient "github.com/openshift-kni/performance-addon-operators/functests/utils/client"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/cluster"
-	testlog "github.com/openshift-kni/performance-addon-operators/functests/utils/log"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/nodes"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/machineconfig"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/profile"
 )
 
 const (

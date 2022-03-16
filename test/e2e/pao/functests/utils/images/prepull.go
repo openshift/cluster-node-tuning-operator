@@ -13,9 +13,9 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	testclient "github.com/openshift-kni/performance-addon-operators/functests/utils/client"
-	testds "github.com/openshift-kni/performance-addon-operators/functests/utils/daemonset"
-	testlog "github.com/openshift-kni/performance-addon-operators/functests/utils/log"
+	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/client"
+	testds "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/daemonset"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/log"
 )
 
 const (

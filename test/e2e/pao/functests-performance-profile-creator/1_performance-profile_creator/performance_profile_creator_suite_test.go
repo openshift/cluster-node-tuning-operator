@@ -1,9 +1,10 @@
 package __performance_profile_creator_test
 
 import (
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/junit"
-	ginkgo_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 	"testing"
+
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/junit"
+	ginkgo_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

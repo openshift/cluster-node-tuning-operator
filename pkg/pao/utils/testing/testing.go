@@ -1,7 +1,7 @@
 package testing
 
 import (
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

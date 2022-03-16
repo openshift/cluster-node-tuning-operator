@@ -3,10 +3,10 @@ package profile
 import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components"
 
-	testutils "github.com/openshift-kni/performance-addon-operators/pkg/utils/testing"
+	testutils "github.com/openshift/cluster-node-tuning-operator/pkg/pao/utils/testing"
 )
 
 const (

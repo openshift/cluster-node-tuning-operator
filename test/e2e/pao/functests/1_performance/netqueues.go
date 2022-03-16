@@ -18,15 +18,15 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
-	testutils "github.com/openshift-kni/performance-addon-operators/functests/utils"
-	testclient "github.com/openshift-kni/performance-addon-operators/functests/utils/client"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/cluster"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/discovery"
-	testlog "github.com/openshift-kni/performance-addon-operators/functests/utils/log"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/nodes"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/pods"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/profiles"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
+	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils"
+	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/cluster"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/discovery"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/log"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/nodes"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/pods"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/profiles"
 )
 
 var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", func() {

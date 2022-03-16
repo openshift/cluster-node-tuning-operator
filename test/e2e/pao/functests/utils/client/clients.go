@@ -19,10 +19,10 @@ import (
 	operatorsv1alpha1 "github.com/operator-framework/operator-lifecycle-manager/pkg/api/apis/operators/v1alpha1"
 	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 
-	performancev1 "github.com/openshift-kni/performance-addon-operators/api/v1"
-	performancev1alpha1 "github.com/openshift-kni/performance-addon-operators/api/v1alpha1"
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
-	testlog "github.com/openshift-kni/performance-addon-operators/functests/utils/log"
+	performancev1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v1"
+	performancev1alpha1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v1alpha1"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/log"
 )
 
 var (

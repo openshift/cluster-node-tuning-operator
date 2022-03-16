@@ -1,0 +1,457 @@
+---
+apiVersion: v1
+kind: Node
+metadata:
+  annotations:
+    machine.openshift.io/machine: openshift-machine-api/master3
+    machineconfiguration.openshift.io/currentConfig: rendered-master-e92b311a0208749dbba5c4458afcc653
+    machineconfiguration.openshift.io/desiredConfig: rendered-master-e92b311a0208749dbba5c4458afcc653
+    machineconfiguration.openshift.io/reason: ""
+    machineconfiguration.openshift.io/state: Done
+    volumes.kubernetes.io/controller-managed-attach-detach: "true"
+  creationTimestamp: "2020-11-25T07:56:27Z"
+  finalizers:
+  - metal3.io/capbm
+  labels:
+    beta.kubernetes.io/arch: amd64
+    beta.kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: master3
+    kubernetes.io/os: linux
+    node-role.kubernetes.io/master: ""
+    node-role.kubernetes.io/virtual: ""
+    node.openshift.io/os_id: rhcos
+  managedFields:
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:labels:
+          f:beta.kubernetes.io/arch: {}
+          f:beta.kubernetes.io/os: {}
+      f:spec:
+        f:podCIDR: {}
+        f:podCIDRs:
+          .: {}
+          v:"10.132.1.0/24": {}
+        f:taints: {}
+    manager: kube-controller-manager
+    operation: Update
+    time: "2020-11-25T07:59:08Z"
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          f:machineconfiguration.openshift.io/currentConfig: {}
+          f:machineconfiguration.openshift.io/desiredConfig: {}
+          f:machineconfiguration.openshift.io/reason: {}
+          f:machineconfiguration.openshift.io/state: {}
+    manager: machine-config-daemon
+    operation: Update
+    time: "2020-11-25T08:01:36Z"
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          f:machine.openshift.io/machine: {}
+    manager: nodelink-controller
+    operation: Update
+    time: "2020-11-25T08:14:20Z"
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:finalizers:
+          .: {}
+          v:"metal3.io/capbm": {}
+      f:spec:
+        f:providerID: {}
+    manager: machine-controller-manager
+    operation: Update
+    time: "2020-11-25T08:14:21Z"
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:labels:
+          f:node-role.kubernetes.io/virtual: {}
+    manager: kubectl-label
+    operation: Update
+    time: "2020-11-25T08:35:46Z"
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          f:k8s.ovn.org/l3-gateway-config: {}
+          f:k8s.ovn.org/node-chassis-id: {}
+          f:k8s.ovn.org/node-join-subnets: {}
+          f:k8s.ovn.org/node-local-nat-ip: {}
+          f:k8s.ovn.org/node-mgmt-port-mac-address: {}
+          f:k8s.ovn.org/node-primary-ifaddr: {}
+          f:k8s.ovn.org/node-subnets: {}
+    manager: ovnkube
+    operation: Update
+    time: "2020-12-23T11:34:09Z"
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          .: {}
+          f:volumes.kubernetes.io/controller-managed-attach-detach: {}
+        f:labels:
+          .: {}
+          f:kubernetes.io/arch: {}
+          f:kubernetes.io/hostname: {}
+          f:kubernetes.io/os: {}
+          f:node-role.kubernetes.io/master: {}
+          f:node.openshift.io/os_id: {}
+      f:status:
+        f:addresses:
+          .: {}
+          k:{"type":"Hostname"}:
+            .: {}
+            f:address: {}
+            f:type: {}
+          k:{"type":"InternalIP"}:
+            .: {}
+            f:address: {}
+            f:type: {}
+        f:allocatable:
+          .: {}
+          f:cpu: {}
+          f:ephemeral-storage: {}
+          f:hugepages-1Gi: {}
+          f:hugepages-2Mi: {}
+          f:memory: {}
+          f:pods: {}
+        f:capacity:
+          .: {}
+          f:cpu: {}
+          f:ephemeral-storage: {}
+          f:hugepages-1Gi: {}
+          f:hugepages-2Mi: {}
+          f:memory: {}
+          f:pods: {}
+        f:conditions:
+          .: {}
+          k:{"type":"DiskPressure"}:
+            .: {}
+            f:lastHeartbeatTime: {}
+            f:lastTransitionTime: {}
+            f:message: {}
+            f:reason: {}
+            f:status: {}
+            f:type: {}
+          k:{"type":"MemoryPressure"}:
+            .: {}
+            f:lastHeartbeatTime: {}
+            f:lastTransitionTime: {}
+            f:message: {}
+            f:reason: {}
+            f:status: {}
+            f:type: {}
+          k:{"type":"PIDPressure"}:
+            .: {}
+            f:lastHeartbeatTime: {}
+            f:lastTransitionTime: {}
+            f:message: {}
+            f:reason: {}
+            f:status: {}
+            f:type: {}
+          k:{"type":"Ready"}:
+            .: {}
+            f:lastHeartbeatTime: {}
+            f:lastTransitionTime: {}
+            f:message: {}
+            f:reason: {}
+            f:status: {}
+            f:type: {}
+        f:daemonEndpoints:
+          f:kubeletEndpoint:
+            f:Port: {}
+        f:images: {}
+        f:nodeInfo:
+          f:architecture: {}
+          f:bootID: {}
+          f:containerRuntimeVersion: {}
+          f:kernelVersion: {}
+          f:kubeProxyVersion: {}
+          f:kubeletVersion: {}
+          f:machineID: {}
+          f:operatingSystem: {}
+          f:osImage: {}
+          f:systemUUID: {}
+    manager: kubelet
+    operation: Update
+    time: "2021-02-19T00:31:12Z"
+  name: master3
+  resourceVersion: "38562754"
+  selfLink: /api/v1/nodes/master3
+  uid: 94aabdc5-8e6f-4965-896d-3d68c8043fbf
+spec:
+  providerID: baremetalhost:///openshift-machine-api/cnfd1-master-0
+  taints:
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/master
+status:
+  addresses:
+  - address: master3
+    type: Hostname
+  allocatable:
+    cpu: 7500m
+    ephemeral-storage: "94993016264"
+    hugepages-1Gi: "0"
+    hugepages-2Mi: "0"
+    memory: 31782368Ki
+    pods: "250"
+  capacity:
+    cpu: "8"
+    ephemeral-storage: 101796Mi
+    hugepages-1Gi: "0"
+    hugepages-2Mi: "0"
+    memory: 32933344Ki
+    pods: "250"
+  conditions:
+  - lastHeartbeatTime: "2021-02-19T00:31:12Z"
+    lastTransitionTime: "2020-11-25T07:56:27Z"
+    message: kubelet has sufficient memory available
+    reason: KubeletHasSufficientMemory
+    status: "False"
+    type: MemoryPressure
+  - lastHeartbeatTime: "2021-02-19T00:31:12Z"
+    lastTransitionTime: "2020-11-25T07:56:27Z"
+    message: kubelet has no disk pressure
+    reason: KubeletHasNoDiskPressure
+    status: "False"
+    type: DiskPressure
+  - lastHeartbeatTime: "2021-02-19T00:31:12Z"
+    lastTransitionTime: "2020-11-25T07:56:27Z"
+    message: kubelet has sufficient PID available
+    reason: KubeletHasSufficientPID
+    status: "False"
+    type: PIDPressure
+  - lastHeartbeatTime: "2021-02-19T00:31:12Z"
+    lastTransitionTime: "2020-11-25T07:59:08Z"
+    message: kubelet is posting ready status
+    reason: KubeletReady
+    status: "True"
+    type: Ready
+  daemonEndpoints:
+    kubeletEndpoint:
+      Port: 10250
+  images:
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:0f786db417224d3b4a5456f0a545f2a53b31ee9cc0f559a5738a93154a6367d0
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 884336421
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:f27a23cd9f23951711f8aa7d66d4a6a1fd68071fa98ac0d5077a160a5d05f922
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 774713580
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:d849673f6cc38712f0add9d478a6326f1f6c2d3e739f6b81574a403dabba0bd3
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 687443805
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:102e8cced32335144b5567ed3159d31aa267d0b1f2e8de8454d53b175e1df718
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 519118014
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:29e3f55ba5be8cc2f8a431411fc75c8bf2f07a5b55f4ab9a81c603052c82c5dd
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 505930943
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:4cffc88a97ba39c1a6a9ce45cf406bb29011a72766dc6f4deb0d76f7cd6eb02a
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 486536450
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:7e21960829179b702d31bb220f8b61b9715b8e0fd91d671b8615b0a8599cf1f0
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 478316539
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:c8f0b9a2852b15b45487c08c158e10f3b803d7a77538d6dbc1d991994f58bcee
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 418066712
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:456dff747967eadbbfc6e9c53b180049bbba09e85cba7d77abe0e36bfc02817a
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 375119644
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:3b5f75e0bb4f4e2e74aee6016030bfcce9cf71e52244f6fa689a673e619b35a4
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 372122608
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:248079028275bd57deb5c810fc91b5c4e9138f706084bfa953aa64c833652ef0
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 348879632
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:326516b79a528dc627e5a5d84c986fd35e5f8ff5cbd74ff0ef802473efccd285
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 342541880
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:3a02341afe177329a39e49836e4c49d194affc8c4754fb360f0f760806f3bc2f
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 341937980
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:47c2f751ab0d5ee88e2826749f1372e6a24db3d0c0c942136ae84db17cb7f086
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 341659335
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:a95399379b48916216c49b1e4d4786b19081378ccd5821b27d97b496edd56a86
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 341611087
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:e626fa44d64c4b9bf6dc66fafa7fa4e640eaeb15359d2f40bb0772c351b4dab5
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 340736830
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:831f29043e6a2933169c6595281c58c3c7e31232866e1ffe1130845d7b7744af
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 340684520
+  - names:
+    - quay.io/openshift/origin-sriov-dp-admission-controller@sha256:3a9e0e5bccf522e7e9537bf626dd01f9894228b7a16573d209bf4856798e8e57
+    - quay.io/openshift/origin-sriov-dp-admission-controller@sha256:<none>
+    sizeBytes: 339726486
+  - names:
+    - quay.io/openshift/origin-sriov-dp-admission-controller@sha256:63c162756ed6b5e67daafbd34f636ca461a18ea12f1352ae6172d27c9c95aff8
+    - quay.io/openshift/origin-sriov-dp-admission-controller@sha256:<none>
+    sizeBytes: 339116800
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:c052581031d9cb44b7e5a571db1cea25854733a977584a67718100cac56e2160
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 338045804
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:4aa2cfd65a6d1ae112f591eb59336a05df72b59f6e053c418bfd5424ed372608
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 337811610
+  - names:
+    - quay.io/openshift/origin-must-gather@sha256:c42733fdc4d028c582f745822cd5bc4cfb924ebba62e2a9fb410e7bc255fe1f9
+    - quay.io/openshift/origin-must-gather:latest
+    sizeBytes: 335337156
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:a501d66461b0f24d2d551ec141617577ed417fdc4bc69db39f919e4e668a2889
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 331223794
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:02656bc5f5d78919453f86fa63c6531c6e0f1bbb4f3abcc662b6726b5619acec
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 330508411
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:759062d6a339a6915d499fc875f365cc1d3e52ededb6249ac19047b98dac9771
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 326516257
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:f6746db8ee59600c8c3936d035aa30ad81890de42814ec0fafd12809a0c8eb39
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 321353407
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:15d31443dbc6830af67840c6a199e3b93b03168d4d993e453bbacde702d4c25e
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 320374187
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:12531b40785d46fde636bedbe93f549c7a9bd5eab146468927ae8347fb9e4aac
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 320369930
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:cad230fbee655fa6a021a06d0a7e0888f7fec60127e467b18ec6ba93bcfc1d98
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 319394632
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:b93d895f9b0733c924651a7f2ab3d0bb3854f4202eb55cb2086f13a4ce7aae84
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 318520120
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:6aece72b8448aaf5533f64674acbddf8b51d21355336807e85e59f3bac25d3e7
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 317658369
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:4e580c9df1a09ab8e0647fc0e378d792a4c3078b4a06120264ab00917e71e783
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 316367713
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:fa21f4b6288e4665090901e4904f12b0eae1a23d24fefaa06ba951b2b4ce017f
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 316357508
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:34fbc764dec54739ee9d466ef5f56cfdbd6d6e5784534e28da9eb0d1f011ef72
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 314684850
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:73f54514498459ae65d33619ab9208248bf217b67c115b74aa6688662e9e111a
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 311647548
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:8cc28a3ed35c28e3184f33e3a7e8f4755af57ea1c321b3874d18acba711a8104
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 309676114
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:904e22f8c8970422b10208295ce05cacd9dc15fa0433806cb1b2035c74db193e
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 308789532
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:54e61ec737612af1eb38c01fb7829dcba44f4de3cbcb52f029a95c73b9c2d7fb
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 305778268
+  - names:
+    - quay.io/openshift/origin-sriov-network-device-plugin@sha256:cb260fd8bd6914e52c3f2899be14990cab15afdd3620194b68013bea7b0e2826
+    - quay.io/openshift/origin-sriov-network-device-plugin@sha256:<none>
+    sizeBytes: 305304768
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:b0bbfa15a10b4308f07490670fb94203a5f63d9ad6b40e55b3bb959e9bf731d2
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 305027413
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:7211fbc109efa51e20b4be2f5f327e00127076423ef384bde250d909da95257f
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 304947009
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:d8bdb0125b1287565b5464a6d6181fd9fe706641efd68063bdb317270bd11887
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 304593198
+  - names:
+    - quay.io/openshift/origin-sriov-network-operator@sha256:b125f8f9990b7341c704d365ad65b4ef17d3903c6be223a3301c7492b4e16b02
+    - quay.io/openshift/origin-sriov-network-operator@sha256:<none>
+    sizeBytes: 299461624
+  - names:
+    - quay.io/openshift/origin-sriov-network-webhook@sha256:5981ec1e4592b082b0a3e20b95da65863505b602867b0550772bd8f28e1cfd10
+    - quay.io/openshift/origin-sriov-network-webhook@sha256:<none>
+    sizeBytes: 297518232
+  - names:
+    - quay.io/openshift/origin-sriov-network-webhook@sha256:57a58e1b2d8d3bd34555375f8f06b805745010f77854fada89a8219ad0237635
+    - quay.io/openshift/origin-sriov-network-webhook@sha256:<none>
+    sizeBytes: 295059596
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:1855db32ca2d846c9ad9af104d2e27ffa41b1054af031ac3d19e412c330fc66e
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 278561358
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:f80375a7ad29fb23de302b0e82ae460580681d1805829c214bad13e84d94b784
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 275648050
+  - names:
+    - quay.io/openshift/origin-sriov-infiniband-cni@sha256:1b2878bcf2834fc94311680c51be12b0035f843cfe17ce1a2cfeae6823e49d14
+    - quay.io/openshift/origin-sriov-infiniband-cni@sha256:<none>
+    sizeBytes: 271428718
+  - names:
+    - quay.io/openshift/origin-sriov-cni@sha256:122413b37f91bfb890f50ad435f93b247ef3a8f6fabb441c634750567d1781b4
+    - quay.io/openshift/origin-sriov-cni@sha256:<none>
+    sizeBytes: 269939282
+  - names:
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:00900d48c5796ecb8c0599ab6a0946347947dbcd2acc883665240c2ec9b33fd5
+    - quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:<none>
+    sizeBytes: 269278836
+  nodeInfo:
+    architecture: amd64
+    bootID: bd5c30ee-8db5-49fa-a85a-59f1c78d217e
+    containerRuntimeVersion: cri-o://1.19.0-22.rhaos4.6.gitc0306f1.el8
+    kernelVersion: 4.18.0-193.29.1.el8_2.x86_64
+    kubeProxyVersion: v1.19.0+9f84db3
+    kubeletVersion: v1.19.0+9f84db3
+    machineID: ec4898e8241e4438aabada39dcbb6568
+    operatingSystem: linux
+    osImage: Red Hat Enterprise Linux CoreOS 46.82.202011061621-0 (Ootpa)
+    systemUUID: ec4898e8-241e-4438-aaba-da39dcbb6568

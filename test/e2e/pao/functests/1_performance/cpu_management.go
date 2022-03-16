@@ -21,18 +21,18 @@ import (
 	"github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
-	testutils "github.com/openshift-kni/performance-addon-operators/functests/utils"
-	testclient "github.com/openshift-kni/performance-addon-operators/functests/utils/client"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/cluster"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/discovery"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/events"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/images"
-	testlog "github.com/openshift-kni/performance-addon-operators/functests/utils/log"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/nodes"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/pods"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/profiles"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components"
+	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils"
+	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/cluster"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/events"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/images"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/log"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/nodes"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/pods"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/profiles"
 )
 
 var workerRTNode *corev1.Node
@@ -462,7 +462,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		It("should run infra containers on reserved CPUs", func() {
+		It("[test_id:49147] should run infra containers on reserved CPUs", func() {
 			var err error
 			// find used because that crictl does not show infra containers, `runc list` shows them
 			// but you will need somehow to find infra containers ID's
@@ -532,7 +532,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
 			deleteTestPod(testpod)
 		})
 
-		It("should reject pods which request integral CPUs not aligned with machine SMT level", func() {
+		It("[test_id:49149] should reject pods which request integral CPUs not aligned with machine SMT level", func() {
 			// any random existing cpu is fine
 			cpuID := onlineCPUSet.ToSliceNoSort()[0]
 			smtLevel := nodes.GetSMTLevel(cpuID, workerRTNode)

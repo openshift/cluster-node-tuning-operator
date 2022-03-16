@@ -1,13 +1,13 @@
-package controllers
+package controller
 
 import (
 	"bytes"
 	"context"
 	"time"
 
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components"
 	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	corev1 "k8s.io/api/core/v1"

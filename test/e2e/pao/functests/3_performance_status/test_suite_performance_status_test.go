@@ -15,11 +15,11 @@ import (
 
 	ginkgo_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 
-	testutils "github.com/openshift-kni/performance-addon-operators/functests/utils"
-	testclient "github.com/openshift-kni/performance-addon-operators/functests/utils/client"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/junit"
-	testlog "github.com/openshift-kni/performance-addon-operators/functests/utils/log"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/namespaces"
+	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils"
+	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/junit"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/log"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/namespaces"
 )
 
 var _ = BeforeSuite(func() {

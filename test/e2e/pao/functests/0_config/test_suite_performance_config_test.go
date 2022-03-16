@@ -8,11 +8,10 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/junit"
 
-	testclient "github.com/openshift-kni/performance-addon-operators/functests/utils/client"
+	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/client"
 	ginkgo_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
-
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/junit"
 )
 
 func TestPerformanceConfig(t *testing.T) {

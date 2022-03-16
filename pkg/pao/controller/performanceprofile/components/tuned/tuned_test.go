@@ -9,9 +9,9 @@ import (
 	"github.com/ghodss/yaml"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components"
-	testutils "github.com/openshift-kni/performance-addon-operators/pkg/utils/testing"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components"
+	testutils "github.com/openshift/cluster-node-tuning-operator/pkg/pao/utils/testing"
 
 	cpuset "k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"k8s.io/utils/pointer"

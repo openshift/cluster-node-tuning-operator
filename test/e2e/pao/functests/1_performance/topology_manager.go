@@ -4,11 +4,11 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
-	testutils "github.com/openshift-kni/performance-addon-operators/functests/utils"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/discovery"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/nodes"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/profiles"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
+	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/nodes"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/profiles"
 
 	corev1 "k8s.io/api/core/v1"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"

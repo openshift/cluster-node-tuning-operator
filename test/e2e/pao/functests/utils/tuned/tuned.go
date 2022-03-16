@@ -11,8 +11,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
 
-	testclient "github.com/openshift-kni/performance-addon-operators/functests/utils/client"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components"
+	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/client"
 )
 
 func WaitForAppliedCondition(tunedProfileNames []string, conditionStatus corev1.ConditionStatus, timeout time.Duration) error {

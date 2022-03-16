@@ -11,7 +11,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	"github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
-	testlog "github.com/openshift-kni/performance-addon-operators/functests/utils/log"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/log"
 )
 
 const (
@@ -206,30 +206,32 @@ func clearEnv() {
 
 func getValidValuesTests(toolToTest string) []latencyTest {
 	var testSet []latencyTest
-	testSet = append(testSet, latencyTest{testDelay: "0", testRun: "true", testRuntime: "5", testMaxLatency: guaranteedLatency, testCpus: "2", outputMsgs: []string{success}, toolToTest: toolToTest})
-	testSet = append(testSet, latencyTest{testDelay: "0", testRun: "true", testRuntime: "1", testMaxLatency: guaranteedLatency, testCpus: "5", outputMsgs: []string{success}, toolToTest: toolToTest})
-	//BZ https://bugzilla.redhat.com/show_bug.cgi?id=2006675
-	if toolToTest == oslat {
-		testSet = append(testSet, latencyTest{testDelay: "1", testRun: "true", testRuntime: "2", testMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
-		testSet = append(testSet, latencyTest{testDelay: "60", testRun: "true", testRuntime: "2", testMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
-	}
+
+	//testRuntime: let runtime be 10 seconds for most of the tests and not less, that is to let the tools
+	//have their time to measure latency properly hence stabilizing the tests
+	//testCpus: for tests that expect a success output message, note that an even CPU number is needed, otherwise the test would fail with SMTAlignmentError
+	testSet = append(testSet, latencyTest{testDelay: "0", testRun: "true", testRuntime: "10", testMaxLatency: guaranteedLatency, testCpus: "2", outputMsgs: []string{success}, toolToTest: toolToTest})
+	testSet = append(testSet, latencyTest{testDelay: "0", testRun: "true", testRuntime: "10", testMaxLatency: guaranteedLatency, testCpus: "6", outputMsgs: []string{success}, toolToTest: toolToTest})
+	testSet = append(testSet, latencyTest{testDelay: "1", testRun: "true", testRuntime: "10", testMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
+	testSet = append(testSet, latencyTest{testDelay: "60", testRun: "true", testRuntime: "2", testMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
+
 	if toolToTest != hwlatdetect {
-		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "5", outputMsgs: []string{skip, skipMaxLatency}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "1", outputMsgs: []string{skip, skipMaxLatency}, toolToTest: toolToTest})
 	}
 	if toolToTest == oslat {
-		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "5", testMaxLatency: "1", oslatMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
-		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "5", oslatMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
-		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "2", testMaxLatency: guaranteedLatency, testCpus: "1", outputMsgs: []string{skip, skipOslatCpuNumber}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", testMaxLatency: "1", oslatMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", oslatMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", testMaxLatency: guaranteedLatency, testCpus: "1", outputMsgs: []string{skip, skipOslatCpuNumber}, toolToTest: toolToTest})
 	}
 	if toolToTest == cyclictest {
-		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "5", testMaxLatency: "1", cyclictestMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
-		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "5", cyclictestMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", testMaxLatency: "1", cyclictestMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", cyclictestMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
 
 	}
 	if toolToTest == hwlatdetect {
-		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "5", testMaxLatency: "1", hwlatdetectMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
-		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "5", hwlatdetectMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
-		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "5", outputMsgs: []string{success}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", testMaxLatency: "1", hwlatdetectMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", hwlatdetectMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", outputMsgs: []string{success}, toolToTest: toolToTest})
 	}
 	return testSet
 }
@@ -240,7 +242,7 @@ func getNegativeTests(toolToTest string) []latencyTest {
 	if toolToTest == hwlatdetect {
 		latencyFailureMsg = hwlatdetectFail
 	}
-
+	//TODO: add test to check odd CPU request.
 	testSet = append(testSet, latencyTest{testDelay: "0", testRun: "true", testRuntime: "5", testMaxLatency: "1", outputMsgs: []string{latencyFailureMsg, fail}, toolToTest: toolToTest})
 	testSet = append(testSet, latencyTest{testRun: "yes", testRuntime: "5", testMaxLatency: "1", outputMsgs: []string{incorrectTestRun, fail}, toolToTest: toolToTest})
 	testSet = append(testSet, latencyTest{testRun: "true", testRuntime: fmt.Sprint(math.MaxInt32 + 1), outputMsgs: []string{invalidNumberRuntime, fail}, toolToTest: toolToTest})

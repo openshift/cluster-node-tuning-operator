@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/discovery"
 )
 
 // RoleWorkerCNF contains role name of cnf worker nodes

@@ -3,7 +3,7 @@ package v1alpha1
 import (
 	"k8s.io/utils/pointer"
 
-	v1 "github.com/openshift-kni/performance-addon-operators/api/v1"
+	v1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v1"
 	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 
 	"sigs.k8s.io/controller-runtime/pkg/conversion"

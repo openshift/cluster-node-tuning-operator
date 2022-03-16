@@ -10,7 +10,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/junit"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/junit"
 	ginkgo_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 )
 

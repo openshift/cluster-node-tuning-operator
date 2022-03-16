@@ -1,13 +1,13 @@
 package manifestset
 
 import (
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/kubeletconfig"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/machineconfig"
-	profilecomponent "github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/profile"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/runtimeclass"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/tuned"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/kubeletconfig"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/machineconfig"
+	profilecomponent "github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/profile"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/runtimeclass"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/tuned"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	nodev1beta1 "k8s.io/api/node/v1beta1"

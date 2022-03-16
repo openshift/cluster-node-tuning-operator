@@ -21,17 +21,17 @@ import (
 
 	mcv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils"
-	testutils "github.com/openshift-kni/performance-addon-operators/functests/utils"
-	testclient "github.com/openshift-kni/performance-addon-operators/functests/utils/client"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/cluster"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/discovery"
-	testlog "github.com/openshift-kni/performance-addon-operators/functests/utils/log"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/mcps"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/profiles"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/profile"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/profile"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils"
+	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils"
+	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/cluster"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/discovery"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/log"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/mcps"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/profiles"
 )
 
 var RunningOnSingleNode bool

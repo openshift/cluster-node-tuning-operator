@@ -1,11 +1,12 @@
 #!/bin/bash
 
-GINKGO_SUITS=${GINKGO_SUITS:-functests-render-command}
+GINKGO_SUITS=${GINKGO_SUITS:-"test/e2e/pao/functests-render-command"}
 
 which ginkgo
 if [ $? -ne 0 ]; then
 	echo "Downloading ginkgo tool"
-	go install github.com/onsi/ginkgo/ginkgo
+	#go install github.com/onsi/ginkgo/ginkgo
+  go install github.com/onsi/ginkgo/ginkgo@v1.16.5
 fi
 
 NO_COLOR=""

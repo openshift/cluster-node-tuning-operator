@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package controllers
+package controller
 
 import (
 	"context"
@@ -22,17 +22,21 @@ import (
 	"reflect"
 	"time"
 
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/machineconfig"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/manifestset"
-	profileutil "github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/profile"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/machineconfig"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/manifestset"
+	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/profile"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
+
+	olmv1 "github.com/operator-framework/api/pkg/operators/v1"
+	olmv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 
 	corev1 "k8s.io/api/core/v1"
 	nodev1beta1 "k8s.io/api/node/v1beta1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/errors"
 	k8serros "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -57,8 +61,9 @@ const finalizer = "foreground-deletion"
 // PerformanceProfileReconciler reconciles a PerformanceProfile object
 type PerformanceProfileReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Scheme     *runtime.Scheme
+	Recorder   record.EventRecorder
+	olmRemoved bool
 }
 
 // SetupWithManager creates a new PerformanceProfile Controller and adds it to the Manager.
@@ -133,6 +138,72 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 			builder.WithPredicates(tunedProfilePredicates),
 		).
 		Complete(r)
+}
+
+// uninstall PAO OLM operator and all of its artifacts
+// this should apply only from version 4.11
+func (r *PerformanceProfileReconciler) removeOLMOperator() error {
+	paoCSV := "performance-addon-operator.v4.10.0"
+	subscription := &olmv1alpha1.Subscription{}
+	key := types.NamespacedName{
+		Name:      "performance-addon-operator",
+		Namespace: "openshift-performance-addon-operator",
+	}
+
+	if err := r.Get(context.TODO(), key, subscription); err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		}
+	} else {
+		klog.Infof("Removing performance-addon-operator subscription %s", subscription.Name)
+		if subscription.Status.CurrentCSV != paoCSV {
+			return fmt.Errorf("Subscription to be removed contains a current CSV version %s which is different from %s", subscription.Status.CurrentCSV, paoCSV)
+		}
+		if err := r.Delete(context.TODO(), subscription); err != nil {
+			return err
+		}
+	}
+
+	csv, err := r.getCSV(paoCSV, "openshift-performance-addon-operator")
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			klog.Infof("Performance addon operator csv %s not found. no need for OLM content removal.", paoCSV)
+		}
+	} else {
+		klog.Infof("Removing performance-addon-operator CSV %s", paoCSV)
+		if err := r.Delete(context.TODO(), csv); err != nil {
+			return err
+		}
+	}
+
+	operatorGroup := &olmv1.OperatorGroup{}
+	key = types.NamespacedName{
+		Name:      "performance-addon-operator",
+		Namespace: "openshift-performance-addon-operator",
+	}
+
+	if err := r.Get(context.TODO(), key, operatorGroup); err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		}
+	} else {
+		klog.Infof("Removing performance-addon-operator operator group %s", operatorGroup.Name)
+		if err := r.Delete(context.TODO(), operatorGroup); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *PerformanceProfileReconciler) getCSV(name, namespace string) (*olmv1alpha1.ClusterServiceVersion, error) {
+	csv := &olmv1alpha1.ClusterServiceVersion{}
+	key := types.NamespacedName{
+		Name:      name,
+		Namespace: namespace,
+	}
+	err := r.Get(context.TODO(), key, csv)
+	return csv, err
 }
 
 func (r *PerformanceProfileReconciler) mcpToPerformanceProfile(mcpObj client.Object) []reconcile.Request {
@@ -220,10 +291,10 @@ func validateUpdateEvent(e *event.UpdateEvent) bool {
 // +kubebuilder:rbac:groups=tuned.openshift.io,resources=tuneds;profiles,verbs=*
 // +kubebuilder:rbac:groups=node.k8s.io,resources=runtimeclasses,verbs=*
 // +kubebuilder:rbac:groups=config.openshift.io,resources=infrastructures,verbs=get;list;watch
-// +kubebuilder:rbac:namespace="openshift-performance-addon-operator",groups=core,resources=pods;services;services/finalizers;configmaps,verbs=*
-// +kubebuilder:rbac:namespace="openshift-performance-addon-operator",groups=coordination.k8s.io,resources=leases,verbs=create;get;list;update
-// +kubebuilder:rbac:namespace="openshift-performance-addon-operator",groups=apps,resourceNames=performance-operator,resources=deployments/finalizers,verbs=update
-// +kubebuilder:rbac:namespace="openshift-performance-addon-operator",groups=monitoring.coreos.com,resources=servicemonitors,verbs=*
+// +kubebuilder:rbac:namespace="openshift-cluster-node-tuning-operator",groups=core,resources=pods;services;services/finalizers;configmaps,verbs=*
+// +kubebuilder:rbac:namespace="openshift-cluster-node-tuning-operator",groups=coordination.k8s.io,resources=leases,verbs=create;get;list;update
+// +kubebuilder:rbac:namespace="openshift-cluster-node-tuning-operator",groups=apps,resourceNames=performance-operator,resources=deployments/finalizers,verbs=update
+// +kubebuilder:rbac:namespace="openshift-cluster-node-tuning-operator",groups=monitoring.coreos.com,resources=servicemonitors,verbs=*
 
 // Reconcile reads that state of the cluster for a PerformanceProfile object and makes changes based on the state read
 // and what is in the PerformanceProfile.Spec
@@ -232,6 +303,15 @@ func validateUpdateEvent(e *event.UpdateEvent) bool {
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	klog.Info("Reconciling PerformanceProfile")
+
+	// This should be deprecated in openshift 4.12
+	if !r.olmRemoved {
+		if err := r.removeOLMOperator(); err != nil {
+			return reconcile.Result{}, err
+		} else {
+			r.olmRemoved = true
+		}
+	}
 
 	// Fetch the PerformanceProfile instance
 	instance := &performancev2.PerformanceProfile{}

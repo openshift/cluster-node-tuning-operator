@@ -13,15 +13,15 @@ import (
 
 	"github.com/ghodss/yaml"
 
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
-	"github.com/openshift-kni/performance-addon-operators/cmd/performance-profile-creator/cmd"
-	testutils "github.com/openshift-kni/performance-addon-operators/functests/utils"
+	"github.com/openshift/cluster-node-tuning-operator/cmd/performance-profile-creator/cmd"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
+	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils"
 )
 
 const (
-	mustGatherPath       = "../../testdata/must-gather"
-	expectedProfilesPath = "../../testdata/ppc-expected-profiles"
-	expectedInfoPath     = "../../testdata/ppc-expected-info"
+	mustGatherPath       = "../../test/e2e/pao/testdata/must-gather"
+	expectedProfilesPath = "../../test/e2e/pao/testdata/ppc-expected-profiles"
+	expectedInfoPath     = "../../test/e2e/pao/testdata/ppc-expected-info"
 	ppcPath              = "../../build/_output/bin/performance-profile-creator"
 )
 

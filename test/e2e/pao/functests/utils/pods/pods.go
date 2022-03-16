@@ -14,7 +14,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -22,9 +21,8 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	testclient "github.com/openshift-kni/performance-addon-operators/functests/utils/client"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/images"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/namespaces"
+	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/images"
 )
 
 // DefaultDeletionTimeout contains the default pod deletion timeout in seconds
@@ -218,24 +216,4 @@ func GetContainerIDByName(pod *corev1.Pod, containerName string) (string, error)
 		}
 	}
 	return "", fmt.Errorf("failed to find the container ID for the container %q under the pod %q", containerName, pod.Name)
-}
-
-// GetPerformanceOperatorPod returns the pod running the Performance Profile Operator
-func GetPerformanceOperatorPod() (*corev1.Pod, error) {
-	selector, err := labels.Parse(fmt.Sprintf("%s=%s", "name", "performance-operator"))
-	if err != nil {
-		return nil, err
-	}
-
-	pods := &corev1.PodList{}
-
-	opts := &client.ListOptions{LabelSelector: selector, Namespace: namespaces.PerformanceOperator}
-	if err := testclient.Client.List(context.TODO(), pods, opts); err != nil {
-		return nil, err
-	}
-	if len(pods.Items) != 1 {
-		return nil, fmt.Errorf("incorrect performance operator pods count: %d", len(pods.Items))
-	}
-
-	return &pods.Items[0], nil
 }

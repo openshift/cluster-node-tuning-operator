@@ -11,14 +11,14 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 
-	testutils "github.com/openshift-kni/performance-addon-operators/functests/utils"
-	testclient "github.com/openshift-kni/performance-addon-operators/functests/utils/client"
+	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils"
+	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/client"
 )
 
 // PerformanceOperator contains the name of the performance operator namespace
 // default as recommended in
 // https://docs.openshift.com/container-platform/4.6/scalability_and_performance/cnf-performance-addon-operator-for-low-latency-nodes.html#install-operator-cli_cnf-master
-var PerformanceOperator string = "openshift-performance-addon-operator"
+var PerformanceOperator string = "openshift-cluster-node-tuning-operator"
 
 func init() {
 	if operatorNS, ok := os.LookupEnv("PERFORMANCE_OPERATOR_NAMESPACE"); ok {

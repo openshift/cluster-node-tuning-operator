@@ -9,8 +9,8 @@ import (
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/pointer"
 
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components"
-	testutils "github.com/openshift-kni/performance-addon-operators/pkg/utils/testing"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components"
+	testutils "github.com/openshift/cluster-node-tuning-operator/pkg/pao/utils/testing"
 )
 
 const testReservedMemory = `reservedMemory:

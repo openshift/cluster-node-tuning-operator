@@ -8,12 +8,12 @@ import (
 	"github.com/ghodss/yaml"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
 )
 
 const (
-	crFilename         = "../config/samples/performance_v2_performanceprofile.yaml"
-	crdFilename        = "../config/crd/bases/performance.openshift.io_performanceprofiles.yaml"
+	crFilename         = "../../../examples/pao/samples/performance_v2_performanceprofile.yaml"
+	crdFilename        = "../../../examples/pao/crd/bases/performance.openshift.io_performanceprofiles.yaml"
 	lastHeartbeatPath  = "/status/conditions/lastHeartbeatTime"
 	lastTransitionPath = "/status/conditions/lastTransitionTime"
 )

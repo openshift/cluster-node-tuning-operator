@@ -18,14 +18,14 @@ import (
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
-	testutils "github.com/openshift-kni/performance-addon-operators/functests/utils"
-	testclient "github.com/openshift-kni/performance-addon-operators/functests/utils/client"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/discovery"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/mcps"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/nodes"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/profiles"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components"
+	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils"
+	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/mcps"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/nodes"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/profiles"
 )
 
 type checkFunction func(*corev1.Node) (string, error)
@@ -143,8 +143,17 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			irqLoadBalancingDisabled = !irqLoadBalancingDisabled
 			profile.Spec.GloballyDisableIrqLoadBalancing = &irqLoadBalancingDisabled
 
-			By("Updating the performance profile")
-			profiles.UpdateWithRetry(profile)
+			spec, err := json.Marshal(profile.Spec)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Applying changes in performance profile and waiting until mcp will start updating")
+			Expect(testclient.Client.Patch(context.TODO(), profile,
+				client.RawPatch(
+					types.JSONPatchType,
+					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
+				),
+			)).ToNot(HaveOccurred())
+
 			defer func() { // return initial configuration
 				spec, err := json.Marshal(initialProfile.Spec)
 				Expect(err).ToNot(HaveOccurred())
@@ -207,8 +216,16 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			By("Verifying that mcp is ready for update")
 			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 
+			spec, err := json.Marshal(profile.Spec)
+			Expect(err).ToNot(HaveOccurred())
+
 			By("Applying changes in performance profile and waiting until mcp will start updating")
-			profiles.UpdateWithRetry(profile)
+			Expect(testclient.Client.Patch(context.TODO(), profile,
+				client.RawPatch(
+					types.JSONPatchType,
+					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
+				),
+			)).ToNot(HaveOccurred())
 			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
 
 			By("Waiting when mcp finishes updates")
@@ -286,8 +303,16 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			By("Verifying that mcp is ready for update")
 			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 
+			spec, err := json.Marshal(profile.Spec)
+			Expect(err).ToNot(HaveOccurred())
+
 			By("Applying changes in performance profile and waiting until mcp will start updating")
-			profiles.UpdateWithRetry(profile)
+			Expect(testclient.Client.Patch(context.TODO(), profile,
+				client.RawPatch(
+					types.JSONPatchType,
+					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
+				),
+			)).ToNot(HaveOccurred())
 			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
 
 			By("Waiting when mcp finishes updates")
@@ -355,7 +380,16 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 			By("Applying changes in performance profile")
 			profile.Spec.RealTimeKernel = nil
-			profiles.UpdateWithRetry(profile)
+			spec, err := json.Marshal(profile.Spec)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Applying changes in performance profile and waiting until mcp will start updating")
+			Expect(testclient.Client.Patch(context.TODO(), profile,
+				client.RawPatch(
+					types.JSONPatchType,
+					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
+				),
+			)).ToNot(HaveOccurred())
 
 			Expect(profile.Spec.RealTimeKernel).To(BeNil(), "real time kernel setting expected in profile spec but missing")
 			By("Checking that the updating MCP status will consistently stay false")
@@ -384,6 +418,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 	})
 
+	// TODO: we have a dependency between tests(that in general bad practice, but saves us some tests run time),
+	// once we will want to run tests in the random order or without failFast we will need to refactor tests
 	Context("Updating of nodeSelector parameter and node labels", func() {
 		var mcp *machineconfigv1.MachineConfigPool
 		var newCnfNode *corev1.Node
@@ -418,7 +454,16 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 			By("Updating Node Selector performance profile")
 			profile.Spec.NodeSelector = newNodeSelector
-			profiles.UpdateWithRetry(profile)
+			spec, err := json.Marshal(profile.Spec)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Applying changes in performance profile and waiting until mcp will start updating")
+			Expect(testclient.Client.Patch(context.TODO(), profile,
+				client.RawPatch(
+					types.JSONPatchType,
+					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
+				),
+			)).ToNot(HaveOccurred())
 			mcps.WaitForCondition(newRole, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
 
 			By("Waiting when MCP finishes updates and verifying new node has updated configuration")
@@ -480,7 +525,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("Reverts back nodeSelector and cleaning up leftovers", func() {
-			selectorLabels := []string{}
+			var selectorLabels []string
 			for k, v := range testutils.NodeSelectorLabels {
 				selectorLabels = append(selectorLabels, fmt.Sprintf(`"%s":"%s"`, k, v))
 			}
@@ -499,7 +544,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					Namespace: profile.Namespace,
 				}
 				Expect(testclient.Client.Get(context.TODO(), key, updatedProfile)).ToNot(HaveOccurred())
-				updatedSelectorLabels := []string{}
+				var updatedSelectorLabels []string
 				for k, v := range updatedProfile.Spec.NodeSelector {
 					updatedSelectorLabels = append(updatedSelectorLabels, fmt.Sprintf(`"%s":"%s"`, k, v))
 				}
@@ -511,6 +556,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			Expect(err).ToNot(HaveOccurred())
 			Expect(testclient.Client.Delete(context.TODO(), mcp)).ToNot(HaveOccurred())
 			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
+			// revert node label to have the expected value
+			nodeLabel = testutils.NodeSelectorLabels
 		})
 	})
 })

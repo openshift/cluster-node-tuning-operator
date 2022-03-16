@@ -10,7 +10,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	testlog "github.com/openshift-kni/performance-addon-operators/functests/utils/log"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/log"
 )
 
 func WaitToBeRunning(cli client.Client, namespace, name string) error {

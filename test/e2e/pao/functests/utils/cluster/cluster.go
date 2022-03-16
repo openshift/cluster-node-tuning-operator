@@ -7,7 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	testclient "github.com/openshift-kni/performance-addon-operators/functests/utils/client"
+	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/client"
 )
 
 // IsSingleNode validates if the environment is single node cluster

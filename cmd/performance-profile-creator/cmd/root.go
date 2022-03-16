@@ -19,20 +19,22 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/openshift-kni/performance-addon-operators/pkg/profilecreator"
-	"github.com/openshift-kni/performance-addon-operators/pkg/utils/csvtools"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/profilecreator"
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	log "github.com/sirupsen/logrus"
+	"sigs.k8s.io/yaml"
 
 	"github.com/spf13/cobra"
 
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	kubeletconfig "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/pointer"
 )
@@ -506,7 +508,66 @@ func createProfile(profileData ProfileData) {
 
 	// write CSV to out dir
 	writer := strings.Builder{}
-	csvtools.MarshallObject(&profile, &writer)
+	MarshallObject(&profile, &writer)
 
 	fmt.Printf("%s", writer.String())
+}
+
+// MarshallObject mashals an object, usually a CSV into YAML
+func MarshallObject(obj interface{}, writer io.Writer) error {
+	jsonBytes, err := json.Marshal(obj)
+	if err != nil {
+		return err
+	}
+
+	var r unstructured.Unstructured
+	if err := json.Unmarshal(jsonBytes, &r.Object); err != nil {
+		return err
+	}
+
+	// remove status and metadata.creationTimestamp
+	unstructured.RemoveNestedField(r.Object, "metadata", "creationTimestamp")
+	unstructured.RemoveNestedField(r.Object, "template", "metadata", "creationTimestamp")
+	unstructured.RemoveNestedField(r.Object, "spec", "template", "metadata", "creationTimestamp")
+	unstructured.RemoveNestedField(r.Object, "status")
+
+	deployments, exists, err := unstructured.NestedSlice(r.Object, "spec", "install", "spec", "deployments")
+	if exists {
+		for _, obj := range deployments {
+			deployment := obj.(map[string]interface{})
+			unstructured.RemoveNestedField(deployment, "metadata", "creationTimestamp")
+			unstructured.RemoveNestedField(deployment, "spec", "template", "metadata", "creationTimestamp")
+			unstructured.RemoveNestedField(deployment, "status")
+		}
+		unstructured.SetNestedSlice(r.Object, deployments, "spec", "install", "spec", "deployments")
+	}
+
+	jsonBytes, err = json.Marshal(r.Object)
+	if err != nil {
+		return err
+	}
+
+	yamlBytes, err := yaml.JSONToYAML(jsonBytes)
+	if err != nil {
+		return err
+	}
+
+	// fix double quoted strings by removing unneeded single quotes...
+	s := string(yamlBytes)
+	s = strings.Replace(s, " '\"", " \"", -1)
+	s = strings.Replace(s, "\"'\n", "\"\n", -1)
+
+	yamlBytes = []byte(s)
+
+	_, err = writer.Write([]byte("---\n"))
+	if err != nil {
+		return err
+	}
+
+	_, err = writer.Write(yamlBytes)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

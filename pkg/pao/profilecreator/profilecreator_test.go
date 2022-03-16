@@ -8,15 +8,15 @@ import (
 	"github.com/jaypipes/ghw/pkg/topology"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components"
 
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	v1 "k8s.io/api/core/v1"
 )
 
 const (
-	mustGatherDirPath    = "../../testdata/must-gather/must-gather.bare-metal"
-	mustGatherSNODirPath = "../../testdata/must-gather/must-gather.sno"
+	mustGatherDirPath    = "../../../test/e2e/pao/testdata/must-gather/must-gather.bare-metal"
+	mustGatherSNODirPath = "../../../test/e2e/pao/testdata/must-gather/must-gather.sno"
 )
 
 var _ = Describe("PerformanceProfileCreator: MCP and Node Matching", func() {

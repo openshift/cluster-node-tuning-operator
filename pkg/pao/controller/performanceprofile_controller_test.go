@@ -1,4 +1,4 @@
-package controllers
+package controller
 
 import (
 	"context"
@@ -12,14 +12,14 @@ import (
 	. "github.com/onsi/gomega/gstruct"
 
 	igntypes "github.com/coreos/ignition/config/v2_2/types"
-	performancev2 "github.com/openshift-kni/performance-addon-operators/api/v2"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/kubeletconfig"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/machineconfig"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/runtimeclass"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components/tuned"
-	testutils "github.com/openshift-kni/performance-addon-operators/pkg/utils/testing"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/kubeletconfig"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/machineconfig"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/runtimeclass"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components/tuned"
+	testutils "github.com/openshift/cluster-node-tuning-operator/pkg/pao/utils/testing"
 	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 

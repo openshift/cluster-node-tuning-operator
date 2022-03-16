@@ -23,8 +23,8 @@ var _ = Describe("render command e2e test", func() {
 	BeforeEach(func() {
 		assetsOutDir = createTempAssetsDir()
 		assetsInDir = filepath.Join(workspaceDir, "build", "assets")
-		ppInFiles = filepath.Join(workspaceDir, "cluster-setup", "manual-cluster", "performance", "performance_profile.yaml")
-		testDataPath = filepath.Join(workspaceDir, "testdata")
+		ppInFiles = filepath.Join(workspaceDir, "test", "e2e", "pao", "cluster-setup", "manual-cluster", "performance", "performance_profile.yaml")
+		testDataPath = filepath.Join(workspaceDir, "test", "e2e", "pao", "testdata")
 	})
 
 	Context("With a single performance-profile", func() {

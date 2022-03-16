@@ -22,12 +22,12 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	testutils "github.com/openshift-kni/performance-addon-operators/functests/utils"
-	testclient "github.com/openshift-kni/performance-addon-operators/functests/utils/client"
-	"github.com/openshift-kni/performance-addon-operators/functests/utils/cluster"
-	testlog "github.com/openshift-kni/performance-addon-operators/functests/utils/log"
-	testpods "github.com/openshift-kni/performance-addon-operators/functests/utils/pods"
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components"
+	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils"
+	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/cluster"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/log"
+	testpods "github.com/openshift/cluster-node-tuning-operator/test/e2e/pao/functests/utils/pods"
 )
 
 const (

@@ -22,7 +22,7 @@ import (
 	"reflect"
 	"regexp"
 
-	"github.com/openshift-kni/performance-addon-operators/pkg/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/controller/performanceprofile/components"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
