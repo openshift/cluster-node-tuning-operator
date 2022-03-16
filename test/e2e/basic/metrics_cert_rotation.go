@@ -70,7 +70,6 @@ var _ = ginkgo.Describe("[basic][metrics] Node Tuning Operator certificate rotat
 				return false, nil
 			})
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
 		})
 	})
 })
@@ -101,7 +100,7 @@ func rotateTLSCertSecret() error {
 		}
 		latestCertContents := string(tlsSecret.Data["tls.crt"])
 		if len(latestCertContents) > 0 && latestCertContents != origCertContents {
-			//Secret has been updated.
+			// Secret has been updated.
 			return true, nil
 		}
 		return false, nil

@@ -27,6 +27,7 @@ var _ = ginkgo.Describe("[basic][tuned_errors_and_recovery] Cause TuneD daemon e
 	ginkgo.Context("TuneD daemon errors and recovery", func() {
 		var (
 			node *coreapi.Node
+			pod  *coreapi.Pod
 		)
 
 		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of ginkgo.It()
@@ -37,6 +38,10 @@ var _ = ginkgo.Describe("[basic][tuned_errors_and_recovery] Cause TuneD daemon e
 			}
 			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileCauseTunedFailure)
 			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileDummy)
+			if pod != nil {
+				// Without removing the profile directory this e2e test fails when invoking for the second time on the same system.
+				util.ExecAndLogCommand("oc", "exec", "-n", ntoconfig.OperatorNamespace(), pod.Name, "--", "rm", "-rf", "/etc/tuned/openshift-dummy")
+			}
 		})
 
 		ginkgo.It("Cause TuneD daemon errors on invalid profile load and recover after the profile deletion", func() {
@@ -52,6 +57,9 @@ var _ = ginkgo.Describe("[basic][tuned_errors_and_recovery] Cause TuneD daemon e
 			gomega.Expect(len(nodes)).NotTo(gomega.BeZero(), "number of worker nodes is 0")
 
 			node = &nodes[0]
+			ginkgo.By(fmt.Sprintf("getting a TuneD Pod running on node %s", node.Name))
+			pod, err = util.GetTunedForNode(cs, node)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("labelling node %s with label %s", node.Name, nodeLabelCauseTunedFailure))
 			_, _, err = util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelCauseTunedFailure+"=")
