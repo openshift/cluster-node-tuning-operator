@@ -11,6 +11,7 @@ import (
 
 	coreapi "k8s.io/api/core/v1"
 
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	util "github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 )
@@ -63,6 +64,11 @@ var _ = ginkgo.Describe("[basic][default_irq_smp_affinity] Node Tuning Operator 
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			nCPUs = strings.TrimSpace(nCPUs)
 			cpus, err := strconv.ParseUint(nCPUs, 10, 0)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			// Expect the default worker node profile applied prior to getting any current values.
+			ginkgo.By(fmt.Sprintf("waiting for TuneD profile %s on node %s", util.DefaultWorkerProfile, node.Name))
+			err = util.WaitForProfileConditionStatus(cs, pollInterval, waitDuration, node.Name, util.DefaultWorkerProfile, tunedv1.TunedProfileApplied, coreapi.ConditionTrue)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("getting the original value of %s", procIrqDefaultSmpAffinity))
