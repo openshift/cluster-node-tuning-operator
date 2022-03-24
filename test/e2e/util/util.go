@@ -25,6 +25,8 @@ import (
 )
 
 const (
+	// The default master profile.  See: assets/tuned/manifests/default-cr-tuned.yaml
+	DefaultMasterProfile = "openshift-control-plane"
 	// The default worker profile.  See: assets/tuned/manifests/default-cr-tuned.yaml
 	DefaultWorkerProfile = "openshift-node"
 )
@@ -364,4 +366,17 @@ func WaitForPoolUpdatedMachineCount(cs *framework.ClientSet, pool string, count 
 		return errors.Wrapf(err, "pool %s UpdatedMachineCount != %d (waited %s)", pool, count, time.Since(startTime))
 	}
 	return nil
+}
+
+// GetDefaultWorkerProfile returns name of the default out-of-the-box TuneD profile for a node.
+// See: assets/tuned/manifests/default-cr-tuned.yaml
+func GetDefaultWorkerProfile(node *corev1.Node) string {
+	_, master := node.Labels["node-role.kubernetes.io/master"]
+	_, infra := node.Labels["node-role.kubernetes.io/infra"]
+
+	if master || infra {
+		return DefaultMasterProfile
+	}
+
+	return DefaultWorkerProfile
 }

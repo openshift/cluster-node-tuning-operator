@@ -52,8 +52,8 @@ var _ = ginkgo.Describe("[basic][custom_node_labels] Node Tuning Operator custom
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			// Expect the default worker node profile applied prior to getting any current values.
-			ginkgo.By(fmt.Sprintf("waiting for TuneD profile %s on node %s", util.DefaultWorkerProfile, node.Name))
-			err = util.WaitForProfileConditionStatus(cs, pollInterval, waitDuration, node.Name, util.DefaultWorkerProfile, tunedv1.TunedProfileApplied, coreapi.ConditionTrue)
+			ginkgo.By(fmt.Sprintf("waiting for TuneD profile %s on node %s", util.GetDefaultWorkerProfile(node), node.Name))
+			err = util.WaitForProfileConditionStatus(cs, pollInterval, waitDuration, node.Name, util.GetDefaultWorkerProfile(node), tunedv1.TunedProfileApplied, coreapi.ConditionTrue)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("getting the current value of %s in Pod %s", sysctlVar, pod.Name))
@@ -69,7 +69,7 @@ var _ = ginkgo.Describe("[basic][custom_node_labels] Node Tuning Operator custom
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By("ensuring the custom worker node profile was set")
-			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlVar, "16")
+			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlVar, "1")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("deleting the custom hugepages profile %s", profileHugepages))

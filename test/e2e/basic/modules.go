@@ -19,7 +19,7 @@ var _ = ginkgo.Describe("[basic][modules] Node Tuning Operator load kernel modul
 		profileModules   = "../testing_manifests/tuned_modules_load.yaml"
 		nodeLabelModules = "tuned.openshift.io/module-load"
 		procModules      = "/proc/modules"
-		moduleName       = "joydev"
+		moduleName       = "md4"
 	)
 
 	ginkgo.Context("module loading", func() {
