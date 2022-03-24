@@ -97,6 +97,12 @@ test-e2e:
 	  KUBERNETES_CONFIG="$(KUBECONFIG)" $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.noColor -ginkgo.failFast || exit; \
 	done
 
+.PHONY: test-e2e-local
+test-e2e-local:
+	for d in performanceprofile/functests-render-command/1_render_command; do \
+	  $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.noColor -ginkgo.failFast || exit; \
+	done
+
 verify:	verify-gofmt
 
 verify-gofmt:
