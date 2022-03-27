@@ -1,0 +1,7 @@
+{
+  "must-gather-dir-path": "must-gather.sno",
+  "mcp-name": "master",
+  "reserved-cpu-count": 1,
+  "rt-kernel": false,
+  "user-level-networking": false
+}

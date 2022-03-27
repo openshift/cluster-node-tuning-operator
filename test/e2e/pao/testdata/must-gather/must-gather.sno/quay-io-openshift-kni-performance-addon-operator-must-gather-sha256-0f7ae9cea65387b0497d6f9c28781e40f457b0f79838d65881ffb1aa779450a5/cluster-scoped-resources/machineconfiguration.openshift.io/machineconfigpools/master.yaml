@@ -1,0 +1,140 @@
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfigPool
+metadata:
+  creationTimestamp: "2021-03-16T14:21:52Z"
+  generation: 2
+  labels:
+    machineconfiguration.openshift.io/mco-built-in: ""
+    operator.machineconfiguration.openshift.io/required-for-upgrade: ""
+    pools.operator.machineconfiguration.openshift.io/master: ""
+  managedFields:
+  - apiVersion: machineconfiguration.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:labels:
+          .: {}
+          f:machineconfiguration.openshift.io/mco-built-in: {}
+          f:operator.machineconfiguration.openshift.io/required-for-upgrade: {}
+          f:pools.operator.machineconfiguration.openshift.io/master: {}
+      f:spec:
+        .: {}
+        f:configuration: {}
+        f:machineConfigSelector:
+          .: {}
+          f:matchLabels:
+            .: {}
+            f:machineconfiguration.openshift.io/role: {}
+        f:nodeSelector:
+          .: {}
+          f:matchLabels:
+            .: {}
+            f:node-role.kubernetes.io/master: {}
+        f:paused: {}
+    manager: machine-config-operator
+    operation: Update
+    time: "2021-03-16T14:21:52Z"
+  - apiVersion: machineconfiguration.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:spec:
+        f:configuration:
+          f:name: {}
+          f:source: {}
+      f:status:
+        .: {}
+        f:conditions: {}
+        f:configuration:
+          .: {}
+          f:name: {}
+          f:source: {}
+        f:degradedMachineCount: {}
+        f:machineCount: {}
+        f:observedGeneration: {}
+        f:readyMachineCount: {}
+        f:unavailableMachineCount: {}
+        f:updatedMachineCount: {}
+    manager: machine-config-controller
+    operation: Update
+    time: "2021-03-16T14:24:17Z"
+  name: master
+  resourceVersion: "7841"
+  selfLink: /apis/machineconfiguration.openshift.io/v1/machineconfigpools/master
+  uid: 163fb080-767f-43ec-a514-6b0ce0d8dc6d
+spec:
+  configuration:
+    name: rendered-master-d1a10ddcc3f6f4769b2864b448ece168
+    source:
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 00-master
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 01-master-container-runtime
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 01-master-kubelet
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 99-master-generated-registries
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 99-master-ssh
+  machineConfigSelector:
+    matchLabels:
+      machineconfiguration.openshift.io/role: master
+  nodeSelector:
+    matchLabels:
+      node-role.kubernetes.io/master: ""
+  paused: false
+status:
+  conditions:
+  - lastTransitionTime: "2021-03-16T14:23:25Z"
+    message: ""
+    reason: ""
+    status: "False"
+    type: RenderDegraded
+  - lastTransitionTime: "2021-03-16T14:24:17Z"
+    message: All nodes are updated with rendered-master-d1a10ddcc3f6f4769b2864b448ece168
+    reason: ""
+    status: "True"
+    type: Updated
+  - lastTransitionTime: "2021-03-16T14:24:17Z"
+    message: ""
+    reason: ""
+    status: "False"
+    type: Updating
+  - lastTransitionTime: "2021-03-16T14:24:17Z"
+    message: ""
+    reason: ""
+    status: "False"
+    type: NodeDegraded
+  - lastTransitionTime: "2021-03-16T14:24:17Z"
+    message: ""
+    reason: ""
+    status: "False"
+    type: Degraded
+  configuration:
+    name: rendered-master-d1a10ddcc3f6f4769b2864b448ece168
+    source:
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 00-master
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 01-master-container-runtime
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 01-master-kubelet
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 99-master-generated-registries
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 99-master-ssh
+  degradedMachineCount: 0
+  machineCount: 1
+  observedGeneration: 2
+  readyMachineCount: 1
+  unavailableMachineCount: 0
+  updatedMachineCount: 1
