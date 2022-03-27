@@ -1,0 +1,100 @@
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  creationTimestamp: null
+  labels:
+    machineconfiguration.openshift.io/role: worker-cnf
+  name: 50-performance-manual
+  ownerReferences:
+    - apiVersion: ""
+      kind: PerformanceProfile
+      name: manual
+      uid: ""
+spec:
+  config:
+    ignition:
+      config:
+        replace:
+          verification: {}
+      proxy: {}
+      security:
+        tls: {}
+      timeouts: {}
+      version: 3.2.0
+    passwd: {}
+    storage:
+      files:
+        - contents:
+            source: data:text/plain;charset=utf-8;base64,IyEvdXNyL2Jpbi9lbnYgYmFzaAoKc2V0IC1ldW8gcGlwZWZhaWwKCm5vZGVzX3BhdGg9Ii9zeXMvZGV2aWNlcy9zeXN0ZW0vbm9kZSIKaHVnZXBhZ2VzX2ZpbGU9IiR7bm9kZXNfcGF0aH0vbm9kZSR7TlVNQV9OT0RFfS9odWdlcGFnZXMvaHVnZXBhZ2VzLSR7SFVHRVBBR0VTX1NJWkV9a0IvbnJfaHVnZXBhZ2VzIgoKaWYgWyAhIC1mICIke2h1Z2VwYWdlc19maWxlfSIgXTsgdGhlbgogIGVjaG8gIkVSUk9SOiAke2h1Z2VwYWdlc19maWxlfSBkb2VzIG5vdCBleGlzdCIKICBleGl0IDEKZmkKCnRpbWVvdXQ9NjAKc2FtcGxlPTEKY3VycmVudF90aW1lPTAKd2hpbGUgWyAiJChjYXQgIiR7aHVnZXBhZ2VzX2ZpbGV9IikiIC1uZSAiJHtIVUdFUEFHRVNfQ09VTlR9IiBdOyBkbwogIGVjaG8gIiR7SFVHRVBBR0VTX0NPVU5UfSIgPiIke2h1Z2VwYWdlc19maWxlfSIKCiAgY3VycmVudF90aW1lPSQoKGN1cnJlbnRfdGltZSArIHNhbXBsZSkpCiAgaWYgWyAkY3VycmVudF90aW1lIC1ndCAkdGltZW91dCBdOyB0aGVuCiAgICBlY2hvICJFUlJPUjogJHtodWdlcGFnZXNfZmlsZX0gZG9lcyBub3QgaGF2ZSB0aGUgZXhwZWN0ZWQgbnVtYmVyIG9mIGh1Z2VwYWdlcyAke0hVR0VQQUdFU19DT1VOVH0iCiAgICBleGl0IDEKICBmaQoKICBzbGVlcCAkc2FtcGxlCmRvbmUK
+            verification: {}
+          group: {}
+          mode: 448
+          path: /usr/local/bin/hugepages-allocation.sh
+          user: {}
+        - contents:
+            source: data:text/plain;charset=utf-8;base64,IyEvdXNyL2Jpbi9lbnYgYmFzaAoKbWFzaz0iJHsxfSIKWyAtbiAiJHttYXNrfSIgXSB8fCB7IGxvZ2dlciAiJHswfTogVGhlIHJwcy1tYXNrIHBhcmFtZXRlciBpcyBtaXNzaW5nIiA7IGV4aXQgMDsgfQoKcGlkPSQoanEgJy5waWQnIC9kZXYvc3RkaW4gMj4mMSkKW1sgJD8gLWVxIDAgJiYgLW4gIiR7cGlkfSIgXV0gfHwgeyBsb2dnZXIgIiR7MH06IEZhaWxlZCB0byBleHRyYWN0IHRoZSBwaWQ6ICR7cGlkfSI7IGV4aXQgMDsgfQoKbnM9JChpcCBuZXRucyBpZGVudGlmeSAiJHtwaWR9IiAyPiYxKQpbWyAkPyAtZXEgMCAmJiAtbiAiJHtuc30iIF1dIHx8IHsgbG9nZ2VyICIkezB9IEZhaWxlZCB0byBpZGVudGlmeSB0aGUgbmFtZXNwYWNlOiAke25zfSI7IGV4aXQgMDsgfQoKIyBVcGRhdGVzIHRoZSBjb250YWluZXIgdmV0aCBSUFMgbWFzayBvbiB0aGUgbm9kZQpuZXRuc19saW5rX2luZGV4ZXM9JChpcCBuZXRucyBleGVjICIke25zfSIgaXAgLWogbGluayB8IGpxICIuW10gfCBzZWxlY3QoLmxpbmtfaW5kZXggIT0gbnVsbCkgfCAubGlua19pbmRleCIpCmZvciBsaW5rX2luZGV4IGluICR7bmV0bnNfbGlua19pbmRleGVzfTsgZG8KICBjb250YWluZXJfdmV0aD0kKGlwIC1qIGxpbmsgfCBqcSAiLltdIHwgc2VsZWN0KC5pZmluZGV4ID09ICR7bGlua19pbmRleH0pIHwgLmlmbmFtZSIgfCB0ciAtZCAnIicpCiAgZWNobyAke21hc2t9ID4gL3N5cy9kZXZpY2VzL3ZpcnR1YWwvbmV0LyR7Y29udGFpbmVyX3ZldGh9L3F1ZXVlcy9yeC0wL3Jwc19jcHVzCmRvbmUKCiMgVXBkYXRlcyB0aGUgUlBTIG1hc2sgZm9yIHRoZSBpbnRlcmZhY2UgaW5zaWRlIG9mIHRoZSBjb250YWluZXIgbmV0d29yayBuYW1lc3BhY2UKbW9kZT0kKGlwIG5ldG5zIGV4ZWMgIiR7bnN9IiBbIC13IC9zeXMgXSAmJiBlY2hvICJydyIgfHwgZWNobyAicm8iIDI+JjEpClsgJD8gLWVxIDAgXSB8fCB7IGxvZ2dlciAiJHswfSBGYWlsZWQgdG8gZGV0ZXJtaW5lIGlmIHRoZSAvc3lzIGlzIHdyaXRhYmxlOiAke21vZGV9IjsgZXhpdCAwOyB9CgppZiBbICIke21vZGV9IiA9ICJybyIgXTsgdGhlbgogICAgcmVzPSQoaXAgbmV0bnMgZXhlYyAiJHtuc30iIG1vdW50IC1vIHJlbW91bnQscncgL3N5cyAyPiYxKQogICAgWyAkPyAtZXEgMCBdIHx8IHsgbG9nZ2VyICIkezB9OiBGYWlsZWQgdG8gcmVtb3VudCAvc3lzIGFzIHJ3OiAke3Jlc30iOyBleGl0IDA7IH0KZmkKCiMgL3N5cy9jbGFzcy9uZXQgY2FuJ3QgYmUgdXNlZCByZWN1cnNpdmVseSB0byBmaW5kIHRoZSBycHNfY3B1cyBmaWxlLCB1c2UgL3N5cy9kZXZpY2VzIGluc3RlYWQKcmVzPSQoaXAgbmV0bnMgZXhlYyAiJHtuc30iIGZpbmQgL3N5cy9kZXZpY2VzIC10eXBlIGYgLW5hbWUgcnBzX2NwdXMgLWV4ZWMgc2ggLWMgImVjaG8gJHttYXNrfSB8IGNhdCA+IHt9IiBcOyAyPiYxKQpbWyAkPyAtZXEgMCAmJiAteiAiJHtyZXN9IiBdXSB8fCBsb2dnZXIgIiR7MH06IEZhaWxlZCB0byBhcHBseSB0aGUgUlBTIG1hc2s6ICR7cmVzfSIKCmlmIFsgIiR7bW9kZX0iID0gInJvIiBdOyB0aGVuCiAgICBpcCBuZXRucyBleGVjICIke25zfSIgbW91bnQgLW8gcmVtb3VudCxybyAvc3lzCiAgICBbICQ/IC1lcSAwIF0gfHwgZXhpdCAxICMgRXJyb3Igb3V0IHNvIHRoZSBwb2Qgd2lsbCBub3Qgc3RhcnQgd2l0aCBhIHdyaXRhYmxlIC9zeXMKZmkK
+            verification: {}
+          group: {}
+          mode: 448
+          path: /usr/local/bin/low-latency-hooks.sh
+          user: {}
+        - contents:
+            source: data:text/plain;charset=utf-8;base64,IyEvdXNyL2Jpbi9lbnYgYmFzaAoKZGV2PSQxClsgLW4gIiR7ZGV2fSIgXSB8fCB7IGVjaG8gIlRoZSBkZXZpY2UgYXJndW1lbnQgaXMgbWlzc2luZyIgPiYyIDsgZXhpdCAxOyB9CgptYXNrPSQyClsgLW4gIiR7bWFza30iIF0gfHwgeyBlY2hvICJUaGUgbWFzayBhcmd1bWVudCBpcyBtaXNzaW5nIiA+JjIgOyBleGl0IDE7IH0KCmRldl9kaXI9Ii9zeXMvY2xhc3MvbmV0LyR7ZGV2fSIKCmZ1bmN0aW9uIGZpbmRfZGV2X2RpciB7CiAgc3lzdGVtZF9kZXZzPSQoc3lzdGVtY3RsIGxpc3QtdW5pdHMgLXQgZGV2aWNlIHwgZ3JlcCBzeXMtc3Vic3lzdGVtLW5ldC1kZXZpY2VzIHwgY3V0IC1kJyAnIC1mMSkKCiAgZm9yIHN5c3RlbWRfZGV2IGluICR7c3lzdGVtZF9kZXZzfTsgZG8KICAgIGRldl9zeXNmcz0kKHN5c3RlbWN0bCBzaG93ICIke3N5c3RlbWRfZGV2fSIgLXAgU3lzRlNQYXRoIC0tdmFsdWUpCgogICAgZGV2X29yaWdfbmFtZT0iJHtkZXZfc3lzZnMjIyovfSIKICAgIGlmIFsgIiR7ZGV2X29yaWdfbmFtZX0iID0gIiR7ZGV2fSIgXTsgdGhlbgogICAgICBkZXZfbmFtZT0iJHtzeXN0ZW1kX2RldiMjKi19IgogICAgICBkZXZfbmFtZT0iJHtkZXZfbmFtZSUlLmRldmljZX0iCiAgICAgIGlmIFsgIiR7ZGV2X25hbWV9IiA9ICIke2Rldn0iIF07IHRoZW4gIyBkaXNyZWdhcmQgdGhlIG9yaWdpbmFsIGRldmljZSB1bml0CiAgICAgICAgICAgICAgY29udGludWUKICAgICAgZmkKCiAgICAgIGVjaG8gIiR7ZGV2fSBkZXZpY2Ugd2FzIHJlbmFtZWQgdG8gJGRldl9uYW1lIgogICAgICBkZXZfZGlyPSIvc3lzL2NsYXNzL25ldC8ke2Rldl9uYW1lfSIKICAgICAgYnJlYWsKICAgIGZpCiAgZG9uZQp9CgpbIC1kICIke2Rldl9kaXJ9IiBdIHx8IGZpbmRfZGV2X2RpciAgICAgICAgICAgICAgICAjIHRoZSBuZXQgZGV2aWNlIHdhcyByZW5hbWVkLCBmaW5kIHRoZSBuZXcgbmFtZQpbIC1kICIke2Rldl9kaXJ9IiBdIHx8IHsgc2xlZXAgNTsgZmluZF9kZXZfZGlyOyB9ICAjIHNlYXJjaCBmYWlsZWQsIHdhaXQgYSBsaXR0bGUgYW5kIHRyeSBhZ2FpbgpbIC1kICIke2Rldl9kaXJ9IiBdIHx8IHsgZWNobyAiJHtkZXZfZGlyfSIgZGlyZWN0b3J5IG5vdCBmb3VuZCA+JjIgOyBleGl0IDA7IH0gIyB0aGUgaW50ZXJmYWNlIGRpc2FwcGVhcmVkLCBub3QgYW4gZXJyb3IKCmZpbmQgIiR7ZGV2X2Rpcn0iL3F1ZXVlcyAtdHlwZSBmIC1uYW1lIHJwc19jcHVzIC1leGVjIHNoIC1jICJlY2hvICR7bWFza30gfCBjYXQgPiB7fSIgXDs=
+            verification: {}
+          group: {}
+          mode: 448
+          path: /usr/local/bin/set-rps-mask.sh
+          user: {}
+        - contents:
+            source: data:text/plain;charset=utf-8;base64,CltjcmlvLnJ1bnRpbWVdCmluZnJhX2N0cl9jcHVzZXQgPSAiMCIKCgojIFdlIHNob3VsZCBjb3B5IHBhc3RlIHRoZSBkZWZhdWx0IHJ1bnRpbWUgYmVjYXVzZSB0aGlzIHNuaXBwZXQgd2lsbCBvdmVycmlkZSB0aGUgd2hvbGUgcnVudGltZXMgc2VjdGlvbgpbY3Jpby5ydW50aW1lLnJ1bnRpbWVzLnJ1bmNdCnJ1bnRpbWVfcGF0aCA9ICIiCnJ1bnRpbWVfdHlwZSA9ICJvY2kiCnJ1bnRpbWVfcm9vdCA9ICIvcnVuL3J1bmMiCgojIFRoZSBDUkktTyB3aWxsIGNoZWNrIHRoZSBhbGxvd2VkX2Fubm90YXRpb25zIHVuZGVyIHRoZSBydW50aW1lIGhhbmRsZXIgYW5kIGFwcGx5IGhpZ2gtcGVyZm9ybWFuY2UgaG9va3Mgd2hlbiBvbmUgb2YKIyBoaWdoLXBlcmZvcm1hbmNlIGFubm90YXRpb25zIHByZXNlbnRzIHVuZGVyIGl0LgojIFdlIHNob3VsZCBwcm92aWRlIHRoZSBydW50aW1lX3BhdGggYmVjYXVzZSB3ZSBuZWVkIHRvIGluZm9ybSB0aGF0IHdlIHdhbnQgdG8gcmUtdXNlIHJ1bmMgYmluYXJ5IGFuZCB3ZQojIGRvIG5vdCBoYXZlIGhpZ2gtcGVyZm9ybWFuY2UgYmluYXJ5IHVuZGVyIHRoZSAkUEFUSCB0aGF0IHdpbGwgcG9pbnQgdG8gaXQuCltjcmlvLnJ1bnRpbWUucnVudGltZXMuaGlnaC1wZXJmb3JtYW5jZV0KcnVudGltZV9wYXRoID0gIi9iaW4vcnVuYyIKcnVudGltZV90eXBlID0gIm9jaSIKcnVudGltZV9yb290ID0gIi9ydW4vcnVuYyIKYWxsb3dlZF9hbm5vdGF0aW9ucyA9IFsiY3B1LWxvYWQtYmFsYW5jaW5nLmNyaW8uaW8iLCAiY3B1LXF1b3RhLmNyaW8uaW8iLCAiaXJxLWxvYWQtYmFsYW5jaW5nLmNyaW8uaW8iXQo=
+            verification: {}
+          group: {}
+          mode: 420
+          path: /etc/crio/crio.conf.d/99-runtimes.conf
+          user: {}
+        - contents:
+            source: data:text/plain;charset=utf-8;base64,ewogICJ2ZXJzaW9uIjogIjEuMC4wIiwKICAiaG9vayI6IHsKICAgICJwYXRoIjogIi91c3IvbG9jYWwvYmluL2xvdy1sYXRlbmN5LWhvb2tzLnNoIiwKICAgICJhcmdzIjogWyJsb3ctbGF0ZW5jeS1ob29rcy5zaCIsICIwMDAwMDAwMSJdCiAgfSwKICAid2hlbiI6IHsKICAgICJhbHdheXMiOiB0cnVlCiAgfSwKICAic3RhZ2VzIjogWyJwcmVzdGFydCJdCn0K
+            verification: {}
+          group: {}
+          mode: 420
+          path: /etc/containers/oci/hooks.d/99-low-latency-hooks.json
+          user: {}
+        - contents:
+            source: data:text/plain;charset=utf-8;base64,U1VCU1lTVEVNPT0ibmV0IiwgQUNUSU9OPT0iYWRkIiwgRU5We0RFVlBBVEh9IT0iL2RldmljZXMvdmlydHVhbC9uZXQvdmV0aCoiLCBUQUcrPSJzeXN0ZW1kIiwgRU5We1NZU1RFTURfV0FOVFN9PSJ1cGRhdGUtcnBzQCVrLnNlcnZpY2UiCg==
+            verification: {}
+          group: {}
+          mode: 420
+          path: /etc/udev/rules.d/99-netdev-rps.rules
+          user: {}
+    systemd:
+      units:
+        - contents: |
+            [Unit]
+            Description=Hugepages-1048576kB allocation on the node 0
+            Before=kubelet.service
+
+            [Service]
+            Environment=HUGEPAGES_COUNT=1
+            Environment=HUGEPAGES_SIZE=1048576
+            Environment=NUMA_NODE=0
+            Type=oneshot
+            RemainAfterExit=true
+            ExecStart=/usr/local/bin/hugepages-allocation.sh
+
+            [Install]
+            WantedBy=multi-user.target
+          enabled: true
+          name: hugepages-allocation-1048576kB-NUMA0.service
+        - contents: |
+            [Unit]
+            Description=Sets network devices RPS mask
+
+            [Service]
+            Type=oneshot
+            ExecStart=/usr/local/bin/set-rps-mask.sh %i 00000001
+          name: update-rps@.service
+  extensions: null
+  fips: false
+  kernelArguments: null
+  kernelType: realtime
+  osImageURL: ""

@@ -1,3 +1,4 @@
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -74,10 +75,21 @@ spec:
               mountPath: /etc/secrets
             - name: trusted-ca
               mountPath: /var/run/configmaps/trusted-ca/
+            - name: apiservice-cert
+              mountPath: /apiserver.local.config/certificates
       volumes:
         - name: node-tuning-operator-tls
           secret:
             secretName: node-tuning-operator-tls
+        - name: apiservice-cert
+          secret:
+            defaultMode: 420
+            items:
+              - key: tls.crt
+                path: apiserver.crt
+              - key: tls.key
+                path: apiserver.key
+            secretName: performance-addon-operator-webhook-cert
         - name: trusted-ca
           configMap:
             name: trusted-ca

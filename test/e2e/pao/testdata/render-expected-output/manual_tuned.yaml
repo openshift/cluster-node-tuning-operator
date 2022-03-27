@@ -1,0 +1,67 @@
+apiVersion: tuned.openshift.io/v1
+kind: Tuned
+metadata:
+  creationTimestamp: null
+  name: openshift-node-performance-manual
+  namespace: openshift-cluster-node-tuning-operator
+  ownerReferences:
+  - apiVersion: ""
+    kind: PerformanceProfile
+    name: manual
+    uid: ""
+spec:
+  profile:
+  - data: "[main]\nsummary=Openshift node optimized for deterministic performance
+      at the cost of increased power consumption, focused on low latency network performance.
+      Based on Tuned 2.11 and Cluster node tuning (oc 4.5)\ninclude=openshift-node,cpu-partitioning\n\n#
+      Inheritance of base profiles legend:\n# cpu-partitioning -> network-latency
+      -> latency-performance\n# https://github.com/redhat-performance/tuned/blob/master/profiles/latency-performance/tuned.conf\n#
+      https://github.com/redhat-performance/tuned/blob/master/profiles/network-latency/tuned.conf\n#
+      https://github.com/redhat-performance/tuned/blob/master/profiles/cpu-partitioning/tuned.conf\n\n#
+      All values are mapped with a comment where a parent profile contains them.\n#
+      Different values will override the original values in parent profiles.\n\n[variables]\n#>
+      isolated_cores take a list of ranges; e.g. isolated_cores=2,4-7\n\nisolated_cores=1-3\n\n\nnot_isolated_cores_expanded=${f:cpulist_invert:${isolated_cores_expanded}}\n\n[cpu]\n#>
+      latency-performance\n#> (override)\nforce_latency=cstate.id:1|3\ngovernor=performance\nenergy_perf_bias=performance\nmin_perf_pct=100\n\n[service]\nservice.stalld=start,enable\n\n[vm]\n#>
+      network-latency\ntransparent_hugepages=never\n\n\n[irqbalance]\n#> Override
+      the value set by cpu-partitioning with an empty one\nbanned_cpus=\"\"\n\n\n[scheduler]\nruntime=0\ngroup.ksoftirqd=0:f:11:*:ksoftirqd.*\ngroup.rcuc=0:f:11:*:rcuc.*\nsched_rt_runtime_us=-1\nsched_min_granularity_ns=10000000\nsched_migration_cost_ns=5000000\nnuma_balancing=0\n\ndefault_irq_smp_affinity
+      = ignore\n\n\n[sysctl]\n#> cpu-partitioning #realtime\nkernel.hung_task_timeout_secs
+      = 600\n#> cpu-partitioning #realtime\nkernel.nmi_watchdog = 0\n#> realtime\nkernel.sched_rt_runtime_us
+      = -1\n# cpu-partitioning and realtime for RHEL disable it (= 0)\n# OCP is too dynamic when partitioning and needs to
+      evacuate\n#> scheduled timers when starting a guaranteed workload (= 1)\nkernel.timer_migration = 1\n#>
+      network-latency\nkernel.numa_balancing=0\nnet.core.busy_read=50\nnet.core.busy_poll=50\nnet.ipv4.tcp_fastopen=3\n#>
+      cpu-partitioning  #realtime\nvm.stat_interval = 10\n\n# ktune sysctl settings
+      for rhel6 servers, maximizing i/o throughput\n#\n# Minimal preemption granularity
+      for CPU-bound tasks:\n# (default: 1 msec#  (1 + ilog(ncpus)), units: nanoseconds)\n#>
+      latency-performance\nkernel.sched_min_granularity_ns=10000000\n\n# If a workload
+      mostly uses anonymous memory and it hits this limit, the entire\n# working set
+      is buffered for I/O, and any more write buffering would require\n# swapping,
+      so it's time to throttle writes until I/O can catch up.  Workloads\n# that mostly
+      use file mappings may be able to use even higher values.\n#\n# The generator
+      of dirty data starts writeback at this percentage (system default\n# is 20%)\n#>
+      latency-performance\nvm.dirty_ratio=10\n\n# Start background writeback (via
+      writeback threads) at this percentage (system\n# default is 10%)\n#> latency-performance\nvm.dirty_background_ratio=3\n\n#
+      The swappiness parameter controls the tendency of the kernel to move\n# processes
+      out of physical memory and onto the swap disk.\n# 0 tells the kernel to avoid
+      swapping processes out of physical memory\n# for as long as possible\n# 100
+      tells the kernel to aggressively swap processes out of physical memory\n# and
+      move them to swap cache\n#> latency-performance\nvm.swappiness=10\n\n# The total
+      time the scheduler will consider a migrated process\n# \"cache hot\" and thus
+      less likely to be re-migrated\n# (system default is 500000, i.e. 0.5 ms)\n#>
+      latency-performance\nkernel.sched_migration_cost_ns=5000000\n\n[selinux]\n#>
+      Custom (atomic host)\navc_cache_threshold=8192\n\n\n[net]\nnf_conntrack_hashsize=131072\n\n\n[bootloader]\n#
+      set empty values to disable RHEL initrd setting in cpu-partitioning\ninitrd_remove_dir=\ninitrd_dst_img=\ninitrd_add_dir=\n#
+      overrides cpu-partitioning cmdline\ncmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores}
+      tuned.non_isolcpus=${not_isolated_cpumask} intel_pstate=disable nosoftlockup\n\ncmdline_realtime=+tsc=nowatchdog
+      intel_iommu=on iommu=pt isolcpus=managed_irq,${isolated_cores} systemd.cpu_affinity=${not_isolated_cores_expanded}\n\ncmdline_hugepages=+
+      default_hugepagesz=1G   hugepagesz=2M hugepages=128 \ncmdline_additionalArg=+
+      nmi_watchdog=0 audit=0 mce=off processor.max_cstate=1 idle=poll intel_idle.max_cstate=0
+      \n"
+    name: openshift-node-performance-manual
+  recommend:
+  - machineConfigLabels:
+      machineconfiguration.openshift.io/role: worker-cnf
+    operand:
+      debug: false
+    priority: 20
+    profile: openshift-node-performance-manual
+status: {}

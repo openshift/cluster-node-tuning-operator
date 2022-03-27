@@ -54,6 +54,8 @@ spec:
           name: node-tuning-operator-tls
         - mountPath: /var/run/configmaps/trusted-ca/
           name: trusted-ca
+        - mountPath: /apiserver.local.config/certificates
+          name: apiservice-cert
       priorityClassName: system-cluster-critical
       securityContext:
         runAsNonRoot: true
@@ -75,6 +77,15 @@ spec:
       - name: node-tuning-operator-tls
         secret:
           secretName: node-tuning-operator-tls
+      - name: apiservice-cert
+        secret:
+          defaultMode: 420
+          items:
+          - key: tls.crt
+            path: apiserver.crt
+          - key: tls.key
+            path: apiserver.key
+          secretName: performance-addon-operator-webhook-cert
       - configMap:
           items:
           - key: ca-bundle.crt

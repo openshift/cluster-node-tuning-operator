@@ -1,0 +1,139 @@
+---
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfigPool
+metadata:
+  creationTimestamp: "2021-03-16T14:21:52Z"
+  generation: 2
+  labels:
+    machineconfiguration.openshift.io/mco-built-in: ""
+    pools.operator.machineconfiguration.openshift.io/worker: ""
+  managedFields:
+  - apiVersion: machineconfiguration.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:labels:
+          .: {}
+          f:machineconfiguration.openshift.io/mco-built-in: {}
+          f:pools.operator.machineconfiguration.openshift.io/worker: {}
+      f:spec:
+        .: {}
+        f:configuration: {}
+        f:machineConfigSelector:
+          .: {}
+          f:matchLabels:
+            .: {}
+            f:machineconfiguration.openshift.io/role: {}
+        f:nodeSelector:
+          .: {}
+          f:matchLabels:
+            .: {}
+            f:node-role.kubernetes.io/worker: {}
+        f:paused: {}
+    manager: machine-config-operator
+    operation: Update
+    time: "2021-03-16T14:21:52Z"
+  - apiVersion: machineconfiguration.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:spec:
+        f:configuration:
+          f:name: {}
+          f:source: {}
+      f:status:
+        .: {}
+        f:conditions: {}
+        f:configuration:
+          .: {}
+          f:name: {}
+          f:source: {}
+        f:degradedMachineCount: {}
+        f:machineCount: {}
+        f:observedGeneration: {}
+        f:readyMachineCount: {}
+        f:unavailableMachineCount: {}
+        f:updatedMachineCount: {}
+    manager: machine-config-controller
+    operation: Update
+    time: "2021-03-16T14:23:30Z"
+  name: worker
+  resourceVersion: "6732"
+  selfLink: /apis/machineconfiguration.openshift.io/v1/machineconfigpools/worker
+  uid: 5693182c-1fc6-4609-94d7-8ad5dadf58fa
+spec:
+  configuration:
+    name: rendered-worker-7081c43bf1d6417031eab02fecf83b00
+    source:
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 00-worker
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 01-worker-container-runtime
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 01-worker-kubelet
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 99-worker-generated-registries
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 99-worker-ssh
+  machineConfigSelector:
+    matchLabels:
+      machineconfiguration.openshift.io/role: worker
+  nodeSelector:
+    matchLabels:
+      node-role.kubernetes.io/worker: ""
+  paused: false
+status:
+  conditions:
+  - lastTransitionTime: "2021-03-16T14:23:25Z"
+    message: ""
+    reason: ""
+    status: "False"
+    type: RenderDegraded
+  - lastTransitionTime: "2021-03-16T14:23:30Z"
+    message: All nodes are updated with rendered-worker-7081c43bf1d6417031eab02fecf83b00
+    reason: ""
+    status: "True"
+    type: Updated
+  - lastTransitionTime: "2021-03-16T14:23:30Z"
+    message: ""
+    reason: ""
+    status: "False"
+    type: Updating
+  - lastTransitionTime: "2021-03-16T14:23:30Z"
+    message: ""
+    reason: ""
+    status: "False"
+    type: NodeDegraded
+  - lastTransitionTime: "2021-03-16T14:23:30Z"
+    message: ""
+    reason: ""
+    status: "False"
+    type: Degraded
+  configuration:
+    name: rendered-worker-7081c43bf1d6417031eab02fecf83b00
+    source:
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 00-worker
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 01-worker-container-runtime
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 01-worker-kubelet
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 99-worker-generated-registries
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 99-worker-ssh
+  degradedMachineCount: 0
+  machineCount: 0
+  observedGeneration: 2
+  readyMachineCount: 0
+  unavailableMachineCount: 0
+  updatedMachineCount: 0
