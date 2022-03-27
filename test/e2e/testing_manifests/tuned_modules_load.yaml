@@ -7,10 +7,10 @@ spec:
   profile:
   - data: |
       [main]
-      summary=An OpenShift profile to load 'joydev' module
+      summary=An OpenShift profile to load 'md4' module
       include=openshift-node
       [modules]
-      joydev=+r
+      md4=+r
     name: openshift-module-load
   recommend:
   - match:

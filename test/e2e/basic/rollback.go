@@ -50,14 +50,14 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(len(nodes)).NotTo(gomega.BeZero(), "number of worker nodes is 0")
 
-			node := nodes[0]
+			node := &nodes[0]
 			ginkgo.By(fmt.Sprintf("getting a TuneD Pod running on node %s", node.Name))
-			pod, err = util.GetTunedForNode(cs, &node)
+			pod, err = util.GetTunedForNode(cs, node)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			// Expect the default worker node profile applied prior to getting any current values.
-			ginkgo.By(fmt.Sprintf("waiting for TuneD profile %s on node %s", util.DefaultWorkerProfile, node.Name))
-			err = util.WaitForProfileConditionStatus(cs, pollInterval, waitDuration, node.Name, util.DefaultWorkerProfile, tunedv1.TunedProfileApplied, coreapi.ConditionTrue)
+			ginkgo.By(fmt.Sprintf("waiting for TuneD profile %s on node %s", util.GetDefaultWorkerProfile(node), node.Name))
+			err = util.WaitForProfileConditionStatus(cs, pollInterval, waitDuration, node.Name, util.GetDefaultWorkerProfile(node), tunedv1.TunedProfileApplied, coreapi.ConditionTrue)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("ensuring the default %s value (%s) is set in Pod %s", sysctlVar, sysctlValDef, pod.Name))
@@ -83,7 +83,7 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 
 			ginkgo.By(fmt.Sprintf("waiting for a new TuneD Pod to be ready on node %s", node.Name))
 			err = wait.PollImmediate(pollInterval, waitDuration, func() (bool, error) {
-				pod, err = util.GetTunedForNode(cs, &node)
+				pod, err = util.GetTunedForNode(cs, node)
 				if err != nil {
 					explain = err.Error()
 					return false, nil

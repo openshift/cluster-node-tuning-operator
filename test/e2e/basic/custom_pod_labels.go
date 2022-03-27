@@ -46,14 +46,14 @@ var _ = ginkgo.Describe("[basic][custom_pod_labels] Node Tuning Operator custom 
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(len(nodes)).NotTo(gomega.BeZero(), "number of worker nodes is 0")
 
-			node := nodes[0]
+			node := &nodes[0]
 			ginkgo.By(fmt.Sprintf("getting a TuneD Pod running on node %s", node.Name))
-			pod, err = util.GetTunedForNode(cs, &node)
+			pod, err = util.GetTunedForNode(cs, node)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			// Expect the default worker node profile applied prior to getting any current values.
-			ginkgo.By(fmt.Sprintf("waiting for TuneD profile %s on node %s", util.DefaultWorkerProfile, node.Name))
-			err = util.WaitForProfileConditionStatus(cs, pollInterval, waitDuration, node.Name, util.DefaultWorkerProfile, tunedv1.TunedProfileApplied, coreapi.ConditionTrue)
+			ginkgo.By(fmt.Sprintf("waiting for TuneD profile %s on node %s", util.GetDefaultWorkerProfile(node), node.Name))
+			err = util.WaitForProfileConditionStatus(cs, pollInterval, waitDuration, node.Name, util.GetDefaultWorkerProfile(node), tunedv1.TunedProfileApplied, coreapi.ConditionTrue)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("getting the current value of %s in Pod %s", sysctlVar, pod.Name))

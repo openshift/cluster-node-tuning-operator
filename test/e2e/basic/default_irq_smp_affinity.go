@@ -67,8 +67,8 @@ var _ = ginkgo.Describe("[basic][default_irq_smp_affinity] Node Tuning Operator 
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			// Expect the default worker node profile applied prior to getting any current values.
-			ginkgo.By(fmt.Sprintf("waiting for TuneD profile %s on node %s", util.DefaultWorkerProfile, node.Name))
-			err = util.WaitForProfileConditionStatus(cs, pollInterval, waitDuration, node.Name, util.DefaultWorkerProfile, tunedv1.TunedProfileApplied, coreapi.ConditionTrue)
+			ginkgo.By(fmt.Sprintf("waiting for TuneD profile %s on node %s", util.GetDefaultWorkerProfile(node), node.Name))
+			err = util.WaitForProfileConditionStatus(cs, pollInterval, waitDuration, node.Name, util.GetDefaultWorkerProfile(node), tunedv1.TunedProfileApplied, coreapi.ConditionTrue)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("getting the original value of %s", procIrqDefaultSmpAffinity))
