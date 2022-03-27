@@ -28,14 +28,14 @@ var _ = ginkgo.Describe("[basic][default_node_sysctl] Node Tuning Operator defau
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		gomega.Expect(len(nodes)).NotTo(gomega.BeZero(), "number of worker nodes is 0")
 
-		node := nodes[0]
+		node := &nodes[0]
 		ginkgo.By(fmt.Sprintf("getting a TuneD Pod running on node %s", node.Name))
-		pod, err := util.GetTunedForNode(cs, &node)
+		pod, err := util.GetTunedForNode(cs, node)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		// Expect the default worker node profile applied prior to getting any current values.
-		ginkgo.By(fmt.Sprintf("waiting for TuneD profile %s on node %s", util.DefaultWorkerProfile, node.Name))
-		err = util.WaitForProfileConditionStatus(cs, pollInterval, waitDuration, node.Name, util.DefaultWorkerProfile, tunedv1.TunedProfileApplied, coreapi.ConditionTrue)
+		ginkgo.By(fmt.Sprintf("waiting for TuneD profile %s on node %s", util.GetDefaultWorkerProfile(node), node.Name))
+		err = util.WaitForProfileConditionStatus(cs, pollInterval, waitDuration, node.Name, util.GetDefaultWorkerProfile(node), tunedv1.TunedProfileApplied, coreapi.ConditionTrue)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		ginkgo.By("ensuring the default worker node profile was set")
