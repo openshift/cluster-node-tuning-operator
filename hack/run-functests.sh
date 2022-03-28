@@ -6,8 +6,9 @@ LATENCY_TEST_RUN=${LATENCY_TEST_RUN:-"false"}
 which ginkgo
 if [ $? -ne 0 ]; then
 	echo "Downloading ginkgo tool"
-	#go install github.com/onsi/ginkgo/ginkgo
-  go install github.com/onsi/ginkgo/ginkgo@v1.16.5
+	# drop -mod=vendor flags, otherwise the installation will fail
+	# because of the package can not be installed under the vendor directory
+    GOFLAGS='' go install github.com/onsi/ginkgo/ginkgo@v1.16.5
 fi
 
 NO_COLOR=""
