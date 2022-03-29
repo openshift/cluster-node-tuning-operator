@@ -409,31 +409,41 @@ func createMetadataListWatch(gvk schema.GroupVersionKind, ip *specificInformersM
 	}, nil
 }
 
-// newGVKFixupWatcher adds a wrapper that preserves the GVK information when
-// events come in.
-//
-// This works around a bug where GVK information is not passed into mapping
-// functions when using the OnlyMetadata option in the builder.
-// This issue is most likely caused by kubernetes/kubernetes#80609.
-// See kubernetes-sigs/controller-runtime#1484.
-//
-// This was originally implemented as a cache.ResourceEventHandler wrapper but
-// that contained a data race which was resolved by setting the GVK in a watch
-// wrapper, before the objects are written to the cache.
-// See kubernetes-sigs/controller-runtime#1650.
-//
-// The original watch wrapper was found to be incompatible with
-// k8s.io/client-go/tools/cache.Reflector so it has been re-implemented as a
-// watch.Filter which is compatible.
-// See kubernetes-sigs/controller-runtime#1789.
+type gvkFixupWatcher struct {
+	watcher watch.Interface
+	ch      chan watch.Event
+	gvk     schema.GroupVersionKind
+	wg      sync.WaitGroup
+}
+
 func newGVKFixupWatcher(gvk schema.GroupVersionKind, watcher watch.Interface) watch.Interface {
-	return watch.Filter(
-		watcher,
-		func(in watch.Event) (watch.Event, bool) {
-			in.Object.GetObjectKind().SetGroupVersionKind(gvk)
-			return in, true
-		},
-	)
+	ch := make(chan watch.Event)
+	w := &gvkFixupWatcher{
+		gvk:     gvk,
+		watcher: watcher,
+		ch:      ch,
+	}
+	w.wg.Add(1)
+	go w.run()
+	return w
+}
+
+func (w *gvkFixupWatcher) run() {
+	for e := range w.watcher.ResultChan() {
+		e.Object.GetObjectKind().SetGroupVersionKind(w.gvk)
+		w.ch <- e
+	}
+	w.wg.Done()
+}
+
+func (w *gvkFixupWatcher) Stop() {
+	w.watcher.Stop()
+	w.wg.Wait()
+	close(w.ch)
+}
+
+func (w *gvkFixupWatcher) ResultChan() <-chan watch.Event {
+	return w.ch
 }
 
 // resyncPeriod returns a function which generates a duration each time it is

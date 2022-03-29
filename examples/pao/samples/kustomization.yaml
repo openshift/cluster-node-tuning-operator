@@ -1,6 +1,0 @@
-## Append samples you want in your CSV to this file as resources ##
-resources:
-- performance_v2_performanceprofile.yaml
-- performance_v1_performanceprofile.yaml
-- performance_v1alpha1_performanceprofile.yaml
-# +kubebuilder:scaffold:manifestskustomizesamples

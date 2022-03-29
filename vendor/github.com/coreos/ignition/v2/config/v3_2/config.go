@@ -15,6 +15,8 @@
 package v3_2
 
 import (
+	"reflect"
+
 	"github.com/coreos/ignition/v2/config/merge"
 	"github.com/coreos/ignition/v2/config/shared/errors"
 	"github.com/coreos/ignition/v2/config/util"
@@ -26,8 +28,12 @@ import (
 )
 
 func Merge(parent, child types.Config) types.Config {
-	res, _ := merge.MergeStructTranscribe(parent, child)
-	return res.(types.Config)
+	vParent := reflect.ValueOf(parent)
+	vChild := reflect.ValueOf(child)
+
+	vRes := merge.MergeStruct(vParent, vChild)
+	res := vRes.Interface().(types.Config)
+	return res
 }
 
 // Parse parses the raw config into a types.Config struct and generates a report of any
