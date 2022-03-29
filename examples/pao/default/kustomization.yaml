@@ -1,5 +1,0 @@
-bases:
-- ../crd
-- ../rbac
-- ../samples
-- ../manager

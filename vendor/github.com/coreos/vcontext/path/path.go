@@ -49,13 +49,8 @@ func (c ContextPath) Append(e ...interface{}) ContextPath {
 }
 
 func (c ContextPath) Copy() ContextPath {
-	// make sure to preserve reflect.DeepEqual() equality
-	var path []interface{}
-	if c.Path != nil {
-		path = append(path, c.Path...)
-	}
 	return ContextPath{
-		Path: path,
+		Path: append([]interface{}{}, c.Path...),
 		Tag:  c.Tag,
 	}
 }
