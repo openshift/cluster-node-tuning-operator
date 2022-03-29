@@ -18,10 +18,11 @@ TUNED_COMMIT:=682c47c0a9eb5596c2d396b6d0dae4e297414c50
 TUNED_DIR:=daemon
 
 # API-related variables
-API_TYPES_DIR:=pkg/apis
-API_TYPES:=$(shell find $(API_TYPES_DIR) -name \*_types.go)
+API_TYPES_DIR:=./pkg/apis/tuned/v1
+API_TYPES:=$(wildcard $(API_TYPES_DIR)/*_types.go)
 API_ZZ_GENERATED:=zz_generated.deepcopy
-API_GO_HEADER_FILE:=$(API_TYPES_DIR)/header.go.txt
+API_TYPES_GENERATED:=$(API_TYPES_DIR)/$(API_ZZ_GENERATED).go
+API_GO_HEADER_FILE:=pkg/apis/header.go.txt
 
 # Container image-related variables
 IMAGE_BUILD_CMD=podman build --no-cache
@@ -31,10 +32,6 @@ REGISTRY=quay.io
 ORG=openshift
 TAG=$(shell git rev-parse --abbrev-ref HEAD)
 IMAGE=$(REGISTRY)/$(ORG)/origin-cluster-node-tuning-operator:$(TAG)
-
-# PAO variables
-CLUSTER ?= "ci"
-PAO_CRD_APIS :=$(addprefix ./$(API_TYPES_DIR)/pao/,v2 v1 v1alpha1)
 
 all: build
 
@@ -62,25 +59,25 @@ $(BINDATA): $(GOBINDATA_BIN) $(ASSETS)
 
 pkg/generated: $(API_TYPES)
 	$(GO) run k8s.io/code-generator/cmd/deepcopy-gen \
-	  --input-dirs $(PACKAGE)/$(API_TYPES_DIR)/tuned/v1,$(PACKAGE)/$(API_TYPES_DIR)/pao/v1alpha1,$(PACKAGE)/$(API_TYPES_DIR)/pao/v1,$(PACKAGE)/$(API_TYPES_DIR)/pao/v2 \
+	  --input-dirs $(PACKAGE)/pkg/apis/tuned/v1 \
 	  -O $(API_ZZ_GENERATED) \
 	  --go-header-file $(API_GO_HEADER_FILE) \
-	  --bounding-dirs $(PACKAGE)/$(API_TYPES_DIR) \
+	  --bounding-dirs $(PACKAGE)/pkg/apis \
 	  --output-base tmp
 	$(GO) run k8s.io/code-generator/cmd/client-gen \
 	  --clientset-name versioned \
 	  --input-base '' \
-	  --input $(PACKAGE)/$(API_TYPES_DIR)/tuned/v1 \
+	  --input $(PACKAGE)/pkg/apis/tuned/v1 \
 	  --go-header-file $(API_GO_HEADER_FILE) \
 	  --output-package $(PACKAGE)/pkg/generated/clientset \
 	  --output-base tmp
 	$(GO) run k8s.io/code-generator/cmd/lister-gen \
-	  --input-dirs $(PACKAGE)/$(API_TYPES_DIR)/tuned/v1 \
+	  --input-dirs $(PACKAGE)/pkg/apis/tuned/v1 \
 	  --go-header-file $(API_GO_HEADER_FILE) \
 	  --output-package $(PACKAGE)/pkg/generated/listers \
 	  --output-base tmp
 	$(GO) run k8s.io/code-generator/cmd/informer-gen \
-	  --input-dirs $(PACKAGE)/$(API_TYPES_DIR)/tuned/v1 \
+	  --input-dirs $(PACKAGE)/pkg/apis/tuned/v1 \
 	  --versioned-clientset-package $(PACKAGE)/pkg/generated/clientset/versioned \
 	  --listers-package $(PACKAGE)/pkg/generated/listers \
 	  --go-header-file $(API_GO_HEADER_FILE) \
@@ -88,6 +85,7 @@ pkg/generated: $(API_TYPES)
 	  --output-base tmp
 	tar c tmp | tar x --strip-components=4
 	touch $@
+
 
 $(GOBINDATA_BIN):
 	$(GO) build -o $(GOBINDATA_BIN) ./vendor/github.com/kevinburke/go-bindata/go-bindata
@@ -132,8 +130,7 @@ local-image-push:
 # $2 - apis
 # $3 - manifests
 # $4 - output
-$(call add-crd-gen,tuned,./$(API_TYPES_DIR)/tuned/v1,./manifests,./manifests)
-$(call add-crd-gen,pao,$(PAO_CRD_APIS),./manifests,./manifests)
+$(call add-crd-gen,tuned,$(API_TYPES_DIR),./manifests,./manifests)
 
 # This will include additional actions on the update and verify targets to ensure that profile patches are applied
 # to manifest files
@@ -144,29 +141,3 @@ $(call add-crd-gen,pao,$(PAO_CRD_APIS),./manifests,./manifests)
 $(call add-profile-manifests,manifests,./profile-patches,./manifests)
 
 .PHONY: all build deepcopy crd-schema-gen test-e2e verify verify-gofmt clean local-image local-image-push
-
-# PAO
-
-.PHONY: cluster-deploy-pao
-cluster-deploy-pao:
-	@echo "Deploying PAO artifacts"
-	CLUSTER=$(CLUSTER) hack/deploy.sh
-
-.PHONY: cluster-label-worker-cnf
-cluster-label-worker-cnf:
-	@echo "Adding worker-cnf label to worker nodes"
-	hack/label-worker-cnf.sh
-
-.PHONY: pao-functests
-pao-functests: cluster-label-worker-cnf pao-functests-only
-
-.PHONY: pao-functests-only
-pao-functests-only:
-	@echo "Cluster Version"
-	hack/show-cluster-version.sh
-	hack/run-functests.sh
-
-.PHONY: cluster-clean-pao
-cluster-clean-pao:
-	@echo "Cleaning up performance addons artifacts"
-	hack/clean-deploy.sh

@@ -97,10 +97,6 @@ type ControllerConfigSpec struct {
 	// Nobody is also changing this once the cluster is up and running the first time, so, disallow
 	// regeneration if this changes.
 	NetworkType string `json:"networkType,omitempty"`
-
-	// Network contains additional network related information
-	// +nullable
-	Network *NetworkInfo `json:"network"`
 }
 
 // IPFamiliesType indicates whether the cluster network is IPv4-only, IPv6-only, or dual-stack
@@ -111,13 +107,6 @@ const (
 	IPFamiliesIPv6      IPFamiliesType = "IPv6"
 	IPFamiliesDualStack IPFamiliesType = "DualStack"
 )
-
-// Network contains network related configuration
-type NetworkInfo struct {
-	// MTUMigration contains the MTU migration configuration.
-	// +nullable
-	MTUMigration *configv1.MTUMigration `json:"mtuMigration"`
-}
 
 // ControllerConfigStatus is the status for ControllerConfig
 type ControllerConfigStatus struct {
@@ -241,17 +230,8 @@ type MachineConfigPoolSpec struct {
 	// This includes generating new desiredMachineConfig and update of machines.
 	Paused bool `json:"paused"`
 
-	// maxUnavailable defines either an integer number or percentage
-	// of nodes in the pool that can go Unavailable during an update.
-	// This includes nodes Unavailable for any reason, including user
-	// initiated cordons, failing nodes, etc. The default value is 1.
-	//
-	// A value larger than 1 will mean multiple nodes going unavailable during
-	// the update, which may affect your workload stress on the remaining nodes.
-	// You cannot set this value to 0 to stop updates (it will default back to 1);
-	// to stop updates, use the 'paused' property instead. Drain will respect
-	// Pod Disruption Budgets (PDBs) such as etcd quorum guards, even if
-	// maxUnavailable is greater than one.
+	// maxUnavailable specifies the percentage or constant number of machines that can be updating at any given time.
+	// default is 1.
 	MaxUnavailable *intstr.IntOrString `json:"maxUnavailable,omitempty"`
 
 	// The targeted MachineConfig object for the machine config pool.
@@ -376,9 +356,9 @@ type KubeletConfigSpec struct {
 	MachineConfigPoolSelector *metav1.LabelSelector `json:"machineConfigPoolSelector,omitempty"`
 	KubeletConfig             *runtime.RawExtension `json:"kubeletConfig,omitempty"`
 
-	// If unset, the default is based on the apiservers.config.openshift.io/cluster resource.
-	// Note that only Old and Intermediate profiles are currently supported, and
-	// the maximum available MinTLSVersions is VersionTLS12.
+	// If unset, a default (which may change between releases) is chosen. Note that only Old and
+	// Intermediate profiles are currently supported, and the maximum available MinTLSVersions
+	// is VersionTLS12.
 	// +optional
 	TLSSecurityProfile *configv1.TLSSecurityProfile `json:"tlsSecurityProfile,omitempty"`
 }
