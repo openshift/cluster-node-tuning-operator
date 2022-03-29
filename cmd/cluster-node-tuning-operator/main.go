@@ -90,7 +90,6 @@ func main() {
 		ntoNamespace := config.OperatorNamespace()
 		namespaces := []string{
 			ntoNamespace,
-			"openshift-performance-addon-operator",
 			metav1.NamespaceNone,
 		}
 
