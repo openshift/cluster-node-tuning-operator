@@ -144,52 +144,58 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 // this should apply only from version 4.11
 func (r *PerformanceProfileReconciler) removeOLMOperator() error {
 	paoCSV := "performance-addon-operator.v4.10.0"
-	subscription := &olmv1alpha1.Subscription{}
-	key := types.NamespacedName{
-		Name:      "performance-addon-operator",
-		Namespace: "openshift-performance-addon-operator",
-	}
+	subscriptions := &olmv1alpha1.SubscriptionList{}
 
-	if err := r.Get(context.TODO(), key, subscription); err != nil {
+	if err := r.List(context.TODO(), subscriptions); err != nil {
 		if !errors.IsNotFound(err) {
 			return err
 		}
-	} else {
-		klog.Infof("Removing performance-addon-operator subscription %s", subscription.Name)
-		if subscription.Status.CurrentCSV != paoCSV {
-			return fmt.Errorf("Subscription to be removed contains a current CSV version %s which is different from %s", subscription.Status.CurrentCSV, paoCSV)
-		}
-		if err := r.Delete(context.TODO(), subscription); err != nil {
-			return err
+	}
+
+	for i := range subscriptions.Items {
+		subscription := &subscriptions.Items[i]
+		if subscription.Name == "performance-addon-operator" {
+			klog.Infof("Removing performance-addon-operator subscription %s", subscription.Name)
+			if subscription.Status.CurrentCSV != paoCSV {
+				return fmt.Errorf("Subscription to be removed contains a current CSV version %s which is different from %s", subscription.Status.CurrentCSV, paoCSV)
+			}
+			if err := r.Delete(context.TODO(), subscription); err != nil {
+				return err
+			}
 		}
 	}
 
-	csv, err := r.getCSV(paoCSV, "openshift-performance-addon-operator")
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			klog.Infof("Performance addon operator csv %s not found. no need for OLM content removal.", paoCSV)
-		}
-	} else {
-		klog.Infof("Removing performance-addon-operator CSV %s", paoCSV)
-		if err := r.Delete(context.TODO(), csv); err != nil {
-			return err
-		}
-	}
-
-	operatorGroup := &olmv1.OperatorGroup{}
-	key = types.NamespacedName{
-		Name:      "performance-addon-operator",
-		Namespace: "openshift-performance-addon-operator",
-	}
-
-	if err := r.Get(context.TODO(), key, operatorGroup); err != nil {
+	csvs := &olmv1alpha1.ClusterServiceVersionList{}
+	if err := r.List(context.TODO(), csvs); err != nil {
 		if !errors.IsNotFound(err) {
 			return err
 		}
-	} else {
-		klog.Infof("Removing performance-addon-operator operator group %s", operatorGroup.Name)
-		if err := r.Delete(context.TODO(), operatorGroup); err != nil {
+	}
+
+	for i := range csvs.Items {
+		csv := &csvs.Items[i]
+		if csv.Name == paoCSV {
+			klog.Infof("Removing performance-addon-operator CSV %s", paoCSV)
+			if err := r.Delete(context.TODO(), csv); err != nil {
+				return err
+			}
+		}
+	}
+
+	operatorGroups := &olmv1.OperatorGroupList{}
+	if err := r.List(context.TODO(), operatorGroups); err != nil {
+		if !errors.IsNotFound(err) {
 			return err
+		}
+	}
+
+	for i := range operatorGroups.Items {
+		operatorGroup := &operatorGroups.Items[i]
+		if operatorGroup.Name == "performance-addon-operator" {
+			klog.Infof("Removing performance-addon-operator operator group %s", operatorGroup.Name)
+			if err := r.Delete(context.TODO(), operatorGroup); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -304,6 +310,7 @@ func validateUpdateEvent(e *event.UpdateEvent) bool {
 func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	klog.Info("Reconciling PerformanceProfile")
 
+	// One time operation to uninstall PAO optional operator
 	// This should be deprecated in openshift 4.12
 	if !r.olmRemoved {
 		if err := r.removeOLMOperator(); err != nil {
