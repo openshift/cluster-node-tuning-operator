@@ -38,7 +38,7 @@ rules:
 # "" indicates the core API group
 - apiGroups: [""]
   resources: ["configmaps","events"]
-  verbs: ["create","get","delete","list","update","watch"]
+  verbs: ["create","get","delete","list","update","watch","patch"]
 # The pod-matching functionality will likely be deprecated in the
 # future.  When it is, remove "pods" below.
 - apiGroups: [""]
@@ -59,7 +59,7 @@ rules:
   verbs: ["update"]
 # Needed by the core operator functionality.
 - apiGroups: ["machineconfiguration.openshift.io"]
-  resources: ["machineconfigs"]
+  resources: ["kubeletconfigs", "machineconfigs"]
   verbs: ["create","get","delete","list","update","watch"]
 # Needed by the core operator functionality.
 - apiGroups: ["machineconfiguration.openshift.io"]
@@ -69,6 +69,18 @@ rules:
 - apiGroups: ["coordination.k8s.io"]
   resources: ["leases"]
   verbs: ["create","get","update","patch"]
+# Needed by the performance-addon-controller.
+# The PAO creates runtime class for each profile that can be used under pods to
+# extend CRI-O functionality.
+- apiGroups: ["node.k8s.io"]
+  resources: ["runtimeclasses"]
+  verbs: ["create","get","delete","list","update","watch"]
+- apiGroups: ["performance.openshift.io"]
+  resources: ["*"]
+  verbs: ["*"]
+- apiGroups: ["operators.coreos.com"]
+  resources: ["clusterserviceversions","operatorgroups","subscriptions"]
+  verbs: ["get","delete","list","update","watch"] 
 ---
 
 # Bind the operator cluster role to its Service Account.

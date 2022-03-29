@@ -1,0 +1,1 @@
+SUBSYSTEM=="net", ACTION=="add", ENV{DEVPATH}!="/devices/virtual/net/veth*", TAG+="systemd", ENV{SYSTEMD_WANTS}="update-rps@%k.service"
