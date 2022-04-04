@@ -1,0 +1,10 @@
+{
+    "must-gather-dir-path": "must-gather.bare-metal",
+    "mcp-name": "worker-cnf",
+    "reserved-cpu-count": 12,
+    "rt-kernel": true,
+    "disable-ht": true, 
+    "user-level-networking": false
+}
+    
+    

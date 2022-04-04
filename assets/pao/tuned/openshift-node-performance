@@ -1,0 +1,132 @@
+[main]
+summary=Openshift node optimized for deterministic performance at the cost of increased power consumption, focused on low latency network performance. Based on Tuned 2.11 and Cluster node tuning (oc 4.5)
+include=openshift-node,cpu-partitioning
+
+# Inheritance of base profiles legend:
+# cpu-partitioning -> network-latency -> latency-performance
+# https://github.com/redhat-performance/tuned/blob/master/profiles/latency-performance/tuned.conf
+# https://github.com/redhat-performance/tuned/blob/master/profiles/network-latency/tuned.conf
+# https://github.com/redhat-performance/tuned/blob/master/profiles/cpu-partitioning/tuned.conf
+
+# All values are mapped with a comment where a parent profile contains them.
+# Different values will override the original values in parent profiles.
+
+[variables]
+#> isolated_cores take a list of ranges; e.g. isolated_cores=2,4-7
+{{if .IsolatedCpus}}
+isolated_cores={{.IsolatedCpus}}
+{{end}}
+
+not_isolated_cores_expanded=${f:cpulist_invert:${isolated_cores_expanded}}
+
+[cpu]
+#> latency-performance
+#> (override)
+force_latency=cstate.id:1|3
+governor=performance
+energy_perf_bias=performance
+min_perf_pct=100
+
+[service]
+service.stalld=start,enable
+
+[vm]
+#> network-latency
+transparent_hugepages=never
+
+{{if not .GloballyDisableIrqLoadBalancing}}
+[irqbalance]
+#> Override the value set by cpu-partitioning with an empty one
+banned_cpus=""
+{{end}}
+
+[scheduler]
+runtime=0
+group.ksoftirqd=0:f:11:*:ksoftirqd.*
+group.rcuc=0:f:11:*:rcuc.*
+sched_rt_runtime_us=-1
+sched_min_granularity_ns=10000000
+sched_migration_cost_ns=5000000
+numa_balancing=0
+{{if not .GloballyDisableIrqLoadBalancing}}
+default_irq_smp_affinity = ignore
+{{end}}
+
+[sysctl]
+#> cpu-partitioning #realtime
+kernel.hung_task_timeout_secs = 600
+#> cpu-partitioning #realtime
+kernel.nmi_watchdog = 0
+#> realtime
+kernel.sched_rt_runtime_us = -1
+# cpu-partitioning and realtime for RHEL disable it (= 0)
+# OCP is too dynamic when partitioning and needs to evacuate
+#> scheduled timers when starting a guaranteed workload (= 1)
+kernel.timer_migration = 1
+#> network-latency
+kernel.numa_balancing=0
+net.core.busy_read=50
+net.core.busy_poll=50
+net.ipv4.tcp_fastopen=3
+#> cpu-partitioning  #realtime
+vm.stat_interval = 10
+
+# ktune sysctl settings for rhel6 servers, maximizing i/o throughput
+#
+# Minimal preemption granularity for CPU-bound tasks:
+# (default: 1 msec#  (1 + ilog(ncpus)), units: nanoseconds)
+#> latency-performance
+kernel.sched_min_granularity_ns=10000000
+
+# If a workload mostly uses anonymous memory and it hits this limit, the entire
+# working set is buffered for I/O, and any more write buffering would require
+# swapping, so it's time to throttle writes until I/O can catch up.  Workloads
+# that mostly use file mappings may be able to use even higher values.
+#
+# The generator of dirty data starts writeback at this percentage (system default
+# is 20%)
+#> latency-performance
+vm.dirty_ratio=10
+
+# Start background writeback (via writeback threads) at this percentage (system
+# default is 10%)
+#> latency-performance
+vm.dirty_background_ratio=3
+
+# The swappiness parameter controls the tendency of the kernel to move
+# processes out of physical memory and onto the swap disk.
+# 0 tells the kernel to avoid swapping processes out of physical memory
+# for as long as possible
+# 100 tells the kernel to aggressively swap processes out of physical memory
+# and move them to swap cache
+#> latency-performance
+vm.swappiness=10
+
+# The total time the scheduler will consider a migrated process
+# "cache hot" and thus less likely to be re-migrated
+# (system default is 500000, i.e. 0.5 ms)
+#> latency-performance
+kernel.sched_migration_cost_ns=5000000
+
+[selinux]
+#> Custom (atomic host)
+avc_cache_threshold=8192
+
+{{if .NetDevices}}
+{{.NetDevices}}
+{{end}}
+
+[bootloader]
+# set empty values to disable RHEL initrd setting in cpu-partitioning
+initrd_remove_dir=
+initrd_dst_img=
+initrd_add_dir=
+# overrides cpu-partitioning cmdline
+cmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} intel_pstate=disable nosoftlockup
+{{if .StaticIsolation}}
+cmdline_realtime=+tsc=nowatchdog intel_iommu=on iommu=pt isolcpus=domain,managed_irq,${isolated_cores} systemd.cpu_affinity=${not_isolated_cores_expanded}
+{{else}}
+cmdline_realtime=+tsc=nowatchdog intel_iommu=on iommu=pt isolcpus=managed_irq,${isolated_cores} systemd.cpu_affinity=${not_isolated_cores_expanded}
+{{end}}
+cmdline_hugepages=+{{if .DefaultHugepagesSize}} default_hugepagesz={{.DefaultHugepagesSize}} {{end}} {{if .Hugepages}} {{.Hugepages}} {{end}}
+cmdline_additionalArg=+{{if .AdditionalArgs}} {{.AdditionalArgs}} {{end}}
