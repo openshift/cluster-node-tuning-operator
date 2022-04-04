@@ -1,0 +1,25 @@
+apiVersion: performance.openshift.io/v1alpha1
+kind: PerformanceProfile
+metadata:
+  name: example-performanceprofile
+spec:
+  additionalKernelArgs:
+    - "nmi_watchdog=0"
+    - "audit=0"
+    - "mce=off"
+    - "processor.max_cstate=1"
+    - "idle=poll"
+    - "intel_idle.max_cstate=0"
+  cpu:
+    isolated: "2-3"
+    reserved: "0-1"
+  hugepages:
+    defaultHugepagesSize: "1G"
+    pages:
+      - size: "1G"
+        count: 2
+        node: 0
+  realTimeKernel:
+    enabled: true
+  nodeSelector:
+    node-role.kubernetes.io/performance: ""
