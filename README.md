@@ -21,6 +21,10 @@ any changes to node-level settings before applying the new profile. The
 containerized TuneD daemon handles termination signals by rolling back any
 node-level settings it has applied before gracefully shutting down.
 
+## Perfomance Profile Controller
+[Performance Addon controller](docs/performanceprofile/performance_addon.md), 
+previously known as Performance addons operator and now a part of the Node Tuning Operator, 
+optimizes OpenShift clusters for applications sensitive to cpu and network latency.
 
 ## Deploying the Node Tuning Operator
 
