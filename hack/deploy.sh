@@ -10,7 +10,7 @@ success=0
 iterations=0
 sleep_time=10
 max_iterations=30 # results in 5 minute timeout
-feature_dir=test/e2e/pao/cluster-setup/${CLUSTER}-cluster/performance/
+feature_dir=test/e2e/performanceprofile/cluster-setup/${CLUSTER}-cluster/performance/
 
 until [[ $success -eq 1 ]] || [[ $iterations -eq $max_iterations ]]
 do

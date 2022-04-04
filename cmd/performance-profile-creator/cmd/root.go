@@ -25,14 +25,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/openshift/cluster-node-tuning-operator/pkg/pao/profilecreator"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator"
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	log "github.com/sirupsen/logrus"
 	"sigs.k8s.io/yaml"
 
 	"github.com/spf13/cobra"
 
-	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/pao/v2"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	kubeletconfig "k8s.io/kubelet/config/v1beta1"

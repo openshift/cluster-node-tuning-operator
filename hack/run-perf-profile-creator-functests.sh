@@ -1,6 +1,6 @@
 #!/bin/bash
 
-GINKGO_SUITS=${GINKGO_SUITS:-"test/e2e/pao/functests-performance-profile-creator"}
+GINKGO_SUITS=${GINKGO_SUITS:-"test/e2e/performanceprofile/functests-performance-profile-creator"}
 
 which ginkgo
 if [ $? -ne 0 ]; then
