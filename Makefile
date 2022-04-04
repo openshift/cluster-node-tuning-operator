@@ -34,7 +34,7 @@ IMAGE=$(REGISTRY)/$(ORG)/origin-cluster-node-tuning-operator:$(TAG)
 
 # PAO variables
 CLUSTER ?= "ci"
-PAO_CRD_APIS :=$(addprefix ./$(API_TYPES_DIR)/pao/,v2 v1 v1alpha1)
+PAO_CRD_APIS :=$(addprefix ./$(API_TYPES_DIR)/performanceprofile/,v2 v1 v1alpha1)
 
 all: build
 
@@ -62,7 +62,7 @@ $(BINDATA): $(GOBINDATA_BIN) $(ASSETS)
 
 pkg/generated: $(API_TYPES)
 	$(GO) run k8s.io/code-generator/cmd/deepcopy-gen \
-	  --input-dirs $(PACKAGE)/$(API_TYPES_DIR)/tuned/v1,$(PACKAGE)/$(API_TYPES_DIR)/pao/v1alpha1,$(PACKAGE)/$(API_TYPES_DIR)/pao/v1,$(PACKAGE)/$(API_TYPES_DIR)/pao/v2 \
+	  --input-dirs $(PACKAGE)/$(API_TYPES_DIR)/tuned/v1,$(PACKAGE)/$(API_TYPES_DIR)/performanceprofile/v1alpha1,$(PACKAGE)/$(API_TYPES_DIR)/performanceprofile/v1,$(PACKAGE)/$(API_TYPES_DIR)/performanceprofile/v2 \
 	  -O $(API_ZZ_GENERATED) \
 	  --go-header-file $(API_GO_HEADER_FILE) \
 	  --bounding-dirs $(PACKAGE)/$(API_TYPES_DIR) \
@@ -133,7 +133,7 @@ local-image-push:
 # $3 - manifests
 # $4 - output
 $(call add-crd-gen,tuned,./$(API_TYPES_DIR)/tuned/v1,./manifests,./manifests)
-$(call add-crd-gen,pao,$(PAO_CRD_APIS),./manifests,./manifests)
+$(call add-crd-gen,performanceprofile,$(PAO_CRD_APIS),./manifests,./manifests)
 
 # This will include additional actions on the update and verify targets to ensure that profile patches are applied
 # to manifest files
