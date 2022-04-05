@@ -32,7 +32,7 @@ type PerformanceProfileSpec struct {
 	CPU *CPU `json:"cpu"`
 	// HugePages defines a set of huge pages related parameters.
 	// It is possible to set huge pages with multiple size values at the same time.
-	// For example, hugepages can be set with 1G and 2M, both values will be set on the node by the performance-addon-operator.
+	// For example, hugepages can be set with 1G and 2M, both values will be set on the node by the performance addon controller.
 	// It is important to notice that setting hugepages default size to 1G will remove all 2M related
 	// folders from the node and it will be impossible to configure 2M hugepages under the node.
 	HugePages *HugePages `json:"hugepages,omitempty"`
