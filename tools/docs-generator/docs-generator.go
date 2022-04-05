@@ -24,7 +24,7 @@ const (
 	firstParagraph = `
 # Performance Profile
 
-This document documents the PerformanceProfile API introduced by the Performance Operator.
+This document documents the PerformanceProfile API introduced by the Performance controller.
 
 > This document is generated from code comments on the ` + "`PerformanceProfile`" + ` struct.  
 > When contributing a change to this document please do so by changing those code comments.`

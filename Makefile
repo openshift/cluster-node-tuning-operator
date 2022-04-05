@@ -147,15 +147,35 @@ $(call add-profile-manifests,manifests,./profile-patches,./manifests)
 
 # PAO
 
-.PHONY: cluster-deploy-pao
-cluster-deploy-pao:
-	@echo "Deploying PAO artifacts"
-	CLUSTER=$(CLUSTER) hack/deploy.sh
+.PHONY: generate-docs
+generate-docs: dist-docs-generator
+	hack/docs-generate.sh
+
+.PHONY: dist-docs-generator
+dist-docs-generator:
+	@if [ ! -x $(OUT_DIR)/docs-generator ]; then\
+		echo "Building docs-generator tool";\
+		$(GO) build -ldflags="-s -w" -mod=vendor -o $(OUT_DIR)/docs-generator ./tools/docs-generator;\
+	else \
+		echo "Using pre-built docs-generator tool";\
+	fi
 
 .PHONY: cluster-label-worker-cnf
 cluster-label-worker-cnf:
 	@echo "Adding worker-cnf label to worker nodes"
 	hack/label-worker-cnf.sh
+
+.PHONY: cluster-wait-for-pao-mcp
+cluster-wait-for-pao-mcp:
+    # NOTE: for CI this is done in the config suite of the functests!
+    # Use this when deploying manifests manually with CLUSTER=manual
+	@echo "Waiting for MCP to be updated"
+	CLUSTER=$(CLUSTER) hack/wait-for-mcp.sh
+
+.PHONY: cluster-deploy-pao
+cluster-deploy-pao:
+	@echo "Deploying PAO artifacts"
+	CLUSTER=$(CLUSTER) hack/deploy.sh
 
 .PHONY: pao-functests
 pao-functests: cluster-label-worker-cnf pao-functests-only
