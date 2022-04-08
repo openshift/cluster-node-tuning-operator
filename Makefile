@@ -52,7 +52,7 @@ clone-tuned:
 	  cd $(TUNED_DIR) && git checkout $(TUNED_COMMIT) && cd .. && \
 	  rm -rf $(TUNED_DIR)/.git)
 
-build: $(BINDATA) pkg/generated
+build: $(BINDATA) pkg/generated build-performance-profile-creator
 	$(GO_BUILD_RECIPE)
 	ln -sf $(PACKAGE_BIN) $(OUT_DIR)/openshift-tuned
 
@@ -190,3 +190,15 @@ pao-functests-only:
 cluster-clean-pao:
 	@echo "Cleaning up performance addons artifacts"
 	hack/clean-deploy.sh
+
+# Performance Profile Creator (PPC)
+.PHONY: build-performance-profile-creator
+build-performance-profile-creator: 
+	@echo "Building Performance Profile Creator (PPC)"
+	LDFLAGS="-s -w -X ${PACKAGE}/cmd/performance-profile-creator/version.Version=${REV} "; \
+	$(GO) build  -v $(LDFLAGS) -o $(OUT_DIR)/performance-profile-creator ./cmd/performance-profile-creator
+
+.PHONY: performance-profile-creator-tests
+performance-profile-creator-tests: build-performance-profile-creator
+	@echo "Running Performance Profile Creator Tests"
+	hack/run-perf-profile-creator-functests.sh

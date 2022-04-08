@@ -7,7 +7,7 @@ readonly IMG_EXISTS_CMD="${CONTAINER_RUNTIME} image exists"
 readonly IMG_PULL_CMD="${CONTAINER_RUNTIME} image pull"
 readonly MUST_GATHER_VOL="/must-gather"
 
-PAO_IMG="quay.io/openshift-kni/performance-addon-operator:4.11-snapshot"
+NTO_IMG="quay.io/openshift/origin-cluster-node-tuning-operator:4.11"
 MG_TARBALL=""
 DATA_DIR=""
 
@@ -17,10 +17,10 @@ usage() {
   print ""
   print "Options:"
   print "   -h                 help for ${CURRENT_SCRIPT}"
-  print "   -p                 Performance Addon Operator image"
+  print "   -p                 Node Tuning Operator image"
   print "   -t                 path to a must-gather tarball"
 
-  ${IMG_EXISTS_CMD} "${PAO_IMG}" && ${CMD} "${PAO_IMG}" -h
+  ${IMG_EXISTS_CMD} "${NTO_IMG}" && ${CMD} "${NTO_IMG}" -h
 }
 
 function cleanup {
@@ -39,8 +39,8 @@ print() {
 }
 
 check_requirements() {
-  ${IMG_EXISTS_CMD} "${PAO_IMG}" || ${IMG_PULL_CMD} "${PAO_IMG}" || \
-      exit_error "Performance Addon Operator image not found"
+  ${IMG_EXISTS_CMD} "${NTO_IMG}" || ${IMG_PULL_CMD} "${NTO_IMG}" || \
+      exit_error "Node Tuning Operator image not found"
 
   [ -n "${MG_TARBALL}" ] || exit_error "Must-gather tarball file path is mandatory"
   [ -f "${MG_TARBALL}" ] || exit_error "Must-gather tarball file not found"
@@ -60,7 +60,7 @@ main() {
         exit 0
         ;;
       p)
-        PAO_IMG="${OPTARG}"
+        NTO_IMG="${OPTARG}"
         ;;
       t)
         MG_TARBALL="${OPTARG}"
@@ -74,7 +74,7 @@ main() {
 
   check_requirements || exit 1
 
-  ${CMD} -v "${DATA_DIR}:${MUST_GATHER_VOL}:z" "${PAO_IMG}" "$@" --must-gather-dir-path "${MUST_GATHER_VOL}"
+  ${CMD} -v "${DATA_DIR}:${MUST_GATHER_VOL}:z" "${NTO_IMG}" "$@" --must-gather-dir-path "${MUST_GATHER_VOL}"
   echo "" 1>&2
 }
 
