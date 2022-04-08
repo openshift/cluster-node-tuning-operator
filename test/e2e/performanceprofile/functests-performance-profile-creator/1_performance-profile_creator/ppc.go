@@ -19,10 +19,10 @@ import (
 )
 
 const (
-	mustGatherPath       = "../../test/e2e/performanceprofile/testdata/must-gather"
-	expectedProfilesPath = "../../test/e2e/performanceprofile/testdata/ppc-expected-profiles"
-	expectedInfoPath     = "../../test/e2e/performanceprofile/testdata/ppc-expected-info"
-	ppcPath              = "../../build/_output/bin/performance-profile-creator"
+	mustGatherPath       = "../../../../../test/e2e/performanceprofile/testdata/must-gather"
+	expectedProfilesPath = "../../../../../test/e2e/performanceprofile/testdata/ppc-expected-profiles"
+	expectedInfoPath     = "../../../../../test/e2e/performanceprofile/testdata/ppc-expected-info"
+	ppcPath              = "../../../../../_output/performance-profile-creator"
 )
 
 var mustGatherFullPath = path.Join(mustGatherPath, "must-gather.bare-metal")
