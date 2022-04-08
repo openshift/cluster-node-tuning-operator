@@ -722,6 +722,7 @@ func (c *Controller) syncMachineConfig(name string, labels map[string]string, bo
 		return nil
 	}
 	mc = mc.DeepCopy() // never update the objects from cache
+	mc.ObjectMeta.Annotations = mcNew.ObjectMeta.Annotations
 	mc.Spec.KernelArguments = kernelArguments
 	mc.Spec.Config = mcNew.Spec.Config
 
