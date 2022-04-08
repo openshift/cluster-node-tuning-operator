@@ -1,9 +1,19 @@
 approvers:
   - jmencak
   - kpouget
+  - dagrayvid  
+  - MarSik
+  - fromanirh
+  - yanirq
 reviewers:
-  - ArangoGutierrez
   - jmencak
   - dagrayvid
   - kpouget
+  - MarSik
+  - yanirq
+  - fromanirh
+  - Tal-or
+  - swatisehgal
+  - jlojosnegros    
+  - marioferh  
 component: "Node Tuning Operator"
