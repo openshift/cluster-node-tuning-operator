@@ -30,7 +30,6 @@ import (
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
-	olmv1 "github.com/operator-framework/api/pkg/operators/v1"
 	olmv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 
 	corev1 "k8s.io/api/core/v1"
@@ -140,30 +139,10 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		Complete(r)
 }
 
-// uninstall PAO OLM operator and all of its artifacts
+// uninstall PAO OLM operator.
 // this should apply only from version 4.11
 func (r *PerformanceProfileReconciler) removeOLMOperator() error {
-	paoCSV := "performance-addon-operator.v4.10.0"
-	subscriptions := &olmv1alpha1.SubscriptionList{}
-
-	if err := r.List(context.TODO(), subscriptions); err != nil {
-		if !errors.IsNotFound(err) {
-			return err
-		}
-	}
-
-	for i := range subscriptions.Items {
-		subscription := &subscriptions.Items[i]
-		if subscription.Name == "performance-addon-operator" {
-			klog.Infof("Removing performance-addon-operator subscription %s", subscription.Name)
-			if subscription.Status.CurrentCSV != paoCSV {
-				return fmt.Errorf("Subscription to be removed contains a current CSV version %s which is different from %s", subscription.Status.CurrentCSV, paoCSV)
-			}
-			if err := r.Delete(context.TODO(), subscription); err != nil {
-				return err
-			}
-		}
-	}
+	var deletedCSVs []olmv1alpha1.ClusterServiceVersion
 
 	csvs := &olmv1alpha1.ClusterServiceVersionList{}
 	if err := r.List(context.TODO(), csvs); err != nil {
@@ -174,27 +153,36 @@ func (r *PerformanceProfileReconciler) removeOLMOperator() error {
 
 	for i := range csvs.Items {
 		csv := &csvs.Items[i]
-		if csv.Name == paoCSV {
-			klog.Infof("Removing performance-addon-operator CSV %s", paoCSV)
-			if err := r.Delete(context.TODO(), csv); err != nil {
-				return err
+		deploymentSpecs := csv.Spec.InstallStrategy.StrategySpec.DeploymentSpecs
+		if deploymentSpecs != nil {
+			for _, deployment := range deploymentSpecs {
+				if deployment.Name == "performance-operator" {
+					deletedCSVs = append(deletedCSVs, *csv)
+				}
 			}
 		}
 	}
 
-	operatorGroups := &olmv1.OperatorGroupList{}
-	if err := r.List(context.TODO(), operatorGroups); err != nil {
+	subscriptions := &olmv1alpha1.SubscriptionList{}
+
+	if err := r.List(context.TODO(), subscriptions); err != nil {
 		if !errors.IsNotFound(err) {
 			return err
 		}
 	}
 
-	for i := range operatorGroups.Items {
-		operatorGroup := &operatorGroups.Items[i]
-		if operatorGroup.Name == "performance-addon-operator" {
-			klog.Infof("Removing performance-addon-operator operator group %s", operatorGroup.Name)
-			if err := r.Delete(context.TODO(), operatorGroup); err != nil {
-				return err
+	for i := range subscriptions.Items {
+		subscription := &subscriptions.Items[i]
+		for _, csv := range deletedCSVs {
+			if subscription.Status.CurrentCSV == csv.Name {
+				klog.Infof("Removing performance-addon-operator subscription %s", subscription.Name)
+				if err := r.Delete(context.TODO(), subscription); err != nil {
+					return err
+				}
+				klog.Infof("Removing performance-addon-operator related CSV %s", csv.Name)
+				if err := r.Delete(context.TODO(), &csv); err != nil {
+					return err
+				}
 			}
 		}
 	}

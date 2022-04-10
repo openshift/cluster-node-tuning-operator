@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
+	olmv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 
 	igntypes "github.com/coreos/ignition/config/v2_2/types"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -51,6 +52,49 @@ var _ = Describe("Controller", func() {
 				Name:      profile.Name,
 			},
 		}
+	})
+
+	It("should remove OLM artifacts for performance-addon-operator", func() {
+		subscription := &olmv1alpha1.Subscription{
+			TypeMeta:   metav1.TypeMeta{},
+			ObjectMeta: metav1.ObjectMeta{Name: "performance-addon-operator", Namespace: "openshift-performance-addon-operator"},
+			Spec: &olmv1alpha1.SubscriptionSpec{
+				CatalogSource:          "performance-addon-operator",
+				CatalogSourceNamespace: "openshift-marketplace",
+				Package:                "",
+			},
+			Status: olmv1alpha1.SubscriptionStatus{
+				CurrentCSV: "performance-addon-operator.v4.10.0",
+			},
+		}
+
+		csv := &olmv1alpha1.ClusterServiceVersion{
+			TypeMeta:   metav1.TypeMeta{},
+			ObjectMeta: metav1.ObjectMeta{Name: "performance-addon-operator.v4.10.0", Namespace: "openshift-performance-addon-operator"},
+			Spec: olmv1alpha1.ClusterServiceVersionSpec{
+				InstallStrategy: olmv1alpha1.NamedInstallStrategy{
+					StrategyName: "test",
+					StrategySpec: olmv1alpha1.StrategyDetailsDeployment{
+						DeploymentSpecs: []olmv1alpha1.StrategyDeploymentSpec{
+							{
+								Name: "performance-operator",
+							},
+						},
+					},
+				},
+			},
+			Status: olmv1alpha1.ClusterServiceVersionStatus{},
+		}
+
+		r := newFakeReconciler(profile, subscription, csv)
+		Expect(r.Get(context.TODO(), types.NamespacedName{Name: subscription.Name, Namespace: subscription.Namespace}, subscription)).ToNot(HaveOccurred())
+		Expect(r.Get(context.TODO(), types.NamespacedName{Name: csv.Name, Namespace: csv.Namespace}, csv)).ToNot(HaveOccurred())
+
+		Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
+
+		Expect(r.Get(context.TODO(), types.NamespacedName{Name: subscription.Name, Namespace: subscription.Namespace}, subscription)).To(HaveOccurred())
+		Expect(r.Get(context.TODO(), types.NamespacedName{Name: csv.Name, Namespace: csv.Namespace}, csv)).To(HaveOccurred())
+
 	})
 
 	It("should add finalizer to the performance profile", func() {
