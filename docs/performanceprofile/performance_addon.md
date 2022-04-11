@@ -9,8 +9,8 @@ The `Performance Addon controller` optimizes OpenShift clusters for applications
 The `PerformanceProfile` CRD is the API of the performance Addon controller and offers high level options
 for applying various performance tunings to cluster nodes.
 
-The performance profile API is documented in detail in the [Performance Profile](docs/performanceprofile/performance_profile.md) doc.
-Follow the [API versions](docs/performanceprofile/api-versions.md) doc to check the supported API versions.
+The performance profile API is documented in detail in the [Performance Profile](performance_profile.md) doc.
+Follow the [API versions](api-versions.md) doc to check the supported API versions.
 
 # Building and pushing the operator images
 
@@ -78,7 +78,7 @@ build/_output/bin/performance-addon-operators render --performance-profile-input
 
 # Troubleshooting
 
-When the deployment fails, or the performance tuning does not work as expected, follow the [Troubleshooting Guide](docs/performanceprofile/troubleshooting.md)
+When the deployment fails, or the performance tuning does not work as expected, follow the [Troubleshooting Guide](troubleshooting.md)
 for debugging the cluster. Please provide as much info from troubleshooting as possible when reporting issues. Thanks!
 
 # Testing
