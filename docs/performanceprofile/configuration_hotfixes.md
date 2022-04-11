@@ -6,11 +6,11 @@ Instructions for editing (add/remove/change) kernel arguments,sysfs,proc paramet
 
 ## Default tunings
 
-Default tunings are applied with the [openshift-performance](https://github.com/openshift/cluster-node-tuning-operator/blob/master/assets/performanceprofile/tuned/openshift-node-performance) base profile, it is the base for creating a Tuned CR that would be detected by the Node Tuning Operator and finally be executed by [tuned](https://github.com/redhat-performance/tuned).
+Default tunings are applied with the [openshift-performance](../../assets/performanceprofile/tuned/openshift-node-performance) base profile, it is the base for creating a Tuned CR that would be detected by the Node Tuning Operator and finally be executed by [tuned](https://github.com/redhat-performance/tuned).
 
 ## Additional kernel arguments
 
-When creating a [performance profile CR](../examples/performanceprofile/samples/performance_v1_performanceprofile.yaml) , a default set of kernel arguments are created from the [openshift-performance](https://github.com/openshift/cluster-node-tuning-operator/blob/master/build/assets/performanceprofile/tuned/openshift-node-performance) base profile in addition to tuned generated argument and can include for example:
+When creating a [performance profile CR](../../examples/performanceprofile/samples/performance_v1_performanceprofile.yaml) , a default set of kernel arguments are created from the [openshift-performance](../../assets/performanceprofile/tuned/openshift-node-performance) base profile in addition to tuned generated argument and can include for example:
 
 `nohz=on rcu_nocbs=<isolated_cores> tuned.non_isolcpus=<not_isolated_cpumask> intel_pstate=disable nosoftlockup tsc=nowatchdog intel_iommu=on iommu=pt systemd.cpu_affinity=<not_isolated_cores> isolcpus=<isolated_cores> default_hugepagesz=<DefaultHugepagesSize> hugepagesz=<hugepages_size> hugepages=<hugepages_>`
 
@@ -40,7 +40,7 @@ spec:
 
 ## Custom tunings 
 
-To perform hotfixes on top of the tuned [openshift-performance](https://github.com/openshift/cluster-node-tuning-operator/blob/master/build/assets/performanceprofile/tuned/openshift-node-performance) base profile, a tuned custom profile (A child profile) will be used to apply the desired changes.
+To perform hotfixes on top of the tuned [openshift-performance](../../assets/performanceprofile/tuned/openshift-node-performance) base profile, a tuned custom profile (A child profile) will be used to apply the desired changes.
 This profile will inherit the base tuned profile and override its fields where needed. 
 
 For complete details about customizing tuned see : [Customizing Tuned profiles](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/monitoring_and_managing_system_status_and_performance/customizing-tuned-profiles_monitoring-and-managing-system-status-and-performance).
