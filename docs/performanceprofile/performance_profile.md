@@ -20,6 +20,7 @@ This document documents the PerformanceProfile API introduced by the Performance
 * [PerformanceProfileSpec](#performanceprofilespec)
 * [PerformanceProfileStatus](#performanceprofilestatus)
 * [RealTimeKernel](#realtimekernel)
+* [WorkloadHints](#workloadhints)
 
 ## CPU
 
@@ -144,6 +145,7 @@ PerformanceProfileSpec defines the desired state of PerformanceProfile.
 | numa | NUMA defines options related to topology aware affinities | *[NUMA](#numa) | false |
 | net | Net defines a set of network related features | *[Net](#net) | false |
 | globallyDisableIrqLoadBalancing | GloballyDisableIrqLoadBalancing toggles whether IRQ load balancing will be disabled for the Isolated CPU set. When the option is set to \"true\" it disables IRQs load balancing for the Isolated CPU set. Setting the option to \"false\" allows the IRQs to be balanced across all CPUs, however the IRQs load balancing can be disabled per pod CPUs when using irq-load-balancing.crio.io/cpu-quota.crio.io annotations. Defaults to \"false\" | *bool | false |
+| workloadHints | WorkloadHints defines hints for different types of workloads. It will allow defining exact set of tuned and kernel arguments that should be applied on top of the node. | *[WorkloadHints](#workloadhints) | false |
 
 [Back to TOC](#table-of-contents)
 
@@ -166,5 +168,16 @@ RealTimeKernel defines the set of parameters relevant for the real time kernel.
 | Field | Description | Scheme | Required |
 | ----- | ----------- | ------ | -------- |
 | enabled | Enabled defines if the real time kernel packages should be installed. Defaults to \"false\" | *bool | false |
+
+[Back to TOC](#table-of-contents)
+
+## WorkloadHints
+
+WorkloadHints defines the set of upper level flags for different type of workloads.
+
+| Field | Description | Scheme | Required |
+| ----- | ----------- | ------ | -------- |
+| highPowerConsumption | HighPowerConsumption defines if the node should be configured in high power consumption mode. The flag will affect the power consumption but will improve the CPUs latency. | *bool | false |
+| realTime | RealTime defines if the node should be configured for the real time workload. | *bool | false |
 
 [Back to TOC](#table-of-contents)

@@ -151,6 +151,16 @@ spec:
                     enabled:
                       description: Enabled defines if the real time kernel packages should be installed. Defaults to "false"
                       type: boolean
+                workloadHints:
+                  description: WorkloadHints defines hints for different types of workloads. It will allow defining exact set of tuned and kernel arguments that should be applied on top of the node.
+                  type: object
+                  properties:
+                    highPowerConsumption:
+                      description: HighPowerConsumption defines if the node should be configured in high power consumption mode. The flag will affect the power consumption but will improve the CPUs latency.
+                      type: boolean
+                    realTime:
+                      description: RealTime defines if the node should be configured for the real time workload.
+                      type: boolean
             status:
               description: PerformanceProfileStatus defines the observed state of PerformanceProfile.
               type: object
@@ -442,6 +452,16 @@ spec:
                   properties:
                     enabled:
                       description: Enabled defines if the real time kernel packages should be installed. Defaults to "false"
+                      type: boolean
+                workloadHints:
+                  description: WorkloadHints defines hints for different types of workloads. It will allow defining exact set of tuned and kernel arguments that should be applied on top of the node.
+                  type: object
+                  properties:
+                    highPowerConsumption:
+                      description: HighPowerConsumption defines if the node should be configured in high power consumption mode. The flag will affect the power consumption but will improve the CPUs latency.
+                      type: boolean
+                    realTime:
+                      description: RealTime defines if the node should be configured for the real time workload.
                       type: boolean
             status:
               description: PerformanceProfileStatus defines the observed state of PerformanceProfile.
