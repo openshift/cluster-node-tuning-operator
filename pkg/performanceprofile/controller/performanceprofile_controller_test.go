@@ -478,7 +478,7 @@ var _ = Describe("Controller", func() {
 				t := &tunedv1.Tuned{}
 				err := r.Get(context.TODO(), key, t)
 				Expect(err).ToNot(HaveOccurred())
-				cmdlineRealtimeWithoutCPUBalancing := regexp.MustCompile(`\s*cmdline_realtime=\+\s*tsc=nowatchdog\s+intel_iommu=on\s+iommu=pt\s+isolcpus=managed_irq\s*`)
+				cmdlineRealtimeWithoutCPUBalancing := regexp.MustCompile(`\s*cmdline_isolation=\+\s*isolcpus=managed_irq\s*`)
 				Expect(cmdlineRealtimeWithoutCPUBalancing.MatchString(*t.Spec.Profile[0].Data)).To(BeTrue())
 			})
 
@@ -502,7 +502,7 @@ var _ = Describe("Controller", func() {
 				t := &tunedv1.Tuned{}
 				err := r.Get(context.TODO(), key, t)
 				Expect(err).ToNot(HaveOccurred())
-				cmdlineRealtimeWithoutCPUBalancing := regexp.MustCompile(`\s*cmdline_realtime=\+\s*tsc=nowatchdog\s+intel_iommu=on\s+iommu=pt\s+isolcpus=domain,managed_irq,\s*`)
+				cmdlineRealtimeWithoutCPUBalancing := regexp.MustCompile(`\s*cmdline_isolation=\+\s*isolcpus=domain,managed_irq,\s*`)
 				Expect(cmdlineRealtimeWithoutCPUBalancing.MatchString(*t.Spec.Profile[0].Data)).To(BeTrue())
 			})
 
