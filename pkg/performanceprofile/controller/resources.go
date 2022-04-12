@@ -8,7 +8,7 @@ import (
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
-	nodev1beta1 "k8s.io/api/node/v1beta1"
+	nodev1 "k8s.io/api/node/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -263,8 +263,8 @@ func (r *PerformanceProfileReconciler) deleteTuned(name string, namespace string
 	return r.Delete(context.TODO(), tuned)
 }
 
-func (r *PerformanceProfileReconciler) getRuntimeClass(name string) (*nodev1beta1.RuntimeClass, error) {
-	runtimeClass := &nodev1beta1.RuntimeClass{}
+func (r *PerformanceProfileReconciler) getRuntimeClass(name string) (*nodev1.RuntimeClass, error) {
+	runtimeClass := &nodev1.RuntimeClass{}
 	key := types.NamespacedName{
 		Name: name,
 	}
@@ -274,7 +274,7 @@ func (r *PerformanceProfileReconciler) getRuntimeClass(name string) (*nodev1beta
 	return runtimeClass, nil
 }
 
-func (r *PerformanceProfileReconciler) getMutatedRuntimeClass(runtimeClass *nodev1beta1.RuntimeClass) (*nodev1beta1.RuntimeClass, error) {
+func (r *PerformanceProfileReconciler) getMutatedRuntimeClass(runtimeClass *nodev1.RuntimeClass) (*nodev1.RuntimeClass, error) {
 	existing, err := r.getRuntimeClass(runtimeClass.Name)
 	if errors.IsNotFound(err) {
 		return runtimeClass, nil
@@ -301,7 +301,7 @@ func (r *PerformanceProfileReconciler) getMutatedRuntimeClass(runtimeClass *node
 	return mutated, nil
 }
 
-func (r *PerformanceProfileReconciler) createOrUpdateRuntimeClass(runtimeClass *nodev1beta1.RuntimeClass) error {
+func (r *PerformanceProfileReconciler) createOrUpdateRuntimeClass(runtimeClass *nodev1.RuntimeClass) error {
 	_, err := r.getRuntimeClass(runtimeClass.Name)
 	if errors.IsNotFound(err) {
 		klog.Infof("Create runtime class %q", runtimeClass.Name)
