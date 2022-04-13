@@ -10,7 +10,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/tuned"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
-	nodev1beta1 "k8s.io/api/node/v1beta1"
+	nodev1 "k8s.io/api/node/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -19,7 +19,7 @@ type ManifestResultSet struct {
 	MachineConfig *mcov1.MachineConfig
 	KubeletConfig *mcov1.KubeletConfig
 	Tuned         *tunedv1.Tuned
-	RuntimeClass  *nodev1beta1.RuntimeClass
+	RuntimeClass  *nodev1.RuntimeClass
 }
 
 // ManifestTable is map with Kind name as key and component's instance as value
