@@ -44,22 +44,59 @@ const (
 	infoModeLog  = "log"
 )
 
+const (
+	// defaultLatency refers to the fact that no additional configuration is needed
+	defaultLatency string = "default"
+
+	// lowLatency configures additional set of kernel and tuned arguments for the realtime workload
+	// kernel arguments
+	// 1. nohz_full=${isolated_cores}
+	// 2. tsc=nowatchdog
+	// 3. nosoftlockup
+	// 4. nmi_watchdog=0
+	// 5. mce=off
+	// 6. skew_tick=1
+	//
+	// tuned configuration
+	// 1. stalld enabled
+	// 2. sched_rt_runtime_us=-1
+	// 3. kernel.hung_task_timeout_secs=600
+	// 4. kernel.nmi_watchdog=0
+	// 5. kernel.sched_rt_runtime_us=-1
+	// 6. vm.stat_interval=10
+	lowLatency string = "low-latency"
+
+	// ultraLowLatency in addition to low-latency configuration, disabling CPU P and C states
+	// to guarantee that the CPU will have the lowest responsive time(also meaning high CPU consumption)
+	// kernel Arguments
+	// processor.max_cstate=1
+	// intel_idle.max_cstate=0
+	// intel_pstate=disable
+	// idle=poll
+	// For more information on CPU "C-states" please refer to https://gist.github.com/wmealing/2dd2b543c4d3cff6cab7
+	ultraLowLatency string = "ultra-low-latency"
+)
+
 var (
-	validTMPolicyValues = []string{kubeletconfig.SingleNumaNodeTopologyManagerPolicy, kubeletconfig.BestEffortTopologyManagerPolicy, kubeletconfig.RestrictedTopologyManagerPolicy}
-	validInfoModes      = []string{infoModeLog, infoModeJSON}
+	validTMPolicyValues        = []string{kubeletconfig.SingleNumaNodeTopologyManagerPolicy, kubeletconfig.BestEffortTopologyManagerPolicy, kubeletconfig.RestrictedTopologyManagerPolicy}
+	validInfoModes             = []string{infoModeLog, infoModeJSON}
+	validPowerConsumptionModes = []string{defaultLatency, lowLatency, ultraLowLatency}
 )
 
 // ProfileData collects and stores all the data needed for profile creation
 type ProfileData struct {
-	isolatedCPUs, reservedCPUs string
-	nodeSelector               *metav1.LabelSelector
-	mcpSelector                map[string]string
-	performanceProfileName     string
-	topologyPoilcy             string
-	rtKernel                   bool
-	additionalKernelArgs       []string
-	userLevelNetworking        *bool
-	disableHT                  bool
+	isolatedCPUs             string
+	reservedCPUs             string
+	nodeSelector             *metav1.LabelSelector
+	mcpSelector              map[string]string
+	performanceProfileName   string
+	topologyPolicy           string
+	rtKernel                 bool
+	additionalKernelArgs     []string
+	userLevelNetworking      *bool
+	disableHT                bool
+	realtimeHint             *bool
+	highPowerConsumptionHint *bool
 }
 
 // ClusterData collects the cluster wide information, each mcp points to a list of ghw node handlers
@@ -78,7 +115,7 @@ func NewRootCommand() *cobra.Command {
 		UserLevelNetworking: pointer.BoolPtr(false),
 	}
 
-	var requiredFlags []string = []string{
+	var requiredFlags = []string{
 		"reserved-cpu-count",
 		"mcp-name",
 		"rt-kernel",
@@ -134,8 +171,9 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			createProfile(*profileData)
-			return nil
+
+			err = createProfile(*profileData)
+			return err
 		},
 	}
 
@@ -145,7 +183,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().BoolVar(&pcArgs.DisableHT, "disable-ht", false, "Disable Hyperthreading")
 	root.PersistentFlags().BoolVar(&pcArgs.RTKernel, "rt-kernel", false, "Enable Real Time Kernel (required)")
 	root.PersistentFlags().BoolVar(pcArgs.UserLevelNetworking, "user-level-networking", false, "Run with User level Networking(DPDK) enabled")
-	root.PersistentFlags().StringVar(&pcArgs.PowerConsumptionMode, "power-consumption-mode", profilecreator.ValidPowerConsumptionModes[0], fmt.Sprintf("The power consumption mode.  [Valid values: %s]", strings.Join(profilecreator.ValidPowerConsumptionModes, ", ")))
+	root.PersistentFlags().StringVar(&pcArgs.PowerConsumptionMode, "power-consumption-mode", defaultLatency, fmt.Sprintf("The power consumption mode.  [Valid values: %s]", strings.Join(validPowerConsumptionModes, ", ")))
 	root.PersistentFlags().StringVar(&pcArgs.MustGatherDirPath, "must-gather-dir-path", "must-gather", "Must gather directory path")
 	root.PersistentFlags().StringVar(&pcArgs.ProfileName, "profile-name", "performance", "Name of the performance profile to be created")
 	root.PersistentFlags().StringVar(&pcArgs.TMPolicy, "topology-manager-policy", kubeletconfig.RestrictedTopologyManagerPolicy, fmt.Sprintf("Kubelet Topology Manager Policy of the performance profile to be created. [Valid values: %s, %s, %s]", kubeletconfig.SingleNumaNodeTopologyManagerPolicy, kubeletconfig.BestEffortTopologyManagerPolicy, kubeletconfig.RestrictedTopologyManagerPolicy))
@@ -338,7 +376,7 @@ func getDataFromFlags(cmd *cobra.Command) (ProfileCreatorArgs, error) {
 	if err != nil {
 		return creatorArgs, fmt.Errorf("failed to parse power-consumption-mode flag: %v", err)
 	}
-	err = validateFlag("power-consumption-mode", powerConsumptionMode, profilecreator.ValidPowerConsumptionModes)
+	err = validateFlag("power-consumption-mode", powerConsumptionMode, validPowerConsumptionModes)
 	if err != nil {
 		return creatorArgs, fmt.Errorf("invalid value for power-consumption-mode flag specified: %v", err)
 	}
@@ -424,17 +462,34 @@ func getProfileData(args ProfileCreatorArgs, cluster ClusterData) (*ProfileData,
 	}
 	log.Infof("%d reserved CPUs allocated: %v ", reservedCPUs.Size(), reservedCPUs.String())
 	log.Infof("%d isolated CPUs allocated: %v", isolatedCPUs.Size(), isolatedCPUs.String())
-	kernelArgs := profilecreator.GetAdditionalKernelArgs(args.PowerConsumptionMode, args.DisableHT)
+	kernelArgs := profilecreator.GetAdditionalKernelArgs(args.DisableHT)
 	profileData := &ProfileData{
 		reservedCPUs:           reservedCPUs.String(),
 		isolatedCPUs:           isolatedCPUs.String(),
 		nodeSelector:           mcp.Spec.NodeSelector,
 		mcpSelector:            mcpSelector,
 		performanceProfileName: args.ProfileName,
-		topologyPoilcy:         args.TMPolicy,
+		topologyPolicy:         args.TMPolicy,
 		rtKernel:               args.RTKernel,
 		additionalKernelArgs:   kernelArgs,
 		userLevelNetworking:    args.UserLevelNetworking,
+	}
+
+	// setting workload hints
+	switch args.PowerConsumptionMode {
+	case defaultLatency:
+		if profileData.rtKernel {
+			return nil, fmt.Errorf(
+				"please use one of %v power consumption modes together with the real-time kernel",
+				validPowerConsumptionModes[1:],
+			)
+		}
+	case lowLatency:
+		profileData.realtimeHint = pointer.BoolPtr(true)
+	case ultraLowLatency:
+		profileData.realtimeHint = pointer.BoolPtr(true)
+		profileData.highPowerConsumptionHint = pointer.BoolPtr(true)
+
 	}
 	return profileData, nil
 }
@@ -471,7 +526,7 @@ type ProfileCreatorArgs struct {
 	Info                        string `json:"info"`
 }
 
-func createProfile(profileData ProfileData) {
+func createProfile(profileData ProfileData) error {
 	reserved := performancev2.CPUSet(profileData.reservedCPUs)
 	isolated := performancev2.CPUSet(profileData.isolatedCPUs)
 	// TODO: Get the name from MCP if not specified in the command line arguments
@@ -493,11 +548,27 @@ func createProfile(profileData ProfileData) {
 			RealTimeKernel: &performancev2.RealTimeKernel{
 				Enabled: &profileData.rtKernel,
 			},
-			AdditionalKernelArgs: profileData.additionalKernelArgs,
 			NUMA: &performancev2.NUMA{
-				TopologyPolicy: &profileData.topologyPoilcy,
+				TopologyPolicy: &profileData.topologyPolicy,
 			},
 		},
+	}
+
+	if len(profileData.additionalKernelArgs) > 0 {
+		profile.Spec.AdditionalKernelArgs = profileData.additionalKernelArgs
+	}
+
+	// configuring workload hints
+	profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+		HighPowerConsumption: pointer.BoolPtr(false),
+		RealTime:             pointer.BoolPtr(false),
+	}
+	if profileData.highPowerConsumptionHint != nil {
+		profile.Spec.WorkloadHints.HighPowerConsumption = profileData.highPowerConsumptionHint
+	}
+
+	if profileData.realtimeHint != nil {
+		profile.Spec.WorkloadHints.RealTime = profileData.realtimeHint
 	}
 
 	if profileData.userLevelNetworking != nil {
@@ -508,9 +579,12 @@ func createProfile(profileData ProfileData) {
 
 	// write CSV to out dir
 	writer := strings.Builder{}
-	MarshallObject(&profile, &writer)
+	if err := MarshallObject(&profile, &writer); err != nil {
+		return err
+	}
 
 	fmt.Printf("%s", writer.String())
+	return nil
 }
 
 // MarshallObject mashals an object, usually a CSV into YAML
