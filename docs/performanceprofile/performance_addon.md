@@ -68,12 +68,12 @@ export ASSET_OUTPUT_DIR=<output path for the rendered manifests>
 
 Build and invoke the binary
 ```
-build/_output/bin/performance-addon-operators render (FIXME)
+_output/cluster-node-tuning-operator render
 ```
 
 Or provide the variables via command line arguments
 ```
-build/_output/bin/performance-addon-operators render --performance-profile-input-files <path> --asset-output-dir<path> (FIXME)
+_output/cluster-node-tuning-operator render --performance-profile-input-files <path> --asset-output-dir<path>
 ```
 
 # Troubleshooting
