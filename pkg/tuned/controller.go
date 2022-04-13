@@ -272,7 +272,7 @@ func (c *Controller) sync(key wqKey) error {
 			return fmt.Errorf("failed to get Tuned %s: %v", key.name, err)
 		}
 
-		change, err := profilesExtract(tuned.Spec.Profile)
+		change, err := profilesSync(tuned.Spec.Profile)
 		if err != nil {
 			return err
 		}
@@ -366,9 +366,13 @@ func profilesEqual(profileFile string, profileData string) bool {
 }
 
 // profilesExtract extracts TuneD daemon profiles to the daemon configuration directory.
-// If the data in the to-be-extracted recommended profile or the profiles being included
-// from the current recommended profile have changed, the function returns true.
-func profilesExtract(profiles []tunedv1.TunedProfile) (bool, error) {
+// Returns:
+// - True if the data in the to-be-extracted recommended profile or the profiles being
+//   included from the current recommended profile have changed.
+// - A map with successfully extracted TuneD profile names.
+// - A map with names of TuneD profiles the current TuneD recommended profile depends on.
+// - Error if any or nil.
+func profilesExtract(profiles []tunedv1.TunedProfile) (bool, map[string]bool, map[string]bool, error) {
 	var (
 		change bool
 	)
@@ -376,8 +380,15 @@ func profilesExtract(profiles []tunedv1.TunedProfile) (bool, error) {
 
 	recommendedProfile, err := getRecommendedProfile()
 	if err != nil {
-		return change, err
+		return change, map[string]bool{}, map[string]bool{}, err
 	}
+
+	// Get a list of TuneD profiles names the recommended profile depends on.
+	recommendedProfileDeps := profileDepends(recommendedProfile)
+	// Add the recommended profile itself.
+	recommendedProfileDeps[recommendedProfile] = true
+	extracted := map[string]bool{} // TuneD profile names present in TuneD CR and successfully extracted to /etc/tuned/<profile>/
+
 	for index, profile := range profiles {
 		if profile.Name == nil {
 			klog.Warningf("profilesExtract(): profile name missing for Profile %v", index)
@@ -391,13 +402,9 @@ func profilesExtract(profiles []tunedv1.TunedProfile) (bool, error) {
 		profileFile := fmt.Sprintf("%s/%s", profileDir, tunedConfFile)
 
 		if err := mkdir(profileDir); err != nil {
-			return change, fmt.Errorf("failed to create TuneD profile directory %q: %v", profileDir, err)
+			return change, extracted, recommendedProfileDeps, fmt.Errorf("failed to create TuneD profile directory %q: %v", profileDir, err)
 		}
 
-		// Get a list of TuneD profiles names the recommended profile depends on.
-		recommendedProfileDeps := profileDepends(recommendedProfile)
-		// Add the recommended profile itself.
-		recommendedProfileDeps[recommendedProfile] = true
 		if recommendedProfileDeps[*profile.Name] {
 			// Recommended profile (dependency) name matches profile name of the profile
 			// currently being extracted, compare their content.
@@ -411,11 +418,46 @@ func profilesExtract(profiles []tunedv1.TunedProfile) (bool, error) {
 
 		f, err := os.Create(profileFile)
 		if err != nil {
-			return change, fmt.Errorf("failed to create TuneD profile file %q: %v", profileFile, err)
+			return change, extracted, recommendedProfileDeps, fmt.Errorf("failed to create TuneD profile file %q: %v", profileFile, err)
 		}
 		defer f.Close()
 		if _, err = f.WriteString(*profile.Data); err != nil {
-			return change, fmt.Errorf("failed to write TuneD profile file %q: %v", profileFile, err)
+			return change, extracted, recommendedProfileDeps, fmt.Errorf("failed to write TuneD profile file %q: %v", profileFile, err)
+		}
+		extracted[*profile.Name] = true
+	}
+
+	return change, extracted, recommendedProfileDeps, nil
+}
+
+// profilesSync extracts TuneD daemon profiles to the daemon configuration directory
+// and removes any TuneD profiles from /etc/tuned/<profile>/ once the same TuneD
+// <profile> is no longer defined in the 'profiles' slice.
+// Returns:
+// - True if the data in the to-be-extracted recommended profile or the profiles being
+//   included from the current recommended profile have changed.
+// - Error if any or nil.
+func profilesSync(profiles []tunedv1.TunedProfile) (bool, error) {
+	change, extractedNew, recommendedProfileDeps, err := profilesExtract(profiles)
+	if err != nil {
+		return change, err
+	}
+
+	// Deal with TuneD profiles absent from Tuned CRs, but still present in /etc/tuned/<profile>/ the recommended profile depends on.
+	for profile := range recommendedProfileDeps {
+		if !extractedNew[profile] {
+			// TuneD profile does not exist in the Tuned CR, but the recommended profile depends on it.
+			profileDir := fmt.Sprintf("%s/%s", tunedProfilesDirCustom, profile)
+			if _, err := os.Stat(profileDir); err == nil {
+				// We have a stale TuneD profile directory in /etc/tuned/<profile>/
+				// Remove it.
+				err := os.RemoveAll(profileDir)
+				if err != nil {
+					return change, fmt.Errorf("failed to remove %q: %v", profileDir, err)
+				}
+				change = true
+				klog.Infof("removed TuneD profile %q", profileDir)
+			}
 		}
 	}
 
