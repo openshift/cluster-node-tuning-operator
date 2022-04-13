@@ -174,6 +174,7 @@ type PerformanceProfileStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:path=performanceprofiles,scope=Cluster
 // +kubebuilder:deprecatedversion:warning="v1 is deprecated and should be removed in next three releases, use v2 instead"
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // PerformanceProfile is the Schema for the performanceprofiles API
 type PerformanceProfile struct {
@@ -185,6 +186,7 @@ type PerformanceProfile struct {
 }
 
 // +kubebuilder:object:root=true
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // PerformanceProfileList contains a list of PerformanceProfile
 type PerformanceProfileList struct {
