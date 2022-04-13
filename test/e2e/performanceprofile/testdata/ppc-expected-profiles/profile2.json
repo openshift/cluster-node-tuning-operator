@@ -3,5 +3,6 @@
   "mcp-name": "master",
   "reserved-cpu-count": 1,
   "rt-kernel": false,
-  "user-level-networking": false
+  "user-level-networking": false,
+  "power-consumption-mode": "default"
 }
