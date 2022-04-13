@@ -21,7 +21,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 
 	corev1 "k8s.io/api/core/v1"
-	nodev1beta1 "k8s.io/api/node/v1beta1"
+	nodev1 "k8s.io/api/node/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
@@ -83,7 +83,7 @@ var _ = Describe("Status testing of performance profile", func() {
 				Name:      components.GetComponentName(profile.Name, components.ComponentNamePrefix),
 				Namespace: metav1.NamespaceAll,
 			}
-			runtimeClass := &nodev1beta1.RuntimeClass{}
+			runtimeClass := &nodev1.RuntimeClass{}
 			err = testclient.GetWithRetry(context.TODO(), key, runtimeClass)
 			Expect(err).ToNot(HaveOccurred(), "cannot find the RuntimeClass object "+key.String())
 

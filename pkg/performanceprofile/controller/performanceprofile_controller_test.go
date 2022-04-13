@@ -25,7 +25,7 @@ import (
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	corev1 "k8s.io/api/core/v1"
-	nodev1beta1 "k8s.io/api/node/v1beta1"
+	nodev1 "k8s.io/api/node/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -142,7 +142,7 @@ var _ = Describe("Controller", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// verify RuntimeClass creation
-			runtimeClass := &nodev1beta1.RuntimeClass{}
+			runtimeClass := &nodev1.RuntimeClass{}
 			err = r.Get(context.TODO(), key, runtimeClass)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -362,7 +362,7 @@ var _ = Describe("Controller", func() {
 			Expect(errors.IsNotFound(err)).To(BeTrue())
 
 			// verify that no RuntimeClass was created
-			runtimeClass := &nodev1beta1.RuntimeClass{}
+			runtimeClass := &nodev1.RuntimeClass{}
 			err = r.Get(context.TODO(), key, runtimeClass)
 			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
@@ -371,7 +371,7 @@ var _ = Describe("Controller", func() {
 			var mc *mcov1.MachineConfig
 			var kc *mcov1.KubeletConfig
 			var tunedPerformance *tunedv1.Tuned
-			var runtimeClass *nodev1beta1.RuntimeClass
+			var runtimeClass *nodev1.RuntimeClass
 
 			BeforeEach(func() {
 				var err error
@@ -615,7 +615,7 @@ var _ = Describe("Controller", func() {
 					Name:      components.GetComponentName(profile.Name, components.ComponentNamePrefix),
 					Namespace: metav1.NamespaceAll,
 				}
-				runtimeClass := &nodev1beta1.RuntimeClass{}
+				runtimeClass := &nodev1.RuntimeClass{}
 				err := r.Get(context.TODO(), key, runtimeClass)
 				Expect(err).ToNot(HaveOccurred())
 

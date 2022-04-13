@@ -33,7 +33,7 @@ import (
 	olmv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 
 	corev1 "k8s.io/api/core/v1"
-	nodev1beta1 "k8s.io/api/node/v1beta1"
+	nodev1 "k8s.io/api/node/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	k8serros "k8s.io/apimachinery/pkg/api/errors"
@@ -126,7 +126,7 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		Owns(&mcov1.MachineConfig{}, builder.WithPredicates(p)).
 		Owns(&mcov1.KubeletConfig{}, builder.WithPredicates(kubeletPredicates)).
 		Owns(&tunedv1.Tuned{}, builder.WithPredicates(p)).
-		Owns(&nodev1beta1.RuntimeClass{}, builder.WithPredicates(p)).
+		Owns(&nodev1.RuntimeClass{}, builder.WithPredicates(p)).
 		Watches(
 			&source.Kind{Type: &mcov1.MachineConfigPool{}},
 			handler.EnqueueRequestsFromMapFunc(r.mcpToPerformanceProfile),

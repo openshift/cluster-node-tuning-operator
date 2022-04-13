@@ -15,7 +15,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/api/node/v1beta1"
+	nodev1 "k8s.io/api/node/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
@@ -568,7 +568,7 @@ var _ = Describe("[rfe_id:27368][performance]", func() {
 			Expect(kubeletConfig.Spec.MachineConfigPoolSelector.MatchLabels[machineconfigv1.MachineConfigRoleLabelKey]).Should(Equal(newRole))
 			Expect(kubeletConfig.Spec.KubeletConfig.Raw).Should(ContainSubstring("restricted"), "Can't find value in KubeletConfig")
 
-			runtimeClass := &v1beta1.RuntimeClass{}
+			runtimeClass := &nodev1.RuntimeClass{}
 			err = testclient.GetWithRetry(context.TODO(), configKey, runtimeClass)
 			Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("cannot find RuntimeClass profile object %s", runtimeClass.Name))
 			Expect(runtimeClass.Handler).Should(Equal(machineconfig.HighPerformanceRuntime))
