@@ -28,7 +28,7 @@ func TestRenderCmd(t *testing.T) {
 		rr = append(rr, &ginkgo_reporters.Polarion)
 	}
 	rr = append(rr, junit.NewJUnitReporter("render_manifests"))
-	RunSpecsWithDefaultAndCustomReporters(t, "Performance Operator render tests", rr)
+	RunSpecsWithDefaultAndCustomReporters(t, "Performance Profile render tests", rr)
 }
 
 var _ = BeforeSuite(func() {
@@ -38,8 +38,8 @@ var _ = BeforeSuite(func() {
 	}
 
 	testDir = filepath.Dir(file)
-	workspaceDir = filepath.Clean(filepath.Join(testDir, "..", ".."))
-	binPath = filepath.Clean(filepath.Join(workspaceDir, "build", "_output", "bin"))
+	workspaceDir = filepath.Clean(filepath.Join(testDir, "..", "..", "..", "..", ".."))
+	binPath = filepath.Clean(filepath.Join(workspaceDir, "_output"))
 	fmt.Fprintf(GinkgoWriter, "using binary at %q\n", binPath)
 })
 

@@ -61,7 +61,8 @@ spec:
   - machineConfigLabels:
       machineconfiguration.openshift.io/role: worker-cnf
     operand:
-      debug: false
+      tunedConfig:
+        reapply_sysctl: null
     priority: 20
     profile: openshift-node-performance-manual
 status: {}

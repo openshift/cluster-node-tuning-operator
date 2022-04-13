@@ -31,7 +31,7 @@ var _ = Describe("render command e2e test", func() {
 		It("Gets cli args and produces the expected components to output directory", func() {
 
 			cmdline := []string{
-				filepath.Join(binPath, "performance-addon-operators"),
+				filepath.Join(binPath, "cluster-node-tuning-operator"),
 				"render",
 				"--performance-profile-input-files", ppInFiles,
 				"--asset-input-dir", assetsInDir,
@@ -46,7 +46,7 @@ var _ = Describe("render command e2e test", func() {
 
 		It("Gets environment variables and produces the expected components to output directory", func() {
 			cmdline := []string{
-				filepath.Join(binPath, "performance-addon-operators"),
+				filepath.Join(binPath, "cluster-node-tuning-operator"),
 				"render",
 			}
 			fmt.Fprintf(GinkgoWriter, "running: %v\n", cmdline)
