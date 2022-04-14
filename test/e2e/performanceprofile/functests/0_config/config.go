@@ -169,14 +169,6 @@ func testProfile() *performancev2.PerformanceProfile {
 			RealTimeKernel: &performancev2.RealTimeKernel{
 				Enabled: pointer.BoolPtr(true),
 			},
-			AdditionalKernelArgs: []string{
-				"nmi_watchdog=0",
-				"audit=0",
-				"mce=off",
-				"processor.max_cstate=1",
-				"idle=poll",
-				"intel_idle.max_cstate=0",
-			},
 			NUMA: &performancev2.NUMA{
 				TopologyPolicy: pointer.StringPtr("single-numa-node"),
 			},

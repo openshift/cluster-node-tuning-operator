@@ -289,3 +289,21 @@ func isValid16bitsHexID(v string) bool {
 	re := regexp.MustCompile("^0x[0-9a-fA-F]+$")
 	return re.MatchString(v) && len(v) < 7
 }
+
+func (r *PerformanceProfile) validateWorkloadHints() field.ErrorList {
+	var allErrs field.ErrorList
+
+	if r.Spec.WorkloadHints == nil {
+		return allErrs
+	}
+
+	if r.Spec.RealTimeKernel != nil {
+		if r.Spec.RealTimeKernel.Enabled != nil && *r.Spec.RealTimeKernel.Enabled {
+			if r.Spec.WorkloadHints.RealTime != nil && !*r.Spec.WorkloadHints.RealTime {
+				allErrs = append(allErrs, field.Invalid(field.NewPath("spec.workloadHints.realTime"), r.Spec.WorkloadHints.RealTime, "realtime kernel is enabled, but realtime workload hint is explicitly disable"))
+			}
+		}
+	}
+
+	return allErrs
+}
