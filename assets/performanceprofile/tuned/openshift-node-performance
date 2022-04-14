@@ -27,8 +27,10 @@ governor=performance
 energy_perf_bias=performance
 min_perf_pct=100
 
+{{if .RealTime}}
 [service]
 service.stalld=start,enable
+{{end}}
 
 [vm]
 #> network-latency
@@ -44,32 +46,36 @@ banned_cpus=""
 runtime=0
 group.ksoftirqd=0:f:11:*:ksoftirqd.*
 group.rcuc=0:f:11:*:rcuc.*
-sched_rt_runtime_us=-1
 sched_min_granularity_ns=10000000
 sched_migration_cost_ns=5000000
 numa_balancing=0
+{{if .RealTime}}
+sched_rt_runtime_us=-1
+{{end}}
 {{if not .GloballyDisableIrqLoadBalancing}}
 default_irq_smp_affinity = ignore
 {{end}}
 
 [sysctl]
+{{if .RealTime}}
 #> cpu-partitioning #realtime
-kernel.hung_task_timeout_secs = 600
+kernel.hung_task_timeout_secs=600
 #> cpu-partitioning #realtime
-kernel.nmi_watchdog = 0
+kernel.nmi_watchdog=0
 #> realtime
-kernel.sched_rt_runtime_us = -1
+kernel.sched_rt_runtime_us=-1
+#> cpu-partitioning  #realtime
+vm.stat_interval=10
+{{end}}
 # cpu-partitioning and realtime for RHEL disable it (= 0)
 # OCP is too dynamic when partitioning and needs to evacuate
 #> scheduled timers when starting a guaranteed workload (= 1)
-kernel.timer_migration = 1
+kernel.timer_migration=1
 #> network-latency
 kernel.numa_balancing=0
 net.core.busy_read=50
 net.core.busy_poll=50
 net.ipv4.tcp_fastopen=3
-#> cpu-partitioning  #realtime
-vm.stat_interval = 10
 
 # ktune sysctl settings for rhel6 servers, maximizing i/o throughput
 #
@@ -121,12 +127,28 @@ avc_cache_threshold=8192
 initrd_remove_dir=
 initrd_dst_img=
 initrd_add_dir=
+
 # overrides cpu-partitioning cmdline
-cmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} intel_pstate=disable nosoftlockup
+cmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded} intel_iommu=on iommu=pt
+
 {{if .StaticIsolation}}
-cmdline_realtime=+tsc=nowatchdog intel_iommu=on iommu=pt isolcpus=domain,managed_irq,${isolated_cores} systemd.cpu_affinity=${not_isolated_cores_expanded}
+cmdline_isolation=+isolcpus=domain,managed_irq,${isolated_cores}
 {{else}}
-cmdline_realtime=+tsc=nowatchdog intel_iommu=on iommu=pt isolcpus=managed_irq,${isolated_cores} systemd.cpu_affinity=${not_isolated_cores_expanded}
+cmdline_isolation=+isolcpus=managed_irq,${isolated_cores}
 {{end}}
+
+{{if .RealTime}}
+cmdline_realtime=+nohz_full=${isolated_cores} tsc=nowatchdog nosoftlockup nmi_watchdog=0 mce=off skew_tick=1
+{{end}}
+
+{{if .HighPowerConsumption}}
+cmdline_power_performance=+processor.max_cstate=1 intel_idle.max_cstate=0 intel_pstate=disable
+{{end}}
+
+{{if and .HighPowerConsumption .RealTime}}
+cmdline_idle_poll=+idle=poll
+{{end}}
+
 cmdline_hugepages=+{{if .DefaultHugepagesSize}} default_hugepagesz={{.DefaultHugepagesSize}} {{end}} {{if .Hugepages}} {{.Hugepages}} {{end}}
+
 cmdline_additionalArg=+{{if .AdditionalArgs}} {{.AdditionalArgs}} {{end}}

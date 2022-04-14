@@ -13,7 +13,7 @@ import (
 
 const (
 	crFilename         = "../../../examples/performanceprofile/samples/performance_v2_performanceprofile.yaml"
-	crdFilename        = "../../../examples/performanceprofile/crd/bases/performance.openshift.io_performanceprofiles.yaml"
+	crdFilename        = "../../../manifests/20-performance-profile.crd.yaml"
 	lastHeartbeatPath  = "/status/conditions/lastHeartbeatTime"
 	lastTransitionPath = "/status/conditions/lastTransitionTime"
 )
