@@ -4,6 +4,7 @@
     "reserved-cpu-count": 4,
     "disable-ht": false,
     "rt-kernel": true,
+    "power-consumption-mode": "low-latency",
     "split-reserved-cpus-across-numa": true,
     "user-level-networking": false
 }

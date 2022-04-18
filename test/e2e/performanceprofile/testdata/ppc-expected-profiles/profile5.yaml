@@ -17,3 +17,6 @@ spec:
     topologyPolicy: restricted
   realTimeKernel:
     enabled: true
+  workloadHints:
+    highPowerConsumption: false
+    realtime: true
