@@ -738,63 +738,23 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Function ensureSameTopo
 })
 
 var _ = Describe("PerformanceProfileCreator: Test Helper Function GetAdditionalKernelArgs", func() {
-	var powerMode string
 	var disableHT bool
-	Context("Ensure kernel args are populated correctly", func() {
-		It("Ensure kernel args are populated correctly in case of low-latency ", func() {
-			powerMode = "default"
-			disableHT = false
-			kernelArgs := GetAdditionalKernelArgs(powerMode, disableHT)
-			Expect(kernelArgs).To(BeEquivalentTo([]string{}))
-		})
 
-	})
-	Context("Ensure kernel args are populated correctly", func() {
-		It("Ensure kernel args are populated correctly in case of low-latency ", func() {
-			powerMode = "low-latency"
+	Context("with hyper-threading enabled", func() {
+		It("should not append additional kernel arguments", func() {
 			disableHT = false
-			args := []string{"audit=0",
-				"mce=off",
-				"nmi_watchdog=0",
-			}
-			kernelArgs := GetAdditionalKernelArgs(powerMode, disableHT)
-			sort.Strings(kernelArgs) // sort to avoid inequality due to difference in order
-			Expect(kernelArgs).To(BeEquivalentTo(args))
+			kernelArgs := GetAdditionalKernelArgs(disableHT)
+			Expect(kernelArgs).To(BeEmpty())
 		})
-
 	})
-	Context("Ensure kernel args are populated correctly", func() {
-		It("Ensure kernel args are populated correctly in case of ultra-low-latency ", func() {
-			powerMode = "ultra-low-latency"
-			disableHT = false
-			args := []string{"audit=0",
-				"idle=poll",
-				"intel_idle.max_cstate=0",
-				"mce=off",
-				"nmi_watchdog=0",
-				"processor.max_cstate=1",
-			}
-			kernelArgs := GetAdditionalKernelArgs(powerMode, disableHT)
-			sort.Strings(kernelArgs) // sort to avoid inequality due to difference in order
-			Expect(kernelArgs).To(BeEquivalentTo(args))
-		})
 
-	})
-	Context("Ensure kernel args are populated correctly", func() {
-		It("Ensure kernel args are populated correctly in case of disableHT=true ", func() {
-			powerMode = "ultra-low-latency"
+	Context("with hyper-threading disable", func() {
+		It("should append nosmt argument", func() {
 			disableHT = true
-			args := []string{"audit=0",
-				"idle=poll",
-				"intel_idle.max_cstate=0",
-				"mce=off",
-				"nmi_watchdog=0",
-				"nosmt",
-				"processor.max_cstate=1",
-			}
-			kernelArgs := GetAdditionalKernelArgs(powerMode, disableHT)
-			sort.Strings(kernelArgs) // sort to avoid inequality due to difference in order
-			Expect(kernelArgs).To(BeEquivalentTo(args))
+			expectedArgs := []string{"nosmt"}
+			sort.Strings(expectedArgs) // sort to avoid inequality due to difference in order
+			kernelArgs := GetAdditionalKernelArgs(disableHT)
+			Expect(kernelArgs).To(BeEquivalentTo(expectedArgs))
 		})
 
 	})

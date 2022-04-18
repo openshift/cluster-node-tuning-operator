@@ -3,6 +3,7 @@
     "mcp-name": "worker-cnf",
     "reserved-cpu-count": 12,
     "rt-kernel": true,
+    "power-consumption-mode": "low-latency",
     "disable-ht": true, 
     "user-level-networking": false
 }

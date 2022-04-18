@@ -19,9 +19,9 @@ import (
 )
 
 const (
-	mustGatherPath       = "../../../../../test/e2e/performanceprofile/testdata/must-gather"
-	expectedProfilesPath = "../../../../../test/e2e/performanceprofile/testdata/ppc-expected-profiles"
-	expectedInfoPath     = "../../../../../test/e2e/performanceprofile/testdata/ppc-expected-info"
+	mustGatherPath       = "../../testdata/must-gather"
+	expectedProfilesPath = "../../testdata/ppc-expected-profiles"
+	expectedInfoPath     = "../../testdata/ppc-expected-info"
 	ppcPath              = "../../../../../_output/performance-profile-creator"
 )
 
@@ -30,16 +30,18 @@ var mustGatherFullPath = path.Join(mustGatherPath, "must-gather.bare-metal")
 var defaultArgs = []string{
 	"--disable-ht=false",
 	"--mcp-name=worker-cnf",
-	"--rt-kernel=true",
 	"--user-level-networking=false",
 	"--profile-name=Performance",
 	fmt.Sprintf("--must-gather-dir-path=%s", mustGatherFullPath),
 }
 
 var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
-	It("[test_id:OCP-40940] performance profile creator regression tests", func() {
+	BeforeEach(func() {
 		Expect(ppcPath).To(BeAnExistingFile())
+		Expect(mustGatherFullPath).To(BeADirectory())
+	})
 
+	It("[test_id:OCP-40940] performance profile creator regression tests", func() {
 		// directory base name => full path
 		mustGatherDirs := getMustGatherDirs(mustGatherPath)
 		// full profile path => arguments the profile was created with
@@ -89,8 +91,6 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 	})
 
 	It("should describe the cluster from must-gather data in info mode", func() {
-		Expect(ppcPath).To(BeAnExistingFile())
-
 		// directory base name => full path
 		mustGatherDirs := getMustGatherDirs(mustGatherPath)
 
@@ -121,11 +121,10 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 	})
 	Context("Systems with Hyperthreading enabled", func() {
 		It("[test_id:41419] Verify PPC script fails when reserved cpu count is 2 and requires to split across numa nodes", func() {
-			Expect(ppcPath).To(BeAnExistingFile())
-			Expect(mustGatherFullPath).To(BeADirectory())
 			ppcArgs := []string{
 				"--reserved-cpu-count=2",
 				"--split-reserved-cpus-across-numa=true",
+				"--rt-kernel=false",
 			}
 			cmdArgs := append(defaultArgs, ppcArgs...)
 			_, errData, _ := testutils.ExecAndLogCommandWithStderr(ppcPath, cmdArgs...)
@@ -134,12 +133,11 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 		})
 
 		It("[test_id:41405] Verify PPC fails when splitting of reserved cpus and single numa-node policy is specified", func() {
-			Expect(ppcPath).To(BeAnExistingFile())
-			Expect(mustGatherFullPath).To(BeADirectory())
 			ppcArgs := []string{
 				fmt.Sprintf("--reserved-cpu-count=%d", 2),
 				fmt.Sprintf("--split-reserved-cpus-across-numa=%t", true),
 				fmt.Sprintf("--topology-manager-policy=%s", "single-numa-node"),
+				"--rt-kernel=false",
 			}
 			cmdArgs := append(defaultArgs, ppcArgs...)
 			_, errData, _ := testutils.ExecAndLogCommandWithStderr(ppcPath, cmdArgs...)
@@ -148,10 +146,9 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 		})
 
 		It("[test_id:41420] Verify PPC fails when reserved cpu count is more than available cpus", func() {
-			Expect(ppcPath).To(BeAnExistingFile())
-			Expect(mustGatherFullPath).To(BeADirectory())
 			ppcArgs := []string{
 				fmt.Sprintf("--reserved-cpu-count=%d", 100),
+				"--rt-kernel=false",
 			}
 			cmdArgs := append(defaultArgs, ppcArgs...)
 			_, errData, _ := testutils.ExecAndLogCommandWithStderr(ppcPath, cmdArgs...)
@@ -160,10 +157,9 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 		})
 
 		It("[test_id:41421] Verify PPC fails when odd number of reserved cpus are specified", func() {
-			Expect(ppcPath).To(BeAnExistingFile())
-			Expect(mustGatherFullPath).To(BeADirectory())
 			ppcArgs := []string{
 				fmt.Sprintf("--reserved-cpu-count=%d", 5),
+				"--rt-kernel=false",
 			}
 			cmdArgs := append(defaultArgs, ppcArgs...)
 			_, errData, _ := testutils.ExecAndLogCommandWithStderr(ppcPath, cmdArgs...)
@@ -171,19 +167,98 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 			Expect(ppcErrorString).To(ContainSubstring("can't allocate odd number of CPUs from a NUMA Node"))
 		})
 	})
+
 	Context("Systems with Hyperthreading disabled", func() {
 		It("[test_id:42035] verify PPC fails when splitting of reserved cpus and single numa-node policy is specified", func() {
-			Expect(ppcPath).To(BeAnExistingFile())
-			Expect(mustGatherFullPath).To(BeADirectory())
 			ppcArgs := []string{
 				fmt.Sprintf("--reserved-cpu-count=%d", 2),
 				fmt.Sprintf("--split-reserved-cpus-across-numa=%t", true),
 				fmt.Sprintf("--topology-manager-policy=%s", "single-numa-node"),
+				"--rt-kernel=false",
 			}
 			cmdArgs := append(defaultArgs, ppcArgs...)
 			_, errData, _ := testutils.ExecAndLogCommandWithStderr(ppcPath, cmdArgs...)
 			ppcErrorString := errorStringParser(errData)
 			Expect(ppcErrorString).To(ContainSubstring("not appropriate to split reserved CPUs in case of topology-manager-policy: single-numa-node"))
+		})
+	})
+
+	Context("with power consumption mode flag", func() {
+		var extraArgs []string
+
+		BeforeEach(func() {
+			extraArgs = []string{}
+			extraArgs = append(extraArgs, defaultArgs...)
+			extraArgs = append(extraArgs, "--reserved-cpu-count=2")
+		})
+
+		Context("with default latency", func() {
+			It("should set both realtime and highPowerConsumption workload hints to false", func() {
+				extraArgs = append(extraArgs, "--rt-kernel=false")
+				outData, _, err := testutils.ExecAndLogCommandWithStderr(ppcPath, extraArgs...)
+				Expect(err).ToNot(HaveOccurred())
+
+				profile := &performancev2.PerformanceProfile{}
+				Expect(yaml.Unmarshal(outData, profile)).ToNot(HaveOccurred())
+				Expect(profile.Spec.WorkloadHints).ToNot(BeNil())
+				Expect(profile.Spec.WorkloadHints.RealTime).ToNot(BeNil())
+				Expect(*profile.Spec.WorkloadHints.RealTime).To(BeFalse())
+				Expect(profile.Spec.WorkloadHints.HighPowerConsumption).ToNot(BeNil())
+				Expect(*profile.Spec.WorkloadHints.HighPowerConsumption).To(BeFalse())
+			})
+
+			Context("with realtime kernel", func() {
+				BeforeEach(func() {
+					extraArgs = append(extraArgs, "--rt-kernel=true")
+				})
+
+				It("should drop an error", func() {
+					_, errData, err := testutils.ExecAndLogCommandWithStderr(ppcPath, extraArgs...)
+					Expect(err).To(HaveOccurred())
+					Expect(errData).ToNot(BeEmpty())
+					Expect(string(errData)).To(ContainSubstring("power consumption modes together with the real-time kernel"))
+				})
+			})
+		})
+
+		Context("with low-latency", func() {
+			BeforeEach(func() {
+				extraArgs = append(extraArgs, "--rt-kernel=true")
+				extraArgs = append(extraArgs, "--power-consumption-mode=low-latency")
+			})
+
+			It("should set realtime workload hint to true", func() {
+				outData, _, err := testutils.ExecAndLogCommandWithStderr(ppcPath, extraArgs...)
+				Expect(err).ToNot(HaveOccurred())
+
+				profile := &performancev2.PerformanceProfile{}
+				Expect(yaml.Unmarshal(outData, profile)).ToNot(HaveOccurred())
+				Expect(profile.Spec.WorkloadHints).NotTo(BeNil())
+				Expect(profile.Spec.WorkloadHints.RealTime).ToNot(BeNil())
+				Expect(*profile.Spec.WorkloadHints.RealTime).To(BeTrue())
+				Expect(profile.Spec.WorkloadHints.HighPowerConsumption).ToNot(BeNil())
+				Expect(*profile.Spec.WorkloadHints.HighPowerConsumption).To(BeFalse())
+			})
+		})
+
+		Context("with ultra-low-latency", func() {
+			BeforeEach(func() {
+				extraArgs = append(extraArgs, "--rt-kernel=true")
+				extraArgs = append(extraArgs, "--power-consumption-mode=ultra-low-latency")
+			})
+
+			It("should set both realtime and highPowerConsumption workload hints to true", func() {
+				outData, _, err := testutils.ExecAndLogCommandWithStderr(ppcPath, extraArgs...)
+				Expect(err).ToNot(HaveOccurred())
+
+				profile := &performancev2.PerformanceProfile{}
+				Expect(yaml.Unmarshal(outData, profile)).ToNot(HaveOccurred())
+				Expect(profile.Spec.WorkloadHints).NotTo(BeNil())
+				Expect(profile.Spec.WorkloadHints.RealTime).ToNot(BeNil())
+				Expect(*profile.Spec.WorkloadHints.RealTime).To(BeTrue())
+				Expect(profile.Spec.WorkloadHints.HighPowerConsumption).ToNot(BeNil())
+				Expect(*profile.Spec.WorkloadHints.HighPowerConsumption).To(BeTrue())
+			})
 		})
 	})
 })

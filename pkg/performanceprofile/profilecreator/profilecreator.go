@@ -61,17 +61,6 @@ const (
 	allCores = -1
 )
 
-var (
-	// ValidPowerConsumptionModes are a set of valid power consumption modes
-	// default => no args
-	// low-latency => "nmi_watchdog=0", "audit=0",  "mce=off"
-	// ultra-low-latency: low-latency values + "processor.max_cstate=1", "intel_idle.max_cstate=0", "idle=poll"
-	// For more information on CPU "C-states" please refer to https://gist.github.com/wmealing/2dd2b543c4d3cff6cab7
-	ValidPowerConsumptionModes = []string{"default", "low-latency", "ultra-low-latency"}
-	lowLatencyKernelArgs       = map[string]bool{"nmi_watchdog=0": true, "audit=0": true, "mce=off": true}
-	ultraLowLatencyKernelArgs  = map[string]bool{"processor.max_cstate=1": true, "intel_idle.max_cstate=0": true, "idle=poll": true}
-)
-
 func getMustGatherFullPathsWithFilter(mustGatherPath string, suffix string, filter string) (string, error) {
 	var paths []string
 
@@ -518,39 +507,13 @@ func ensureSameTopology(topology1, topology2 *topology.Info) error {
 	return nil
 }
 
-// GetAdditionalKernelArgs returns a set of kernel parameters based on the power mode
-func GetAdditionalKernelArgs(powerMode string, disableHT bool) []string {
-	kernelArgsSet := make(map[string]bool)
-	kernelArgsSlice := make([]string, 0, 6)
-	switch powerMode {
-	//default
-	case ValidPowerConsumptionModes[0]:
-		kernelArgsSlice = []string{}
-	//low-latency
-	case ValidPowerConsumptionModes[1]:
-		for arg, exist := range lowLatencyKernelArgs {
-			kernelArgsSet[arg] = exist
-		}
-	//ultra-low-latency
-	case ValidPowerConsumptionModes[2]:
-		//computing the union for two sets (lowLatencyKernelArgs,ultraLowLatencyKernelArgs)
-		for arg, exist := range lowLatencyKernelArgs {
-			kernelArgsSet[arg] = exist
-		}
-		for arg, exist := range ultraLowLatencyKernelArgs {
-			kernelArgsSet[arg] = exist
-		}
-	}
-
-	for arg, exist := range kernelArgsSet {
-		if exist {
-			kernelArgsSlice = append(kernelArgsSlice, arg)
-		}
-	}
+// GetAdditionalKernelArgs returns a set of kernel parameters based on configuration
+func GetAdditionalKernelArgs(disableHT bool) []string {
+	var kernelArgs []string
 	if disableHT {
-		kernelArgsSlice = append(kernelArgsSlice, noSMTKernelArg)
+		kernelArgs = append(kernelArgs, noSMTKernelArg)
 	}
-	sort.Strings(kernelArgsSlice)
-	log.Infof("Additional Kernel Args based on the power consumption mode (%s):%v", powerMode, kernelArgsSlice)
-	return kernelArgsSlice
+	sort.Strings(kernelArgs)
+	log.Infof("Additional Kernel Args based on configuration: %v", kernelArgs)
+	return kernelArgs
 }
