@@ -98,7 +98,7 @@ test-e2e:
 	done
 
 .PHONY: test-e2e-local
-test-e2e-local:
+test-e2e-local: build performance-profile-creator-tests
 	for d in performanceprofile/functests-render-command/1_render_command; do \
 	  $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.noColor -ginkgo.failFast || exit; \
 	done
