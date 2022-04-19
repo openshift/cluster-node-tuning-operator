@@ -533,6 +533,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
 		})
 
 		It("[test_id:49149] should reject pods which request integral CPUs not aligned with machine SMT level", func() {
+			// also covers Hyper-thread aware sheduling [test_id:46545] Odd number of isolated CPU threads
 			// any random existing cpu is fine
 			cpuID := onlineCPUSet.ToSliceNoSort()[0]
 			smtLevel := nodes.GetSMTLevel(cpuID, workerRTNode)
@@ -563,8 +564,173 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
 			Expect(isSMTAlignmentError(updatedPod)).To(BeTrue(), "pod %s failed for wrong reason: %q", updatedPod.Name, updatedPod.Status.Reason)
 		})
 	})
+	Describe("Hyper-thread aware scheduling for guaranteed pods", func() {
+		var testpod *corev1.Pod
+
+		BeforeEach(func() {
+			if profile.Spec.NUMA == nil || profile.Spec.NUMA.TopologyPolicy == nil {
+				Skip("Topology Manager Policy is not configured")
+			}
+			tmPolicy := *profile.Spec.NUMA.TopologyPolicy
+			if tmPolicy != "single-numa-node" {
+				Skip("Topology Manager Policy is not Single NUMA Node")
+			}
+		})
+
+		AfterEach(func() {
+			if testpod == nil {
+				return
+			}
+			deleteTestPod(testpod)
+		})
+
+		table.DescribeTable("Verify Hyper-Thread aware scheduling for guaranteed pods",
+			func(htDisabled bool, snoCluster bool, snoWP bool) {
+				// Check for SMT enabled
+				// any random existing cpu is fine
+				cpuCounts := make([]int, 0, 2)
+				//var testpod *corev1.Pod
+				//var err error
+
+				// Check for SMT enabled
+				// any random existing cpu is fine
+				cpuID := onlineCPUSet.ToSliceNoSort()[0]
+				smtLevel := nodes.GetSMTLevel(cpuID, workerRTNode)
+				hasWP := checkForWorkloadPartitioning(workerRTNode)
+
+				// Following checks are required to map test_id scenario correctly to the type of node under test
+				if snoCluster && !RunningOnSingleNode {
+					Skip("Requires SNO cluster")
+				}
+				if !snoCluster && RunningOnSingleNode {
+					Skip("Requires Non-SNO cluster")
+				}
+				if (smtLevel < 2) && !htDisabled {
+					Skip(fmt.Sprintf("designated worker node %q has SMT level %d - minimum required 2", workerRTNode.Name, smtLevel))
+				}
+				if (smtLevel > 1) && htDisabled {
+					Skip(fmt.Sprintf("designated worker node %q has SMT level %d - requires exactly 1", workerRTNode.Name, smtLevel))
+				}
+
+				if (snoCluster && snoWP) && !hasWP {
+					Skip("Requires SNO cluster with Workload Partitioning enabled")
+				}
+				if (snoCluster && !snoWP) && hasWP {
+					Skip("Requires SNO cluster without Workload Partitioning enabled")
+				}
+				cpuCounts = append(cpuCounts, 2)
+				if htDisabled {
+					cpuCounts = append(cpuCounts, 1)
+				}
+
+				for _, cpuCount := range cpuCounts {
+					testpod = startHTtestPod(cpuCount)
+					Expect(checkPodHTSiblings(testpod)).To(BeTrue(), "Pod cpu set does not map to host cpu sibling pairs")
+					By("Deleting test pod...")
+					deleteTestPod(testpod)
+				}
+			},
+
+			table.Entry("[test_id:46959] Number of CPU requests as multiple of SMT count allowed when HT enabled", false, false, false),
+			table.Entry("[test_id:46544] Odd number of CPU requests allowed when HT disabled", true, false, false),
+			table.Entry("[test_id:46538] HT aware scheduling on SNO cluster", false, true, false),
+			table.Entry("[test_id:46539] HT aware scheduling on SNO cluster and Workload Partitioning enabled", false, true, true),
+		)
+
+	})
 
 })
+
+func checkForWorkloadPartitioning(workerNode *corev1.Node) bool {
+	// Look for the correct Workload Partition annotation in
+	// a crio configuration file on the target node
+	By("Check for Workload Partitioning enabled")
+	cmd := []string{
+		"chroot",
+		"/rootfs",
+		"/bin/bash",
+		"-c",
+		"echo CHECK ; /bin/grep -rEo 'activation_annotation.*target\\.workload\\.openshift\\.io/management.*' /etc/crio/crio.conf.d/ || true",
+	}
+	output, err := nodes.ExecCommandOnNode(cmd, workerRTNode)
+	Expect(err).ToNot(HaveOccurred(), "Unable to check cluster for Workload Partitioning enabled")
+	re := regexp.MustCompile(`activation_annotation.*target\.workload\.openshift\.io/management.*`)
+	return re.MatchString(fmt.Sprint(output))
+}
+
+func checkPodHTSiblings(testpod *corev1.Pod) bool {
+	By("Get test pod CPU list")
+	containerID, err := pods.GetContainerIDByName(testpod, "test")
+	Expect(err).ToNot(HaveOccurred(), "Unable to get pod containerID")
+
+	cmd := []string{
+		"chroot",
+		"/rootfs",
+		"/bin/bash",
+		"-c",
+		fmt.Sprintf("/bin/crictl inspect %s | /bin/jq -r '.info.runtimeSpec.linux.resources.cpu.cpus'", containerID),
+	}
+	output, err := nodes.ExecCommandOnNode(cmd, workerRTNode)
+	Expect(err).ToNot(HaveOccurred(), "Unable to crictl inspect containerID %s", "containerID")
+
+	podcpus, err := cpuset.Parse(strings.Trim(fmt.Sprint(output), "\n"))
+	Expect(err).ToNot(
+		HaveOccurred(), "Unable to cpuset.Parse pod allocated cpu set from output %s", fmt.Sprint(output))
+	By(fmt.Sprintf("Test pod CPU list: %s", podcpus.String()))
+
+	// aggregate cpu sibling paris from the host based on the cpus allocated to the pod
+	By("Get host cpu siblings for pod cpuset")
+	hostHTSiblingPaths := strings.Builder{}
+	for _, cpuNum := range podcpus.ToSlice() {
+		_, err = hostHTSiblingPaths.WriteString(
+			fmt.Sprintf(" /sys/devices/system/cpu/cpu%d/topology/thread_siblings_list", cpuNum),
+		)
+		Expect(err).ToNot(HaveOccurred(), "Build.Write failed to add dir path string?")
+	}
+	cmd = []string{
+		"chroot",
+		"/rootfs",
+		"/bin/bash",
+		"-c",
+		fmt.Sprintf("/bin/cat %s | /bin/sort -u", hostHTSiblingPaths.String()),
+	}
+	output, err = nodes.ExecCommandOnNode(cmd, workerRTNode)
+	Expect(err).ToNot(
+		HaveOccurred(),
+		"Unable to read host thread_siblings_list files",
+	)
+
+	// output is newline seperated. Convert to cpulist format by replacing internal "\n" chars with ","
+	hostHTSiblings := strings.ReplaceAll(
+		strings.Trim(fmt.Sprint(output), "\n"), "\n", ",",
+	)
+
+	hostcpus, err := cpuset.Parse(hostHTSiblings)
+	Expect(err).ToNot(HaveOccurred(), "Unable to parse host cpu HT siblings: %s", hostHTSiblings)
+	By(fmt.Sprintf("Host CPU sibling set from querying for pod cpus: %s", hostcpus.String()))
+
+	// pod cpu list should have the same siblings as the host for the same cpus
+	return hostcpus.Equals(podcpus)
+
+}
+func startHTtestPod(cpuCount int) *corev1.Pod {
+	var testpod *corev1.Pod
+
+	annotations := map[string]string{}
+	testpod = getTestPodWithAnnotations(annotations, cpuCount)
+	testpod.Namespace = testutils.NamespaceTesting
+
+	By(fmt.Sprintf("Creating test pod with %d cpus", cpuCount))
+	err := testclient.Client.Create(context.TODO(), testpod)
+	Expect(err).ToNot(HaveOccurred())
+	err = pods.WaitForCondition(testpod, corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+	logEventsForPod(testpod)
+	Expect(err).ToNot(HaveOccurred(), "Start pod failed")
+	// Sanity check for QoS Class == Guaranteed
+	Expect(testpod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed),
+		"Test pod does not have QoS class of Guaranteed")
+	return testpod
+}
 
 func isSMTAlignmentError(pod *corev1.Pod) bool {
 	re := regexp.MustCompile(`SMT.*Alignment.*Error`)
@@ -617,7 +783,9 @@ func promotePodToGuaranteed(pod *corev1.Pod) *corev1.Pod {
 
 func getTestPodWithAnnotations(annotations map[string]string, cpus int) *corev1.Pod {
 	testpod := pods.GetTestPod()
-	testpod.Annotations = annotations
+	if len(annotations) > 0 {
+		testpod.Annotations = annotations
+	}
 	testpod.Namespace = testutils.NamespaceTesting
 
 	cpuCount := fmt.Sprintf("%d", cpus)
