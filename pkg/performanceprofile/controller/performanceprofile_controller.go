@@ -30,12 +30,9 @@ import (
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
-	olmv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
-
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
-	"k8s.io/apimachinery/pkg/api/errors"
 	k8serros "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -60,9 +57,8 @@ const finalizer = "foreground-deletion"
 // PerformanceProfileReconciler reconciles a PerformanceProfile object
 type PerformanceProfileReconciler struct {
 	client.Client
-	Scheme     *runtime.Scheme
-	Recorder   record.EventRecorder
-	olmRemoved bool
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 // SetupWithManager creates a new PerformanceProfile Controller and adds it to the Manager.
@@ -137,67 +133,6 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 			builder.WithPredicates(tunedProfilePredicates),
 		).
 		Complete(r)
-}
-
-// uninstall PAO OLM operator.
-// this should apply only from version 4.11
-func (r *PerformanceProfileReconciler) removeOLMOperator() error {
-	var deletedCSVs []olmv1alpha1.ClusterServiceVersion
-
-	csvs := &olmv1alpha1.ClusterServiceVersionList{}
-	if err := r.List(context.TODO(), csvs); err != nil {
-		if !errors.IsNotFound(err) {
-			return err
-		}
-	}
-
-	for i := range csvs.Items {
-		csv := &csvs.Items[i]
-		deploymentSpecs := csv.Spec.InstallStrategy.StrategySpec.DeploymentSpecs
-		if deploymentSpecs != nil {
-			for _, deployment := range deploymentSpecs {
-				if deployment.Name == "performance-operator" {
-					deletedCSVs = append(deletedCSVs, *csv)
-				}
-			}
-		}
-	}
-
-	subscriptions := &olmv1alpha1.SubscriptionList{}
-
-	if err := r.List(context.TODO(), subscriptions); err != nil {
-		if !errors.IsNotFound(err) {
-			return err
-		}
-	}
-
-	for i := range subscriptions.Items {
-		subscription := &subscriptions.Items[i]
-		for _, csv := range deletedCSVs {
-			if subscription.Status.CurrentCSV == csv.Name {
-				klog.Infof("Removing performance-addon-operator subscription %s", subscription.Name)
-				if err := r.Delete(context.TODO(), subscription); err != nil {
-					return err
-				}
-				klog.Infof("Removing performance-addon-operator related CSV %s", csv.Name)
-				if err := r.Delete(context.TODO(), &csv); err != nil {
-					return err
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-func (r *PerformanceProfileReconciler) getCSV(name, namespace string) (*olmv1alpha1.ClusterServiceVersion, error) {
-	csv := &olmv1alpha1.ClusterServiceVersion{}
-	key := types.NamespacedName{
-		Name:      name,
-		Namespace: namespace,
-	}
-	err := r.Get(context.TODO(), key, csv)
-	return csv, err
 }
 
 func (r *PerformanceProfileReconciler) mcpToPerformanceProfile(mcpObj client.Object) []reconcile.Request {
@@ -297,17 +232,6 @@ func validateUpdateEvent(e *event.UpdateEvent) bool {
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	klog.Info("Reconciling PerformanceProfile")
-
-	// One time operation to uninstall PAO optional operator
-	// This should be deprecated in openshift 4.12
-	if !r.olmRemoved {
-		if err := r.removeOLMOperator(); err != nil {
-			return reconcile.Result{}, err
-		} else {
-			r.olmRemoved = true
-		}
-	}
-
 	// Fetch the PerformanceProfile instance
 	instance := &performancev2.PerformanceProfile{}
 	err := r.Get(ctx, req.NamespacedName, instance)
