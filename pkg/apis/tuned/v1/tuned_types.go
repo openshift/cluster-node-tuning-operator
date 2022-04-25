@@ -1,8 +1,10 @@
 package v1
 
 import (
-	operatorv1 "github.com/openshift/api/operator/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	operatorv1 "github.com/openshift/api/operator/v1"
 )
 
 const (
@@ -144,10 +146,62 @@ type ProfileStatus struct {
 	// kernel parameters calculated by tuned for the active Tuned profile
 	// +optional
 	Bootcmdline string `json:"bootcmdline"`
+
+	// the current profile in use by the Tuned daemon
+	TunedProfile string `json:"tunedProfile"`
+
+	// conditions represents the state of the per-node Profile application
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +optional
+	Conditions []ProfileStatusCondition `json:"conditions,omitempty"  patchStrategy:"merge" patchMergeKey:"type"`
+
 	// deploy stall daemon: https://github.com/bristot/stalld/
 	// +optional
 	Stalld *bool `json:"stalld"`
 }
+
+// ProfileStatusCondition represents a partial state of the per-node Profile application.
+// +k8s:deepcopy-gen=true
+type ProfileStatusCondition struct {
+	// type specifies the aspect reported by this condition.
+	// +kubebuilder:validation:Required
+	// +required
+	Type ProfileConditionType `json:"type"`
+
+	// status of the condition, one of True, False, Unknown.
+	// +kubebuilder:validation:Required
+	// +required
+	Status corev1.ConditionStatus `json:"status"`
+
+	// lastTransitionTime is the time of the last update to the current status property.
+	// +kubebuilder:validation:Required
+	// +required
+	LastTransitionTime metav1.Time `json:"lastTransitionTime"`
+
+	// reason is the CamelCase reason for the condition's current status.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+
+	// message provides additional information about the current condition.
+	// This is only to be consumed by humans.
+	// +optional
+	Message string `json:"message,omitempty"`
+}
+
+// ProfileConditionType is an aspect of Tuned daemon profile application state.
+type ProfileConditionType string
+
+const (
+	// ProfileApplied indicates that the Tuned daemon has successfully applied
+	// the selected profile.
+	TunedProfileApplied ProfileConditionType = "Applied"
+
+	// TunedDegraded indicates the Tuned daemon issued errors during profile
+	// application.  To conclude the profile application was successful,
+	// both TunedProfileApplied and TunedDegraded need to be queried.
+	TunedDegraded ProfileConditionType = "Degraded"
+)
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // ProfileList is a list of Profile resources

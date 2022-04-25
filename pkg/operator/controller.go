@@ -586,12 +586,16 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	}
 
 	if mcLabels != nil {
-		// The tuned profile "tunedProfileName" for nodeName matched with MachineConfig
+		// The Tuned daemon profile 'tunedProfileName' for nodeName matched with MachineConfig
 		// labels set for additional machine configuration.  Sync the operator-created
 		// MachineConfig for MachineConfigPools 'pools'.
-		err := c.syncMachineConfig(getMachineConfigNameForPools(pools), mcLabels, profile.Status.Bootcmdline, profile.Status.Stalld)
-		if err != nil {
-			return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
+		if profile.Status.TunedProfile == tunedProfileName && profileApplied(profile) {
+			// Synchronize MachineConfig only once the (calculated) TuneD profile 'tunedProfileName'
+			// has been successfully applied.
+			err := c.syncMachineConfig(getMachineConfigNameForPools(pools), mcLabels, profile.Status.Bootcmdline, profile.Status.Stalld)
+			if err != nil {
+				return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
+			}
 		}
 	}
 	if profile.Spec.Config.TunedProfile == tunedProfileName &&

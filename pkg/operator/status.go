@@ -8,6 +8,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	operatorv1helpers "github.com/openshift/library-go/pkg/operator/v1helpers"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
@@ -87,6 +88,21 @@ func (c *Controller) getOrCreateOperatorStatus() (*configv1.ClusterOperator, err
 		}
 	}
 	return co, nil
+}
+
+// profileApplied returns true if Tuned Profile 'profile' has been applied.
+func profileApplied(profile *tunedv1.Profile) bool {
+	if profile == nil || profile.Spec.Config.TunedProfile != profile.Status.TunedProfile {
+		return false
+	}
+
+	for _, sc := range profile.Status.Conditions {
+		if sc.Type == tunedv1.TunedProfileApplied && sc.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+
+	return false
 }
 
 // computeStatusConditions computes the operator's current state.
