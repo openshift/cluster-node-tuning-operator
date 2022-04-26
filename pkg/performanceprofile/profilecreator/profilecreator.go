@@ -61,6 +61,19 @@ const (
 	allCores = -1
 )
 
+var (
+	// This filter is used to avoid offlining the first logical processor of each core.
+	// LogicalProcessors is a slice of integers representing the logical processor IDs assigned to
+	// a processing unit for a core. GHW API gurantees that the logicalProcessors correspond
+	// to hyperthread pairs and in the code below we select only the first hyperthread (id=0)
+	// of the available logical processors.
+	// Please refer to https://www.kernel.org/doc/Documentation/x86/topology.txt for more information on
+	// x86 hardware topology. This document clarifies the main aspects of x86 topology modelling and
+	// representation in the linux kernel and explains why we select id=0 for obtaining the first
+	// hyperthread (logical core).
+	filterFirstLogicalProcessorInCore = func(index, lpID int) bool { return index != 0 }
+)
+
 func getMustGatherFullPathsWithFilter(mustGatherPath string, suffix string, filter string) (string, error) {
 	var paths []string
 
@@ -227,6 +240,31 @@ func (ghwHandler GHWHandler) CPU() (*cpu.Info, error) {
 	return ghw.CPU(ghwHandler.snapShotOptions)
 }
 
+func (ghwHandler GHWHandler) SortedCPU() (*cpu.Info, error) {
+	cpuInfo, err := ghw.CPU(ghwHandler.snapShotOptions)
+	if err != nil {
+		return nil, fmt.Errorf("can't obtain cpuInfo info from GHW snapshot: %v", err)
+	}
+
+	sort.Slice(cpuInfo.Processors, func(x, y int) bool {
+		return cpuInfo.Processors[x].ID < cpuInfo.Processors[y].ID
+	})
+
+	for _, processor := range cpuInfo.Processors {
+		for _, core := range processor.Cores {
+			sort.Slice(core.LogicalProcessors, func(x, y int) bool {
+				return core.LogicalProcessors[x] < core.LogicalProcessors[y]
+			})
+		}
+
+		sort.Slice(processor.Cores, func(x, y int) bool {
+			return processor.Cores[x].ID < processor.Cores[y].ID
+		})
+	}
+
+	return cpuInfo, nil
+}
+
 // SortedTopology returns a TopologyInfo struct that contains information about the Topology sorted by numa ids and cpu ids on the host system
 func (ghwHandler GHWHandler) SortedTopology() (*topology.Info, error) {
 	topologyInfo, err := ghw.Topology(ghwHandler.snapShotOptions)
@@ -289,30 +327,202 @@ func topologyHTDisabled(info *topology.Info) *topology.Info {
 	return disabledHTTopology
 }
 
-// GetReservedAndIsolatedCPUs returns Reserved and Isolated CPUs
-func (ghwHandler GHWHandler) GetReservedAndIsolatedCPUs(reservedCPUCount int, splitReservedCPUsAcrossNUMA bool, disableHTFlag bool) (cpuset.CPUSet, cpuset.CPUSet, error) {
-	cpuInfo, err := ghwHandler.CPU()
+type extendedCPUInfo struct {
+	CpuInfo *cpu.Info
+	// Number of logicalprocessors already reserved for each Processor (aka Socket)
+	NumLogicalProcessorsUsed map[int]int
+	LogicalProcessorsUsed    map[int]struct{}
+}
+
+type systemInfo struct {
+	CpuInfo      *extendedCPUInfo
+	TopologyInfo *topology.Info
+	HtEnabled    bool
+}
+
+func (ghwHandler GHWHandler) GatherSystemInfo() (*systemInfo, error) {
+	cpuInfo, err := ghwHandler.SortedCPU()
 	if err != nil {
-		return cpuset.CPUSet{}, cpuset.CPUSet{}, fmt.Errorf("can't obtain CPU info from GHW snapshot: %v", err)
+		return nil, err
 	}
 
-	if reservedCPUCount <= 0 || reservedCPUCount >= int(cpuInfo.TotalThreads) {
-		return cpuset.CPUSet{}, cpuset.CPUSet{}, fmt.Errorf("please specify the reserved CPU count in the range [1,%d]", cpuInfo.TotalThreads-1)
-	}
 	topologyInfo, err := ghwHandler.SortedTopology()
 	if err != nil {
-		return cpuset.CPUSet{}, cpuset.CPUSet{}, fmt.Errorf("can't obtain Topology Info from GHW snapshot: %v", err)
+		return nil, err
 	}
+
 	htEnabled, err := ghwHandler.IsHyperthreadingEnabled()
 	if err != nil {
-		return cpuset.CPUSet{}, cpuset.CPUSet{}, fmt.Errorf("can't determine if Hyperthreading is enabled or not: %v", err)
+		return nil, err
 	}
-	//currently HT is enabled on the system and the user wants to disable HT
-	if htEnabled && disableHTFlag {
-		htEnabled = false
-		log.Infof("Currently hyperthreading is enabled and the performance profile will disable it")
-		topologyInfo = topologyHTDisabled(topologyInfo)
 
+	return &systemInfo{
+		CpuInfo: &extendedCPUInfo{
+			CpuInfo:                  cpuInfo,
+			NumLogicalProcessorsUsed: make(map[int]int, len(cpuInfo.Processors)),
+			LogicalProcessorsUsed:    make(map[int]struct{}),
+		},
+		TopologyInfo: topologyInfo,
+		HtEnabled:    htEnabled,
+	}, nil
+}
+
+// Calculates the resevered, isolated and offlined cpuSets.
+func CalculateCPUSets(systemInfo *systemInfo, reservedCPUCount int, offlinedCPUCount int, splitReservedCPUsAcrossNUMA bool, disableHTFlag bool, highPowerConsumptionMode bool) (cpuset.CPUSet, cpuset.CPUSet, cpuset.CPUSet, error) {
+
+	topologyInfo := systemInfo.TopologyInfo
+	htEnabled := systemInfo.HtEnabled
+
+	// Need to update Topology info to avoid using sibling Logical processors
+	// if user want to "disable" them in the kernel
+	updatedTopologyInfo, err := updateTopologyInfo(topologyInfo, disableHTFlag, systemInfo.HtEnabled)
+	if err != nil {
+		return cpuset.CPUSet{}, cpuset.CPUSet{}, cpuset.CPUSet{}, err
+	}
+
+	updatedExtCPUInfo, err := updateExtendedCPUInfo(systemInfo.CpuInfo, cpuset.CPUSet{}, disableHTFlag, htEnabled)
+	if err != nil {
+		return cpuset.CPUSet{}, cpuset.CPUSet{}, cpuset.CPUSet{}, err
+	}
+
+	cpuInfo := updatedExtCPUInfo.CpuInfo
+	// Check limits are in range
+	if reservedCPUCount <= 0 || reservedCPUCount >= int(cpuInfo.TotalThreads) {
+		return cpuset.CPUSet{}, cpuset.CPUSet{}, cpuset.CPUSet{}, fmt.Errorf("please specify the reserved CPU count in the range [1,%d]", cpuInfo.TotalThreads-1)
+	}
+
+	if offlinedCPUCount < 0 || offlinedCPUCount >= int(cpuInfo.TotalThreads) {
+		return cpuset.CPUSet{}, cpuset.CPUSet{}, cpuset.CPUSet{}, fmt.Errorf("please specify the offlined CPU count in the range [0,%d]", cpuInfo.TotalThreads-1)
+	}
+
+	if reservedCPUCount+offlinedCPUCount >= int(cpuInfo.TotalThreads) {
+		return cpuset.CPUSet{}, cpuset.CPUSet{}, cpuset.CPUSet{}, fmt.Errorf("please ensure that reserved-cpu-count plus offlined-cpu-count should be in the range [0,%d]", cpuInfo.TotalThreads-1)
+	}
+
+	// Calculate reserved cpus.
+	reserved, err := getReservedCPUs(updatedTopologyInfo, reservedCPUCount, splitReservedCPUsAcrossNUMA, disableHTFlag, htEnabled)
+	if err != nil {
+		return cpuset.CPUSet{}, cpuset.CPUSet{}, cpuset.CPUSet{}, err
+	}
+
+	updatedExtCPUInfo, err = updateExtendedCPUInfo(updatedExtCPUInfo, reserved, disableHTFlag, htEnabled)
+	if err != nil {
+		return cpuset.CPUSet{}, cpuset.CPUSet{}, cpuset.CPUSet{}, err
+	}
+	//Calculate offlined cpus
+	// note this takes into account the reserved cpus from the step above
+	offlined, err := getOfflinedCPUs(updatedExtCPUInfo, offlinedCPUCount, disableHTFlag, htEnabled, highPowerConsumptionMode)
+	if err != nil {
+		return cpuset.CPUSet{}, cpuset.CPUSet{}, cpuset.CPUSet{}, err
+	}
+
+	// Calculate isolated cpus.
+	// Note that topology info could have been modified by "GetReservedCPUS" so
+	// to properly calculate isolated CPUS we need to use the updated topology information.
+	isolated, err := getIsolatedCPUs(updatedTopologyInfo.Nodes, reserved, offlined)
+	if err != nil {
+		return cpuset.CPUSet{}, cpuset.CPUSet{}, cpuset.CPUSet{}, err
+	}
+
+	return reserved, isolated, offlined, nil
+}
+
+// Calculates Isolated cpuSet as the difference between all the cpus in the topology and those already choosen as reserved or offlined.
+// all cpus thar are not offlined or reserved belongs to the isolated cpuSet
+func getIsolatedCPUs(topologyInfoNodes []*topology.Node, reserved, offlined cpuset.CPUSet) (cpuset.CPUSet, error) {
+	total, err := totalCPUSetFromTopology(topologyInfoNodes)
+	if err != nil {
+		return cpuset.CPUSet{}, err
+	}
+	return total.Difference(reserved.Union(offlined)), nil
+}
+
+func AreAllLogicalProcessorsFromSocketUnused(extCpuInfo *extendedCPUInfo, socketId int) bool {
+	if val, ok := extCpuInfo.NumLogicalProcessorsUsed[socketId]; ok {
+		return val == 0
+	} else {
+		return true
+	}
+}
+
+func getOfflinedCPUs(extCpuInfo *extendedCPUInfo, offlinedCPUCount int, disableHTFlag bool, htEnabled bool, highPowerConsumption bool) (cpuset.CPUSet, error) {
+
+	offlined := newCPUAccumulator()
+	lpOfflined := 0
+
+	// unless we are in a high power consumption scenario
+	// try to offline complete sockets first
+	if !highPowerConsumption {
+		cpuInfo := extCpuInfo.CpuInfo
+
+		for _, processor := range cpuInfo.Processors {
+			//can we offline a complete socket?
+			if processor.NumThreads <= uint32(offlinedCPUCount-lpOfflined) && AreAllLogicalProcessorsFromSocketUnused(extCpuInfo, processor.ID) {
+				acc, err := offlined.AddCores(offlinedCPUCount, processor.Cores)
+				if err != nil {
+					return cpuset.CPUSet{}, err
+				}
+				lpOfflined += acc
+			}
+		}
+	}
+
+	// if we still need to offline more cpus
+	// try to offline sibling threads
+	if lpOfflined < offlinedCPUCount {
+		cpuInfo := extCpuInfo.CpuInfo
+
+		for _, processor := range cpuInfo.Processors {
+			acc, err := offlined.AddCoresWithFilter(offlinedCPUCount, processor.Cores, func(index, lpID int) bool {
+				return filterFirstLogicalProcessorInCore(index, lpID) && !IsLogicalProcessorUsed(extCpuInfo, lpID)
+			})
+			if err != nil {
+				return cpuset.CPUSet{}, err
+			}
+
+			lpOfflined += acc
+		}
+	}
+
+	// if we still need to offline more cpus
+	// just try to offline any cpu
+	if lpOfflined < offlinedCPUCount {
+		cpuInfo := extCpuInfo.CpuInfo
+
+		for _, processor := range cpuInfo.Processors {
+			acc, err := offlined.AddCoresWithFilter(offlinedCPUCount, processor.Cores, func(index, lpId int) bool {
+				return !IsLogicalProcessorUsed(extCpuInfo, lpId)
+			})
+			if err != nil {
+				return cpuset.CPUSet{}, err
+			}
+
+			lpOfflined += acc
+		}
+	}
+
+	if lpOfflined < offlinedCPUCount {
+		log.Warnf("could not offline enough logical processors (required:%d, offlined:%d)", offlinedCPUCount, lpOfflined)
+	}
+	return offlined.Result(), nil
+
+}
+
+func updateTopologyInfo(topoInfo *topology.Info, disableHTFlag bool, htEnabled bool) (*topology.Info, error) {
+	//currently HT is enabled on the system and the user wants to disable HT
+
+	if htEnabled && disableHTFlag {
+		log.Infof("Updating Topology info because currently hyperthreading is enabled and the performance profile will disable it")
+		return topologyHTDisabled(topoInfo), nil
+	}
+	return topoInfo, nil
+}
+
+func getReservedCPUs(topologyInfo *topology.Info, reservedCPUCount int, splitReservedCPUsAcrossNUMA bool, disableHTFlag bool, htEnabled bool) (cpuset.CPUSet, error) {
+
+	if htEnabled && disableHTFlag {
+		log.Infof("Currently hyperthreading is enabled and the performance profile will disable it")
+		htEnabled = false
 	}
 	log.Infof("NUMA cell(s): %d", len(topologyInfo.Nodes))
 	totalCPUs := 0
@@ -328,9 +538,11 @@ func (ghwHandler GHWHandler) GetReservedAndIsolatedCPUs(reservedCPUCount int, sp
 	log.Infof("CPU(s): %d", totalCPUs)
 
 	if splitReservedCPUsAcrossNUMA {
-		return ghwHandler.getCPUsSplitAcrossNUMA(reservedCPUCount, htEnabled, topologyInfo.Nodes)
+		res, err := getCPUsSplitAcrossNUMA(reservedCPUCount, htEnabled, topologyInfo.Nodes)
+		return res, err
 	}
-	return ghwHandler.getCPUsSequentially(reservedCPUCount, htEnabled, topologyInfo.Nodes)
+	res, err := getCPUsSequentially(reservedCPUCount, htEnabled, topologyInfo.Nodes)
+	return res, err
 }
 
 type cpuAccumulator struct {
@@ -350,17 +562,24 @@ func newCPUAccumulator() *cpuAccumulator {
 // AddCores adds logical cores from the slice of *cpu.ProcessorCore to a CPUset till the cpuset size is equal to the max value specified
 // In case the max is specified as allCores, all the cores from the slice of *cpu.ProcessorCore are added to the CPUSet
 func (ca *cpuAccumulator) AddCores(max int, cores []*cpu.ProcessorCore) (int, error) {
+	allLogicalProcessors := func(int, int) bool { return true }
+	return ca.AddCoresWithFilter(max, cores, allLogicalProcessors)
+}
+
+func (ca *cpuAccumulator) AddCoresWithFilter(max int, cores []*cpu.ProcessorCore, filterLogicalProcessor func(int, int) bool) (int, error) {
 	if ca.done {
 		return -1, fmt.Errorf("CPU accumulator finalized")
 	}
 	initialCount := ca.count
 	for _, processorCore := range cores {
-		for _, logicalProcessorId := range processorCore.LogicalProcessors {
+		for index, logicalProcessorId := range processorCore.LogicalProcessors {
 			if ca.count < max || max == allCores {
-				_, found := ca.elems[logicalProcessorId]
-				ca.elems[logicalProcessorId] = struct{}{}
-				if !found {
-					ca.count++
+				if filterLogicalProcessor(index, logicalProcessorId) {
+					_, found := ca.elems[logicalProcessorId]
+					ca.elems[logicalProcessorId] = struct{}{}
+					if !found {
+						ca.count++
+					}
 				}
 			}
 		}
@@ -388,9 +607,9 @@ func (ca *cpuAccumulator) Result() cpuset.CPUSet {
 // For NUMA node 1 max = (1+1)*3 + 4-2 = 8 remainder is decremented => remainder is 1
 // For NUMA node 2 max = (2+1)*3 + 4-2 = 12 remainder is decremented => remainder is 0
 // For NUMA Node 3 remainder = 0 so max = 12 + 3 = 15.
-func (ghwHandler GHWHandler) getCPUsSplitAcrossNUMA(reservedCPUCount int, htEnabled bool, topologyInfoNodes []*topology.Node) (cpuset.CPUSet, cpuset.CPUSet, error) {
+func getCPUsSplitAcrossNUMA(reservedCPUCount int, htEnabled bool, topologyInfoNodes []*topology.Node) (cpuset.CPUSet, error) {
 	reservedCPUs := newCPUAccumulator()
-	var isolatedCPUSet cpuset.CPUSet
+
 	numaNodeNum := len(topologyInfoNodes)
 
 	max := 0
@@ -407,44 +626,29 @@ func (ghwHandler GHWHandler) getCPUsSplitAcrossNUMA(reservedCPUCount int, htEnab
 			max = max + reservedPerNuma
 		}
 		if max%2 != 0 && htEnabled {
-			return reservedCPUs.Result(), isolatedCPUSet, fmt.Errorf("can't allocate odd number of CPUs from a NUMA Node")
+			return reservedCPUs.Result(), fmt.Errorf("can't allocate odd number of CPUs from a NUMA Node")
 		}
 		if _, err := reservedCPUs.AddCores(max, node.Cores); err != nil {
-			return cpuset.CPUSet{}, cpuset.CPUSet{}, err
+			return cpuset.CPUSet{}, err
 		}
 	}
 
-	totalCPUSet, err := totalCPUSetFromTopology(topologyInfoNodes)
-	if err != nil {
-		return cpuset.CPUSet{}, cpuset.CPUSet{}, err
-	}
-
-	reservedCPUSet := reservedCPUs.Result()
-	isolatedCPUSet = totalCPUSet.Difference(reservedCPUSet)
-	return reservedCPUSet, isolatedCPUSet, nil
+	return reservedCPUs.Result(), nil
 }
 
-// getCPUsSequentially returns Reserved and Isolated CPUs sequentially
-func (ghwHandler GHWHandler) getCPUsSequentially(reservedCPUCount int, htEnabled bool, topologyInfoNodes []*topology.Node) (cpuset.CPUSet, cpuset.CPUSet, error) {
+func getCPUsSequentially(reservedCPUCount int, htEnabled bool, topologyInfoNodes []*topology.Node) (cpuset.CPUSet, error) {
 	reservedCPUs := newCPUAccumulator()
-	var isolatedCPUSet cpuset.CPUSet
+
 	if reservedCPUCount%2 != 0 && htEnabled {
-		return reservedCPUs.Result(), isolatedCPUSet, fmt.Errorf("can't allocate odd number of CPUs from a NUMA Node")
+		return reservedCPUs.Result(), fmt.Errorf("can't allocate odd number of CPUs from a NUMA Node")
 	}
 	for _, node := range topologyInfoNodes {
 		if _, err := reservedCPUs.AddCores(reservedCPUCount, node.Cores); err != nil {
-			return cpuset.CPUSet{}, cpuset.CPUSet{}, err
+			return cpuset.CPUSet{}, err
 		}
 
 	}
-	totalCPUSet, err := totalCPUSetFromTopology(topologyInfoNodes)
-	if err != nil {
-		return cpuset.CPUSet{}, cpuset.CPUSet{}, err
-	}
-
-	reservedCPUSet := reservedCPUs.Result()
-	isolatedCPUSet = totalCPUSet.Difference(reservedCPUSet)
-	return reservedCPUSet, isolatedCPUSet, nil
+	return reservedCPUs.Result(), nil
 }
 
 func totalCPUSetFromTopology(topologyInfoNodes []*topology.Node) (cpuset.CPUSet, error) {
@@ -550,4 +754,84 @@ func GetAdditionalKernelArgs(disableHT bool) []string {
 	sort.Strings(kernelArgs)
 	log.Infof("Additional Kernel Args based on configuration: %v", kernelArgs)
 	return kernelArgs
+}
+
+func updateExtendedCPUInfo(extCpuInfo *extendedCPUInfo, used cpuset.CPUSet, disableHT, htEnabled bool) (*extendedCPUInfo, error) {
+
+	retCpuInfo := &cpu.Info{
+		TotalCores:   0,
+		TotalThreads: 0,
+	}
+
+	ret := &extendedCPUInfo{
+		CpuInfo:                  retCpuInfo,
+		NumLogicalProcessorsUsed: make(map[int]int, len(extCpuInfo.NumLogicalProcessorsUsed)),
+		LogicalProcessorsUsed:    make(map[int]struct{}),
+	}
+	for k, v := range extCpuInfo.NumLogicalProcessorsUsed {
+		ret.NumLogicalProcessorsUsed[k] = v
+	}
+	for k, v := range extCpuInfo.LogicalProcessorsUsed {
+		ret.LogicalProcessorsUsed[k] = v
+	}
+
+	cpuInfo := extCpuInfo.CpuInfo
+	for _, socket := range cpuInfo.Processors {
+
+		s := &cpu.Processor{
+			ID:           socket.ID,
+			Vendor:       socket.Vendor,
+			Model:        socket.Model,
+			Capabilities: socket.Capabilities,
+			NumCores:     0,
+			NumThreads:   0,
+		}
+
+		for _, core := range socket.Cores {
+			c := &cpu.ProcessorCore{
+				ID:         core.ID,
+				Index:      core.Index,
+				NumThreads: 0,
+			}
+
+			for index, lp := range core.LogicalProcessors {
+				if used.Contains(lp) {
+					if val, ok := ret.NumLogicalProcessorsUsed[socket.ID]; ok {
+						ret.NumLogicalProcessorsUsed[socket.ID] = val + 1
+					} else {
+						ret.NumLogicalProcessorsUsed[socket.ID] = 1
+					}
+					ret.LogicalProcessorsUsed[lp] = struct{}{}
+				}
+				if htEnabled && disableHT {
+					if index == 0 {
+						c.LogicalProcessors = append(c.LogicalProcessors, lp)
+						c.NumThreads++
+					}
+				} else {
+					c.LogicalProcessors = append(c.LogicalProcessors, lp)
+					c.NumThreads++
+				}
+			}
+
+			if c.NumThreads > 0 {
+				s.NumThreads += c.NumThreads
+				s.NumCores++
+				s.Cores = append(s.Cores, c)
+			}
+		}
+
+		if s.NumCores > 0 {
+			retCpuInfo.TotalThreads += s.NumThreads
+			retCpuInfo.TotalCores += s.NumCores
+			retCpuInfo.Processors = append(retCpuInfo.Processors, s)
+		}
+	}
+
+	return ret, nil
+}
+
+func IsLogicalProcessorUsed(extCPUInfo *extendedCPUInfo, logicalProcessor int) bool {
+	_, ok := extCPUInfo.LogicalProcessorsUsed[logicalProcessor]
+	return ok
 }
