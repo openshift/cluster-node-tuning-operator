@@ -825,10 +825,20 @@ func (c *Controller) updateTunedProfile() (err error) {
 		return fmt.Errorf("unable to assess whether stalld is requested: %v", err)
 	}
 
+	activeProfile, err := getActiveProfile()
+	if err != nil {
+		return err
+	}
+
+	statusConditions := computeStatusConditions(c.daemon.status, profile.Status.Conditions)
+
 	stalldUnchanged := util.PtrBoolEqual(profile.Status.Stalld, stalldRequested)
 
-	if profile.Status.Bootcmdline == bootcmdline && stalldUnchanged {
-		// Do not update node profile unnecessarily (e.g. bootcmdline did not change)
+	if profile.Status.Bootcmdline == bootcmdline && stalldUnchanged &&
+		profile.Status.TunedProfile == activeProfile && conditionsEqual(profile.Status.Conditions, statusConditions) {
+		// Do not update node Profile unnecessarily (e.g. bootcmdline did not change).
+		// This will save operator CPU cycles trying to reconcile objects that do not
+		// need reconciling.
 		klog.V(2).Infof("updateTunedProfile(): no need to update Profile %s", profile.Name)
 		return nil
 	}
@@ -837,6 +847,8 @@ func (c *Controller) updateTunedProfile() (err error) {
 
 	profile.Status.Bootcmdline = bootcmdline
 	profile.Status.Stalld = stalldRequested
+	profile.Status.TunedProfile = activeProfile
+	profile.Status.Conditions = statusConditions
 	_, err = c.clients.Tuned.TunedV1().Profiles(operandNamespace).Update(context.TODO(), profile, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update Profile %s status: %v", profile.Name, err)
