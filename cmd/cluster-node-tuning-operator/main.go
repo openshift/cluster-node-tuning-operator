@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 	"path/filepath"
@@ -12,17 +13,20 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	paocontroller "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
-	olmv1 "github.com/operator-framework/api/pkg/operators/v1"
+	olmoperators "github.com/operator-framework/api/pkg/operators/install"
 	olmv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/config"
@@ -56,8 +60,6 @@ func init() {
 	utilruntime.Must(performancev1alpha1.AddToScheme(scheme))
 	utilruntime.Must(performancev1.AddToScheme(scheme))
 	utilruntime.Must(performancev2.AddToScheme(scheme))
-	utilruntime.Must(olmv1alpha1.AddToScheme(scheme))
-	utilruntime.Must(olmv1.AddToScheme(scheme))
 }
 
 func printVersion() {
@@ -124,6 +126,10 @@ func operatorRun() {
 		klog.Exit(err)
 	}
 
+	if err := removePerformanceOLMOperator(restConfig); err != nil {
+		klog.Fatalf("unable to remove Performance addons OLM operator: %v", err)
+	}
+
 	controller, err := operator.NewController()
 	if err != nil {
 		klog.Fatalf("failed to create new controller: %v", err)
@@ -175,6 +181,67 @@ func tunedOperandRun() {
 
 	stopCh := signals.SetupSignalHandler()
 	tuned.Run(stopCh, &boolVersion, version.Version)
+}
+
+// Uninstall PAO OLM operator since PAO is shipped
+// as a core operator from 4.11.
+// This is relevant for any upgrade path of an OpenShift cluster
+// below 4.11 containing PAO to this current version.
+func removePerformanceOLMOperator(cfg *rest.Config) error {
+	k8sclient, err := client.New(cfg, client.Options{})
+	if err != nil {
+		return err
+	}
+
+	// Register OLM types to the client
+	olmoperators.Install(k8sclient.Scheme())
+
+	var performanceOperatorCSVs []olmv1alpha1.ClusterServiceVersion
+	csvs := &olmv1alpha1.ClusterServiceVersionList{}
+	if err := k8sclient.List(context.TODO(), csvs); err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		}
+	}
+	for i := range csvs.Items {
+		csv := &csvs.Items[i]
+		deploymentSpecs := csv.Spec.InstallStrategy.StrategySpec.DeploymentSpecs
+		if deploymentSpecs != nil {
+			for _, deployment := range deploymentSpecs {
+				if deployment.Name == "performance-operator" {
+					performanceOperatorCSVs = append(performanceOperatorCSVs, *csv)
+					break
+				}
+			}
+		}
+	}
+
+	subscriptions := &olmv1alpha1.SubscriptionList{}
+	if err := k8sclient.List(context.TODO(), subscriptions); err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		}
+	}
+	for i := range subscriptions.Items {
+		subscription := &subscriptions.Items[i]
+		subscriptionExists := true
+		for _, csv := range performanceOperatorCSVs {
+			if subscription.Namespace == csv.Namespace && subscription.Status.InstalledCSV == csv.Name {
+				if subscriptionExists {
+					klog.Infof("Removing performance-addon-operator subscription %s", subscription.Name)
+					if err := k8sclient.Delete(context.TODO(), subscription); err != nil {
+						return err
+					}
+					subscriptionExists = false
+				}
+				klog.Infof("Removing performance-addon-operator related CSV %s/%s", csv.Name, csv.Namespace)
+				if err := k8sclient.Delete(context.TODO(), &csv); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func main() {

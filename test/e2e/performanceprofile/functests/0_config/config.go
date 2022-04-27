@@ -32,6 +32,7 @@ import (
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	olmv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 )
 
 var RunningOnSingleNode bool
@@ -42,6 +43,24 @@ var _ = Describe("[performance][config] Performance configuration", func() {
 		isSNO, err := cluster.IsSingleNode()
 		Expect(err).ToNot(HaveOccurred())
 		RunningOnSingleNode = isSNO
+	})
+
+	It("should remove OLM artifacts for performance-addon-operator", func() {
+		csvs := &olmv1alpha1.ClusterServiceVersionList{}
+		if err := testclient.Client.List(context.TODO(), csvs); err != nil {
+			if !errors.IsNotFound(err) {
+				Expect(err).ToNot(HaveOccurred())
+			}
+		}
+		for i := range csvs.Items {
+			csv := &csvs.Items[i]
+			deploymentSpecs := csv.Spec.InstallStrategy.StrategySpec.DeploymentSpecs
+			if deploymentSpecs != nil {
+				for _, deployment := range deploymentSpecs {
+					Expect((deployment.Name)).ToNot(Equal("performance-operator"), fmt.Sprintf("CSV %s for performance-operator should have been removed", csv.Name))
+				}
+			}
+		}
 	})
 
 	It("Should successfully deploy the performance profile", func() {
