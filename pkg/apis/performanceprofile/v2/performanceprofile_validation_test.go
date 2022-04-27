@@ -138,13 +138,13 @@ var _ = Describe("PerformanceProfile", func() {
 			Expect(errors[0].Error()).To(ContainSubstring("cpu section required"))
 		})
 
-		It("should allow cpus allocation with no reserved CPUs", func() {
+		It("should reject cpus allocation with no reserved CPUs", func() {
 			reservedCPUs := CPUSet("")
 			isolatedCPUs := CPUSet("0-7")
-			profile.Spec.CPU.Reserved = &reservedCPUs
 			profile.Spec.CPU.Isolated = &isolatedCPUs
+			profile.Spec.CPU.Reserved = &reservedCPUs
 			errors := profile.validateCPUs()
-			Expect(errors).To(BeEmpty())
+			Expect(errors[0].Error()).To(ContainSubstring("reserved CPUs can not be empty"))
 		})
 
 		It("should reject cpus allocation with no isolated CPUs", func() {
