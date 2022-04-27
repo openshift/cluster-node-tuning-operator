@@ -87,9 +87,12 @@ func (c *CPULists) Intersect() []int {
 	return commonSet.ToSlice()
 }
 
-// CountIsolated returns how many isolated cpus where specified
-func (c *CPULists) CountIsolated() int {
-	return c.isolated.Size()
+func (c *CPULists) GetIsolated() cpuset.CPUSet {
+	return c.isolated
+}
+
+func (c *CPULists) GetReserved() cpuset.CPUSet {
+	return c.reserved
 }
 
 // NewCPULists parse text representations of reserved and isolated cpusets definiton and returns a CPULists object

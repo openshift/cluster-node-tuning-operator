@@ -133,7 +133,11 @@ func (r *PerformanceProfile) validateCPUs() field.ErrorList {
 			}
 
 			if cpuLists != nil {
-				if cpuLists.CountIsolated() == 0 {
+				if cpuLists.GetReserved().IsEmpty() {
+					allErrs = append(allErrs, field.Invalid(field.NewPath("spec.cpu.reserved"), r.Spec.CPU.Reserved, "reserved CPUs can not be empty"))
+				}
+
+				if cpuLists.GetIsolated().IsEmpty() {
 					allErrs = append(allErrs, field.Invalid(field.NewPath("spec.cpu.isolated"), r.Spec.CPU.Isolated, "isolated CPUs can not be empty"))
 				}
 
