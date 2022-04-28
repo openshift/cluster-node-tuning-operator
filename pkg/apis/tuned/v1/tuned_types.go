@@ -8,16 +8,20 @@ import (
 )
 
 const (
-	// TunedDefaultResourceName is the name of the Node Tuning Operator's default custom tuned resource
+	// TunedDefaultResourceName is the name of the Node Tuning Operator's default custom tuned resource.
 	TunedDefaultResourceName = "default"
 
 	// TunedRenderedResourceName is the name of the Node Tuning Operator's tuned resource combined out of
-	// all the other custom tuned resources
+	// all the other custom tuned resources.
 	TunedRenderedResourceName = "rendered"
 
 	// TunedClusterOperatorResourceName is the name of the clusteroperator resource
 	// that reflects the node tuning operator status.
 	TunedClusterOperatorResourceName = "node-tuning"
+
+	// Annotation on Profiles to denote the operand version responsible for calculating and reporting
+	// the Profile status.
+	GeneratedByOperandVersionAnnotationKey string = "tuned.openshift.io/generated-by-operand-version"
 )
 
 /////////////////////////////////////////////////////////////////////////////////
