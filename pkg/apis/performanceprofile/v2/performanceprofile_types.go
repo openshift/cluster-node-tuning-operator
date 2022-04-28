@@ -98,6 +98,9 @@ type CPU struct {
 	// Defaults to "true"
 	// +optional
 	BalanceIsolated *bool `json:"balanceIsolated,omitempty"`
+	// Offline defines a set of CPUs that will be unused and set offline
+	// +optional
+	Offlined *CPUSet `json:"offlined,omitempty"`
 }
 
 // HugePageSize defines size of huge pages, can be 2M or 1G.

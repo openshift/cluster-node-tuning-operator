@@ -33,6 +33,27 @@ const hugepagesAllocationService = `
         name: hugepages-allocation-1048576kB-NUMA0.service
 `
 
+const offlineCPUS = `
+      - contents: |
+          [Unit]
+          Description=Set cpus offline: 6,7
+          Before=kubelet.service
+
+          [Service]
+          Environment=OFFLINE_CPUS=6,7
+          Type=oneshot
+          RemainAfterExit=true
+          ExecStart=/usr/local/bin/set-cpus-offline.sh
+
+          [Install]
+          WantedBy=multi-user.target
+        enabled: true
+        name: set-cpus-offline.service
+`
+
+var CPUs = []int{1, 2, 3, 4, 5, 6, 7, 8, 9}
+var CPUstring = "1,2,3,4,5,6,7,8,9"
+
 var _ = Describe("Machine Config", func() {
 
 	Context("machine config creation ", func() {
@@ -45,7 +66,7 @@ var _ = Describe("Machine Config", func() {
 		})
 	})
 
-	Context("with hugepages with specified NUMA node", func() {
+	Context("with hugepages with specified NUMA node and offlinedCPUs", func() {
 		var manifest string
 
 		BeforeEach(func() {
@@ -73,5 +94,15 @@ var _ = Describe("Machine Config", func() {
 			Expect(manifest).To(ContainSubstring(hugepagesAllocationService))
 		})
 
+		It("should add systemd unit to offlineCPUs", func() {
+			Expect(manifest).To(ContainSubstring(offlineCPUS))
+		})
+	})
+
+	Context("check listToString ", func() {
+		It("should create string from CPUSet", func() {
+			res := components.ListToString(CPUs)
+			Expect(res).To(Equal(CPUstring))
+		})
 	})
 })

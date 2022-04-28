@@ -4,8 +4,9 @@ metadata:
   name: manual
 spec:
   cpu:
-    isolated: "1-3"
+    isolated: "1"
     reserved: "0"
+    offlined: "2,3"
   hugepages:
     defaultHugepagesSize: "1G"
     pages:

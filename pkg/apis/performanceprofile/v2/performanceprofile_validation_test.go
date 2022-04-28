@@ -20,9 +20,11 @@ const (
 	// HugePagesCount defines the huge page count used for tests
 	HugePagesCount = 4
 	// IsolatedCPUs defines the isolated CPU set used for tests
-	IsolatedCPUs = CPUSet("4-7")
+	IsolatedCPUs = CPUSet("4-6")
 	// ReservedCPUs defines the reserved CPU set used for tests
 	ReservedCPUs = CPUSet("0-3")
+	// ReservedCPUs defines the reserved CPU set used for tests
+	OfflinedCPUs = CPUSet("7")
 	// SingleNUMAPolicy defines the topologyManager policy used for tests
 	SingleNUMAPolicy = "single-numa-node"
 
@@ -48,6 +50,7 @@ func NewPerformanceProfile(name string) *PerformanceProfile {
 	size := HugePageSize1G
 	isolatedCPUs := IsolatedCPUs
 	reservedCPUs := ReservedCPUs
+	offlinedCPUs := OfflinedCPUs
 	numaPolicy := SingleNUMAPolicy
 
 	netDeviceName := NetDeviceName
@@ -64,6 +67,7 @@ func NewPerformanceProfile(name string) *PerformanceProfile {
 			CPU: &CPU{
 				Isolated: &isolatedCPUs,
 				Reserved: &reservedCPUs,
+				Offlined: &offlinedCPUs,
 			},
 			HugePages: &HugePages{
 				DefaultHugePagesSize: &size,
@@ -140,9 +144,11 @@ var _ = Describe("PerformanceProfile", func() {
 
 		It("should reject cpus allocation with no reserved CPUs", func() {
 			reservedCPUs := CPUSet("")
-			isolatedCPUs := CPUSet("0-7")
-			profile.Spec.CPU.Isolated = &isolatedCPUs
+			isolatedCPUs := CPUSet("0-6")
+			offlinedCPUs := CPUSet("7")
 			profile.Spec.CPU.Reserved = &reservedCPUs
+			profile.Spec.CPU.Isolated = &isolatedCPUs
+			profile.Spec.CPU.Offlined = &offlinedCPUs
 			errors := profile.validateCPUs()
 			Expect(errors[0].Error()).To(ContainSubstring("reserved CPUs can not be empty"))
 		})
@@ -157,7 +163,17 @@ var _ = Describe("PerformanceProfile", func() {
 			Expect(errors[0].Error()).To(ContainSubstring("isolated CPUs can not be empty"))
 		})
 
-		It("should reject cpus allocation with overlapping sets", func() {
+		It("should allow cpus allocation with no offlined CPUs", func() {
+			cpusIsolaled := CPUSet("0")
+			cpusReserved := CPUSet("1")
+			profile.Spec.CPU.Isolated = &cpusIsolaled
+			profile.Spec.CPU.Reserved = &cpusReserved
+			profile.Spec.CPU.Offlined = nil
+			errors := profile.validateCPUs()
+			Expect(errors).To(BeEmpty())
+		})
+
+		It("should reject cpus allocation with overlapping sets between reserved and isolated", func() {
 			reservedCPUs := CPUSet("0-7")
 			isolatedCPUs := CPUSet("0-15")
 			profile.Spec.CPU.Reserved = &reservedCPUs
@@ -165,6 +181,18 @@ var _ = Describe("PerformanceProfile", func() {
 			errors := profile.validateCPUs()
 			Expect(errors).NotTo(BeEmpty(), "should have validation error when reserved and isolation CPUs have overlap")
 			Expect(errors[0].Error()).To(ContainSubstring("reserved and isolated cpus overlap"))
+		})
+
+		It("should reject cpus allocation with overlapping sets between reserved and offlined", func() {
+			reservedCPUs := CPUSet("0-7")
+			isolatedCPUs := CPUSet("8-11")
+			offlinedCPUs := CPUSet("0,12-15")
+			profile.Spec.CPU.Reserved = &reservedCPUs
+			profile.Spec.CPU.Isolated = &isolatedCPUs
+			profile.Spec.CPU.Offlined = &offlinedCPUs
+			errors := profile.validateCPUs()
+			Expect(errors).NotTo(BeEmpty(), "should have validation error when reserved and isolation CPUs have overlap")
+			Expect(errors[0].Error()).To(ContainSubstring("reserved and offlined cpus overlap"))
 		})
 	})
 
