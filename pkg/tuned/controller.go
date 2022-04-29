@@ -859,9 +859,10 @@ func (c *Controller) updateTunedProfile() (err error) {
 		return fmt.Errorf("unable to get kernel command-line parameters: %v", err)
 	}
 
-	profile, err := c.listers.TunedProfiles.Get(getNodeName())
+	profileName := getNodeName()
+	profile, err := c.listers.TunedProfiles.Get(profileName)
 	if err != nil {
-		return fmt.Errorf("failed to get Profile %s: %v", profile.Name, err)
+		return fmt.Errorf("failed to get Profile %s: %v", profileName, err)
 	}
 
 	if !useSystemStalld {
@@ -894,6 +895,10 @@ func (c *Controller) updateTunedProfile() (err error) {
 	profile.Status.Stalld = stalldRequested
 	profile.Status.TunedProfile = activeProfile
 	profile.Status.Conditions = statusConditions
+	if profile.ObjectMeta.Annotations == nil {
+		profile.ObjectMeta.Annotations = map[string]string{}
+	}
+	profile.ObjectMeta.Annotations[tunedv1.GeneratedByOperandVersionAnnotationKey] = os.Getenv("RELEASE_VERSION")
 	_, err = c.clients.Tuned.TunedV1().Profiles(operandNamespace).Update(context.TODO(), profile, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update Profile %s status: %v", profile.Name, err)
