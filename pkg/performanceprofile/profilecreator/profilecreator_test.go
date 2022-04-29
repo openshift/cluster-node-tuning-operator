@@ -1,6 +1,7 @@
 package profilecreator
 
 import (
+	"fmt"
 	"path/filepath"
 	"sort"
 
@@ -9,6 +10,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	log "github.com/sirupsen/logrus"
 
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	v1 "k8s.io/api/core/v1"
@@ -244,6 +246,392 @@ var _ = Describe("PerformanceProfileCreator: Consuming GHW Snapshot from Must Ga
 	})
 })
 
+var _ = Describe("Performance profile creator: test with a simple cpu architecture to see algorithm easely", func() {
+	Context("With 16 cores, 32 Threads, 2 sockets 2 NUMA zones", func() {
+
+		var sysInfo systemInfo
+
+		BeforeEach(func() {
+			core0 := cpu.ProcessorCore{
+				ID:                0,
+				Index:             0,
+				NumThreads:        2,
+				LogicalProcessors: []int{0, 8},
+			}
+			core1 := cpu.ProcessorCore{
+				ID:                1,
+				Index:             1,
+				NumThreads:        2,
+				LogicalProcessors: []int{1, 9},
+			}
+			core2 := cpu.ProcessorCore{
+				ID:                2,
+				Index:             2,
+				NumThreads:        2,
+				LogicalProcessors: []int{2, 10},
+			}
+			core3 := cpu.ProcessorCore{
+				ID:                3,
+				Index:             3,
+				NumThreads:        2,
+				LogicalProcessors: []int{3, 11},
+			}
+			core4 := cpu.ProcessorCore{
+				ID:                4,
+				Index:             4,
+				NumThreads:        2,
+				LogicalProcessors: []int{4, 12},
+			}
+			core5 := cpu.ProcessorCore{
+				ID:                5,
+				Index:             5,
+				NumThreads:        2,
+				LogicalProcessors: []int{5, 13},
+			}
+			core6 := cpu.ProcessorCore{
+				ID:                6,
+				Index:             6,
+				NumThreads:        2,
+				LogicalProcessors: []int{6, 14},
+			}
+			core7 := cpu.ProcessorCore{
+				ID:                7,
+				Index:             7,
+				NumThreads:        2,
+				LogicalProcessors: []int{7, 15},
+			}
+
+			core8 := cpu.ProcessorCore{
+				ID:                8,
+				Index:             8,
+				NumThreads:        2,
+				LogicalProcessors: []int{16, 24},
+			}
+			core9 := cpu.ProcessorCore{
+				ID:                9,
+				Index:             9,
+				NumThreads:        2,
+				LogicalProcessors: []int{17, 25},
+			}
+			core10 := cpu.ProcessorCore{
+				ID:                10,
+				Index:             10,
+				NumThreads:        2,
+				LogicalProcessors: []int{18, 26},
+			}
+			core11 := cpu.ProcessorCore{
+				ID:                11,
+				Index:             11,
+				NumThreads:        2,
+				LogicalProcessors: []int{19, 27},
+			}
+			core12 := cpu.ProcessorCore{
+				ID:                12,
+				Index:             12,
+				NumThreads:        2,
+				LogicalProcessors: []int{20, 28},
+			}
+			core13 := cpu.ProcessorCore{
+				ID:                13,
+				Index:             13,
+				NumThreads:        2,
+				LogicalProcessors: []int{21, 29},
+			}
+			core14 := cpu.ProcessorCore{
+				ID:                14,
+				Index:             14,
+				NumThreads:        2,
+				LogicalProcessors: []int{22, 30},
+			}
+			core15 := cpu.ProcessorCore{
+				ID:                15,
+				Index:             15,
+				NumThreads:        2,
+				LogicalProcessors: []int{23, 31},
+			}
+
+			topologyInfoNodes := []*topology.Node{
+				{
+					ID: 0,
+					Cores: []*cpu.ProcessorCore{
+						&core0,
+						&core1,
+						&core2,
+						&core3,
+					},
+				},
+				{
+					ID: 1,
+					Cores: []*cpu.ProcessorCore{
+						&core4,
+						&core5,
+						&core6,
+						&core7,
+					},
+				},
+				{
+					ID: 2,
+					Cores: []*cpu.ProcessorCore{
+						&core8,
+						&core9,
+						&core10,
+						&core11,
+					},
+				},
+				{
+					ID: 3,
+					Cores: []*cpu.ProcessorCore{
+						&core12,
+						&core13,
+						&core14,
+						&core15,
+					},
+				},
+			}
+
+			topologyInfo := topology.Info{
+				Architecture: topology.ARCHITECTURE_NUMA,
+				Nodes:        topologyInfoNodes,
+			}
+
+			processors := []*cpu.Processor{
+				{
+					ID:         0,
+					NumCores:   8,
+					NumThreads: 16,
+					Vendor:     "redhat",
+					Model:      "rh-testing",
+					Cores: []*cpu.ProcessorCore{
+						&core0,
+						&core1,
+						&core2,
+						&core3,
+						&core4,
+						&core5,
+						&core6,
+						&core7,
+					},
+				},
+				{
+					ID:         1,
+					NumCores:   8,
+					NumThreads: 16,
+					Vendor:     "redhat",
+					Model:      "rh-testing",
+					Cores: []*cpu.ProcessorCore{
+						&core8,
+						&core9,
+						&core10,
+						&core11,
+						&core12,
+						&core13,
+						&core14,
+						&core15,
+					},
+				},
+			}
+
+			cpuInfo := cpu.Info{
+				TotalCores:   16,
+				TotalThreads: 32,
+				Processors:   processors,
+			}
+
+			extCpuInfo := extendedCPUInfo{
+				CpuInfo:                  &cpuInfo,
+				NumLogicalProcessorsUsed: make(map[int]int),
+				LogicalProcessorsUsed:    make(map[int]struct{}),
+			}
+
+			sysInfo = systemInfo{
+				CpuInfo:      &extCpuInfo,
+				TopologyInfo: &topologyInfo,
+				HtEnabled:    true,
+			}
+		})
+
+		It("diag0002 can offline a full socket", func() {
+			reservedCPUCount := 8
+			offlinedCPUCount := 16
+			splitReservedCPUsAcrossNUMA := false
+			disableHT := false
+			highPowerConsumptionMode := false
+
+			reserved, isolated, offlined, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).ToNot(HaveOccurred())
+
+			log.Infof("Input:")
+			log.Infof("\treserved-cpu-count:\t\t%d", reservedCPUCount)
+			log.Infof("\tofflined-cpu-count:\t\t%d", offlinedCPUCount)
+			log.Infof("\tdisable-ht:\t\t\t%v", disableHT)
+			log.Infof("\tsplitReservedCPUsAcrossNUMA:\t%v", splitReservedCPUsAcrossNUMA)
+			log.Infof("\thighConsumptionMode:\t\t%v", highPowerConsumptionMode)
+			log.Infof("Output:")
+			log.Infof("\treserved: %s", reserved.String())
+			log.Infof("\tisolated: %s", isolated.String())
+			log.Infof("\tofflined: %s", offlined.String())
+
+			Expect(offlined.Intersection(reserved).IsEmpty()).To(BeTrue())
+			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
+			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
+
+			Expect(reserved.String()).To(Equal("0-3,8-11"))
+			Expect(isolated.String()).To(Equal("4-7,12-15"))
+			Expect(offlined.String()).To(Equal("16-31"))
+		})
+
+		It("diag0003 cannot offline a full socket because reserved are splitted over all NUMA zones", func() {
+			reservedCPUCount := 8
+			offlinedCPUCount := 16
+			splitReservedCPUsAcrossNUMA := true
+			disableHT := false
+			highPowerConsumptionMode := false
+
+			reserved, isolated, offlined, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).ToNot(HaveOccurred())
+
+			log.Infof("Input:")
+			log.Infof("\treserved-cpu-count:\t\t%d", reservedCPUCount)
+			log.Infof("\tofflined-cpu-count:\t\t%d", offlinedCPUCount)
+			log.Infof("\tdisable-ht:\t\t\t%v", disableHT)
+			log.Infof("\tsplitReservedCPUsAcrossNUMA:\t%v", splitReservedCPUsAcrossNUMA)
+			log.Infof("\thighConsumptionMode:\t\t%v", highPowerConsumptionMode)
+			log.Infof("Output:")
+			log.Infof("\treserved: %s", reserved.String())
+			log.Infof("\tisolated: %s", isolated.String())
+			log.Infof("\tofflined: %s", offlined.String())
+
+			Expect(offlined.Intersection(reserved).IsEmpty()).To(BeTrue())
+			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
+			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
+
+			Expect(reserved.String()).To(Equal("0,4,8,12,16,20,24,28"))
+			Expect(isolated.String()).To(Equal("6-7,17-19,21-23"))
+			Expect(offlined.String()).To(Equal("1-3,5,9-11,13-15,25-27,29-31"))
+		})
+
+		It("diag0004 in high-power-consumption-mode so do not offline a socket, go for sibling threads instead", func() {
+			reservedCPUCount := 8
+			offlinedCPUCount := 16
+			splitReservedCPUsAcrossNUMA := false
+			disableHT := false
+			highPowerConsumptionMode := true
+
+			reserved, isolated, offlined, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).ToNot(HaveOccurred())
+
+			log.Infof("Input:")
+			log.Infof("\treserved-cpu-count:\t\t%d", reservedCPUCount)
+			log.Infof("\tofflined-cpu-count:\t\t%d", offlinedCPUCount)
+			log.Infof("\tdisable-ht:\t\t\t%v", disableHT)
+			log.Infof("\tsplitReservedCPUsAcrossNUMA:\t%v", splitReservedCPUsAcrossNUMA)
+			log.Infof("\thighConsumptionMode:\t\t%v", highPowerConsumptionMode)
+			log.Infof("Output:")
+			log.Infof("\treserved: %s", reserved.String())
+			log.Infof("\tisolated: %s", isolated.String())
+			log.Infof("\tofflined: %s", offlined.String())
+
+			Expect(offlined.Intersection(reserved).IsEmpty()).To(BeTrue())
+			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
+			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
+
+			Expect(reserved.String()).To(Equal("0-3,8-11"))
+			Expect(isolated.String()).To(Equal("16-23"))
+			Expect(offlined.String()).To(Equal("4-7,12-15,24-31"))
+		})
+
+		It("diag0005 as socket is too big to be offlined completely we go for the siblings", func() {
+			reservedCPUCount := 8
+			offlinedCPUCount := 12
+			splitReservedCPUsAcrossNUMA := false
+			disableHT := false
+			highPowerConsumptionMode := false
+
+			reserved, isolated, offlined, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).ToNot(HaveOccurred())
+
+			log.Infof("Input:")
+			log.Infof("\treserved-cpu-count:\t\t%d", reservedCPUCount)
+			log.Infof("\tofflined-cpu-count:\t\t%d", offlinedCPUCount)
+			log.Infof("\tdisable-ht:\t\t\t%v", disableHT)
+			log.Infof("\tsplitReservedCPUsAcrossNUMA:\t%v", splitReservedCPUsAcrossNUMA)
+			log.Infof("\thighConsumptionMode:\t\t%v", highPowerConsumptionMode)
+			log.Infof("Output:")
+			log.Infof("\treserved: %s", reserved.String())
+			log.Infof("\tisolated: %s", isolated.String())
+			log.Infof("\tofflined: %s", offlined.String())
+
+			Expect(offlined.Intersection(reserved).IsEmpty()).To(BeTrue())
+			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
+			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
+
+			Expect(reserved.String()).To(Equal("0-3,8-11"))
+			Expect(isolated.String()).To(Equal("4-7,16-23"))
+			Expect(offlined.String()).To(Equal("12-15,24-31"))
+		})
+
+		It("diag0006 can set offline a complete socket and then goes for the siblings", func() {
+			reservedCPUCount := 8
+			offlinedCPUCount := 19
+			splitReservedCPUsAcrossNUMA := false
+			disableHT := false
+			highPowerConsumptionMode := false
+
+			reserved, isolated, offlined, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).ToNot(HaveOccurred())
+
+			log.Infof("Input:")
+			log.Infof("\treserved-cpu-count:\t\t%d", reservedCPUCount)
+			log.Infof("\tofflined-cpu-count:\t\t%d", offlinedCPUCount)
+			log.Infof("\tdisable-ht:\t\t\t%v", disableHT)
+			log.Infof("\tsplitReservedCPUsAcrossNUMA:\t%v", splitReservedCPUsAcrossNUMA)
+			log.Infof("\thighConsumptionMode:\t\t%v", highPowerConsumptionMode)
+			log.Infof("Output:")
+			log.Infof("\treserved: %s", reserved.String())
+			log.Infof("\tisolated: %s", isolated.String())
+			log.Infof("\tofflined: %s", offlined.String())
+
+			Expect(offlined.Intersection(reserved).IsEmpty()).To(BeTrue())
+			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
+			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
+
+			Expect(reserved.String()).To(Equal("0-3,8-11"))
+			Expect(isolated.String()).To(Equal("4-7,15"))
+			Expect(offlined.String()).To(Equal("12-14,16-31"))
+		})
+
+		It("diag0007 as sibling threads will be disabled by kernel they are not handled in the sets", func() {
+			reservedCPUCount := 4
+			offlinedCPUCount := 8
+			splitReservedCPUsAcrossNUMA := false
+			disableHT := true
+			highPowerConsumptionMode := false
+
+			reserved, isolated, offlined, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).ToNot(HaveOccurred())
+
+			log.Infof("Input:")
+			log.Infof("\treserved-cpu-count:\t\t%d", reservedCPUCount)
+			log.Infof("\tofflined-cpu-count:\t\t%d", offlinedCPUCount)
+			log.Infof("\tdisable-ht:\t\t\t%v", disableHT)
+			log.Infof("\tsplitReservedCPUsAcrossNUMA:\t%v", splitReservedCPUsAcrossNUMA)
+			log.Infof("\thighConsumptionMode:\t\t%v", highPowerConsumptionMode)
+			log.Infof("Output:")
+			log.Infof("\treserved: %s", reserved.String())
+			log.Infof("\tisolated: %s", isolated.String())
+			log.Infof("\tofflined: %s", offlined.String())
+
+			Expect(offlined.Intersection(reserved).IsEmpty()).To(BeTrue())
+			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
+			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
+
+			Expect(reserved.String()).To(Equal("0-3"))
+			Expect(isolated.String()).To(Equal("4-7"))
+			Expect(offlined.String()).To(Equal("16-23"))
+		})
+	})
+})
+
 var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CPUs in Performance Profile", func() {
 	var mustGatherDirAbsolutePath string
 	var node *v1.Node
@@ -426,6 +814,332 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 		})
 
+	})
+	Context("with new offlined parameter, check if reserved, isolated and offlined CPUs are properly populated in the performance profile", func() {
+		It("Errors out in case negative offlinedCPUCount is specified", func() {
+			reservedCPUCount = 20 // random number, no meaning
+			offlinedCPUCount = -1 // random negative number, no special meaning
+			splitReservedCPUsAcrossNUMA = true
+			disableHT = false
+			highPowerConsumptionMode := false
+			mustGatherDirAbsolutePath, err = filepath.Abs(mustGatherDirPath)
+			Expect(err).ToNot(HaveOccurred())
+			handle, err = NewGHWHandler(mustGatherDirAbsolutePath, node)
+			Expect(err).ToNot(HaveOccurred())
+			systemInfo, err := handle.GatherSystemInfo()
+			Expect(err).ToNot(HaveOccurred())
+			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("please specify the offlined CPU count in the range"))
+		})
+
+		It("Errors out in case offlinedCPUCount specified is greater than the number of CPUs in system", func() {
+			reservedCPUCount = 20  // random number, no meaning
+			offlinedCPUCount = 100 // random number should be greater than the actual number of CPUs in must-gather
+			splitReservedCPUsAcrossNUMA = true
+			disableHT = false
+			highPowerConsumptionMode := false
+			mustGatherDirAbsolutePath, err = filepath.Abs(mustGatherDirPath)
+			Expect(err).ToNot(HaveOccurred())
+			handle, err = NewGHWHandler(mustGatherDirAbsolutePath, node)
+			Expect(err).ToNot(HaveOccurred())
+			systemInfo, err := handle.GatherSystemInfo()
+			Expect(err).ToNot(HaveOccurred())
+			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("please specify the offlined CPU count in the range"))
+		})
+		It("Errors out in case offlinedCPUCount plus reservedCPUCount specified is greater than the number of CPUs", func() {
+			reservedCPUCount = 40
+			offlinedCPUCount = 41
+			splitReservedCPUsAcrossNUMA = true
+			disableHT = false
+			highPowerConsumptionMode := false
+
+			Expect(reservedCPUCount + offlinedCPUCount).To(BeNumerically(">", 80))
+			mustGatherDirAbsolutePath, err = filepath.Abs(mustGatherDirPath)
+			Expect(err).ToNot(HaveOccurred())
+			handle, err = NewGHWHandler(mustGatherDirAbsolutePath, node)
+			Expect(err).ToNot(HaveOccurred())
+			systemInfo, err := handle.GatherSystemInfo()
+			Expect(err).ToNot(HaveOccurred())
+			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("please ensure that reserved-cpu-count plus offlined-cpu-count should be in the range"))
+		})
+		It("with disable-ht true siblings does NOT count: Errors out in case offlinedCPUCount plus reservedCPUCount specified is greater than the number of CPUs", func() {
+			reservedCPUCount = 20
+			offlinedCPUCount = 21
+			splitReservedCPUsAcrossNUMA = true
+			disableHT = true
+			mustGatherDirAbsolutePath, err = filepath.Abs(mustGatherDirPath)
+			Expect(err).ToNot(HaveOccurred())
+			handle, err = NewGHWHandler(mustGatherDirAbsolutePath, node)
+			Expect(err).ToNot(HaveOccurred())
+			systemInfo, err := handle.GatherSystemInfo()
+			Expect(err).ToNot(HaveOccurred())
+			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, false)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("please ensure that reserved-cpu-count plus offlined-cpu-count should be in the range"))
+		})
+		It("with disable-ht true siblings does NOT count: Errors out in case offlinedCPUCount specified is greater than the number of CPUs in system", func() {
+			reservedCPUCount = 10
+			offlinedCPUCount = 41 // should be greater than the number of cores
+			splitReservedCPUsAcrossNUMA = true
+			disableHT = true
+			highPowerConsumptionMode := false
+			mustGatherDirAbsolutePath, err = filepath.Abs(mustGatherDirPath)
+			Expect(err).ToNot(HaveOccurred())
+			handle, err = NewGHWHandler(mustGatherDirAbsolutePath, node)
+			Expect(err).ToNot(HaveOccurred())
+			systemInfo, err := handle.GatherSystemInfo()
+			Expect(err).ToNot(HaveOccurred())
+			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("please specify the offlined CPU count in the range"))
+		})
+		It("Everything is ok in case offlinedCPUCount plus reservedCPUCount specified is equal to the number of CPUs in system", func() {
+			reservedCPUCount = 20 // random number, no meaning
+			offlinedCPUCount = 59 // random number --> both `reservedCPUCount` plus `offlinedCPUCount` should sum 79 (which is the number of CPUs in the must-gather minus 1)
+			Expect(reservedCPUCount + offlinedCPUCount).To(Equal(79))
+			splitReservedCPUsAcrossNUMA = true
+			disableHT = false
+			highPowerConsumptionMode := false
+
+			mustGatherDirAbsolutePath, err = filepath.Abs(mustGatherDirPath)
+			Expect(err).ToNot(HaveOccurred())
+			handle, err = NewGHWHandler(mustGatherDirAbsolutePath, node)
+			Expect(err).ToNot(HaveOccurred())
+			systemInfo, err := handle.GatherSystemInfo()
+			Expect(err).ToNot(HaveOccurred())
+			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).NotTo(HaveOccurred())
+		})
+		It("when splitReservedCPUsAcrossNUMA is disabled, disableHT is disabled and offlined-cpu-count is greater than number of cpus per socket then offline a complete socket", func() {
+			reservedCPUCount = 20 // random number, no special meaning
+			offlinedCPUCount = 40 // NOT A random number: It is the number of CPUS in a socket
+			splitReservedCPUsAcrossNUMA = false
+			disableHT = false
+			highPowerConsumptionMode := false
+
+			mustGatherDirAbsolutePath, err = filepath.Abs(mustGatherDirPath)
+			Expect(err).ToNot(HaveOccurred())
+			handle, err = NewGHWHandler(mustGatherDirAbsolutePath, node)
+			Expect(err).ToNot(HaveOccurred())
+			systemInfo, err := handle.GatherSystemInfo()
+			Expect(err).ToNot(HaveOccurred())
+			reservedCPUSet, isolatedCPUSet, offlinedCPUSet, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(offlinedCPUSet.Intersection(reservedCPUSet).IsEmpty()).To(BeTrue())
+			Expect(offlinedCPUSet.Intersection(isolatedCPUSet).IsEmpty()).To(BeTrue())
+			Expect(offlinedCPUSet.Size()).To(Equal(offlinedCPUCount))
+
+			log.Infof("offlined:%s", offlinedCPUSet.String())
+			log.Infof("reserved:%s", reservedCPUSet.String())
+			log.Infof("isolated:%s", isolatedCPUSet.String())
+
+			totalCPUSet, err := GetTotalCPUSetFromGHW(handle, disableHT)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(reservedCPUSet.Union(offlinedCPUSet).Union(isolatedCPUSet)).To(Equal(totalCPUSet))
+
+			Expect(offlinedCPUSet.String()).To(Equal("1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39,41,43,45,47,49,51,53,55,57,59,61,63,65,67,69,71,73,75,77,79"))
+			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6,8,10,12,14,16,18,40,42,44,46,48,50,52,54,56,58"))
+			Expect(isolatedCPUSet.String()).To(Equal("20,22,24,26,28,30,32,34,36,38,60,62,64,66,68,70,72,74,76,78"))
+		})
+		It("when splitReservedCPUsAcrossNUMA is enabled, disableHT is disabled and offlined-cpu-count is greater than number of cpus per socket then can NOT offline a complete socket", func() {
+			reservedCPUCount = 20 // random number, no special meaning
+			offlinedCPUCount = 40 // NOT A random number: It is the number of CPUS in a socket
+			splitReservedCPUsAcrossNUMA = true
+			disableHT = false
+			highPowerConsumptionMode := false
+
+			mustGatherDirAbsolutePath, err = filepath.Abs(mustGatherDirPath)
+			Expect(err).ToNot(HaveOccurred())
+			handle, err = NewGHWHandler(mustGatherDirAbsolutePath, node)
+			Expect(err).ToNot(HaveOccurred())
+			systemInfo, err := handle.GatherSystemInfo()
+			Expect(err).ToNot(HaveOccurred())
+			reservedCPUSet, isolatedCPUSet, offlinedCPUSet, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(offlinedCPUSet.Intersection(reservedCPUSet).IsEmpty()).To(BeTrue())
+			Expect(offlinedCPUSet.Intersection(isolatedCPUSet).IsEmpty()).To(BeTrue())
+			Expect(offlinedCPUSet.Size()).To(Equal(offlinedCPUCount))
+
+			log.Infof("offlined:%s", offlinedCPUSet.String())
+			log.Infof("reserved:%s", reservedCPUSet.String())
+			log.Infof("isolated:%s", isolatedCPUSet.String())
+
+			totalCPUSet, err := GetTotalCPUSetFromGHW(handle, disableHT)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(reservedCPUSet.Union(offlinedCPUSet).Union(isolatedCPUSet)).To(Equal(totalCPUSet))
+
+			Expect(offlinedCPUSet.String()).To(Equal("10,12,14,16,18,20,22,24,26,28,50-79"))
+			Expect(reservedCPUSet.String()).To(Equal("0-9,40-49"))
+			Expect(isolatedCPUSet.String()).To(Equal("11,13,15,17,19,21,23,25,27,29-39"))
+		})
+
+		It("when in high power consumption mode, splitReservedCPUsAcrossNUMA is disabled, disableHT is disabled and offlined-cpu-count is greater than number of cpus per socket then do NOT offline a complete socket", func() {
+			reservedCPUCount = 20 // random number, no special meaning
+			offlinedCPUCount = 40 // NOT A random number: It is the number of CPUS in a socket
+			splitReservedCPUsAcrossNUMA = false
+			disableHT = false
+			highPowerConsumptionMode := true
+
+			mustGatherDirAbsolutePath, err = filepath.Abs(mustGatherDirPath)
+			Expect(err).ToNot(HaveOccurred())
+			handle, err = NewGHWHandler(mustGatherDirAbsolutePath, node)
+			Expect(err).ToNot(HaveOccurred())
+			systemInfo, err := handle.GatherSystemInfo()
+			Expect(err).ToNot(HaveOccurred())
+			reservedCPUSet, isolatedCPUSet, offlinedCPUSet, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(offlinedCPUSet.Intersection(reservedCPUSet).IsEmpty()).To(BeTrue())
+			Expect(offlinedCPUSet.Intersection(isolatedCPUSet).IsEmpty()).To(BeTrue())
+			Expect(offlinedCPUSet.Size()).To(Equal(offlinedCPUCount))
+
+			log.Infof("offlined:%s", offlinedCPUSet.String())
+			log.Infof("reserved:%s", reservedCPUSet.String())
+			log.Infof("isolated:%s", isolatedCPUSet.String())
+
+			totalCPUSet, err := GetTotalCPUSetFromGHW(handle, disableHT)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(reservedCPUSet.Union(offlinedCPUSet).Union(isolatedCPUSet)).To(Equal(totalCPUSet))
+
+			Expect(offlinedCPUSet.String()).To(Equal("20,22,24,26,28,30,32,34,36,38,41,43,45,47,49,51,53,55,57,59-79"))
+			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6,8,10,12,14,16,18,40,42,44,46,48,50,52,54,56,58"))
+			Expect(isolatedCPUSet.String()).To(Equal("1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39"))
+		})
+
+		It("when splitReservedCPUsAcrossNUMA is disabled, disableHT is disabled and offlined-cpu-count is less than number of cpus per socket then do NOT offline a complete socket", func() {
+			reservedCPUCount = 20 // random number, no special meaning
+			offlinedCPUCount = 20 // NOT A random number: Should be less than the number of CPUS in a socket
+			splitReservedCPUsAcrossNUMA = false
+			disableHT = false
+			highPowerConsumptionMode := false
+
+			mustGatherDirAbsolutePath, err = filepath.Abs(mustGatherDirPath)
+			Expect(err).ToNot(HaveOccurred())
+			handle, err = NewGHWHandler(mustGatherDirAbsolutePath, node)
+			Expect(err).ToNot(HaveOccurred())
+			systemInfo, err := handle.GatherSystemInfo()
+			Expect(err).ToNot(HaveOccurred())
+			reservedCPUSet, isolatedCPUSet, offlinedCPUSet, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(offlinedCPUSet.Intersection(reservedCPUSet).IsEmpty()).To(BeTrue())
+			Expect(offlinedCPUSet.Intersection(isolatedCPUSet).IsEmpty()).To(BeTrue())
+			Expect(offlinedCPUSet.Size()).To(Equal(offlinedCPUCount))
+
+			log.Infof("offlined:%s", offlinedCPUSet.String())
+			log.Infof("reserved:%s", reservedCPUSet.String())
+			log.Infof("isolated:%s", isolatedCPUSet.String())
+
+			totalCPUSet, err := GetTotalCPUSetFromGHW(handle, disableHT)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(reservedCPUSet.Union(offlinedCPUSet).Union(isolatedCPUSet)).To(Equal(totalCPUSet))
+
+			Expect(offlinedCPUSet.String()).To(Equal("41,43,45,47,49,51,53,55,57,59-60,62,64,66,68,70,72,74,76,78"))
+			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6,8,10,12,14,16,18,40,42,44,46,48,50,52,54,56,58"))
+			Expect(isolatedCPUSet.String()).To(Equal("1,3,5,7,9,11,13,15,17,19-39,61,63,65,67,69,71,73,75,77,79"))
+		})
+
+		It("when splitReservedCPUsAcrossNUMA is disabled, disableHT is disabled and offlined-cpu-count is greater than number of cpus per socket then offline a complete socket and then go for siblings", func() {
+			reservedCPUCount = 20 // random number, no special meaning
+			offlinedCPUCount = 45 // NOT A random number: Should be less than the number of CPUS in a socket
+			splitReservedCPUsAcrossNUMA = false
+			disableHT = false
+			highPowerConsumptionMode := false
+
+			mustGatherDirAbsolutePath, err = filepath.Abs(mustGatherDirPath)
+			Expect(err).ToNot(HaveOccurred())
+			handle, err = NewGHWHandler(mustGatherDirAbsolutePath, node)
+			Expect(err).ToNot(HaveOccurred())
+			systemInfo, err := handle.GatherSystemInfo()
+			Expect(err).ToNot(HaveOccurred())
+			reservedCPUSet, isolatedCPUSet, offlinedCPUSet, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(offlinedCPUSet.Intersection(reservedCPUSet).IsEmpty()).To(BeTrue())
+			Expect(offlinedCPUSet.Intersection(isolatedCPUSet).IsEmpty()).To(BeTrue())
+			Expect(offlinedCPUSet.Size()).To(Equal(offlinedCPUCount))
+
+			log.Infof("offlined:%s", offlinedCPUSet.String())
+			log.Infof("reserved:%s", reservedCPUSet.String())
+			log.Infof("isolated:%s", isolatedCPUSet.String())
+
+			totalCPUSet, err := GetTotalCPUSetFromGHW(handle, disableHT)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(reservedCPUSet.Union(offlinedCPUSet).Union(isolatedCPUSet)).To(Equal(totalCPUSet))
+
+			Expect(offlinedCPUSet.String()).To(Equal("1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39,41,43,45,47,49,51,53,55,57,59-69,71,73,75,77,79"))
+			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6,8,10,12,14,16,18,40,42,44,46,48,50,52,54,56,58"))
+			Expect(isolatedCPUSet.String()).To(Equal("20,22,24,26,28,30,32,34,36,38,70,72,74,76,78"))
+		})
+		It("when splitReservedCPUsAcrossNUMA is disabled, disableHT is enabled and offlined-cpu-count is the number of cpus per socket then siblings does not enter the calcs and offline a complete", func() {
+			reservedCPUCount = 10 // random number, no special meaning
+			offlinedCPUCount = 20 // NOT A random number: number of CPUs in a socket (without siblings)
+			splitReservedCPUsAcrossNUMA = false
+			disableHT = true
+			highPowerConsumptionMode := false
+
+			mustGatherDirAbsolutePath, err = filepath.Abs(mustGatherDirPath)
+			Expect(err).ToNot(HaveOccurred())
+			handle, err = NewGHWHandler(mustGatherDirAbsolutePath, node)
+			Expect(err).ToNot(HaveOccurred())
+			systemInfo, err := handle.GatherSystemInfo()
+			Expect(err).ToNot(HaveOccurred())
+			reservedCPUSet, isolatedCPUSet, offlinedCPUSet, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(offlinedCPUSet.Intersection(reservedCPUSet).IsEmpty()).To(BeTrue())
+			Expect(offlinedCPUSet.Intersection(isolatedCPUSet).IsEmpty()).To(BeTrue())
+			Expect(offlinedCPUSet.Size()).To(Equal(offlinedCPUCount))
+
+			log.Infof("offlined:%s", offlinedCPUSet.String())
+			log.Infof("reserved:%s", reservedCPUSet.String())
+			log.Infof("isolated:%s", isolatedCPUSet.String())
+
+			totalCPUSet, err := GetTotalCPUSetFromGHW(handle, disableHT)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(reservedCPUSet.Union(offlinedCPUSet).Union(isolatedCPUSet)).To(Equal(totalCPUSet))
+
+			Expect(offlinedCPUSet.String()).To(Equal("1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39"))
+			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6,8,10,12,14,16,18"))
+			Expect(isolatedCPUSet.String()).To(Equal("20,22,24,26,28,30,32,34,36,38"))
+		})
+		It("Ensure offlined CPUs populated are correctly when splitReservedCPUsAcrossNUMA is disabled, disableHT is enabled and offlinedCount is less than the number of CPUs in a socket", func() {
+			reservedCPUCount = 20 // random number, no special meaning
+			offlinedCPUCount = 4  // NOT a random number. Should be less than 40 (which is the number of CPUS in one socket)
+			splitReservedCPUsAcrossNUMA = false
+			disableHT = true
+			mustGatherDirAbsolutePath, err = filepath.Abs(mustGatherDirPath)
+			Expect(err).ToNot(HaveOccurred())
+			handle, err = NewGHWHandler(mustGatherDirAbsolutePath, node)
+			Expect(err).ToNot(HaveOccurred())
+			systemInfo, err := handle.GatherSystemInfo()
+			Expect(err).ToNot(HaveOccurred())
+			reservedCPUSet, isolatedCPUSet, offlinedCPUSet, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, false)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(offlinedCPUSet.Intersection(reservedCPUSet).IsEmpty()).To(BeTrue())
+			Expect(offlinedCPUSet.Intersection(isolatedCPUSet).IsEmpty()).To(BeTrue())
+			Expect(offlinedCPUSet.Size()).To(Equal(offlinedCPUCount))
+
+			log.Infof("offlined:%s", offlinedCPUSet.String())
+			log.Infof("reserved:%s", reservedCPUSet.String())
+			log.Infof("isolated:%s", isolatedCPUSet.String())
+
+			totalCPUSet, err := GetTotalCPUSetFromGHW(handle, disableHT)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(reservedCPUSet.Union(offlinedCPUSet).Union(isolatedCPUSet)).To(Equal(totalCPUSet))
+
+			Expect(offlinedCPUSet.String()).To(Equal("1,5,7,9"))
+			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38"))
+			Expect(isolatedCPUSet.String()).To(Equal("3,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39"))
+		})
 	})
 })
 
@@ -859,3 +1573,45 @@ var _ = Describe("PerformanceProfileCreator: Test Helper cpuAccumulator", func()
 
 	})
 })
+
+func GetTotalCPUSetFromCPUInfo(cpuInfo cpu.Info, disableHT bool) (cpuset.CPUSet, error) {
+	acc := newCPUAccumulator()
+	numSiblings := 0
+	for _, socket := range cpuInfo.Processors {
+		var err error
+		if disableHT {
+			_, err = acc.AddCoresWithFilter(allCores, socket.Cores, func(index, lpID int) bool {
+				if index == 0 {
+					numSiblings++
+					return true
+				}
+				return false
+			})
+		} else {
+			_, err = acc.AddCores(allCores, socket.Cores)
+		}
+
+		if err != nil {
+			return cpuset.CPUSet{}, err
+		}
+	}
+
+	ret := acc.Result()
+	if cpuInfo.TotalThreads-uint32(numSiblings) != uint32(ret.Size()) {
+		return cpuset.CPUSet{}, fmt.Errorf("error calculating total logical processors. Shold be %d but found %d", cpuInfo.TotalThreads, ret.Size())
+	}
+
+	return ret, nil
+}
+
+func GetTotalCPUSetFromGHW(handler *GHWHandler, disableHT bool) (cpuset.CPUSet, error) {
+	sortedCpuInfo, err := handler.SortedCPU()
+	if err != nil {
+		return cpuset.CPUSet{}, err
+	}
+	totalCPUSet, err := GetTotalCPUSetFromCPUInfo(*sortedCpuInfo, disableHT)
+	if err != nil {
+		return cpuset.CPUSet{}, err
+	}
+	return totalCPUSet, nil
+}
