@@ -46,6 +46,13 @@ spec:
           path: /usr/local/bin/set-rps-mask.sh
           user: {}
         - contents:
+            source: data:text/plain;charset=utf-8;base64,IyEvdXNyL2Jpbi9iYXNoCgpzZXQgLWV1byBwaXBlZmFpbAoKZm9yIGNwdSBpbiAke09GRkxJTkVfQ1BVUy8vLC8gfTsKICBkbwogICAgb25saW5lX2NwdV9maWxlPSIvc3lzL2RldmljZXMvc3lzdGVtL2NwdS9jcHUkY3B1L29ubGluZSIKICAgIGlmIFsgISAtZiAiJHtvbmxpbmVfY3B1X2ZpbGV9IiBdOyB0aGVuCiAgICAgIGVjaG8gIkVSUk9SOiAke29ubGluZV9jcHVfZmlsZX0gZG9lcyBub3QgZXhpc3QsIGFib3J0IHNjcmlwdCBleGVjdXRpb24iCiAgICAgIGV4aXQgMQogICAgZmkKICBkb25lCgplY2hvICJBbGwgY3B1cyBvZmZsaW5lZCBleGlzdHMsIHNldCB0aGVtIG9mZmxpbmUiCgpmb3IgY3B1IGluICR7T0ZGTElORV9DUFVTLy8sLyB9OwogIGRvCiAgICBvbmxpbmVfY3B1X2ZpbGU9Ii9zeXMvZGV2aWNlcy9zeXN0ZW0vY3B1L2NwdSRjcHUvb25saW5lIgogICAgZWNobyAwID4gIiR7b25saW5lX2NwdV9maWxlfSIKICAgIGVjaG8gIm9mZmxpbmUgY3B1IG51bSAkY3B1IgogIGRvbmUKCg==
+            verification: {}
+          group: {}
+          mode: 448
+          path: /usr/local/bin/set-cpus-offline.sh
+          user: {}
+        - contents:
             source: data:text/plain;charset=utf-8;base64,CltjcmlvLnJ1bnRpbWVdCmluZnJhX2N0cl9jcHVzZXQgPSAiMCIKCgojIFdlIHNob3VsZCBjb3B5IHBhc3RlIHRoZSBkZWZhdWx0IHJ1bnRpbWUgYmVjYXVzZSB0aGlzIHNuaXBwZXQgd2lsbCBvdmVycmlkZSB0aGUgd2hvbGUgcnVudGltZXMgc2VjdGlvbgpbY3Jpby5ydW50aW1lLnJ1bnRpbWVzLnJ1bmNdCnJ1bnRpbWVfcGF0aCA9ICIiCnJ1bnRpbWVfdHlwZSA9ICJvY2kiCnJ1bnRpbWVfcm9vdCA9ICIvcnVuL3J1bmMiCgojIFRoZSBDUkktTyB3aWxsIGNoZWNrIHRoZSBhbGxvd2VkX2Fubm90YXRpb25zIHVuZGVyIHRoZSBydW50aW1lIGhhbmRsZXIgYW5kIGFwcGx5IGhpZ2gtcGVyZm9ybWFuY2UgaG9va3Mgd2hlbiBvbmUgb2YKIyBoaWdoLXBlcmZvcm1hbmNlIGFubm90YXRpb25zIHByZXNlbnRzIHVuZGVyIGl0LgojIFdlIHNob3VsZCBwcm92aWRlIHRoZSBydW50aW1lX3BhdGggYmVjYXVzZSB3ZSBuZWVkIHRvIGluZm9ybSB0aGF0IHdlIHdhbnQgdG8gcmUtdXNlIHJ1bmMgYmluYXJ5IGFuZCB3ZQojIGRvIG5vdCBoYXZlIGhpZ2gtcGVyZm9ybWFuY2UgYmluYXJ5IHVuZGVyIHRoZSAkUEFUSCB0aGF0IHdpbGwgcG9pbnQgdG8gaXQuCltjcmlvLnJ1bnRpbWUucnVudGltZXMuaGlnaC1wZXJmb3JtYW5jZV0KcnVudGltZV9wYXRoID0gIi9iaW4vcnVuYyIKcnVudGltZV90eXBlID0gIm9jaSIKcnVudGltZV9yb290ID0gIi9ydW4vcnVuYyIKYWxsb3dlZF9hbm5vdGF0aW9ucyA9IFsiY3B1LWxvYWQtYmFsYW5jaW5nLmNyaW8uaW8iLCAiY3B1LXF1b3RhLmNyaW8uaW8iLCAiaXJxLWxvYWQtYmFsYW5jaW5nLmNyaW8uaW8iXQo=
             verification: {}
           group: {}
@@ -93,6 +100,21 @@ spec:
             Type=oneshot
             ExecStart=/usr/local/bin/set-rps-mask.sh %i 00000001
           name: update-rps@.service
+        - contents: |
+            [Unit]
+            Description=Set cpus offline: 2,3
+            Before=kubelet.service
+
+            [Service]
+            Environment=OFFLINE_CPUS=2,3
+            Type=oneshot
+            RemainAfterExit=true
+            ExecStart=/usr/local/bin/set-cpus-offline.sh
+
+            [Install]
+            WantedBy=multi-user.target
+          enabled: true
+          name: set-cpus-offline.service
   extensions: null
   fips: false
   kernelArguments: null

@@ -15,6 +15,7 @@ import (
 	igntypes "github.com/coreos/ignition/v2/config/v3_2/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"k8s.io/utils/pointer"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -48,6 +49,7 @@ const (
 	udevRpsRules       = "99-netdev-rps.rules"
 	// scripts
 	hugepagesAllocation = "hugepages-allocation"
+	setCPUsOffline      = "set-cpus-offline"
 	ociHooks            = "low-latency-hooks"
 	setRPSMask          = "set-rps-mask"
 )
@@ -76,6 +78,7 @@ const (
 	environmentHugepagesSize  = "HUGEPAGES_SIZE"
 	environmentHugepagesCount = "HUGEPAGES_COUNT"
 	environmentNUMANode       = "NUMA_NODE"
+	environmentOfflineCpus    = "OFFLINE_CPUS"
 )
 
 const (
@@ -139,7 +142,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile) (*igntypes.Con
 
 	// add script files under the node /usr/local/bin directory
 	mode := 0700
-	for _, script := range []string{hugepagesAllocation, ociHooks, setRPSMask} {
+	for _, script := range []string{hugepagesAllocation, ociHooks, setRPSMask, setCPUsOffline} {
 		dst := getBashScriptPath(script)
 		content, err := assets.Scripts.ReadFile(fmt.Sprintf("scripts/%s.sh", script))
 		if err != nil {
@@ -221,6 +224,24 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile) (*igntypes.Con
 		})
 	}
 
+	if profile.Spec.CPU.Offlined != nil {
+		offlinedCPUSList, err := cpuset.Parse(string(*profile.Spec.CPU.Offlined))
+		if err != nil {
+			return nil, err
+		}
+		offlinedCPUSstring := components.ListToString(offlinedCPUSList.ToSlice())
+		offlineCPUsService, err := getSystemdContent(getOfflineCPUs(offlinedCPUSstring))
+		if err != nil {
+			return nil, err
+		}
+
+		ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
+			Contents: &offlineCPUsService,
+			Enabled:  pointer.BoolPtr(true),
+			Name:     getSystemdService(setCPUsOffline),
+		})
+	}
+
 	return ignitionConfig, nil
 }
 
@@ -299,6 +320,27 @@ func getHugepagesAllocationUnitOptions(hugepagesSize string, hugepagesCount int3
 		unit.NewUnitOption(systemdSectionService, systemdRemainAfterExit, systemdTrue),
 		// ExecStart
 		unit.NewUnitOption(systemdSectionService, systemdExecStart, getBashScriptPath(hugepagesAllocation)),
+		// [Install]
+		// WantedBy
+		unit.NewUnitOption(systemdSectionInstall, systemdWantedBy, systemdTargetMultiUser),
+	}
+}
+
+func getOfflineCPUs(offlineCpus string) []*unit.UnitOption {
+	return []*unit.UnitOption{
+		// [Unit]
+		// Description
+		unit.NewUnitOption(systemdSectionUnit, systemdDescription, fmt.Sprintf("Set cpus offline: %s", offlineCpus)),
+		// Before
+		unit.NewUnitOption(systemdSectionUnit, systemdBefore, systemdServiceKubelet),
+		// Environment
+		unit.NewUnitOption(systemdSectionService, systemdEnvironment, getSystemdEnvironment(environmentOfflineCpus, offlineCpus)),
+		// Type
+		unit.NewUnitOption(systemdSectionService, systemdType, systemdServiceTypeOneshot),
+		// RemainAfterExit
+		unit.NewUnitOption(systemdSectionService, systemdRemainAfterExit, systemdTrue),
+		// ExecStart
+		unit.NewUnitOption(systemdSectionService, systemdExecStart, getBashScriptPath(setCPUsOffline)),
 		// [Install]
 		// WantedBy
 		unit.NewUnitOption(systemdSectionInstall, systemdWantedBy, systemdTargetMultiUser),

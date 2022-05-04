@@ -11,8 +11,9 @@ spec:
     - "idle=poll"
     - "intel_idle.max_cstate=0"
   cpu:
-    isolated: "2-3"
-    reserved: "0-1"
+      isolated: "2"
+      reserved: "0-1"
+      offlined: "3"
   hugepages:
     defaultHugepagesSize: "1G"
     pages:
