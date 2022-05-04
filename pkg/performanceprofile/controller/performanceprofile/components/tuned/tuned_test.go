@@ -56,7 +56,7 @@ var _ = Describe("Tuned", func() {
 			manifest := getTunedManifest(profile)
 
 			Expect(manifest).To(ContainSubstring(expectedMatchSelector))
-			Expect(manifest).To(ContainSubstring("isolated_cores=4-7"))
+			Expect(manifest).To(ContainSubstring("isolated_cores=4-5"))
 			Expect(manifest).To(ContainSubstring("governor=performance"))
 			Expect(manifest).To(ContainSubstring("service.stalld=start,enable"))
 			Expect(manifest).To(ContainSubstring("sched_rt_runtime_us=-1"))
