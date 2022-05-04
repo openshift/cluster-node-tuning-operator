@@ -786,7 +786,8 @@ var _ = Describe("PerformanceProfileCreator: Test Helper cpuAccumulator", func()
 		It("should accumulate allCores", func() {
 			acc := newCPUAccumulator()
 			for _, node := range topology1.Nodes {
-				acc.AddCores(allCores, node.Cores)
+				_, err := acc.AddCores(allCores, node.Cores)
+				Expect(err).NotTo(HaveOccurred())
 			}
 			cores := acc.Result().ToSlice()
 			Expect(cores).Should(Equal([]int{0, 1, 2, 3, 4, 5, 6, 7}))
@@ -794,10 +795,40 @@ var _ = Describe("PerformanceProfileCreator: Test Helper cpuAccumulator", func()
 		It("should accumulate cores up to the max", func() {
 			acc := newCPUAccumulator()
 			for _, node := range topology1.Nodes {
-				acc.AddCores(3, node.Cores)
+				_, err := acc.AddCores(3, node.Cores)
+				Expect(err).NotTo(HaveOccurred())
 			}
 			cores := acc.Result().ToSlice()
 			Expect(cores).Should(Equal([]int{0, 1, 2}))
+		})
+
+		It("should not count elements already in the accumulator", func() {
+			acc := newCPUAccumulator()
+			node := topology1.Nodes[0]
+			n1, err := acc.AddCores(allCores, node.Cores)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(n1).To(Equal(4))
+
+			n2, err := acc.AddCores(allCores, node.Cores)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(n2).To(Equal(0))
+
+			cores := acc.Result().ToSlice()
+			Expect(cores).Should(Equal([]int{0, 1, 2, 3}))
+		})
+
+		It("should not be modified after calling Result", func() {
+			acc := newCPUAccumulator()
+			node := topology1.Nodes[0]
+			n1, err := acc.AddCores(allCores, node.Cores)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(n1).To(Equal(4))
+
+			cores := acc.Result().ToSlice()
+			Expect(cores).Should(Equal([]int{0, 1, 2, 3}))
+
+			_, err = acc.AddCores(allCores, node.Cores)
+			Expect(err).To(HaveOccurred())
 		})
 
 	})

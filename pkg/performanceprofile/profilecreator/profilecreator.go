@@ -334,31 +334,49 @@ func (ghwHandler GHWHandler) GetReservedAndIsolatedCPUs(reservedCPUCount int, sp
 }
 
 type cpuAccumulator struct {
-	builder *cpuset.Builder
-	count   int
+	elems map[int]struct{}
+	count int
+	done  bool
 }
 
 func newCPUAccumulator() *cpuAccumulator {
 	return &cpuAccumulator{
-		builder: cpuset.NewBuilder(),
+		elems: map[int]struct{}{},
+		count: 0,
+		done:  false,
 	}
 }
 
 // AddCores adds logical cores from the slice of *cpu.ProcessorCore to a CPUset till the cpuset size is equal to the max value specified
 // In case the max is specified as allCores, all the cores from the slice of *cpu.ProcessorCore are added to the CPUSet
-func (ca *cpuAccumulator) AddCores(max int, cores []*cpu.ProcessorCore) {
+func (ca *cpuAccumulator) AddCores(max int, cores []*cpu.ProcessorCore) (int, error) {
+	if ca.done {
+		return -1, fmt.Errorf("CPU accumulator finalized")
+	}
+	initialCount := ca.count
 	for _, processorCore := range cores {
-		for _, core := range processorCore.LogicalProcessors {
+		for _, logicalProcessorId := range processorCore.LogicalProcessors {
 			if ca.count < max || max == allCores {
-				ca.builder.Add(core)
-				ca.count++
+				_, found := ca.elems[logicalProcessorId]
+				ca.elems[logicalProcessorId] = struct{}{}
+				if !found {
+					ca.count++
+				}
 			}
 		}
 	}
+	return ca.count - initialCount, nil
 }
 
 func (ca *cpuAccumulator) Result() cpuset.CPUSet {
-	return ca.builder.Result()
+	ca.done = true
+
+	var keys []int
+	for k := range ca.elems {
+		keys = append(keys, k)
+	}
+
+	return cpuset.NewCPUSet(keys...)
 }
 
 // getCPUsSplitAcrossNUMA returns Reserved and Isolated CPUs split across NUMA nodes
@@ -391,9 +409,16 @@ func (ghwHandler GHWHandler) getCPUsSplitAcrossNUMA(reservedCPUCount int, htEnab
 		if max%2 != 0 && htEnabled {
 			return reservedCPUs.Result(), isolatedCPUSet, fmt.Errorf("can't allocate odd number of CPUs from a NUMA Node")
 		}
-		reservedCPUs.AddCores(max, node.Cores)
+		if _, err := reservedCPUs.AddCores(max, node.Cores); err != nil {
+			return cpuset.CPUSet{}, cpuset.CPUSet{}, err
+		}
 	}
-	totalCPUSet := totalCPUSetFromTopology(topologyInfoNodes)
+
+	totalCPUSet, err := totalCPUSetFromTopology(topologyInfoNodes)
+	if err != nil {
+		return cpuset.CPUSet{}, cpuset.CPUSet{}, err
+	}
+
 	reservedCPUSet := reservedCPUs.Result()
 	isolatedCPUSet = totalCPUSet.Difference(reservedCPUSet)
 	return reservedCPUSet, isolatedCPUSet, nil
@@ -407,21 +432,30 @@ func (ghwHandler GHWHandler) getCPUsSequentially(reservedCPUCount int, htEnabled
 		return reservedCPUs.Result(), isolatedCPUSet, fmt.Errorf("can't allocate odd number of CPUs from a NUMA Node")
 	}
 	for _, node := range topologyInfoNodes {
-		reservedCPUs.AddCores(reservedCPUCount, node.Cores)
+		if _, err := reservedCPUs.AddCores(reservedCPUCount, node.Cores); err != nil {
+			return cpuset.CPUSet{}, cpuset.CPUSet{}, err
+		}
+
 	}
-	totalCPUSet := totalCPUSetFromTopology(topologyInfoNodes)
+	totalCPUSet, err := totalCPUSetFromTopology(topologyInfoNodes)
+	if err != nil {
+		return cpuset.CPUSet{}, cpuset.CPUSet{}, err
+	}
+
 	reservedCPUSet := reservedCPUs.Result()
 	isolatedCPUSet = totalCPUSet.Difference(reservedCPUSet)
 	return reservedCPUSet, isolatedCPUSet, nil
 }
 
-func totalCPUSetFromTopology(topologyInfoNodes []*topology.Node) cpuset.CPUSet {
+func totalCPUSetFromTopology(topologyInfoNodes []*topology.Node) (cpuset.CPUSet, error) {
 	totalCPUs := newCPUAccumulator()
 	for _, node := range topologyInfoNodes {
 		//all the cores from node.Cores need to be added, hence allCores is specified as the max value
-		totalCPUs.AddCores(allCores, node.Cores)
+		if _, err := totalCPUs.AddCores(allCores, node.Cores); err != nil {
+			return cpuset.CPUSet{}, err
+		}
 	}
-	return totalCPUs.Result()
+	return totalCPUs.Result(), nil
 }
 
 // IsHyperthreadingEnabled checks if hyperthreading is enabled on the system or not
