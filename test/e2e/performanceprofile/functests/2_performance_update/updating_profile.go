@@ -73,11 +73,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			Skip("Discovery mode enabled, performance profile not found")
 		}
 
-		workerRTNodes, err = nodes.GetByLabels(testutils.NodeSelectorLabels)
-		Expect(err).ToNot(HaveOccurred())
-		workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes)
-		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("error looking for the optional selector: %v", err))
-		Expect(workerRTNodes).ToNot(BeEmpty(), "cannot find RT enabled worker nodes")
+		workerRTNodes = getUpdatedNodes()
 		profile, err = profiles.GetByNodeLabels(nodeLabel)
 		Expect(err).ToNot(HaveOccurred())
 		performanceMCP, err = mcps.GetByProfile(profile)
@@ -643,6 +639,74 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 		})
 	})
+
+	Context("Offlined CPU API", func() {
+		BeforeEach(func() {
+			//Saving the old performance profile
+			initialProfile = profile.DeepCopy()
+		})
+
+		It("[disruptive] should set offline cpus after deploy PAO", func() {
+			for _, node := range workerRTNodes {
+				onlineCPUCount, err := nodes.ExecCommandOnNode([]string{"nproc", "--all"}, &node)
+				Expect(err).ToNot(HaveOccurred())
+				onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(onlineCPUInt).Should(BeNumerically(">=", 3))
+			}
+
+			// Create new performance with offlined
+			reserved := performancev2.CPUSet("0")
+			isolated := performancev2.CPUSet("1")
+			offlined := performancev2.CPUSet("2-3")
+			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Enable UserLevelNetworking and add Devices in Profile")
+			profile.Spec.CPU = &performancev2.CPU{
+				Reserved: &reserved,
+				Isolated: &isolated,
+				Offlined: &offlined,
+			}
+			By("Updating the performance profile")
+			profiles.UpdateWithRetry(profile)
+
+			By("Applying changes in performance profile and waiting until mcp will start updating")
+			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+			By("Waiting for MCP being updated")
+			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
+			workerRTNodes = getUpdatedNodes()
+			//Check offlined cpus are setting correctly
+			for _, node := range workerRTNodes {
+				offlinedOutput, err := nodes.ExecCommandOnNode([]string{"cat", "/sys/devices/system/cpu/offline"}, &node)
+				Expect(err).ToNot(HaveOccurred())
+				offlinedCPUSet, err := cpuset.Parse(offlinedOutput)
+				offlinedCPUSetProfile, err := cpuset.Parse(string(offlined))
+				Expect(err).ToNot(HaveOccurred())
+				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile))
+			}
+		})
+
+		AfterEach(func() {
+			By("Reverting the Profile")
+			spec, err := json.Marshal(initialProfile.Spec)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(testclient.Client.Patch(context.TODO(), profile,
+				client.RawPatch(
+					types.JSONPatchType,
+					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
+				),
+			)).ToNot(HaveOccurred())
+
+			By("Applying changes in performance profile and waiting until mcp will start updating")
+			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+			By("Waiting when mcp finishes updates")
+			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+		})
+	})
 })
 
 func hugepagesPathForNode(nodeID, sizeINMb int) string {
@@ -668,4 +732,13 @@ func countHugepagesOnNode(node *corev1.Node, sizeInMb int) (int, error) {
 		count += t
 	}
 	return count, nil
+}
+
+func getUpdatedNodes() []corev1.Node {
+	workerRTNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
+	Expect(err).ToNot(HaveOccurred())
+	workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes)
+	Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("error looking for the optional selector: %v", err))
+	Expect(workerRTNodes).ToNot(BeEmpty(), "cannot find RT enabled worker nodes")
+	return workerRTNodes
 }
