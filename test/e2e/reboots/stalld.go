@@ -54,7 +54,7 @@ var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing syste
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			node = &nodes[0]
-			ginkgo.By(fmt.Sprintf("getting a Tuned Pod running on node %s", node.Name))
+			ginkgo.By(fmt.Sprintf("getting a TuneD Pod running on node %s", node.Name))
 			pod, err := util.GetTunedForNode(cs, node)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
@@ -62,7 +62,7 @@ var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing syste
 			_, _, err = util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelRealtime+"=")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			// BZ1926903: check for the systemd/Tuned [service] plugin race
+			// BZ1926903: check for the systemd/TuneD [service] plug-in race
 			ginkgo.By(fmt.Sprintf("creating custom realtime profile %s with stalld service stopped,disabled", profileStalldOff))
 			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileStalldOff)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -88,6 +88,7 @@ var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing syste
 
 			ginkgo.By(fmt.Sprintf("checking the stalld daemon is not running on node %s", node.Name))
 			out, err := util.ExecCmdInPod(pod, "pidof", "stalld")
+			gomega.Expect(out).To(gomega.Equal(""))
 			gomega.Expect(err).To(gomega.HaveOccurred()) // pidof exits 1 when there is no running process found
 
 			ginkgo.By(fmt.Sprintf("applying custom realtime profile %s with stalld service", profileStalldOn))
@@ -97,28 +98,6 @@ var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing syste
 			ginkgo.By(fmt.Sprintf("checking the stalld daemon is running on node %s", node.Name))
 			out, err = util.WaitForCmdInPod(pollInterval, 20*time.Minute, pod, "pidof", "stalld")
 			util.Logf(fmt.Sprintf("stalld process running on node %s with PID %s", node.Name, out))
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
-			// We need to wait for TuneD daemon to start and apply its profile, otherwise it might race
-			// to start 'stalld' after we stop it via systemctl below.
-			waitForTuneD()
-
-			ginkgo.By(fmt.Sprintf("stopping the stalld daemon on node %s", node.Name))
-			out, err = util.WaitForCmdInPod(pollInterval, waitDuration, pod, "chroot", "/host", "systemctl", "stop", "stalld")
-			util.ExecAndLogCommand("oc", "rsh", "-n", ntoconfig.OperatorNamespace(), pod.Name, "chroot", "/host", "systemctl", "status", "stalld", "-l", "--no-pager")
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
-			ginkgo.By(fmt.Sprintf("checking the stalld daemon is not running on node %s", node.Name))
-			_, err = util.ExecCmdInPod(pod, "pidof", "stalld")
-			gomega.Expect(err).To(gomega.HaveOccurred()) // pidof exits 1 when there is no running process found
-
-			ginkgo.By(fmt.Sprintf("rebooting node %s with stalld daemon enabled", node.Name))
-			util.ExecCmdInPod(pod, "chroot", "/host", "reboot")
-			// Ignore errors; we can get "exit status 143", i.e. SIGTERM caused by the reboot
-
-			// Wait for the host to reboot and the Tuned [service] plugin to start/enable stalld service.
-			ginkgo.By(fmt.Sprintf("checking the stalld daemon is running on node %s", node.Name))
-			out, err = util.WaitForCmdInPod(pollInterval, 20*time.Minute, pod, "pidof", "stalld")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			// Node label needs to be removed first, and we also need to wait for the worker pool to complete the update;
