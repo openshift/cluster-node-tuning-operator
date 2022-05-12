@@ -191,8 +191,20 @@ var _ = Describe("PerformanceProfile", func() {
 			profile.Spec.CPU.Isolated = &isolatedCPUs
 			profile.Spec.CPU.Offlined = &offlinedCPUs
 			errors := profile.validateCPUs()
-			Expect(errors).NotTo(BeEmpty(), "should have validation error when reserved and isolation CPUs have overlap")
+			Expect(errors).NotTo(BeEmpty(), "should have validation error when reserved and offlined CPUs have overlap")
 			Expect(errors[0].Error()).To(ContainSubstring("reserved and offlined cpus overlap"))
+		})
+
+		It("should reject cpus allocation with overlapping sets between isolated and offlined", func() {
+			reservedCPUs := CPUSet("0-7")
+			isolatedCPUs := CPUSet("8-11")
+			offlinedCPUs := CPUSet("10-15")
+			profile.Spec.CPU.Reserved = &reservedCPUs
+			profile.Spec.CPU.Isolated = &isolatedCPUs
+			profile.Spec.CPU.Offlined = &offlinedCPUs
+			errors := profile.validateCPUs()
+			Expect(errors).NotTo(BeEmpty(), "should have validation error when isolated and offlined CPUs have overlap")
+			Expect(errors[0].Error()).To(ContainSubstring("isolated and offlined cpus overlap"))
 		})
 	})
 
