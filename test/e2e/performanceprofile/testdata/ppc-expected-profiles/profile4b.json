@@ -1,0 +1,10 @@
+{
+    "must-gather-dir-path": "must-gather.bare-metal",
+    "mcp-name": "worker-cnf",
+    "reserved-cpu-count": 12,
+    "offlined-cpu-count": 20,
+    "rt-kernel": true,
+    "power-consumption-mode": "low-latency",
+    "disable-ht": true,
+    "user-level-networking": false
+}

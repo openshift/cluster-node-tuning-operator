@@ -1,0 +1,23 @@
+---
+apiVersion: performance.openshift.io/v2
+kind: PerformanceProfile
+metadata:
+  name: performance
+spec:
+  cpu:
+    offlined: 42,44,46,48
+    isolated: 2-39,43,45,47,49-79
+    reserved: 0-1,40-41
+  machineConfigPoolSelector:
+    machineconfiguration.openshift.io/role: worker-cnf
+  net:
+    userLevelNetworking: false
+  nodeSelector:
+    node-role.kubernetes.io/worker-cnf: ""
+  numa:
+    topologyPolicy: restricted
+  realTimeKernel:
+    enabled: true
+  workloadHints:
+    highPowerConsumption: false
+    realtime: true
