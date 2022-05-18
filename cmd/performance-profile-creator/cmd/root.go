@@ -87,6 +87,7 @@ var (
 type ProfileData struct {
 	isolatedCPUs             string
 	reservedCPUs             string
+	offlinedCPUs             string
 	nodeSelector             *metav1.LabelSelector
 	mcpSelector              map[string]string
 	performanceProfileName   string
@@ -178,6 +179,7 @@ func NewRootCommand() *cobra.Command {
 	}
 
 	root.PersistentFlags().IntVar(&pcArgs.ReservedCPUCount, "reserved-cpu-count", 0, "Number of reserved CPUs (required)")
+	root.PersistentFlags().IntVar(&pcArgs.OfflinedCPUCount, "offlined-cpu-count", 0, "Number of offlined CPUs")
 	root.PersistentFlags().BoolVar(&pcArgs.SplitReservedCPUsAcrossNUMA, "split-reserved-cpus-across-numa", false, "Split the Reserved CPUs across NUMA nodes")
 	root.PersistentFlags().StringVar(&pcArgs.MCPName, "mcp-name", "", "MCP name corresponding to the target machines (required)")
 	root.PersistentFlags().BoolVar(&pcArgs.DisableHT, "disable-ht", false, "Disable Hyperthreading")
@@ -356,6 +358,10 @@ func getDataFromFlags(cmd *cobra.Command) (ProfileCreatorArgs, error) {
 	if err != nil {
 		return creatorArgs, fmt.Errorf("failed to parse reserved-cpu-count flag: %v", err)
 	}
+	offlinedCPUCount, err := strconv.Atoi(cmd.Flag("offlined-cpu-count").Value.String())
+	if err != nil {
+		return creatorArgs, fmt.Errorf("failed to parse offlined-cpu-count flag: %v", err)
+	}
 	splitReservedCPUsAcrossNUMA, err := strconv.ParseBool(cmd.Flag("split-reserved-cpus-across-numa").Value.String())
 	if err != nil {
 		return creatorArgs, fmt.Errorf("failed to parse split-reserved-cpus-across-numa flag: %v", err)
@@ -394,6 +400,7 @@ func getDataFromFlags(cmd *cobra.Command) (ProfileCreatorArgs, error) {
 		MustGatherDirPath:           mustGatherDirPath,
 		ProfileName:                 profileName,
 		ReservedCPUCount:            reservedCPUCount,
+		OfflinedCPUCount:            offlinedCPUCount,
 		SplitReservedCPUsAcrossNUMA: splitReservedCPUsAcrossNUMA,
 		MCPName:                     mcpName,
 		TMPolicy:                    tmPolicy,
@@ -456,7 +463,11 @@ func getProfileData(args ProfileCreatorArgs, cluster ClusterData) (*ProfileData,
 	// same from hardware topology point of view
 
 	nodeHandle := cluster[mcp][0]
-	reservedCPUs, isolatedCPUs, err := nodeHandle.GetReservedAndIsolatedCPUs(args.ReservedCPUCount, args.SplitReservedCPUsAcrossNUMA, args.DisableHT)
+	systemInfo, err := nodeHandle.GatherSystemInfo()
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute get system information: %v", err)
+	}
+	reservedCPUs, isolatedCPUs, offlinedCPUs, err := profilecreator.CalculateCPUSets(systemInfo, args.ReservedCPUCount, args.OfflinedCPUCount, args.SplitReservedCPUsAcrossNUMA, args.DisableHT, args.PowerConsumptionMode == ultraLowLatency)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute the reserved and isolated CPUs: %v", err)
 	}
@@ -465,6 +476,7 @@ func getProfileData(args ProfileCreatorArgs, cluster ClusterData) (*ProfileData,
 	kernelArgs := profilecreator.GetAdditionalKernelArgs(args.DisableHT)
 	profileData := &ProfileData{
 		reservedCPUs:           reservedCPUs.String(),
+		offlinedCPUs:           offlinedCPUs.String(),
 		isolatedCPUs:           isolatedCPUs.String(),
 		nodeSelector:           mcp.Spec.NodeSelector,
 		mcpSelector:            mcpSelector,
@@ -473,6 +485,7 @@ func getProfileData(args ProfileCreatorArgs, cluster ClusterData) (*ProfileData,
 		rtKernel:               args.RTKernel,
 		additionalKernelArgs:   kernelArgs,
 		userLevelNetworking:    args.UserLevelNetworking,
+		disableHT:              args.DisableHT,
 	}
 
 	// setting workload hints
@@ -517,6 +530,7 @@ type ProfileCreatorArgs struct {
 	MustGatherDirPath           string `json:"must-gather-dir-path"`
 	ProfileName                 string `json:"profile-name"`
 	ReservedCPUCount            int    `json:"reserved-cpu-count"`
+	OfflinedCPUCount            int    `json:"offlined-cpu-count"`
 	SplitReservedCPUsAcrossNUMA bool   `json:"split-reserved-cpus-across-numa"`
 	DisableHT                   bool   `json:"disable-ht"`
 	RTKernel                    bool   `json:"rt-kernel"`
@@ -528,6 +542,7 @@ type ProfileCreatorArgs struct {
 
 func createProfile(profileData ProfileData) error {
 	reserved := performancev2.CPUSet(profileData.reservedCPUs)
+
 	isolated := performancev2.CPUSet(profileData.isolatedCPUs)
 	// TODO: Get the name from MCP if not specified in the command line arguments
 	profile := &performancev2.PerformanceProfile{
@@ -552,6 +567,11 @@ func createProfile(profileData ProfileData) error {
 				TopologyPolicy: &profileData.topologyPolicy,
 			},
 		},
+	}
+
+	if len(profileData.offlinedCPUs) > 0 {
+		offlined := performancev2.CPUSet(profileData.offlinedCPUs)
+		profile.Spec.CPU.Offlined = &offlined
 	}
 
 	if len(profileData.additionalKernelArgs) > 0 {

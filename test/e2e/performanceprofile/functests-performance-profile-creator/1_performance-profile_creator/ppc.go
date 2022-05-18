@@ -72,6 +72,10 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 				cmdArgs = append(cmdArgs, fmt.Sprintf("--topology-manager-policy=%s", args.TMPolicy))
 			}
 
+			if args.OfflinedCPUCount > 0 {
+				cmdArgs = append(cmdArgs, fmt.Sprintf("--offlined-cpu-count=%d", args.OfflinedCPUCount))
+			}
+
 			out, err := testutils.ExecAndLogCommand(ppcPath, cmdArgs...)
 			Expect(err).To(BeNil(), "failed to run ppc for '%s': %v", expectedProfilePath, err)
 
@@ -166,6 +170,42 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 			ppcErrorString := errorStringParser(errData)
 			Expect(ppcErrorString).To(ContainSubstring("can't allocate odd number of CPUs from a NUMA Node"))
 		})
+	})
+
+	It("Verify PPC fails when offlined cpu count is more than available cpus", func() {
+		ppcArgs := []string{
+			fmt.Sprintf("--reserved-cpu-count=%d", 1),
+			fmt.Sprintf("--offlined-cpu-count=%d", 100),
+			"--rt-kernel=false",
+		}
+		cmdArgs := append(defaultArgs, ppcArgs...)
+		_, errData, _ := testutils.ExecAndLogCommandWithStderr(ppcPath, cmdArgs...)
+		ppcErrorString := errorStringParser(errData)
+		Expect(ppcErrorString).To(ContainSubstring("please specify the offlined CPU count in the range"))
+	})
+
+	It("Verify PPC fails when offlined cpu count is negative", func() {
+		ppcArgs := []string{
+			fmt.Sprintf("--reserved-cpu-count=%d", 1),
+			fmt.Sprintf("--offlined-cpu-count=%d", -1),
+			"--rt-kernel=false",
+		}
+		cmdArgs := append(defaultArgs, ppcArgs...)
+		_, errData, _ := testutils.ExecAndLogCommandWithStderr(ppcPath, cmdArgs...)
+		ppcErrorString := errorStringParser(errData)
+		Expect(ppcErrorString).To(ContainSubstring("please specify the offlined CPU count in the range"))
+	})
+
+	It("Verify PPC fails when the sum of offlined cpu count and reserved cpu count is more than available cpus", func() {
+		ppcArgs := []string{
+			fmt.Sprintf("--offlined-cpu-count=%d", 50),
+			fmt.Sprintf("--reserved-cpu-count=%d", 50),
+			"--rt-kernel=false",
+		}
+		cmdArgs := append(defaultArgs, ppcArgs...)
+		_, errData, _ := testutils.ExecAndLogCommandWithStderr(ppcPath, cmdArgs...)
+		ppcErrorString := errorStringParser(errData)
+		Expect(ppcErrorString).To(ContainSubstring("failed to compute the reserved and isolated CPUs: please ensure that reserved-cpu-count plus offlined-cpu-count should be in the range"))
 	})
 
 	Context("Systems with Hyperthreading disabled", func() {
