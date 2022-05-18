@@ -114,23 +114,14 @@ var _ = table.DescribeTable("Test latency measurement tools tests", func(testGro
 			if err != nil {
 				testlog.Error(err.Error())
 			}
-			Expect(string(output)).NotTo(MatchRegexp(unexpectedError), "Unexpected error was detected in a positve test")
+			Expect(string(output)).NotTo(MatchRegexp(unexpectedError), "Unexpected error was detected in a positive test")
 			//Check runtime argument in the pod's log only if the tool is expected to be executed
 			ok, matchErr := regexp.MatchString(success, string(output))
 			if matchErr != nil {
 				testlog.Error(matchErr.Error())
 			}
 			if ok {
-				var commandRegex string
-				if test.toolToTest == oslat {
-					commandRegex = fmt.Sprintf("Running the oslat command with arguments .*--duration %s", test.testRuntime)
-				}
-				if test.toolToTest == cyclictest {
-					commandRegex = fmt.Sprintf("running the cyclictest command with arguments .*-D %s", test.testRuntime)
-				}
-				if test.toolToTest == hwlatdetect {
-					commandRegex = fmt.Sprintf("running the hwlatdetect command with arguments .*--duration %s", test.testRuntime)
-				}
+				commandRegex := fmt.Sprintf("%s command with arguments .*--duration %s", test.toolToTest, test.testRuntime)
 				Expect(string(output)).To(MatchRegexp(commandRegex), "The output of the executed tool is not as expected")
 			}
 		}
