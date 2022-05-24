@@ -155,6 +155,9 @@ func (r *PerformanceProfile) validateCPUs() field.ErrorList {
 				if overlap := components.Intersect(cpuLists.GetReserved(), cpuLists.GetOfflined()); len(overlap) != 0 {
 					allErrs = append(allErrs, field.Invalid(field.NewPath("spec.cpu"), r.Spec.CPU, fmt.Sprintf("reserved and offlined cpus overlap: %v", overlap)))
 				}
+				if overlap := components.Intersect(cpuLists.GetIsolated(), cpuLists.GetOfflined()); len(overlap) != 0 {
+					allErrs = append(allErrs, field.Invalid(field.NewPath("spec.cpu"), r.Spec.CPU, fmt.Sprintf("isolated and offlined cpus overlap: %v", overlap)))
+				}
 			}
 		}
 	}
