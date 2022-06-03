@@ -313,7 +313,7 @@ func getLatencyTestCpus() (int, error) {
 		if err != nil {
 			return val, fmt.Errorf("the environment variable LATENCY_TEST_CPUS has incorrect value %q, it must be a positive integer with maximum value of %d: %w", latencyTestCpusEnv, math.MaxInt32, err)
 		}
-		if val < 0 || val > math.MaxInt32 {
+		if val <= 0 || val > math.MaxInt32 {
 			return val, fmt.Errorf("the environment variable LATENCY_TEST_CPUS has an invalid number %q, it must be a positive integer with maximum value of %d", latencyTestCpusEnv, math.MaxInt32)
 		}
 		return val, nil
