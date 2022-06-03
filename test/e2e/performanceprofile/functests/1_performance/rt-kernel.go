@@ -3,7 +3,7 @@ package __performance
 import (
 	"fmt"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -17,7 +17,7 @@ var _ = Describe("[performance]RT Kernel", func() {
 	var profile *performancev2.PerformanceProfile
 	var err error
 
-	testutils.BeforeAll(func() {
+	testutils.BeforeEach(func() {
 		profile, err = discovery.GetFilteredDiscoveryPerformanceProfile(
 			func(profile performancev2.PerformanceProfile) bool {
 				if profile.Spec.RealTimeKernel != nil &&

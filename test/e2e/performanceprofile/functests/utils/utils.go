@@ -7,21 +7,17 @@ import (
 	"os/exec"
 	"time"
 
-	. "github.com/onsi/ginkgo"
-
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 )
 
 const defaultExecTimeout = 2 * time.Minute
 
-func BeforeAll(fn func()) {
+func BeforeEach(fn func()) {
 	first := true
-	BeforeEach(func() {
-		if first {
-			fn()
-			first = false
-		}
-	})
+	if first {
+		fn()
+		first = false
+	}
 }
 
 func ExecAndLogCommand(name string, arg ...string) ([]byte, error) {

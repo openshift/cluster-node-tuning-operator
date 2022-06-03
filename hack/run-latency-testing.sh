@@ -5,7 +5,7 @@ GINKGO_SUITS=${GINKGO_SUITS:-functests/5_latency_testing}
 which ginkgo
 if [ $? -ne 0 ]; then
 	echo "Downloading ginkgo tool"
-	go install github.com/onsi/ginkgo/ginkgo
+	go install github.com/onsi/ginkgo/v2/ginkgo
 fi
 
 NO_COLOR=""

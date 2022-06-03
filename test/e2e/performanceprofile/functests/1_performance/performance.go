@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
@@ -57,7 +57,7 @@ var _ = Describe("[rfe_id:27368][performance]", func() {
 	var workerRTNodes []corev1.Node
 	var profile *performancev2.PerformanceProfile
 
-	testutils.BeforeAll(func() {
+	testutils.BeforeEach(func() {
 		isSNO, err := cluster.IsSingleNode()
 		Expect(err).ToNot(HaveOccurred())
 		RunningOnSingleNode = isSNO

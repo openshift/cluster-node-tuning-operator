@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	. "github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/extensions/table"
+	. "github.com/onsi/ginkgo/v2"
+	"github.com/onsi/ginkgo/v2/extensions/table"
 	. "github.com/onsi/gomega"
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -262,7 +262,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		policy := "best-effort"
 
 		// Modify profile and verify that MCO successfully updated the node
-		testutils.BeforeAll(func() {
+		testutils.BeforeEach(func() {
 			By("Modifying profile")
 			initialProfile = profile.DeepCopy()
 
@@ -427,7 +427,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		newLabel := fmt.Sprintf("%s/%s", testutils.LabelRole, newRole)
 		newNodeSelector := map[string]string{newLabel: ""}
 
-		testutils.BeforeAll(func() {
+		testutils.BeforeEach(func() {
 			nonPerformancesWorkers, err := nodes.GetNonPerformancesWorkers(profile.Spec.NodeSelector)
 			Expect(err).ToNot(HaveOccurred())
 			if len(nonPerformancesWorkers) != 0 {

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
@@ -30,7 +30,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", fun
 	var workerRTNodes []corev1.Node
 	var performanceMCP string
 
-	testutils.BeforeAll(func() {
+	testutils.BeforeEach(func() {
 		workerRTNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 

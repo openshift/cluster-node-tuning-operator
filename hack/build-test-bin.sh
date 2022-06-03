@@ -12,7 +12,7 @@ export PATH=$PATH:$GOPATH/bin
 
 if ! which gingko; then
 	echo "Downloading ginkgo tool"
-	go install github.com/onsi/ginkgo/ginkgo
+	go install github.com/onsi/ginkgo/v2/ginkgo
 fi
 
 ginkgo build ./functests/*

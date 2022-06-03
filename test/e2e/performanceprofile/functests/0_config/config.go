@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
@@ -39,7 +39,7 @@ var RunningOnSingleNode bool
 
 var _ = Describe("[performance][config] Performance configuration", func() {
 
-	testutils.BeforeAll(func() {
+	BeforeEach(func() {
 		isSNO, err := cluster.IsSingleNode()
 		Expect(err).ToNot(HaveOccurred())
 		RunningOnSingleNode = isSNO

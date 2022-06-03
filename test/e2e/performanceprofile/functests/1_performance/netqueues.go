@@ -15,7 +15,7 @@ import (
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -34,7 +34,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", func() {
 	var profile, initialProfile *performancev2.PerformanceProfile
 	var performanceProfileName string
 
-	testutils.BeforeAll(func() {
+	testutils.BeforeEach(func() {
 		isSNO, err := cluster.IsSingleNode()
 		Expect(err).ToNot(HaveOccurred())
 		RunningOnSingleNode = isSNO

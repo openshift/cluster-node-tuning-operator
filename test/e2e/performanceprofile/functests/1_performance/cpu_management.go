@@ -17,8 +17,8 @@ import (
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	. "github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/extensions/table"
+	. "github.com/onsi/ginkgo/v2"
+	"github.com/onsi/ginkgo/v2/extensions/table"
 	. "github.com/onsi/gomega"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -49,7 +49,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
 	var reservedCPUSet cpuset.CPUSet
 	var onlineCPUSet cpuset.CPUSet
 
-	testutils.BeforeAll(func() {
+	testutils.BeforeEach(func() {
 		isSNO, err := cluster.IsSingleNode()
 		Expect(err).ToNot(HaveOccurred())
 		RunningOnSingleNode = isSNO
@@ -159,7 +159,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
 		var testpod *corev1.Pod
 		var discoveryFailed bool
 
-		testutils.BeforeAll(func() {
+		testutils.BeforeEach(func() {
 			discoveryFailed = false
 			if discovery.Enabled() {
 				profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
