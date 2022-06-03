@@ -199,32 +199,35 @@ func clearEnv() {
 func getValidValuesTests(toolToTest string) []latencyTest {
 	var testSet []latencyTest
 
-	//testRuntime: let runtime be 10 seconds for most of the tests and not less, that is to let the tools
-	//have their time to measure latency properly hence stabilizing the tests
+	//testRuntime: for tests with success message (hence anticipated to run the tools),let runtime be 30 seconds for most of the tests for two reasons:
+	//1. to let the tools have their time to measure latency properly 2. have time to check that the pod phase turned running and not completed immediately
 	//testCpus: for tests that expect a success output message, note that an even CPU number is needed, otherwise the test would fail with SMTAlignmentError
-	testSet = append(testSet, latencyTest{testDelay: "0", testRun: "true", testRuntime: "10", testMaxLatency: guaranteedLatency, testCpus: "2", outputMsgs: []string{success}, toolToTest: toolToTest})
-	testSet = append(testSet, latencyTest{testDelay: "0", testRun: "true", testRuntime: "10", testMaxLatency: guaranteedLatency, testCpus: "6", outputMsgs: []string{success}, toolToTest: toolToTest})
-	testSet = append(testSet, latencyTest{testDelay: "1", testRun: "true", testRuntime: "10", testMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
-	testSet = append(testSet, latencyTest{testDelay: "60", testRun: "true", testRuntime: "2", testMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
+
+	successRuntime := "30"
+	testSet = append(testSet, latencyTest{testDelay: "0", testRun: "true", testRuntime: successRuntime, testMaxLatency: guaranteedLatency, testCpus: "4", outputMsgs: []string{success}, toolToTest: toolToTest})
+	testSet = append(testSet, latencyTest{testDelay: "0", testRun: "true", testRuntime: successRuntime, testMaxLatency: guaranteedLatency, testCpus: "6", outputMsgs: []string{success}, toolToTest: toolToTest})
+	testSet = append(testSet, latencyTest{testDelay: "1", testRun: "true", testRuntime: successRuntime, testMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
+	testSet = append(testSet, latencyTest{testDelay: "60", testRun: "true", testRuntime: successRuntime, testMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
 	testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "2", testCpus: "5", testMaxLatency: guaranteedLatency, outputMsgs: []string{skip, skipOddCpuNumber}, toolToTest: toolToTest})
 
 	if toolToTest != hwlatdetect {
 		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "1", outputMsgs: []string{skip, skipMaxLatency}, toolToTest: toolToTest})
 	}
 	if toolToTest == oslat {
-		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", testMaxLatency: "1", oslatMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
-		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", oslatMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: successRuntime, testMaxLatency: "1", oslatMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
+		//TODO add tests when requested cpus for oslat is 2 once BZ 2055267 is resolved
+		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: successRuntime, oslatMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
 		//TODO: update isolated CPUs in PP to 1 and restore the original set post test
 	}
 	if toolToTest == cyclictest {
-		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", testMaxLatency: "1", cyclictestMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
-		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", cyclictestMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
-
+		//TODO add tests when requested cpus for cyclictest is 2 or less once BZ 2094046 is resolved
+		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: successRuntime, testMaxLatency: "1", cyclictestMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: successRuntime, cyclictestMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
 	}
 	if toolToTest == hwlatdetect {
-		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", testMaxLatency: "1", hwlatdetectMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
-		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", hwlatdetectMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
-		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", outputMsgs: []string{success}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: successRuntime, testMaxLatency: "1", hwlatdetectMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: successRuntime, hwlatdetectMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: successRuntime, outputMsgs: []string{success}, toolToTest: toolToTest})
 	}
 	return testSet
 }
