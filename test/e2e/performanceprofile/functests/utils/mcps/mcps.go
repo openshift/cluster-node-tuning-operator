@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	mcpUpdateTimeoutPerNode = 30
+	mcpUpdateTimeoutPerNode = 40
 )
 
 // GetByLabel returns all MCPs with the specified label

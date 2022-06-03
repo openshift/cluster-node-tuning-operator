@@ -6,26 +6,28 @@ package __performance_config_test
 import (
 	"testing"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
+	"github.com/onsi/ginkgo/v2/reporters"
 	. "github.com/onsi/gomega"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/junit"
 
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
-	ginkgo_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
+
+	qe_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 )
 
 func TestPerformanceConfig(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	rr := []Reporter{}
-	if ginkgo_reporters.Polarion.Run {
-		rr = append(rr, &ginkgo_reporters.Polarion)
-	}
-	rr = append(rr, junit.NewJUnitReporter("performance_config"))
-	RunSpecsWithDefaultAndCustomReporters(t, "Performance Addon Operator configuration", rr)
+	RunSpecs(t, "Performance Addon Operator configuration")
 }
 
 var _ = BeforeSuite(func() {
 	Expect(testclient.ClientsEnabled).To(BeTrue())
 
+})
+
+var _ = ReportAfterSuite("e2e serial suite", func(r Report) {
+	if qe_reporters.Polarion.Run {
+		reporters.ReportViaDeprecatedReporter(&qe_reporters.Polarion, r)
+	}
 })

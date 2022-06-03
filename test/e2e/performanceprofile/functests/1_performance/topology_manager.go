@@ -1,7 +1,7 @@
 package __performance
 
 import (
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -14,7 +14,7 @@ import (
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 )
 
-var _ = Describe("[rfe_id:27350][performance]Topology Manager", func() {
+var _ = Describe("[rfe_id:27350][performance]Topology Manager", Ordered, func() {
 	var workerRTNodes []corev1.Node
 	var profile *performancev2.PerformanceProfile
 

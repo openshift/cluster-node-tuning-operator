@@ -7,14 +7,14 @@ import (
 	"os/exec"
 	"time"
 
-	. "github.com/onsi/ginkgo"
-
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
+
+	. "github.com/onsi/ginkgo/v2"
 )
 
 const defaultExecTimeout = 2 * time.Minute
 
-func BeforeAll(fn func()) {
+func CustomBeforeAll(fn func()) {
 	first := true
 	BeforeEach(func() {
 		if first {

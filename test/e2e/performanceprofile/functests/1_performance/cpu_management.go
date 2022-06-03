@@ -17,8 +17,7 @@ import (
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	. "github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/extensions/table"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -42,14 +41,14 @@ const (
 	sysDevicesOnlineCPUs = "/sys/devices/system/cpu/online"
 )
 
-var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
+var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 	var balanceIsolated bool
 	var reservedCPU, isolatedCPU string
 	var listReservedCPU []int
 	var reservedCPUSet cpuset.CPUSet
 	var onlineCPUSet cpuset.CPUSet
 
-	testutils.BeforeAll(func() {
+	testutils.CustomBeforeAll(func() {
 		isSNO, err := cluster.IsSingleNode()
 		Expect(err).ToNot(HaveOccurred())
 		RunningOnSingleNode = isSNO
@@ -159,7 +158,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
 		var testpod *corev1.Pod
 		var discoveryFailed bool
 
-		testutils.BeforeAll(func() {
+		testutils.CustomBeforeAll(func() {
 			discoveryFailed = false
 			if discovery.Enabled() {
 				profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
@@ -178,7 +177,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
 			deleteTestPod(testpod)
 		})
 
-		table.DescribeTable("Verify CPU usage by stress PODs", func(guaranteed bool) {
+		DescribeTable("Verify CPU usage by stress PODs", func(guaranteed bool) {
 			cpuID := onlineCPUSet.ToSliceNoSort()[0]
 			smtLevel := nodes.GetSMTLevel(cpuID, workerRTNode)
 			if smtLevel < 2 {
@@ -227,8 +226,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
 
 			Expect(cpu).To(BeElementOf(listCPU))
 		},
-			table.Entry("[test_id:37860] Non-guaranteed POD can work on any CPU", false),
-			table.Entry("[test_id:27492] Guaranteed POD should work on isolated cpu", true),
+			Entry("[test_id:37860] Non-guaranteed POD can work on any CPU", false),
+			Entry("[test_id:27492] Guaranteed POD should work on isolated cpu", true),
 		)
 	})
 
@@ -380,7 +379,9 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
 		})
 
 		AfterEach(func() {
-			deleteTestPod(testpod)
+			if testpod != nil {
+				deleteTestPod(testpod)
+			}
 		})
 
 		It("[test_id:36364] should disable IRQ balance for CPU where POD is running", func() {
@@ -584,7 +585,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
 			deleteTestPod(testpod)
 		})
 
-		table.DescribeTable("Verify Hyper-Thread aware scheduling for guaranteed pods",
+		DescribeTable("Verify Hyper-Thread aware scheduling for guaranteed pods",
 			func(htDisabled bool, snoCluster bool, snoWP bool) {
 				// Check for SMT enabled
 				// any random existing cpu is fine
@@ -631,10 +632,10 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
 				}
 			},
 
-			table.Entry("[test_id:46959] Number of CPU requests as multiple of SMT count allowed when HT enabled", false, false, false),
-			table.Entry("[test_id:46544] Odd number of CPU requests allowed when HT disabled", true, false, false),
-			table.Entry("[test_id:46538] HT aware scheduling on SNO cluster", false, true, false),
-			table.Entry("[test_id:46539] HT aware scheduling on SNO cluster and Workload Partitioning enabled", false, true, true),
+			Entry("[test_id:46959] Number of CPU requests as multiple of SMT count allowed when HT enabled", false, false, false),
+			Entry("[test_id:46544] Odd number of CPU requests allowed when HT disabled", true, false, false),
+			Entry("[test_id:46538] HT aware scheduling on SNO cluster", false, true, false),
+			Entry("[test_id:46539] HT aware scheduling on SNO cluster and Workload Partitioning enabled", false, true, true),
 		)
 
 	})
