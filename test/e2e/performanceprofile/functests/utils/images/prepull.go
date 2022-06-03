@@ -56,11 +56,10 @@ func PrePull(cli client.Client, pullSpec, namespace, tag string) (*appsv1.Daemon
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:            "prepullcontainer",
-							Image:           pullSpec,
-							Command:         []string{"/bin/sleep"},
-							Args:            []string{"inf"},
-							ImagePullPolicy: corev1.PullAlways,
+							Name:    "prepullcontainer",
+							Image:   pullSpec,
+							Command: []string{"/bin/sleep"},
+							Args:    []string{"inf"},
 						},
 					},
 				},
