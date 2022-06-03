@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strings"
 
 	. "github.com/onsi/ginkgo"
 	"github.com/onsi/ginkgo/extensions/table"
@@ -122,8 +123,27 @@ var _ = table.DescribeTable("Test latency measurement tools tests", func(testGro
 				testlog.Error(matchErr.Error())
 			}
 			if ok {
-				commandRegex := fmt.Sprintf("%s command with arguments .*--duration %s", test.toolToTest, test.testRuntime)
-				Expect(string(output)).To(MatchRegexp(commandRegex), "The output of the executed tool is not as expected")
+				//verify the command is executed with the expected args
+				//this lists of args depend on the ones the latency tool runners adds to tool command in cnf-features-deploy.
+				var passedArgs []string
+				switch test.toolToTest {
+				case oslat:
+					passedArgs = []string{"--duration " + test.testRuntime, "--rtprio ", "--cpu-list ", "--cpu-main-thread "}
+				case cyclictest:
+					passedArgs = []string{"--duration " + test.testRuntime, "--priority 95", "--threads ", "--affinity ", "--histogram ", "--interval ", "--mlockall ", "--quiet"}
+				case hwlatdetect:
+					thr := test.testMaxLatency
+					if test.hwlatdetectMaxLatency != "" {
+						thr = test.hwlatdetectMaxLatency
+					}
+					passedArgs = []string{"--duration " + test.testRuntime, "--threshold " + thr, "--hardlimit " + thr, "--window ", "--width "}
+				default:
+					testlog.Error("the tool to test was not set")
+				}
+
+				for _, argument := range passedArgs {
+					Expect(strings.Contains(string(output), argument)).To(BeTrue(), "The tool command didn't pass the argument %q", argument)
+				}
 			}
 		}
 		for _, msg := range test.outputMsgs {
