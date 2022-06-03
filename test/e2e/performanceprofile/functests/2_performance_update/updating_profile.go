@@ -11,8 +11,7 @@ import (
 	"strings"
 	"time"
 
-	. "github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/extensions/table"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	"gopkg.in/ini.v1"
@@ -176,7 +175,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 	Context("Verify hugepages count split on two NUMA nodes", func() {
 		hpSize2M := performancev2.HugePageSize("2M")
 
-		table.DescribeTable("Verify that profile parameters were updated", func(hpCntOnNuma0 int32, hpCntOnNuma1 int32) {
+		DescribeTable("Verify that profile parameters were updated", func(hpCntOnNuma0 int32, hpCntOnNuma1 int32) {
 			By("Verifying cluster configuration matches the requirement")
 			for _, node := range workerRTNodes {
 				numaInfo, err := nodes.GetNumaNodes(&node)
@@ -252,9 +251,10 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 			}
 		},
-			table.Entry("[test_id:45023] verify uneven split of hugepages between 2 numa nodes", int32(2), int32(1)),
-			table.Entry("[test_id:45024] verify even split between 2 numa nodes", int32(1), int32(1)),
+			Entry("[test_id:45023] verify uneven split of hugepages between 2 numa nodes", int32(2), int32(1)),
+			Entry("[test_id:45024] verify even split between 2 numa nodes", int32(1), int32(1)),
 		)
+
 	})
 
 	Context("Verify that all performance profile parameters can be updated", func() {
@@ -267,7 +267,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		policy := "best-effort"
 
 		// Modify profile and verify that MCO successfully updated the node
-		testutils.BeforeAll(func() {
+		testutils.CustomBeforeAll(func() {
 			By("Modifying profile")
 			initialProfile = profile.DeepCopy()
 
@@ -323,7 +323,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 		})
 
-		table.DescribeTable("Verify that profile parameters were updated", func(cmdFn checkFunction, parameter []string, shouldContain bool, useRegex bool) {
+		DescribeTable("Verify that profile parameters were updated", func(cmdFn checkFunction, parameter []string, shouldContain bool, useRegex bool) {
 			for _, node := range workerRTNodes {
 				for _, param := range parameter {
 					result, err := cmdFn(&node)
@@ -341,16 +341,16 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 			}
 		},
-			table.Entry("[test_id:34081] verify that hugepages size and count updated", chkCmdLineFn, []string{"default_hugepagesz=2M", "hugepagesz=1G", "hugepages=3"}, true, false),
-			table.Entry("[test_id:28070] verify that hugepages updated (NUMA node unspecified)", chkCmdLineFn, []string{"hugepagesz=2M"}, true, false),
-			table.Entry("verify that the right number of hugepages 1G is available on the system", chkHugepages1GFn, []string{"3"}, true, false),
-			table.Entry("verify that the right number of hugepages 2M is available on the system", chkHugepages2MFn, []string{"256"}, true, false),
-			table.Entry("[test_id:28025] verify that cpu affinity mask was updated", chkCmdLineFn, []string{"tuned.non_isolcpus=.*9"}, true, true),
-			table.Entry("[test_id:28071] verify that cpu balancer disabled", chkCmdLineFn, []string{"isolcpus=domain,managed_irq,1-2"}, true, false),
-			table.Entry("[test_id:28071] verify that cpu balancer disabled", chkCmdLineFn, []string{"systemd.cpu_affinity=0,3"}, true, false),
+			Entry("[test_id:34081] verify that hugepages size and count updated", chkCmdLineFn, []string{"default_hugepagesz=2M", "hugepagesz=1G", "hugepages=3"}, true, false),
+			Entry("[test_id:28070] verify that hugepages updated (NUMA node unspecified)", chkCmdLineFn, []string{"hugepagesz=2M"}, true, false),
+			Entry("verify that the right number of hugepages 1G is available on the system", chkHugepages1GFn, []string{"3"}, true, false),
+			Entry("verify that the right number of hugepages 2M is available on the system", chkHugepages2MFn, []string{"256"}, true, false),
+			Entry("[test_id:28025] verify that cpu affinity mask was updated", chkCmdLineFn, []string{"tuned.non_isolcpus=.*9"}, true, true),
+			Entry("[test_id:28071] verify that cpu balancer disabled", chkCmdLineFn, []string{"isolcpus=domain,managed_irq,1-2"}, true, false),
+			Entry("[test_id:28071] verify that cpu balancer disabled", chkCmdLineFn, []string{"systemd.cpu_affinity=0,3"}, true, false),
 			// kubelet.conf changed formatting, there is a space after colons atm. Let's deal with both cases with a regex
-			table.Entry("[test_id:28935] verify that reservedSystemCPUs was updated", chkKubeletConfigFn, []string{`"reservedSystemCPUs": ?"0,3"`}, true, true),
-			table.Entry("[test_id:28760] verify that topologyManager was updated", chkKubeletConfigFn, []string{`"topologyManagerPolicy": ?"best-effort"`}, true, true),
+			Entry("[test_id:28935] verify that reservedSystemCPUs was updated", chkKubeletConfigFn, []string{`"reservedSystemCPUs": ?"0,3"`}, true, true),
+			Entry("[test_id:28760] verify that topologyManager was updated", chkKubeletConfigFn, []string{`"topologyManagerPolicy": ?"best-effort"`}, true, true),
 		)
 
 		It("[test_id:27738] should succeed to disable the RT kernel", func() {

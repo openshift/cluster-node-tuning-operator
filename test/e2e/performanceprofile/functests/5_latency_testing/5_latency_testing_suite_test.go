@@ -9,7 +9,8 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
+	"github.com/onsi/ginkgo/v2/reporters"
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
@@ -21,14 +22,13 @@ import (
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/junit"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/namespaces"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 
-	ginkgo_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
+	qe_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 )
 
 //TODO get commonly used variables from one shared file that defines constants
@@ -105,13 +105,14 @@ var _ = AfterSuite(func() {
 func Test5LatencyTesting(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	rr := []Reporter{}
-	if ginkgo_reporters.Polarion.Run {
-		rr = append(rr, &ginkgo_reporters.Polarion)
-	}
-	rr = append(rr, junit.NewJUnitReporter("latency_testing"))
-	RunSpecsWithDefaultAndCustomReporters(t, "Performance Addon Operator latency tools testing", rr)
+	RunSpecs(t, "Performance Addon Operator latency tools testing")
 }
+
+var _ = ReportAfterSuite("e2e serial suite", func(r Report) {
+	if qe_reporters.Polarion.Run {
+		reporters.ReportViaDeprecatedReporter(&qe_reporters.Polarion, r)
+	}
+})
 
 func createNamespace() error {
 	err := testclient.Client.Create(context.TODO(), prePullNamespace)

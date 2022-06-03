@@ -8,28 +8,34 @@ import (
 
 	"github.com/ghodss/yaml"
 	"github.com/google/go-cmp/cmp"
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
+	"github.com/onsi/ginkgo/v2/reporters"
 	. "github.com/onsi/gomega"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/junit"
-	ginkgo_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
+
+	qe_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 )
 
 var (
 	testDir      string
 	workspaceDir string
 	binPath      string
+
+	ignorePathTestCase = []string{
+		`{map[string]any}["metadata"].(map[string]any)["ownerReferences"].([]any)[0].(map[string]any)["uid"].(string)`,
+	}
 )
 
 func TestRenderCmd(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	rr := []Reporter{}
-	if ginkgo_reporters.Polarion.Run {
-		rr = append(rr, &ginkgo_reporters.Polarion)
-	}
-	rr = append(rr, junit.NewJUnitReporter("render_manifests"))
-	RunSpecsWithDefaultAndCustomReporters(t, "Performance Profile render tests", rr)
+	RunSpecs(t, "Performance Profile render tests")
 }
+
+var _ = ReportAfterSuite("e2e render suite", func(r Report) {
+	if qe_reporters.Polarion.Run {
+		reporters.ReportViaDeprecatedReporter(&qe_reporters.Polarion, r)
+	}
+})
 
 var _ = BeforeSuite(func() {
 	_, file, _, ok := runtime.Caller(0)

@@ -13,7 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
@@ -37,7 +37,7 @@ var (
 	cs = framework.NewClientSet()
 )
 
-var _ = Describe("[performance] Checking IRQBalance settings", func() {
+var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 	var workerRTNodes []corev1.Node
 	var targetNode *corev1.Node
 	var profile *performancev2.PerformanceProfile
