@@ -683,6 +683,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				offlinedOutput, err := nodes.ExecCommandOnNode([]string{"cat", "/sys/devices/system/cpu/offline"}, &node)
 				Expect(err).ToNot(HaveOccurred())
 				offlinedCPUSet, err := cpuset.Parse(offlinedOutput)
+				Expect(err).ToNot(HaveOccurred())
 				offlinedCPUSetProfile, err := cpuset.Parse(string(offlined))
 				Expect(err).ToNot(HaveOccurred())
 				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile))

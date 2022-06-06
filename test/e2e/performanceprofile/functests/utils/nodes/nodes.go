@@ -111,6 +111,7 @@ func GetMachineConfigDaemonByNode(node *corev1.Node) (*corev1.Pod, error) {
 
 	mcds := &corev1.PodList{}
 	if err := testclient.Client.List(context.TODO(), mcds, listOptions); err != nil {
+		testlog.Infof("flaky gett 114 %s \n", err)
 		return nil, err
 	}
 
@@ -124,8 +125,10 @@ func GetMachineConfigDaemonByNode(node *corev1.Node) (*corev1.Pod, error) {
 func ExecCommandOnMachineConfigDaemon(node *corev1.Node, command []string) ([]byte, error) {
 	mcd, err := GetMachineConfigDaemonByNode(node)
 	if err != nil {
+		testlog.Infof("flaky exec 127 %s \n", err)
 		return nil, err
 	}
+	testlog.Infof("no err")
 	testlog.Infof("found mcd %s for node %s", mcd.Name, node.Name)
 
 	return testpods.WaitForPodOutput(testclient.K8sClient, mcd, command)
@@ -135,6 +138,7 @@ func ExecCommandOnMachineConfigDaemon(node *corev1.Node, command []string) ([]by
 func ExecCommandOnNode(cmd []string, node *corev1.Node) (string, error) {
 	out, err := ExecCommandOnMachineConfigDaemon(node, cmd)
 	if err != nil {
+		testlog.Infof("flaky exec 140 %s \n", err)
 		return "", err
 	}
 
