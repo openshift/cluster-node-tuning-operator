@@ -66,6 +66,7 @@ const (
 	skipOslatCpuNumber  = `Skip the oslat test, LATENCY_TEST_CPUS is less than the minimum CPUs amount ` + minimumCpuForOslat
 	skip                = `SUCCESS.*0 Passed.*0 Failed.*3 Skipped`
 	skipInsufficientCpu = `Insufficient cpu to run the test`
+	skipOddCpuNumber    = `Skip the test, the requested number of CPUs should be even to avoid noisy neighbor situation`
 
 	//used values parameters
 	guaranteedLatency = "20000"
@@ -114,23 +115,14 @@ var _ = table.DescribeTable("Test latency measurement tools tests", func(testGro
 			if err != nil {
 				testlog.Error(err.Error())
 			}
-			Expect(string(output)).NotTo(MatchRegexp(unexpectedError), "Unexpected error was detected in a positve test")
+			Expect(string(output)).NotTo(MatchRegexp(unexpectedError), "Unexpected error was detected in a positive test")
 			//Check runtime argument in the pod's log only if the tool is expected to be executed
 			ok, matchErr := regexp.MatchString(success, string(output))
 			if matchErr != nil {
 				testlog.Error(matchErr.Error())
 			}
 			if ok {
-				var commandRegex string
-				if test.toolToTest == oslat {
-					commandRegex = fmt.Sprintf("Running the oslat command with arguments .*--duration %s", test.testRuntime)
-				}
-				if test.toolToTest == cyclictest {
-					commandRegex = fmt.Sprintf("running the cyclictest command with arguments .*-D %s", test.testRuntime)
-				}
-				if test.toolToTest == hwlatdetect {
-					commandRegex = fmt.Sprintf("running the hwlatdetect command with arguments .*--duration %s", test.testRuntime)
-				}
+				commandRegex := fmt.Sprintf("%s command with arguments .*--duration %s", test.toolToTest, test.testRuntime)
 				Expect(string(output)).To(MatchRegexp(commandRegex), "The output of the executed tool is not as expected")
 			}
 		}
@@ -214,6 +206,7 @@ func getValidValuesTests(toolToTest string) []latencyTest {
 	testSet = append(testSet, latencyTest{testDelay: "0", testRun: "true", testRuntime: "10", testMaxLatency: guaranteedLatency, testCpus: "6", outputMsgs: []string{success}, toolToTest: toolToTest})
 	testSet = append(testSet, latencyTest{testDelay: "1", testRun: "true", testRuntime: "10", testMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
 	testSet = append(testSet, latencyTest{testDelay: "60", testRun: "true", testRuntime: "2", testMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
+	testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "2", testCpus: "5", testMaxLatency: guaranteedLatency, outputMsgs: []string{skip, skipOddCpuNumber}, toolToTest: toolToTest})
 
 	if toolToTest != hwlatdetect {
 		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "1", outputMsgs: []string{skip, skipMaxLatency}, toolToTest: toolToTest})
@@ -221,7 +214,7 @@ func getValidValuesTests(toolToTest string) []latencyTest {
 	if toolToTest == oslat {
 		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", testMaxLatency: "1", oslatMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
 		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", oslatMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
-		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", testMaxLatency: guaranteedLatency, testCpus: "1", outputMsgs: []string{skip, skipOslatCpuNumber}, toolToTest: toolToTest})
+		//TODO: update isolated CPUs in PP to 1 and restore the original set post test
 	}
 	if toolToTest == cyclictest {
 		testSet = append(testSet, latencyTest{testRun: "true", testRuntime: "10", testMaxLatency: "1", cyclictestMaxLatency: guaranteedLatency, outputMsgs: []string{success}, toolToTest: toolToTest})
@@ -242,7 +235,7 @@ func getNegativeTests(toolToTest string) []latencyTest {
 	if toolToTest == hwlatdetect {
 		latencyFailureMsg = hwlatdetectFail
 	}
-	//TODO: add test to check odd CPU request.
+
 	testSet = append(testSet, latencyTest{testDelay: "0", testRun: "true", testRuntime: "5", testMaxLatency: "1", outputMsgs: []string{latencyFailureMsg, fail}, toolToTest: toolToTest})
 	testSet = append(testSet, latencyTest{testRun: "yes", testRuntime: "5", testMaxLatency: "1", outputMsgs: []string{incorrectTestRun, fail}, toolToTest: toolToTest})
 	testSet = append(testSet, latencyTest{testRun: "true", testRuntime: fmt.Sprint(math.MaxInt32 + 1), outputMsgs: []string{invalidNumberRuntime, fail}, toolToTest: toolToTest})
