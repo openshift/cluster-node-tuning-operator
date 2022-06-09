@@ -42,7 +42,7 @@ const (
 	defaultTestRuntime   = "300"
 	defaultMaxLatency    = -1
 	defaultTestCpus      = -1
-	minCpuAmountForOslat = 2
+	minCpuAmountForOslat = 3
 )
 
 var (
@@ -137,11 +137,15 @@ var _ = Describe("[performance] Latency Test", func() {
 			}
 
 			isolatedCpus := cpuset.MustParse(string(*profile.Spec.CPU.Isolated))
-			// we require at least two CPUs to run oslat test, because one CPU should be used to run the main oslat thread
-			// we can not use all isolated CPUs, because if reserved and isolated include all node CPUs, and reserved CPUs
-			// do not calculated into the Allocated, at least part of time of one of isolated CPUs will be used to run
-			// other node containers
-			// at least two isolated CPUs to run oslat + one isolated CPU used by other containers on the node = at least 3 isolated CPUs
+			// TL;DR three isolated CPUs to run oslat + one isolated CPU used by other containers on the node = at least 4 isolated CPUs.
+			// we require at least three CPUs to run oslat test.
+			// one CPU should be used to run the main oslat thread.
+			// the second CPU is the sibling of the first one, which should excluded from the list of the tested CPUs,
+			// because it might cause to false spikes (noisy-neighbor issue).
+			// the third one is the actual CPU to be tested.
+			// in addition, we can not use all isolated CPUs, because if reserved + isolated = all node's CPUs, and reserved CPUs
+			// are not accounting as an allocatable for workloads, then we'll need one additional isolated CPU to run
+			// other node containers.
 			if isolatedCpus.Size() < (minCpuAmountForOslat + 1) {
 				Skip(fmt.Sprintf("Skip the oslat test, the profile %q has less than %d isolated CPUs", profile.Name, minCpuAmountForOslat))
 			}
