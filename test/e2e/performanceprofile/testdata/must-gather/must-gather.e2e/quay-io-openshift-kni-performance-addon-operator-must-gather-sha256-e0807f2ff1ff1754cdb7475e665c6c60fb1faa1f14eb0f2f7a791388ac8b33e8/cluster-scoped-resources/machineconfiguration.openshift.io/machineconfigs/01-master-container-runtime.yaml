@@ -1,0 +1,78 @@
+---
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  annotations:
+    machineconfiguration.openshift.io/generated-by-controller-version: f5950ed0b5e5468fd172b37cef4a8f34995a3b3f
+  creationTimestamp: "2022-06-13T09:17:50Z"
+  generation: 1
+  labels:
+    machineconfiguration.openshift.io/role: master
+  managedFields:
+  - apiVersion: machineconfiguration.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          .: {}
+          f:machineconfiguration.openshift.io/generated-by-controller-version: {}
+        f:labels:
+          .: {}
+          f:machineconfiguration.openshift.io/role: {}
+        f:ownerReferences:
+          .: {}
+          k:{"uid":"f033e8f9-f150-45ee-b688-27fb11809e3c"}: {}
+      f:spec:
+        .: {}
+        f:config:
+          .: {}
+          f:ignition:
+            .: {}
+            f:version: {}
+          f:storage:
+            .: {}
+            f:files: {}
+        f:extensions: {}
+        f:fips: {}
+        f:kernelArguments: {}
+        f:kernelType: {}
+        f:osImageURL: {}
+    manager: machine-config-controller
+    operation: Update
+    time: "2022-06-13T09:17:50Z"
+  name: 01-master-container-runtime
+  ownerReferences:
+  - apiVersion: machineconfiguration.openshift.io/v1
+    blockOwnerDeletion: true
+    controller: true
+    kind: ControllerConfig
+    name: machine-config-controller
+    uid: f033e8f9-f150-45ee-b688-27fb11809e3c
+  resourceVersion: "7511"
+  uid: 99893798-7963-44b4-afd9-361bf6633aed
+spec:
+  config:
+    ignition:
+      version: 3.2.0
+    storage:
+      files:
+      - contents:
+          source: data:,unqualified-search-registries%20%3D%20%5B'registry.access.redhat.com'%2C%20'docker.io'%5D%0A
+        mode: 420
+        overwrite: true
+        path: /etc/containers/registries.conf
+      - contents:
+          source: data:,%5Bcrio%5D%0Ainternal_wipe%20%3D%20true%0Aversion_file_persist%20%3D%20%22%2Fvar%2Flib%2Fcrio%2Fversion%22%0A%0A%5Bcrio.api%5D%0Astream_address%20%3D%20%22%22%0Astream_port%20%3D%20%2210010%22%0A%0A%5Bcrio.runtime%5D%0Aselinux%20%3D%20true%0Aconmon%20%3D%20%22%22%0Aconmon_cgroup%20%3D%20%22pod%22%0Adefault_env%20%3D%20%5B%0A%20%20%20%20%22NSS_SDB_USE_CACHE%3Dno%22%2C%0A%5D%0Alog_level%20%3D%20%22info%22%0Acgroup_manager%20%3D%20%22systemd%22%0Adefault_sysctls%20%3D%20%5B%0A%20%20%20%20%22net.ipv4.ping_group_range%3D0%202147483647%22%2C%0A%5D%0Ahooks_dir%20%3D%20%5B%0A%20%20%20%20%22%2Fetc%2Fcontainers%2Foci%2Fhooks.d%22%2C%0A%20%20%20%20%22%2Frun%2Fcontainers%2Foci%2Fhooks.d%22%2C%0A%20%20%20%20%22%2Fusr%2Fshare%2Fcontainers%2Foci%2Fhooks.d%22%2C%0A%5D%0Amanage_ns_lifecycle%20%3D%20true%0Aabsent_mount_sources_to_reject%20%3D%20%5B%0A%20%20%20%20%22%2Fetc%2Fhostname%22%2C%0A%5D%0Adrop_infra_ctr%20%3D%20true%0A%0A%5Bcrio.runtime.workloads.openshift-builder%5D%0Aactivation_annotation%20%3D%20%22io.openshift.builder%22%0Aallowed_annotations%20%3D%20%5B%0A%20%20%22io.kubernetes.cri-o.userns-mode%22%2C%0A%20%20%22io.kubernetes.cri-o.Devices%22%0A%5D%0A%5Bcrio.runtime.workloads.openshift-builder.resources%5D%0A%0A%5Bcrio.image%5D%0Aglobal_auth_file%20%3D%20%22%2Fvar%2Flib%2Fkubelet%2Fconfig.json%22%0Apause_image%20%3D%20%22quay.io%2Fopenshift-release-dev%2Focp-v4.0-art-dev%40sha256%3A49e30324b2c65b965e18a154271f3af533a87ed645ba9d1d294766819a1ce96e%22%0Apause_image_auth_file%20%3D%20%22%2Fvar%2Flib%2Fkubelet%2Fconfig.json%22%0Apause_command%20%3D%20%22%2Fusr%2Fbin%2Fpod%22%0A%0A%5Bcrio.network%5D%0Anetwork_dir%20%3D%20%22%2Fetc%2Fkubernetes%2Fcni%2Fnet.d%2F%22%0Aplugin_dirs%20%3D%20%5B%0A%20%20%20%20%22%2Fvar%2Flib%2Fcni%2Fbin%22%2C%0A%20%20%20%20%22%2Fusr%2Flibexec%2Fcni%22%2C%0A%5D%0A%0A%5Bcrio.metrics%5D%0Aenable_metrics%20%3D%20true%0Ametrics_port%20%3D%209537%0Ametrics_collectors%20%3D%20%5B%0A%20%20%22operations%22%2C%20%23%20DEPRECATED%3A%20in%20favour%20of%20%22operations_total%22%0A%20%20%22operations_latency_microseconds_total%22%2C%20%23%20DEPRECATED%3A%20in%20favour%20of%20%22operations_latency_seconds_total%22%0A%20%20%22operations_latency_microseconds%22%2C%20%23%20DEPRECATED%3A%20in%20favour%20of%20%22operations_latency_seconds%22%0A%20%20%22operations_errors%22%2C%20%23%20DEPRECATED%3A%20in%20favour%20of%20%22operations_errors_total%22%0A%20%20%22image_pulls_layer_size%22%2C%0A%20%20%22containers_oom_total%22%2C%20%23%20DEPRECATED%3A%20in%20favour%20of%20%22containers_oom_count_total%22%0A%20%20%22containers_oom%22%2C%0A%20%20%23%20Drop%20metrics%20with%20excessive%20label%20cardinality.%0A%20%20%23%20%22image_pulls_by_digest%22%2C%20%23%20DEPRECATED%3A%20in%20favour%20of%20%22image_pulls_bytes_total%22%0A%20%20%23%20%22image_pulls_by_name%22%2C%20%23%20DEPRECATED%3A%20in%20favour%20of%20%22image_pulls_bytes_total%22%0A%20%20%23%20%22image_pulls_by_name_skipped%22%2C%20%23%20DEPRECATED%3A%20in%20favour%20of%20%22image_pulls_skipped_bytes_total%22%0A%20%20%23%20%22image_pulls_failures%22%2C%20%23%20DEPRECATED%3A%20in%20favour%20of%20%22image_pulls_failure_total%22%0A%20%20%23%20%22image_pulls_successes%22%2C%20%23%20DEPRECATED%3A%20in%20favour%20of%20%22image_pulls_success_total%22%0A%20%20%23%20%22image_layer_reuse%22%2C%20%23%20DEPRECATED%3A%20in%20favour%20of%20%22image_layer_reuse_total%22%0A%20%20%22operations_total%22%2C%0A%20%20%22operations_latency_seconds_total%22%2C%0A%20%20%22operations_latency_seconds%22%2C%0A%20%20%22operations_errors_total%22%2C%0A%20%20%22image_pulls_bytes_total%22%2C%0A%20%20%22image_pulls_skipped_bytes_total%22%2C%0A%20%20%22image_pulls_success_total%22%2C%0A%20%20%22image_pulls_failure_total%22%2C%0A%20%20%22image_layer_reuse_total%22%2C%0A%20%20%22containers_oom_count_total%22%2C%0A%20%20%22processes_defunct%22%0A%5D%0A
+        mode: 420
+        overwrite: true
+        path: /etc/crio/crio.conf.d/00-default
+      - contents:
+          source: data:,%7B%0A%20%20%20%20%22default%22%3A%20%5B%0A%20%20%20%20%20%20%20%20%7B%0A%20%20%20%20%20%20%20%20%20%20%20%20%22type%22%3A%20%22insecureAcceptAnything%22%0A%20%20%20%20%20%20%20%20%7D%0A%20%20%20%20%5D%2C%0A%20%20%20%20%22transports%22%3A%0A%20%20%20%20%20%20%20%20%7B%0A%20%20%20%20%20%20%20%20%20%20%20%20%22docker-daemon%22%3A%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%7B%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%22%22%3A%20%5B%7B%22type%22%3A%22insecureAcceptAnything%22%7D%5D%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20%20%20%7D%0A%7D
+        mode: 420
+        overwrite: true
+        path: /etc/containers/policy.json
+  extensions: null
+  fips: false
+  kernelArguments: null
+  kernelType: ""
+  osImageURL: quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:471331824d00c9e44983b74abf1ecef94ebb312897c426d7645df656dc7449f0
