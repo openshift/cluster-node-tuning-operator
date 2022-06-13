@@ -24,7 +24,7 @@ only the annotated pod's CPUs from the list of the CPUs that are allowed to hand
 ## Design Details
 
 The Performance Profile CRD is promoted to 'v2', having a new optional boolean field ```GloballyDisableIrqLoadBalancing```
-with default value ```false```. The Performance Addon controller disables device interrupts on all isolated CPUs only
+with default value ```false```. The Performance Profile Controller disables device interrupts on all isolated CPUs only
 when ```GloballyDisableIrqLoadBalancing``` is set to ```true```.
 
 Existing Performance Profile CRs with API versions 'v1' or 'v1alpha1' are converted to 'v2' using a Conversion Webhook

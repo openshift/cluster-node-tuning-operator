@@ -1,12 +1,12 @@
-# Performance Addon Controller
+# Performance Profile Controller
 
-The `Performance Addon controller` optimizes OpenShift clusters for applications sensitive to cpu and network latency.
+The `Performance Profile Controller` optimizes OpenShift clusters for applications sensitive to cpu and network latency.
 
-![alt text](https://github.com/openshift/cluster-node-tuning-operator/blob/master/docs/performanceprofile/interactions/diagram.png "How Performance Addon controller interacts with other components and operators")
+![alt text](https://github.com/openshift/cluster-node-tuning-operator/blob/master/docs/performanceprofile/interactions/diagram.png "How Performance Profile Controller interacts with other components and operators")
 
 ## PerformanceProfile
 
-The `PerformanceProfile` CRD is the API of the performance Addon controller and offers high level options
+The `PerformanceProfile` CRD is the API of the Performance Profile Controller and offers high level options
 for applying various performance tunings to cluster nodes.
 
 The performance profile API is documented in detail in the [Performance Profile](performance_profile.md) doc.
@@ -90,7 +90,7 @@ Unit tests can be executed with `make test-unit`.
 ## Func tests
 
 The functional tests are located in `/functests`. They can be executed with `make pao-functests-only` on a cluster with a
-deployed Performance Addon controller and configured MCP and nodes. It will create its own Performance profile!
+deployed Performance Profile Controller and configured MCP and nodes. It will create its own Performance profile!
 
 ### Latency test
 
