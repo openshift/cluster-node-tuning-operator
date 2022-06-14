@@ -28,8 +28,8 @@ if [ "${mode}" = "ro" ]; then
     [ $? -eq 0 ] || { logger "${0}: Failed to remount /sys as rw: ${res}"; exit 0; }
 fi
 
-# /sys/class/net can't be used recursively to find the rps_cpus file, use /sys/devices instead
-res=$(${IP} netns exec "${ns}" find /sys/devices -type f -name rps_cpus -exec sh -c "echo ${mask} | cat > {}" \; 2>&1)
+# /sys/class/net can't be used recursively to find the rps_cpus file, use /sys/devices/virtual instead
+res=$(${IP} netns exec "${ns}" find /sys/devices/virtual -type f -name rps_cpus -exec sh -c "echo ${mask} | cat > {}" \; 2>&1)
 [[ $? -eq 0 && -z "${res}" ]] || logger "${0}: Failed to apply the RPS mask: ${res}"
 
 if [ "${mode}" = "ro" ]; then
