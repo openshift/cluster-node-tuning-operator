@@ -548,13 +548,13 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
 			err := testclient.Client.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
 
-			err = pods.WaitForPredicate(testpod, 10*time.Minute, func(pod *corev1.Pod) (bool, error) {
+			currentPod, err := pods.WaitForPredicate(testpod, 10*time.Minute, func(pod *corev1.Pod) (bool, error) {
 				if pod.Status.Phase != corev1.PodPending {
 					return true, nil
 				}
 				return false, nil
 			})
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).ToNot(HaveOccurred(), "expected the pod to keep pending, but its current phase is %s", currentPod.Status.Phase)
 
 			updatedPod := &corev1.Pod{}
 			err = testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(testpod), updatedPod)
