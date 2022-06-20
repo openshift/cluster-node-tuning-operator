@@ -67,7 +67,7 @@ spec:
           path: /etc/containers/oci/hooks.d/99-low-latency-hooks.json
           user: {}
         - contents:
-            source: data:text/plain;charset=utf-8;base64,U1VCU1lTVEVNPT0ibmV0IiwgQUNUSU9OPT0iYWRkIiwgRU5We0RFVlBBVEh9IT0iL2RldmljZXMvdmlydHVhbC9uZXQvdmV0aCoiLCBUQUcrPSJzeXN0ZW1kIiwgRU5We1NZU1RFTURfV0FOVFN9PSJ1cGRhdGUtcnBzQCVrLnNlcnZpY2UiCg==
+            source: data:text/plain;charset=utf-8;base64,U1VCU1lTVEVNPT0ibmV0IiwgQUNUSU9OPT0iYWRkIiwgRU5We0RFVlBBVEh9IT0iL2RldmljZXMvdmlydHVhbC9uZXQvdmV0aCoiLCBFTlZ7SURfQlVTfSE9InBjaSIsIFRBRys9InN5c3RlbWQiLCBFTlZ7U1lTVEVNRF9XQU5UU309InVwZGF0ZS1ycHNAJWsuc2VydmljZSIK
             verification: {}
           group: {}
           mode: 420
