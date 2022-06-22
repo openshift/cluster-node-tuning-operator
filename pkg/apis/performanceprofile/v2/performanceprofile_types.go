@@ -26,6 +26,10 @@ import (
 // objects.
 const PerformanceProfilePauseAnnotation = "performance.openshift.io/pause-reconcile"
 
+// PerformanceProfileEnableRpsAnnotation enables RPS mask setting with systemd for all
+// network devices by including physical interfaces from netdev-rps rule.
+const PerformanceProfileEnableRpsAnnotation = "performance.openshift.io/enable-physical-dev-rps"
+
 // PerformanceProfileSpec defines the desired state of PerformanceProfile.
 type PerformanceProfileSpec struct {
 	// CPU defines a set of CPU related parameters.
