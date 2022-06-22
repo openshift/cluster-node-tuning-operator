@@ -55,3 +55,16 @@ func IsPaused(profile *performancev2.PerformanceProfile) bool {
 
 	return false
 }
+
+// IsRpsEnabled or not RPS mask should be set for all physical net devices
+func IsRpsEnabled(profile *performancev2.PerformanceProfile) bool {
+	if profile.Annotations == nil {
+		return false
+	}
+	isRpsEnabled, ok := profile.Annotations[performancev2.PerformanceProfileEnableRpsAnnotation]
+	if ok && isRpsEnabled == "true" {
+		return true
+	}
+
+	return false
+}

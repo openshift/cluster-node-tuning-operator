@@ -21,6 +21,7 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	profilecomponent "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
+	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
 
@@ -43,10 +44,11 @@ const (
 	// OCIHooksConfigDir is the default directory for the OCI hooks
 	OCIHooksConfigDir = "/etc/containers/oci/hooks.d"
 	// OCIHooksConfig file contains the low latency hooks configuration
-	OCIHooksConfig     = "99-low-latency-hooks.json"
-	ociTemplateRPSMask = "RPSMask"
-	udevRulesDir       = "/etc/udev/rules.d"
-	udevRpsRules       = "99-netdev-rps.rules"
+	OCIHooksConfig       = "99-low-latency-hooks.json"
+	ociTemplateRPSMask   = "RPSMask"
+	udevRulesDir         = "/etc/udev/rules.d"
+	udevRpsRules         = "99-netdev-rps.rules"
+	udevPhysicalRpsRules = "99-netdev-physical-rps.rules"
 	// scripts
 	hugepagesAllocation = "hugepages-allocation"
 	setCPUsOffline      = "set-cpus-offline"
@@ -171,7 +173,12 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile) (*igntypes.Con
 
 	// add rps udev rule
 	rpsRulesMode := 0644
-	rpsRulesContent, err := assets.Configs.ReadFile(filepath.Join("configs", udevRpsRules))
+	var rpsRulesContent []byte
+	if profileutil.IsRpsEnabled(profile) {
+		rpsRulesContent, err = assets.Configs.ReadFile(filepath.Join("configs", udevPhysicalRpsRules))
+	} else {
+		rpsRulesContent, err = assets.Configs.ReadFile(filepath.Join("configs", udevRpsRules))
+	}
 	if err != nil {
 		return nil, err
 	}
