@@ -43,7 +43,7 @@ func GetNodesByRole(cs *framework.ClientSet, role string) ([]corev1.Node, error)
 	listOptions := metav1.ListOptions{
 		LabelSelector: labels.SelectorFromSet(labels.Set{fmt.Sprintf("node-role.kubernetes.io/%s", role): ""}).String(),
 	}
-	nodeList, err := cs.Nodes().List(context.TODO(), listOptions)
+	nodeList, err := cs.CoreV1Interface.Nodes().List(context.TODO(), listOptions)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get a list of nodes by role (%s): %v", role, err)
 	}
