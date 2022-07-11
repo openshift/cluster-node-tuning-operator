@@ -1,9 +1,9 @@
-FROM registry.ci.openshift.org/openshift/release:golang-1.17 AS builder
+FROM registry.ci.openshift.org/openshift/release:golang-1.18 AS builder
 WORKDIR /go/src/github.com/openshift/cluster-node-tuning-operator
 COPY . .
 RUN make build
 
-FROM centos:8 as tuned
+FROM centos:stream8 as tuned
 WORKDIR /root
 COPY assets /root/assets
 RUN INSTALL_PKGS=" \
@@ -18,7 +18,7 @@ RUN INSTALL_PKGS=" \
     cd ../stalld && \
     make
 
-FROM centos:8
+FROM centos:stream8
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/cluster-node-tuning-operator /usr/bin/
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/performance-profile-creator /usr/bin/
 COPY manifests/*.yaml manifests/image-references /manifests/
