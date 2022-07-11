@@ -1,0 +1,122 @@
+---
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  annotations:
+    machineconfiguration.openshift.io/generated-by-controller-version: f5950ed0b5e5468fd172b37cef4a8f34995a3b3f
+  creationTimestamp: "2022-06-13T09:17:50Z"
+  generation: 1
+  labels:
+    machineconfiguration.openshift.io/role: worker
+  managedFields:
+  - apiVersion: machineconfiguration.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          .: {}
+          f:machineconfiguration.openshift.io/generated-by-controller-version: {}
+        f:labels:
+          .: {}
+          f:machineconfiguration.openshift.io/role: {}
+        f:ownerReferences:
+          .: {}
+          k:{"uid":"f033e8f9-f150-45ee-b688-27fb11809e3c"}: {}
+      f:spec:
+        .: {}
+        f:config:
+          .: {}
+          f:ignition:
+            .: {}
+            f:version: {}
+          f:storage:
+            .: {}
+            f:files: {}
+          f:systemd:
+            .: {}
+            f:units: {}
+        f:extensions: {}
+        f:fips: {}
+        f:kernelArguments: {}
+        f:kernelType: {}
+        f:osImageURL: {}
+    manager: machine-config-controller
+    operation: Update
+    time: "2022-06-13T09:17:50Z"
+  name: 01-worker-kubelet
+  ownerReferences:
+  - apiVersion: machineconfiguration.openshift.io/v1
+    blockOwnerDeletion: true
+    controller: true
+    kind: ControllerConfig
+    name: machine-config-controller
+    uid: f033e8f9-f150-45ee-b688-27fb11809e3c
+  resourceVersion: "7527"
+  uid: c7c99a49-23f0-4b8d-aab5-4892d0705b09
+spec:
+  config:
+    ignition:
+      version: 3.2.0
+    storage:
+      files:
+      - contents:
+          source: data:,%5Bglobal%5D%0Aproject-id%20%20%20%20%20%20%3D%20openshift-gce-devel-ci%0Aregional%20%20%20%20%20%20%20%20%3D%20true%0Amultizone%20%20%20%20%20%20%20%3D%20true%0Anode-tags%20%20%20%20%20%20%20%3D%20ci-ln-t0prq3t-72292-h4x2n-master%0Anode-tags%20%20%20%20%20%20%20%3D%20ci-ln-t0prq3t-72292-h4x2n-worker%0Anode-instance-prefix%20%3D%20ci-ln-t0prq3t-72292-h4x2n%0Aexternal-instance-groups-prefix%20%3D%20ci-ln-t0prq3t-72292-h4x2n%0Asubnetwork-name%20%3D%20ci-ln-t0prq3t-72292-h4x2n-worker-subnet
+        mode: 420
+        overwrite: true
+        path: /etc/kubernetes/cloud.conf
+      - contents:
+          source: data:,kind%3A%20KubeletConfiguration%0AapiVersion%3A%20kubelet.config.k8s.io%2Fv1beta1%0Aauthentication%3A%0A%20%20x509%3A%0A%20%20%20%20clientCAFile%3A%20%2Fetc%2Fkubernetes%2Fkubelet-ca.crt%0A%20%20anonymous%3A%0A%20%20%20%20enabled%3A%20false%0AcgroupDriver%3A%20systemd%0AcgroupRoot%3A%20%2F%0AclusterDNS%3A%0A%20%20-%20172.30.0.10%0AclusterDomain%3A%20cluster.local%0AcontainerLogMaxSize%3A%2050Mi%0AmaxPods%3A%20250%0AkubeAPIQPS%3A%2050%0AkubeAPIBurst%3A%20100%0ApodPidsLimit%3A%204096%0ArotateCertificates%3A%20true%0AserializeImagePulls%3A%20false%0AstaticPodPath%3A%20%2Fetc%2Fkubernetes%2Fmanifests%0AsystemCgroups%3A%20%2Fsystem.slice%0AsystemReserved%3A%0A%20%20ephemeral-storage%3A%201Gi%0AfeatureGates%3A%0A%20%20APIPriorityAndFairness%3A%20true%0A%20%20RotateKubeletServerCertificate%3A%20true%0A%20%20DownwardAPIHugePages%3A%20true%0A%20%20PodSecurity%3A%20true%0A%20%20CSIMigrationAWS%3A%20false%0A%20%20CSIMigrationAzureFile%3A%20false%0A%20%20CSIMigrationGCE%3A%20false%0A%20%20CSIMigrationvSphere%3A%20false%0AserverTLSBootstrap%3A%20true%0AtlsMinVersion%3A%20VersionTLS12%0AtlsCipherSuites%3A%0A%20%20-%20TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256%0A%20%20-%20TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256%0A%20%20-%20TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384%0A%20%20-%20TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384%0A%20%20-%20TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256%0A%20%20-%20TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256%0A
+        mode: 420
+        overwrite: true
+        path: /etc/kubernetes/kubelet.conf
+    systemd:
+      units:
+      - contents: |
+          [Unit]
+          Description=Kubernetes Kubelet
+          Wants=rpc-statd.service network-online.target
+          Requires=crio.service kubelet-auto-node-size.service
+          After=network-online.target crio.service kubelet-auto-node-size.service
+          After=ostree-finalize-staged.service
+
+          [Service]
+          Type=notify
+          ExecStartPre=/bin/mkdir --parents /etc/kubernetes/manifests
+          ExecStartPre=/bin/rm -f /var/lib/kubelet/cpu_manager_state
+          ExecStartPre=/bin/rm -f /var/lib/kubelet/memory_manager_state
+          EnvironmentFile=/etc/os-release
+          EnvironmentFile=-/etc/kubernetes/kubelet-workaround
+          EnvironmentFile=-/etc/kubernetes/kubelet-env
+          EnvironmentFile=/etc/node-sizing.env
+
+          ExecStart=/usr/bin/hyperkube \
+              kubelet \
+                --config=/etc/kubernetes/kubelet.conf \
+                --bootstrap-kubeconfig=/etc/kubernetes/kubeconfig \
+                --kubeconfig=/var/lib/kubelet/kubeconfig \
+                --container-runtime=remote \
+                --container-runtime-endpoint=/var/run/crio/crio.sock \
+                --runtime-cgroups=/system.slice/crio.service \
+                --node-labels=node-role.kubernetes.io/worker,node.openshift.io/os_id=${ID} \
+                --node-ip=${KUBELET_NODE_IP} \
+                --minimum-container-ttl-duration=6m0s \
+                --volume-plugin-dir=/etc/kubernetes/kubelet-plugins/volume/exec \
+                --cloud-provider=gce \
+                --cloud-config=/etc/kubernetes/cloud.conf \
+                --hostname-override=${KUBELET_NODE_NAME} \
+                --pod-infra-container-image=quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:49e30324b2c65b965e18a154271f3af533a87ed645ba9d1d294766819a1ce96e \
+                --system-reserved=cpu=${SYSTEM_RESERVED_CPU},memory=${SYSTEM_RESERVED_MEMORY} \
+                --v=${KUBELET_LOG_LEVEL}
+
+          Restart=always
+          RestartSec=10
+
+          [Install]
+          WantedBy=multi-user.target
+        enabled: true
+        name: kubelet.service
+  extensions: null
+  fips: false
+  kernelArguments: null
+  kernelType: ""
+  osImageURL: quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:471331824d00c9e44983b74abf1ecef94ebb312897c426d7645df656dc7449f0

@@ -1,0 +1,175 @@
+apiVersion: machineconfiguration.openshift.io/v1
+kind: KubeletConfig
+metadata:
+  annotations:
+    machineconfiguration.openshift.io/mc-name-suffix: ""
+  creationTimestamp: "2022-06-13T11:54:09Z"
+  finalizers:
+  - 99-worker-cnf-generated-kubelet
+  generation: 1
+  managedFields:
+  - apiVersion: machineconfiguration.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:ownerReferences:
+          .: {}
+          k:{"uid":"b702f009-cf53-4dcf-9fa3-b2e219872e23"}: {}
+      f:spec:
+        .: {}
+        f:kubeletConfig:
+          .: {}
+          f:apiVersion: {}
+          f:authentication:
+            .: {}
+            f:anonymous: {}
+            f:webhook:
+              .: {}
+              f:cacheTTL: {}
+            f:x509: {}
+          f:authorization:
+            .: {}
+            f:webhook:
+              .: {}
+              f:cacheAuthorizedTTL: {}
+              f:cacheUnauthorizedTTL: {}
+          f:cpuManagerPolicy: {}
+          f:cpuManagerPolicyOptions:
+            .: {}
+            f:full-pcpus-only: {}
+          f:cpuManagerReconcilePeriod: {}
+          f:evictionHard:
+            .: {}
+            f:memory.available: {}
+          f:evictionPressureTransitionPeriod: {}
+          f:fileCheckFrequency: {}
+          f:httpCheckFrequency: {}
+          f:imageMinimumGCAge: {}
+          f:kind: {}
+          f:kubeReserved:
+            .: {}
+            f:memory: {}
+          f:logging:
+            .: {}
+            f:flushFrequency: {}
+            f:options:
+              .: {}
+              f:json:
+                .: {}
+                f:infoBufferSize: {}
+            f:verbosity: {}
+          f:memoryManagerPolicy: {}
+          f:memorySwap: {}
+          f:nodeStatusReportFrequency: {}
+          f:nodeStatusUpdateFrequency: {}
+          f:reservedMemory: {}
+          f:reservedSystemCPUs: {}
+          f:runtimeRequestTimeout: {}
+          f:shutdownGracePeriod: {}
+          f:shutdownGracePeriodCriticalPods: {}
+          f:streamingConnectionIdleTimeout: {}
+          f:syncFrequency: {}
+          f:systemReserved:
+            .: {}
+            f:memory: {}
+          f:topologyManagerPolicy: {}
+          f:volumeStatsAggPeriod: {}
+        f:machineConfigPoolSelector:
+          .: {}
+          f:matchLabels:
+            .: {}
+            f:machineconfiguration.openshift.io/role: {}
+    manager: cluster-node-tuning-operator
+    operation: Update
+    time: "2022-06-13T11:54:09Z"
+  - apiVersion: machineconfiguration.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          .: {}
+          f:machineconfiguration.openshift.io/mc-name-suffix: {}
+        f:finalizers:
+          .: {}
+          v:"99-worker-cnf-generated-kubelet": {}
+    manager: machine-config-controller
+    operation: Update
+    time: "2022-06-13T11:54:14Z"
+  - apiVersion: machineconfiguration.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:status:
+        .: {}
+        f:conditions: {}
+    manager: machine-config-controller
+    operation: Update
+    subresource: status
+    time: "2022-06-13T11:54:15Z"
+  name: performance-performance
+  ownerReferences:
+  - apiVersion: performance.openshift.io/v2
+    blockOwnerDeletion: true
+    controller: true
+    kind: PerformanceProfile
+    name: performance
+    uid: b702f009-cf53-4dcf-9fa3-b2e219872e23
+  resourceVersion: "74149"
+  uid: 2cfd34ef-3130-47c7-ac54-73cdb8f2f9d9
+spec:
+  kubeletConfig:
+    apiVersion: kubelet.config.k8s.io/v1beta1
+    authentication:
+      anonymous: {}
+      webhook:
+        cacheTTL: 0s
+      x509: {}
+    authorization:
+      webhook:
+        cacheAuthorizedTTL: 0s
+        cacheUnauthorizedTTL: 0s
+    cpuManagerPolicy: static
+    cpuManagerPolicyOptions:
+      full-pcpus-only: "true"
+    cpuManagerReconcilePeriod: 5s
+    evictionHard:
+      memory.available: 100Mi
+    evictionPressureTransitionPeriod: 0s
+    fileCheckFrequency: 0s
+    httpCheckFrequency: 0s
+    imageMinimumGCAge: 0s
+    kind: KubeletConfiguration
+    kubeReserved:
+      memory: 500Mi
+    logging:
+      flushFrequency: 0
+      options:
+        json:
+          infoBufferSize: "0"
+      verbosity: 0
+    memoryManagerPolicy: Static
+    memorySwap: {}
+    nodeStatusReportFrequency: 0s
+    nodeStatusUpdateFrequency: 0s
+    reservedMemory:
+    - limits:
+        memory: 1100Mi
+      numaNode: 0
+    reservedSystemCPUs: "0"
+    runtimeRequestTimeout: 0s
+    shutdownGracePeriod: 0s
+    shutdownGracePeriodCriticalPods: 0s
+    streamingConnectionIdleTimeout: 0s
+    syncFrequency: 0s
+    systemReserved:
+      memory: 500Mi
+    topologyManagerPolicy: single-numa-node
+    volumeStatsAggPeriod: 0s
+  machineConfigPoolSelector:
+    matchLabels:
+      machineconfiguration.openshift.io/role: worker-cnf
+status:
+  conditions:
+  - lastTransitionTime: "2022-06-13T11:54:15Z"
+    message: Success
+    status: "True"
+    type: Success

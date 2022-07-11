@@ -1,0 +1,1 @@
+[{"name":"master","nodes":null},{"name":"worker","nodes":null},{"name":"worker-cnf","nodes":[{"name":"ci-ln-t0prq3t-72292-h4x2n-worker-a-wqnqt","smt_enabled":true,"cpus_count":4,"numa_cells":[{"id":0,"cores":[0,1,2,3]}]}]}]
