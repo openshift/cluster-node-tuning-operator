@@ -1,0 +1,89 @@
+---
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  annotations:
+    tuned.openshift.io/generated-by-controller-version: v4.11.0-202205311127.p0.g07223b4.assembly.stream-0-ga546ad8-dirty
+  creationTimestamp: "2022-06-13T11:54:12Z"
+  generation: 2
+  labels:
+    machineconfiguration.openshift.io/role: worker-cnf
+  managedFields:
+  - apiVersion: machineconfiguration.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          .: {}
+          f:tuned.openshift.io/generated-by-controller-version: {}
+        f:labels:
+          .: {}
+          f:machineconfiguration.openshift.io/role: {}
+      f:spec:
+        .: {}
+        f:config:
+          .: {}
+          f:ignition:
+            .: {}
+            f:config:
+              .: {}
+              f:replace:
+                .: {}
+                f:verification: {}
+            f:proxy: {}
+            f:security:
+              .: {}
+              f:tls: {}
+            f:timeouts: {}
+            f:version: {}
+          f:passwd: {}
+          f:storage: {}
+          f:systemd: {}
+        f:extensions: {}
+        f:fips: {}
+        f:kernelArguments: {}
+        f:kernelType: {}
+        f:osImageURL: {}
+    manager: Go-http-client
+    operation: Update
+    time: "2022-06-13T11:54:12Z"
+  name: 50-nto-worker-cnf
+  resourceVersion: "75622"
+  uid: dd7e9931-4d1c-4e19-b8a7-2813af1e758c
+spec:
+  config:
+    ignition:
+      config:
+        replace:
+          verification: {}
+      proxy: {}
+      security:
+        tls: {}
+      timeouts: {}
+      version: 3.2.0
+    passwd: {}
+    storage: {}
+    systemd: {}
+  extensions: null
+  fips: false
+  kernelArguments:
+  - skew_tick=1
+  - nohz=on
+  - rcu_nocbs=1
+  - tuned.non_isolcpus=00000001
+  - systemd.cpu_affinity=0
+  - intel_iommu=on
+  - iommu=pt
+  - isolcpus=managed_irq,1
+  - nohz_full=1
+  - tsc=nowatchdog
+  - nosoftlockup
+  - nmi_watchdog=0
+  - mce=off
+  - skew_tick=1
+  - default_hugepagesz=1G
+  - hugepagesz=2M
+  - hugepages=128
+  - +
+  kernelType: ""
+  osImageURL: ""

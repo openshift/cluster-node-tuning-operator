@@ -1,0 +1,176 @@
+---
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfigPool
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"machineconfiguration.openshift.io/v1","kind":"MachineConfigPool","metadata":{"annotations":{},"labels":{"machineconfiguration.openshift.io/role":"worker-cnf"},"name":"worker-cnf"},"spec":{"machineConfigSelector":{"matchExpressions":[{"key":"machineconfiguration.openshift.io/role","operator":"In","values":["worker","worker-cnf"]}]},"nodeSelector":{"matchLabels":{"node-role.kubernetes.io/worker-cnf":""}},"paused":true}}
+  creationTimestamp: "2022-06-13T11:54:09Z"
+  generation: 5
+  labels:
+    machineconfiguration.openshift.io/role: worker-cnf
+  managedFields:
+  - apiVersion: machineconfiguration.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          .: {}
+          f:kubectl.kubernetes.io/last-applied-configuration: {}
+        f:labels:
+          .: {}
+          f:machineconfiguration.openshift.io/role: {}
+      f:spec:
+        .: {}
+        f:machineConfigSelector:
+          .: {}
+          f:matchExpressions: {}
+        f:nodeSelector:
+          .: {}
+          f:matchLabels:
+            .: {}
+            f:node-role.kubernetes.io/worker-cnf: {}
+    manager: kubectl-client-side-apply
+    operation: Update
+    time: "2022-06-13T11:54:09Z"
+  - apiVersion: machineconfiguration.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:spec:
+        f:configuration:
+          .: {}
+          f:name: {}
+          f:source: {}
+    manager: machine-config-controller
+    operation: Update
+    time: "2022-06-13T11:54:14Z"
+  - apiVersion: machineconfiguration.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:spec:
+        f:paused: {}
+    manager: kubectl-patch
+    operation: Update
+    time: "2022-06-13T11:56:15Z"
+  - apiVersion: machineconfiguration.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:status:
+        .: {}
+        f:conditions: {}
+        f:configuration:
+          .: {}
+          f:name: {}
+          f:source: {}
+        f:degradedMachineCount: {}
+        f:machineCount: {}
+        f:observedGeneration: {}
+        f:readyMachineCount: {}
+        f:unavailableMachineCount: {}
+        f:updatedMachineCount: {}
+    manager: machine-config-controller
+    operation: Update
+    subresource: status
+    time: "2022-06-13T11:59:49Z"
+  name: worker-cnf
+  resourceVersion: "76568"
+  uid: 9a5d39cf-1fe9-467b-ab97-2c38c9cecbf8
+spec:
+  configuration:
+    name: rendered-worker-cnf-31c0c7e11378c3f2c96b07fa30de92c6
+    source:
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 00-worker
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 01-worker-container-runtime
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 01-worker-kubelet
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 50-nto-worker-cnf
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 50-performance-performance
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 99-worker-cnf-generated-kubelet
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 99-worker-generated-registries
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 99-worker-ssh
+  machineConfigSelector:
+    matchExpressions:
+    - key: machineconfiguration.openshift.io/role
+      operator: In
+      values:
+      - worker
+      - worker-cnf
+  nodeSelector:
+    matchLabels:
+      node-role.kubernetes.io/worker-cnf: ""
+  paused: false
+status:
+  conditions:
+  - lastTransitionTime: "2022-06-13T11:54:14Z"
+    message: ""
+    reason: ""
+    status: "False"
+    type: RenderDegraded
+  - lastTransitionTime: "2022-06-13T11:54:19Z"
+    message: ""
+    reason: ""
+    status: "False"
+    type: NodeDegraded
+  - lastTransitionTime: "2022-06-13T11:54:19Z"
+    message: ""
+    reason: ""
+    status: "False"
+    type: Degraded
+  - lastTransitionTime: "2022-06-13T11:59:49Z"
+    message: All nodes are updated with rendered-worker-cnf-31c0c7e11378c3f2c96b07fa30de92c6
+    reason: ""
+    status: "True"
+    type: Updated
+  - lastTransitionTime: "2022-06-13T11:59:49Z"
+    message: ""
+    reason: ""
+    status: "False"
+    type: Updating
+  configuration:
+    name: rendered-worker-cnf-31c0c7e11378c3f2c96b07fa30de92c6
+    source:
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 00-worker
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 01-worker-container-runtime
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 01-worker-kubelet
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 50-nto-worker-cnf
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 50-performance-performance
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 99-worker-cnf-generated-kubelet
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 99-worker-generated-registries
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 99-worker-ssh
+  degradedMachineCount: 0
+  machineCount: 1
+  observedGeneration: 5
+  readyMachineCount: 1
+  unavailableMachineCount: 0
+  updatedMachineCount: 1
