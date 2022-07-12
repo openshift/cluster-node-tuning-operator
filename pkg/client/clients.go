@@ -19,4 +19,5 @@ type Clients struct {
 	MC              *mcfgclientset.Clientset
 	Core            *coreset.CoreV1Client
 	Apps            *appsset.AppsV1Client
+	ManagementKube  *kubeset.Clientset
 }

@@ -30,7 +30,7 @@ func TunedRenderedResource(tunedSlice []*tunedv1.Tuned) *tunedv1.Tuned {
 	cr := &tunedv1.Tuned{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      tunedv1.TunedRenderedResourceName,
-			Namespace: ntoconfig.OperatorNamespace(),
+			Namespace: ntoconfig.WatchNamespace(),
 		},
 		Spec: tunedv1.TunedSpec{
 			Recommend: []tunedv1.TunedRecommend{},

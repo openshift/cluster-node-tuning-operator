@@ -13,6 +13,7 @@ import (
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
@@ -186,7 +187,12 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[stri
 				return "", nil, nil, operand, err
 			}
 
-			pools, err = pc.getPoolsForNode(node)
+			if config.InHyperShift() {
+				pools, err = pc.getPoolsForNode(node)
+			} else {
+				pools, err = nil, nil
+			}
+
 			if err != nil {
 				return "", nil, nil, operand, err
 			}

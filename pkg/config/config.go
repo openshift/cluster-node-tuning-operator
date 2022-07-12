@@ -27,8 +27,8 @@ func NodeTunedImage() string {
 	return nodeTunedImageDefault
 }
 
-// OperatorName returns the operator namespace.
-func OperatorNamespace() string {
+// WatchNamespace returns the namespace that the Tuned and Profile CRs are in.
+func WatchNamespace() string {
 	operatorNamespace := os.Getenv("WATCH_NAMESPACE")
 
 	if len(operatorNamespace) > 0 {
@@ -36,6 +36,24 @@ func OperatorNamespace() string {
 	}
 
 	return operatorNamespaceDefault
+}
+
+// OperatorNamespace returns the namespace that the operator is running in
+func OperatorNamespace() string {
+	operatorNamespace := os.Getenv("MY_NAMESPACE")
+
+	if len(operatorNamespace) > 0 {
+		return operatorNamespace
+	}
+
+	return operatorNamespaceDefault
+}
+
+// InHyperShift returns a boolean which is True when NTO is used to manage tuning
+// of hosted cluster nodes.
+func InHyperShift() bool {
+	hypershiftEnv := os.Getenv("HYPERSHIFT")
+	return hypershiftEnv == "true"
 }
 
 // ResyncPeriod returns the configured or default Reconcile period.

@@ -89,7 +89,9 @@ func prepareCommands() {
 	klog.InitFlags(nil)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 
-	rootCmd.AddCommand(render.NewRenderCommand())
+	if !config.InHyperShift() {
+		rootCmd.AddCommand(render.NewRenderCommand())
+	}
 }
 
 func operatorRun() {
@@ -102,7 +104,7 @@ func operatorRun() {
 	// We have two namespaces that we need to watch:
 	// 1. NTO namespace - for NTO resources
 	// 2. None namespace - for cluster wide resources
-	ntoNamespace := config.OperatorNamespace()
+	ntoNamespace := config.WatchNamespace()
 	namespaces := []string{
 		ntoNamespace,
 		metav1.NamespaceNone,
@@ -110,6 +112,7 @@ func operatorRun() {
 
 	restConfig := ctrl.GetConfigOrDie()
 	le := util.GetLeaderElectionConfig(restConfig, enableLeaderElection)
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		NewCache:                cache.MultiNamespacedCacheBuilder(namespaces),
 		Scheme:                  scheme,
@@ -126,8 +129,10 @@ func operatorRun() {
 		klog.Exit(err)
 	}
 
-	if err := removePerformanceOLMOperator(restConfig); err != nil {
-		klog.Fatalf("unable to remove Performance addons OLM operator: %v", err)
+	if !config.InHyperShift() {
+		if err := removePerformanceOLMOperator(restConfig); err != nil {
+			klog.Fatalf("unable to remove Performance addons OLM operator: %v", err)
+		}
 	}
 
 	controller, err := operator.NewController()
@@ -144,29 +149,30 @@ func operatorRun() {
 	}
 	metrics.RegisterVersion(version.Version)
 
-	if err = (&paocontroller.PerformanceProfileReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("performance-profile-controller"),
-	}).SetupWithManager(mgr); err != nil {
-		klog.Exitf("unable to create PerformanceProfile controller: %v", err)
+	if !config.InHyperShift() {
+		if err = (&paocontroller.PerformanceProfileReconciler{
+			Client:   mgr.GetClient(),
+			Scheme:   mgr.GetScheme(),
+			Recorder: mgr.GetEventRecorderFor("performance-profile-controller"),
+		}).SetupWithManager(mgr); err != nil {
+			klog.Exitf("unable to create PerformanceProfile controller: %v", err)
+		}
+
+		// Configure webhook server.
+		webHookServer := mgr.GetWebhookServer()
+		webHookServer.Port = webhookPort
+		webHookServer.CertDir = webhookCertDir
+		webHookServer.CertName = webhookCertName
+		webHookServer.KeyName = webhookKeyName
+
+		if err = (&performancev1.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
+			klog.Exitf("unable to create PerformanceProfile v1 webhook: %v", err)
+		}
+
+		if err = (&performancev2.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
+			klog.Exitf("unable to create PerformanceProfile v2 webhook: %v", err)
+		}
 	}
-
-	// Configure webhook server.
-	webHookServer := mgr.GetWebhookServer()
-	webHookServer.Port = webhookPort
-	webHookServer.CertDir = webhookCertDir
-	webHookServer.CertName = webhookCertName
-	webHookServer.KeyName = webhookKeyName
-
-	if err = (&performancev1.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
-		klog.Exitf("unable to create PerformanceProfile v1 webhook: %v", err)
-	}
-
-	if err = (&performancev2.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
-		klog.Exitf("unable to create PerformanceProfile v2 webhook: %v", err)
-	}
-
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		klog.Exitf("manager exited with non-zero code: %v", err)
 	}

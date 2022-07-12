@@ -33,9 +33,9 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 		ginkgo.AfterEach(func() {
 			ginkgo.By("cluster changes rollback")
 			if pod != nil {
-				util.ExecAndLogCommand("oc", "label", "pod", "--overwrite", "-n", ntoconfig.OperatorNamespace(), pod.Name, podLabelIngress+"-")
+				util.ExecAndLogCommand("oc", "label", "pod", "--overwrite", "-n", ntoconfig.WatchNamespace(), pod.Name, podLabelIngress+"-")
 			}
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileIngress)
+			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileIngress)
 		})
 
 		ginkgo.It(fmt.Sprintf("%s set", sysctlVar), func() {
@@ -65,11 +65,11 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("labelling Pod %s with label %s", pod.Name, podLabelIngress))
-			_, _, err = util.ExecAndLogCommand("oc", "label", "pod", "--overwrite", "-n", ntoconfig.OperatorNamespace(), pod.Name, podLabelIngress+"=")
+			_, _, err = util.ExecAndLogCommand("oc", "label", "pod", "--overwrite", "-n", ntoconfig.WatchNamespace(), pod.Name, podLabelIngress+"=")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("creating custom profile %s", profileIngress))
-			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileIngress)
+			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.WatchNamespace(), "-f", profileIngress)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By("ensuring the custom worker node profile was set")
@@ -77,7 +77,7 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("deleting Pod %s", pod.Name))
-			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "pod", pod.Name, "--wait")
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "pod", pod.Name, "--wait")
 			pod = nil
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
@@ -97,7 +97,7 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("deleting custom profile %s", profileIngress))
-			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileIngress)
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileIngress)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		})
 	})

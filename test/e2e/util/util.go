@@ -57,7 +57,7 @@ func GetTunedForNode(cs *framework.ClientSet, node *corev1.Node) (*corev1.Pod, e
 		LabelSelector: labels.SelectorFromSet(labels.Set{"openshift-app": "tuned"}).String(),
 	}
 
-	podList, err := cs.Pods(ntoconfig.OperatorNamespace()).List(context.TODO(), listOptions)
+	podList, err := cs.Pods(ntoconfig.WatchNamespace()).List(context.TODO(), listOptions)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get a list of TuneD Pods: %v", err)
 	}
@@ -78,7 +78,7 @@ func GetNodeTuningOperatorPod(cs *framework.ClientSet) (*corev1.Pod, error) {
 		LabelSelector: labels.SelectorFromSet(labels.Set{"name": "cluster-node-tuning-operator"}).String(),
 	}
 
-	podList, err := cs.Pods(ntoconfig.OperatorNamespace()).List(context.TODO(), listOptions)
+	podList, err := cs.Pods(ntoconfig.WatchNamespace()).List(context.TODO(), listOptions)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't list potential NTO operator Pods: %v", err)
 	}
@@ -121,7 +121,7 @@ func ExecAndLogCommand(name string, args ...string) (bytes.Buffer, bytes.Buffer,
 
 // ExecCmdInPod executes command with arguments 'cmd' in Pod 'pod'.
 func ExecCmdInPod(pod *corev1.Pod, cmd ...string) (string, error) {
-	ocArgs := []string{"rsh", "-n", ntoconfig.OperatorNamespace(), pod.Name}
+	ocArgs := []string{"rsh", "-n", ntoconfig.WatchNamespace(), pod.Name}
 	ocArgs = append(ocArgs, cmd...)
 
 	stdout, stderr, err := execCommand(false, "oc", ocArgs...)
@@ -298,7 +298,7 @@ func WaitForProfileConditionStatus(cs *framework.ClientSet, interval, duration t
 
 	startTime := time.Now()
 	if err := wait.PollImmediate(interval, duration, func() (bool, error) {
-		p, err := cs.Profiles(ntoconfig.OperatorNamespace()).Get(context.TODO(), profile, metav1.GetOptions{})
+		p, err := cs.Profiles(ntoconfig.WatchNamespace()).Get(context.TODO(), profile, metav1.GetOptions{})
 		if err != nil {
 			explain = err
 			return false, nil
