@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+  <testsuite name="Performance Addon Operator Update e2e tests" tests="1" failures="0" errors="0" time="629.301">
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Verify GloballyDisableIrqLoadBalancing Spec field [test_id:36150] Verify that IRQ load balancing is enabled/disabled correctly" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Verify hugepages count split on two NUMA nodes Verify that profile parameters were updated [test_id:45023] verify uneven split of hugepages between 2 numa nodes" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Verify hugepages count split on two NUMA nodes Verify that profile parameters were updated [test_id:45024] verify even split between 2 numa nodes" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Verify that all performance profile parameters can be updated Verify that profile parameters were updated [test_id:34081] verify that hugepages size and count updated" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Verify that all performance profile parameters can be updated Verify that profile parameters were updated [test_id:28070] verify that hugepages updated (NUMA node unspecified)" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Verify that all performance profile parameters can be updated Verify that profile parameters were updated verify that the right number of hugepages 1G is available on the system" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Verify that all performance profile parameters can be updated Verify that profile parameters were updated verify that the right number of hugepages 2M is available on the system" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Verify that all performance profile parameters can be updated Verify that profile parameters were updated [test_id:28025] verify that cpu affinity mask was updated" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Verify that all performance profile parameters can be updated Verify that profile parameters were updated [test_id:28071] verify that cpu balancer disabled" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Verify that all performance profile parameters can be updated Verify that profile parameters were updated [test_id:28071] verify that cpu balancer disabled" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Verify that all performance profile parameters can be updated Verify that profile parameters were updated [test_id:28935] verify that reservedSystemCPUs was updated" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Verify that all performance profile parameters can be updated Verify that profile parameters were updated [test_id:28760] verify that topologyManager was updated" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Verify that all performance profile parameters can be updated [test_id:27738] should succeed to disable the RT kernel" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Verify that all performance profile parameters can be updated [test_id:28612]Verify that Kernel arguments can me updated (added, removed) thru performance profile" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Verify that all performance profile parameters can be updated [test_id:22764] verify that by default RT kernel is disabled" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Verify that all performance profile parameters can be updated Reverts back all profile configuration" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Updating of nodeSelector parameter and node labels [test_id:28440]Verifies that nodeSelector can be updated in performance profile" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Updating of nodeSelector parameter and node labels [test_id:27484]Verifies that node is reverted to plain worker when the extra labels are removed" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Updating of nodeSelector parameter and node labels Reverts back nodeSelector and cleaning up leftovers" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile WorkloadHints when Realtime enabled [test_id:50990][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Should updated kernel arguments and tuned" classname="Performance Addon Operator Update e2e tests" time="622.593744634"></testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile WorkloadHints when RealTime Workload with RealTime Kernel set to false [test_id:50991][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile WorkloadHints when HighPower Consumption workload enabled [test_id:50992][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile WorkloadHints when realtime and high power consumption enabled [test_id:50993][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[rfe_id:28761][performance] Updating parameters in performance profile Offlined CPU API [disruptive] should set offline cpus after deploy PAO" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[ref_id: 45487][performance]additional kubelet arguments Additional kubelet arguments [test_id:45488]Test performance profile annotation for changing multiple kubelet settings" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[ref_id: 45487][performance]additional kubelet arguments Additional kubelet arguments When setting cpu manager related parameters [test_id:45493]Should not override performance-addon-operator values" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[ref_id: 45487][performance]additional kubelet arguments Additional kubelet arguments [test_id:45490]Test memory reservation changes" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[ref_id: 45487][performance]additional kubelet arguments Additional kubelet arguments [test_id:45495] Test setting PAO managed parameters" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="[ref_id: 45487][performance]additional kubelet arguments Additional kubelet arguments [test_id:45489] Verify settings are reverted to default profile" classname="Performance Addon Operator Update e2e tests" time="0">
+          <skipped></skipped>
+      </testcase>
+  </testsuite>

@@ -48,7 +48,6 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", func() {
 		profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 
-		By("Backing up the profile")
 		initialProfile = profile.DeepCopy()
 
 		performanceProfileName = profile.Name

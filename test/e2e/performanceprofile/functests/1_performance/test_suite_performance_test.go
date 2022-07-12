@@ -9,6 +9,7 @@ import (
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
+	"github.com/onsi/ginkgo/v2/reporters"
 	. "github.com/onsi/gomega"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -17,7 +18,6 @@ import (
 
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/junit"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/namespaces"
 )
@@ -42,10 +42,13 @@ var _ = AfterSuite(func() {
 func TestPerformance(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	rr := []Reporter{}
-	if ginkgo_reporters.Polarion.Run {
-		rr = append(rr, &ginkgo_reporters.Polarion)
-	}
-	rr = append(rr, junit.NewJUnitReporter("performance"))
-	RunSpecsWithDefaultAndCustomReporters(t, "Performance Addon Operator e2e tests", rr)
+	RunSpecs(t, "Performance Test")
 }
+
+var _ = ReportAfterSuite("e2e serial suite", func(r Report) {
+	if ginkgo_reporters.Polarion.Run {
+		reporters.ReportViaDeprecatedReporter(&ginkgo_reporters.Polarion, r)
+	}
+	reporters.ReportViaDeprecatedReporter(reporters.NewJUnitReporter("performance"), r)
+
+})

@@ -18,7 +18,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	. "github.com/onsi/ginkgo/v2"
-	"github.com/onsi/ginkgo/v2/extensions/table"
 	. "github.com/onsi/gomega"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -178,7 +177,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
 			deleteTestPod(testpod)
 		})
 
-		table.DescribeTable("Verify CPU usage by stress PODs", func(guaranteed bool) {
+		DescribeTable("Verify CPU usage by stress PODs", func(guaranteed bool) {
 			cpuID := onlineCPUSet.ToSliceNoSort()[0]
 			smtLevel := nodes.GetSMTLevel(cpuID, workerRTNode)
 			if smtLevel < 2 {
@@ -227,8 +226,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
 
 			Expect(cpu).To(BeElementOf(listCPU))
 		},
-			table.Entry("[test_id:37860] Non-guaranteed POD can work on any CPU", false),
-			table.Entry("[test_id:27492] Guaranteed POD should work on isolated cpu", true),
+			Entry("[test_id:37860] Non-guaranteed POD can work on any CPU", false),
+			Entry("[test_id:27492] Guaranteed POD should work on isolated cpu", true),
 		)
 	})
 
@@ -584,7 +583,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
 			deleteTestPod(testpod)
 		})
 
-		table.DescribeTable("Verify Hyper-Thread aware scheduling for guaranteed pods",
+		DescribeTable("Verify Hyper-Thread aware scheduling for guaranteed pods",
 			func(htDisabled bool, snoCluster bool, snoWP bool) {
 				// Check for SMT enabled
 				// any random existing cpu is fine
@@ -631,10 +630,10 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
 				}
 			},
 
-			table.Entry("[test_id:46959] Number of CPU requests as multiple of SMT count allowed when HT enabled", false, false, false),
-			table.Entry("[test_id:46544] Odd number of CPU requests allowed when HT disabled", true, false, false),
-			table.Entry("[test_id:46538] HT aware scheduling on SNO cluster", false, true, false),
-			table.Entry("[test_id:46539] HT aware scheduling on SNO cluster and Workload Partitioning enabled", false, true, true),
+			Entry("[test_id:46959] Number of CPU requests as multiple of SMT count allowed when HT enabled", false, false, false),
+			Entry("[test_id:46544] Odd number of CPU requests allowed when HT disabled", true, false, false),
+			Entry("[test_id:46538] HT aware scheduling on SNO cluster", false, true, false),
+			Entry("[test_id:46539] HT aware scheduling on SNO cluster and Workload Partitioning enabled", false, true, true),
 		)
 
 	})
