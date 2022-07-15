@@ -76,6 +76,10 @@ func NewPerformanceProfile(name string) *performancev2.PerformanceProfile {
 			NodeSelector: map[string]string{
 				"nodekey": "nodeValue",
 			},
+			WorkloadHints: &performancev2.WorkloadHints{
+				HighPowerConsumption: pointer.BoolPtr(false),
+				RealTime:             pointer.BoolPtr(false),
+			},
 		},
 	}
 }
