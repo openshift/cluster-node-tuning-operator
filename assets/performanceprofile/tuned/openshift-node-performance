@@ -27,7 +27,7 @@ governor=performance
 energy_perf_bias=performance
 min_perf_pct=100
 
-{{if .RealTime}}
+{{if .RealTimeHint}}
 [service]
 service.stalld=start,enable
 {{end}}
@@ -51,7 +51,7 @@ group.rcuc=0:f:11:*:rcuc.*
 sched_min_granularity_ns=10000000
 sched_migration_cost_ns=5000000
 numa_balancing=0
-{{if .RealTime}}
+{{if .RealTimeHint}}
 sched_rt_runtime_us=-1
 {{end}}
 {{if not .GloballyDisableIrqLoadBalancing}}
@@ -59,17 +59,17 @@ default_irq_smp_affinity = ignore
 {{end}}
 
 [sysctl]
-{{if .RealTime}}
-#> cpu-partitioning #realtime
+{{if .RealTimeHint}}
+#> cpu-partitioning #RealTimeHint
 kernel.hung_task_timeout_secs=600
-#> cpu-partitioning #realtime
+#> cpu-partitioning #RealTimeHint
 kernel.nmi_watchdog=0
-#> realtime
+#> RealTimeHint
 kernel.sched_rt_runtime_us=-1
-#> cpu-partitioning  #realtime
+#> cpu-partitioning  #RealTimeHint
 vm.stat_interval=10
 {{end}}
-# cpu-partitioning and realtime for RHEL disable it (= 0)
+# cpu-partitioning and RealTimeHint for RHEL disable it (= 0)
 # OCP is too dynamic when partitioning and needs to evacuate
 #> scheduled timers when starting a guaranteed workload (= 1)
 kernel.timer_migration=1
@@ -143,11 +143,11 @@ cmdline_isolation=+isolcpus=managed_irq,${isolated_cores}
 cmdline_realtime=+nohz_full=${isolated_cores} tsc=nowatchdog nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11
 {{end}}
 
-{{if .HighPowerConsumption}}
+{{if .HighPowerConsumptionHint}}
 cmdline_power_performance=+processor.max_cstate=1 intel_idle.max_cstate=0 intel_pstate=disable
 {{end}}
 
-{{if and .HighPowerConsumption .RealTime}}
+{{if and .HighPowerConsumptionHint .RealTimeHint}}
 cmdline_idle_poll=+idle=poll
 {{end}}
 
