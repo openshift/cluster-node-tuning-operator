@@ -322,13 +322,6 @@ func (c *Controller) sync(key wqKey) error {
 	case key.kind == wqKindProfile:
 		klog.V(2).Infof("sync(): Profile %s", key.name)
 
-		// Check if node labels are already cached.  If not, ignore this event.
-		// Profile update is triggered later on once node labels are cached on
-		// the node event.
-		if c.pc.state.nodeLabels[key.name] == nil {
-			return nil
-		}
-
 		err = c.syncProfile(cr, key.name)
 		if err != nil {
 			return fmt.Errorf("failed to sync Profile %s: %v", key.name, err)
@@ -555,10 +548,23 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	profileMf.Name = nodeName
 	nodeLabels, err := c.pc.nodeLabelsGet(nodeName)
 	if err != nil {
+		if errors.IsNotFound(err) {
+			err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Delete(context.TODO(), nodeName, metav1.DeleteOptions{})
+			if err != nil && errors.IsNotFound(err) {
+				err = nil
+			}
+		}
 		return err
 	}
 	if nodeLabels["kubernetes.io/os"] != "linux" {
 		klog.Infof("ignoring non-linux Node %s", nodeName)
+		return nil
+	}
+
+	// Check if node labels are already cached.  If not, do not sync.
+	// Profile update/sync is triggered later on once node labels are cached on
+	// the node event.
+	if c.pc.state.nodeLabels[nodeName] == nil {
 		return nil
 	}
 
@@ -844,13 +850,16 @@ func (c *Controller) informerEventHandler(workqueueKey wqKey) cache.ResourceEven
 				klog.Errorf("unable to get accessor for old object: %s", err)
 				return
 			}
-			if newAccessor.GetResourceVersion() == oldAccessor.GetResourceVersion() {
+			_, periodicSyncNeeded := o.(*tunedv1.Profile)
+			if newAccessor.GetResourceVersion() == oldAccessor.GetResourceVersion() && !periodicSyncNeeded {
 				// Periodic resync will send update events for all known resources.
 				// Two different versions of the same resource will always have different RVs.
+				// Don't add this Update to workqueue if the object has not changed unless periodic resync is needed.
 				return
 			}
 			if clusterOperator, ok := o.(*configapiv1.ClusterOperator); ok {
 				if clusterOperator.GetName() != tunedv1.TunedClusterOperatorResourceName {
+					// Don't add ClusterOperator updates for ClusterOperator objects we do not own.
 					return
 				}
 			}

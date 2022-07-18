@@ -559,7 +559,10 @@ func (c *Controller) tunedRun() {
 			strIndex := strings.Index(l, " WARNING ")
 			if strIndex >= 0 {
 				c.daemon.status |= scWarn
-				c.daemon.stderr = l[strIndex:] // trim timestamp from log
+				prevError := ((c.daemon.status & scError) != 0)
+				if !prevError { // don't overwrite an error message
+					c.daemon.stderr = l[strIndex:] // trim timestamp from log
+				}
 			}
 
 			strIndex = strings.Index(l, " ERROR ")
