@@ -454,6 +454,7 @@ func createLatencyTestPod(testPod *corev1.Pod, node *corev1.Node, logName string
 	Expect(err).ToNot(HaveOccurred())
 
 	By("Waiting two minutes to download the latencyTest image")
+	podKey := fmt.Sprintf("%s/%s", testPod.Namespace, testPod.Name)
 	currentPod, err := pods.WaitForPredicate(testPod, 2*time.Minute, func(pod *corev1.Pod) (bool, error) {
 		if pod.Status.Phase == corev1.PodRunning {
 			return true, nil
@@ -464,7 +465,7 @@ func createLatencyTestPod(testPod *corev1.Pod, node *corev1.Node, logName string
 		testlog.Error(err)
 		logEventsForPod(testPod)
 	}
-	Expect(err).ToNot(HaveOccurred(), "expected the pod to reach running phase, its current phase is %s", currentPod.Status.Phase)
+	Expect(err).ToNot(HaveOccurred(), "pod %q did not reach %q phase; current phase %q", podKey, corev1.PodRunning, currentPod.Status.Phase)
 
 	if runtime, _ := strconv.Atoi(latencyTestRuntime); runtime > 1 {
 		By("Checking actual CPUs number for the running pod")
@@ -483,7 +484,7 @@ func createLatencyTestPod(testPod *corev1.Pod, node *corev1.Node, logName string
 		logEventsForPod(testPod)
 		testlog.Info(getLogFile(node, logName))
 	}
-	Expect(err).ToNot(HaveOccurred())
+	Expect(err).ToNot(HaveOccurred(), "pod %q did not reach %q phase; error: %v", podKey, corev1.PodSucceeded, err)
 }
 
 func extractLatencyValues(logName string, exp string, node *corev1.Node) string {
