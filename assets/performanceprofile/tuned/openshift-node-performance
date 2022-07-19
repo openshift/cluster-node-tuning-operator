@@ -139,15 +139,15 @@ cmdline_isolation=+isolcpus=domain,managed_irq,${isolated_cores}
 cmdline_isolation=+isolcpus=managed_irq,${isolated_cores}
 {{end}}
 
-{{if .RealTime}}
+{{if .RealTimeHint}}
 cmdline_realtime=+nohz_full=${isolated_cores} tsc=nowatchdog nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11
 {{end}}
 
-{{if .HighPowerConsumptionHint}}
+{{if .HighPowerConsumption}}
 cmdline_power_performance=+processor.max_cstate=1 intel_idle.max_cstate=0 intel_pstate=disable
 {{end}}
 
-{{if and .HighPowerConsumptionHint .RealTimeHint}}
+{{if and .HighPowerConsumption .RealTimeHint}}
 cmdline_idle_poll=+idle=poll
 {{end}}
 
