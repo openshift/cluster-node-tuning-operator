@@ -441,6 +441,7 @@ func logEventsForPod(testPod *corev1.Pod) {
 	if err != nil {
 		testlog.Error(err)
 	}
+	testlog.Infof("log pod %s/%s events due to failure", testPod.Namespace, testPod.Name)
 	for _, event := range events.Items {
 		testlog.Warningf("-> %s %s %s", event.Action, event.Reason, event.Message)
 	}
@@ -462,7 +463,6 @@ func createLatencyTestPod(testPod *corev1.Pod, node *corev1.Node, logName string
 		return false, nil
 	})
 	if err != nil {
-		testlog.Error(err)
 		logEventsForPod(testPod)
 	}
 	Expect(err).ToNot(HaveOccurred(), "pod %q did not reach %q phase; current phase %q", podKey, corev1.PodRunning, currentPod.Status.Phase)
@@ -480,7 +480,6 @@ func createLatencyTestPod(testPod *corev1.Pod, node *corev1.Node, logName string
 	podTimeout := time.Duration(timeout + 120)
 	err = pods.WaitForPhase(testPod, corev1.PodSucceeded, podTimeout*time.Second)
 	if err != nil {
-		testlog.Error(err)
 		logEventsForPod(testPod)
 		testlog.Info(getLogFile(node, logName))
 	}
