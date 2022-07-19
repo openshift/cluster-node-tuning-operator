@@ -1182,6 +1182,16 @@ func verifyV2Conversion(v2Profile *performancev2.PerformanceProfile, v1Profile *
 			}
 		}
 
+		if (specCPU.Offlined == nil) != (v1Profile.Spec.CPU.Offlined == nil) {
+			return fmt.Errorf("spec CPUs Isolated field is different")
+		}
+		if specCPU.Offlined != nil {
+			if string(*specCPU.Offlined) != string(*v1Profile.Spec.CPU.Offlined) {
+				return fmt.Errorf("Offlined CPUs are different [v2: %s, v1: %s]",
+					*specCPU.Offlined, *v1Profile.Spec.CPU.Offlined)
+			}
+		}
+
 		if (specCPU.BalanceIsolated == nil) != (v1Profile.Spec.CPU.BalanceIsolated == nil) {
 			return fmt.Errorf("spec CPUs BalanceIsolated field is different")
 		}
