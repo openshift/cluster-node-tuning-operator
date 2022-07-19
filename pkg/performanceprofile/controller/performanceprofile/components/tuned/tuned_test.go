@@ -26,7 +26,7 @@ var (
 	cmdlineWithStaticIsolation                  = regexp.MustCompile(`\s*cmdline_isolation=\+\s*isolcpus=managed_irq,\${isolated_cores}\s*`)
 	cmdlineWithoutStaticIsolation               = regexp.MustCompile(`\s*cmdline_isolation=\+\s*isolcpus=domain,managed_irq,\${isolated_cores}\s*`)
 	cmdlineWithRealtimeHint                     = regexp.MustCompile(`\s*cmdline_realtime=\+\s*nohz_full=\${isolated_cores}\s+tsc=nowatchdog\s+nosoftlockup\s+nmi_watchdog=0\s+mce=off\s+skew_tick=1\s*`)
-	cmdlineHighPowerConsumptionHint             = regexp.MustCompile(`\s*cmdline_power_performance=\+\s*processor.max_cstate=1\s+intel_idle.max_cstate=0\s+intel_pstate=disable\s*`)
+	cmdlineHighPowerConsumption                 = regexp.MustCompile(`\s*cmdline_power_performance=\+\s*processor.max_cstate=1\s+intel_idle.max_cstate=0\s+intel_pstate=disable\s*`)
 	cmdlineHighPowerConsumptionWithRealtimeHint = regexp.MustCompile(`\s*cmdline_idle_poll=\+\s*idle=poll\s*`)
 	cmdlineHugepages                            = regexp.MustCompile(`\s*cmdline_hugepages=\+\s*default_hugepagesz=1G\s+hugepagesz=1G\s+hugepages=4\s*`)
 	cmdlineAdditionalArg                        = regexp.MustCompile(`\s*cmdline_additionalArg=\+\s*test1=val1\s+test2=val2\s*`)
@@ -73,10 +73,6 @@ var _ = Describe("Tuned", func() {
 				profile.Spec.WorkloadHints.RealTime = pointer.BoolPtr(false)
 
 				manifest := getTunedManifest(profile)
-				Expect(manifest).ToNot(ContainSubstring("service.stalld=start,enable"))
-				Expect(manifest).ToNot(ContainSubstring("sched_rt_runtime_us=-1"))
-				Expect(manifest).ToNot(ContainSubstring("kernel.hung_task_timeout_secs=600"))
-				Expect(manifest).ToNot(ContainSubstring("kernel.sched_rt_runtime_us=-1"))
 				By("Populating realtime cmdline")
 				Expect(cmdlineWithRealtimeHint.MatchString(manifest)).ToNot(BeTrue())
 			})
@@ -91,7 +87,7 @@ var _ = Describe("Tuned", func() {
 				Expect(manifest).ToNot(ContainSubstring("intel_idle.max_cstate=0"))
 				Expect(manifest).ToNot(ContainSubstring("intel_pstate = disable"))
 				By("Populating realtime cmdline")
-				Expect(cmdlineHighPowerConsumptionHint.MatchString(manifest)).ToNot(BeTrue())
+				Expect(cmdlineHighPowerConsumption.MatchString(manifest)).ToNot(BeTrue())
 			})
 		})
 
@@ -102,7 +98,7 @@ var _ = Describe("Tuned", func() {
 
 				manifest := getTunedManifest(profile)
 				By("Populating idle poll cmdline")
-				Expect(cmdlineHighPowerConsumptionHint.MatchString(manifest)).To(BeTrue())
+				Expect(cmdlineHighPowerConsumption.MatchString(manifest)).To(BeTrue())
 			})
 		})
 
@@ -117,7 +113,7 @@ var _ = Describe("Tuned", func() {
 			It("should contain HighPowerConsumption and RealTime Hints related parameters", func() {
 				manifest := getTunedManifest(profile)
 				By("Populating high power consumption cmdline")
-				Expect(cmdlineHighPowerConsumptionHint.MatchString(manifest)).To(BeTrue())
+				Expect(cmdlineHighPowerConsumption.MatchString(manifest)).To(BeTrue())
 				By("Populating idle poll cmdline")
 				Expect(cmdlineHighPowerConsumptionWithRealtimeHint.MatchString(manifest)).To(BeTrue())
 			})

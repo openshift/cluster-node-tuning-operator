@@ -30,7 +30,7 @@ const (
 	templateNetDevices                      = "NetDevices"
 	nfConntrackHashsize                     = "nf_conntrack_hashsize=131072"
 	templateRealTimeHint                    = "RealTimeHint"
-	templateHighPowerConsumptionHint        = "HighPowerConsumptionHint"
+	templateHighPowerConsumption            = "HighPowerConsumption"
 )
 
 func new(name string, profiles []tunedv1.TunedProfile, recommends []tunedv1.TunedRecommend) *tunedv1.Tuned {
@@ -174,7 +174,7 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 		}
 
 		if profile.Spec.WorkloadHints.HighPowerConsumption != nil && *profile.Spec.WorkloadHints.HighPowerConsumption {
-			templateArgs[templateHighPowerConsumptionHint] = "true"
+			templateArgs[templateHighPowerConsumption] = "true"
 		}
 	}
 

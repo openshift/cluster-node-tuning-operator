@@ -21,3 +21,6 @@ spec:
     topologyPolicy: "single-numa-node"
   nodeSelector:
     node-role.kubernetes.io/worker-cnf: ""
+  workloadHints:
+    highPowerConsumption: false
+    realTime: true
