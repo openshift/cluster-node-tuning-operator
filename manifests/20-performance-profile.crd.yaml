@@ -68,6 +68,9 @@ spec:
                     isolated:
                       description: 'Isolated defines a set of CPUs that will be used to give to application threads the most execution time possible, which means removing as many extraneous tasks off a CPU as possible. It is important to notice the CPU manager can choose any CPU to run the workload except the reserved CPUs. In order to guarantee that your workload will run on the isolated CPU:   1. The union of reserved CPUs and isolated CPUs should include all online CPUs   2. The isolated CPUs field should be the complementary to reserved CPUs field'
                       type: string
+                    offlined:
+                      description: Offline defines a set of CPUs that will be unused and set offline
+                      type: string
                     reserved:
                       description: Reserved defines a set of CPUs that will not be used for any container workloads initiated by kubelet.
                       type: string
