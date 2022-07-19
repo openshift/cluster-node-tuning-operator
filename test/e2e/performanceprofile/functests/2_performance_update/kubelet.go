@@ -89,12 +89,19 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", fun
 		})
 		Context("When setting cpu manager related parameters", func() {
 			It("[test_id:45493]Should not override performance-addon-operator values", func() {
-				cpuManagerAnnotation := map[string]string{
+				profile.Annotations = map[string]string{
 					"kubeletconfig.experimental": "{\"cpuManagerPolicy\":\"static\",\"cpuManagerReconcilePeriod\":\"5s\"}",
 				}
-				profile.SetAnnotations(cpuManagerAnnotation)
+				annotations, err := json.Marshal(profile.Annotations)
+				Expect(err).ToNot(HaveOccurred())
+
 				By("Applying changes in performance profile and waiting until mcp will start updating")
-				profiles.UpdateWithRetry(profile)
+				Expect(testclient.Client.Patch(context.TODO(), profile,
+					client.RawPatch(
+						types.JSONPatchType,
+						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/metadata/annotations", "value": %s }]`, annotations)),
+					),
+				)).ToNot(HaveOccurred())
 				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
 				By("Waiting when mcp finishes updates")
 				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
