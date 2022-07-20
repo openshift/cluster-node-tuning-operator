@@ -185,8 +185,8 @@ github.com/jaypipes/ghw/pkg/snapshot
 github.com/jaypipes/ghw/pkg/topology
 github.com/jaypipes/ghw/pkg/unitutil
 github.com/jaypipes/ghw/pkg/util
-# github.com/jaypipes/pcidb v0.6.0
-## explicit; go 1.11
+# github.com/jaypipes/pcidb v0.6.0 => github.com/jaypipes/pcidb v1.0.0
+## explicit; go 1.17
 github.com/jaypipes/pcidb
 # github.com/josharian/intern v1.0.0
 ## explicit; go 1.5
@@ -1059,3 +1059,4 @@ sigs.k8s.io/yaml
 # github.com/mtrmac/gpgme => github.com/mtrmac/gpgme v0.1.1
 # github.com/openshift/machine-config-operator => github.com/openshift/machine-config-operator v0.0.1-0.20220203091316-d3010b34d344
 # vbom.ml/util => github.com/fvbommel/util v0.0.0-20180919145318-efcd4e0f9787
+# github.com/jaypipes/pcidb => github.com/jaypipes/pcidb v1.0.0

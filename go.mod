@@ -9,6 +9,7 @@ require (
 	github.com/coreos/ignition/v2 v2.9.0
 	github.com/ghodss/yaml v1.0.1-0.20190212211648-25d852aebe32
 	github.com/google/go-cmp v0.5.6
+	// Make sure you update or remove the replace pcidb before bumping ghw
 	github.com/jaypipes/ghw v0.8.1-0.20210605191321-eb162add542b
 	github.com/kevinburke/go-bindata v3.16.0+incompatible
 	github.com/onsi/ginkgo v1.16.5
@@ -166,3 +167,7 @@ replace (
 )
 
 replace vbom.ml/util => github.com/fvbommel/util v0.0.0-20180919145318-efcd4e0f9787
+
+// Before version 1.0.0, pcidb attempted to download pci.ids if missing. Default reversed (never download unless explicitely requested) in 1.0.0+
+// pcidb 1.0.0 is API compatible. We don't want yet to update ghw - which will pull pcidb, so we jus tpin pcidb.
+replace github.com/jaypipes/pcidb => github.com/jaypipes/pcidb v1.0.0
