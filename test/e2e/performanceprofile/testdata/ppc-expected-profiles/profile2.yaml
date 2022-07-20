@@ -18,4 +18,4 @@ spec:
     enabled: false
   workloadHints:
     highPowerConsumption: false
-    realtime: false
+    realTime: false
