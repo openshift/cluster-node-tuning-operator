@@ -62,7 +62,7 @@ The operator can render manifests for all the components it supposes to create, 
 
 You need to provide the following environment variables
 ```
-export PERFORMANCE_PROFILE_INPUT_FILES=<your PerformanceProfile directory path>
+export PERFORMANCE_PROFILE_INPUT_FILES=<comma separated list of your Performance Profiles>
 export ASSET_OUTPUT_DIR=<output path for the rendered manifests>
 ```
 
