@@ -35,7 +35,7 @@ the code under the CRI-O will disable/enable CPU load balancing only when:
 - the pod uses ***performance-<profile_name>*** runtime class
 - the pod has ***cpu-load-balancing.crio.io: disable*** annotation
 
-The Performance Addon controller will be responsible for the creation of the high-performance runtime handler config snippet,
+The Performance Profile Controller will be responsible for the creation of the high-performance runtime handler config snippet,
 it will have the same content as default runtime handler, under relevant nodes, 
 and for creation of the high-performance runtime class under the cluster.
 
