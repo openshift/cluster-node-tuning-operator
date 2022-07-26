@@ -1,6 +1,6 @@
 # Performance profile runtime class
 
-The performance Addon controller for each profile creates the runtime class that you can use under the pod specification. The runtime class allows you to configure a set of annotations:
+The Performance Profile Controller for each profile creates the runtime class that you can use under the pod specification. The runtime class allows you to configure a set of annotations:
 - `cpu-load-balancing.crio.io: disable` - will disable the CPU load balancing for CPUs used by the container.
 - `cpu-quota.crio.io: disable` - will disable the CPU CFS quota for CPUs used by the container.
 - `irq-load-balancing.crio.io: disable` - will disable IRQ load balancing for CPUs used by the container.
