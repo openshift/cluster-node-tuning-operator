@@ -566,9 +566,74 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			By("Saving the old performance profile")
 			initialProfile = profile.DeepCopy()
 		})
+		When("RealTime Workload with RealTime Kernel set to false", func() {
+			It("[test_id:50991][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
+				By("Modifying profile")
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+					HighPowerConsumption: pointer.Bool(false),
+					RealTime:             pointer.Bool(true),
+				}
+
+				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
+					Enabled: pointer.BoolPtr(false),
+				}
+
+				By("Updating the performance profile")
+				profiles.UpdateWithRetry(profile)
+
+				By("Applying changes in performance profile and waiting until mcp will start updating")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+				By("Waiting for MCP being updated")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
+				stalldEnabled, rtKernel := true, false
+				noHzParam := fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
+				sysctlMap := map[string]string{
+					"kernel.hung_task_timeout_secs": "600",
+					"kernel.nmi_watchdog":           "0",
+					"kernel.sched_rt_runtime_us":    "-1",
+					"vm.stat_interval":              "10",
+				}
+				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1"}
+				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+			})
+		})
+		When("HighPower Consumption workload enabled", func() {
+			It("[test_id:50992][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
+				By("Modifying profile")
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+					HighPowerConsumption: pointer.Bool(true),
+					RealTime:             pointer.Bool(false),
+				}
+
+				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
+					Enabled: pointer.BoolPtr(false),
+				}
+
+				By("Updating the performance profile")
+				profiles.UpdateWithRetry(profile)
+
+				By("Applying changes in performance profile and waiting until mcp will start updating")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+				By("Waiting for MCP being updated")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
+				stalldEnabled, rtKernel := false, false
+				sysctlMap := map[string]string{
+					"kernel.hung_task_timeout_secs": "600",
+					"kernel.nmi_watchdog":           "0",
+					"kernel.sched_rt_runtime_us":    "950000",
+					"vm.stat_interval":              "10",
+				}
+				kernelParameters := []string{"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable"}
+				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+			})
+		})
 
 		When("realtime and high power consumption enabled", func() {
-			It("should update kernel arguments and tuned accordingly", func() {
+			It("[test_id:50993][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption: pointer.BoolPtr(true),
 					RealTime:             pointer.BoolPtr(true),
@@ -590,23 +655,17 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting when mcp finishes updates")
 				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 
-				By("Verifying node kernel arguments")
-				cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(&workerRTNodes[0], []string{"cat", "/proc/cmdline"})
-				Expect(err).ToNot(HaveOccurred())
-				Expect(cmdline).To(ContainSubstring("nosoftlockup"))
-				Expect(cmdline).To(ContainSubstring("processor.max_cstate=1"))
-				Expect(cmdline).To(ContainSubstring("idle=poll"))
-
-				By("Verifying tuned profile")
-				key := types.NamespacedName{
-					Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
-					Namespace: components.NamespaceNodeTuningOperator,
+				stalldEnabled, rtKernel := true, true
+				noHzParam := fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
+				sysctlMap := map[string]string{
+					"kernel.hung_task_timeout_secs": "600",
+					"kernel.nmi_watchdog":           "0",
+					"kernel.sched_rt_runtime_us":    "-1",
+					"vm.stat_interval":              "10",
 				}
-				tuned := &tunedv1.Tuned{}
-				err = testclient.Client.Get(context.TODO(), key, tuned)
-				Expect(err).ToNot(HaveOccurred(), "cannot find the Cluster Node Tuning Operator object")
-				Expect(*tuned.Spec.Profile[0].Data).To(ContainSubstring("stalld"))
-				Expect(*tuned.Spec.Profile[0].Data).To(ContainSubstring("kernel.sched_rt_runtime_us=-1"))
+				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
+					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
+				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
 			})
 		})
 
@@ -741,4 +800,59 @@ func getUpdatedNodes() []corev1.Node {
 	Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("error looking for the optional selector: %v", err))
 	Expect(workerRTNodes).ToNot(BeEmpty(), "cannot find RT enabled worker nodes")
 	return workerRTNodes
+}
+
+//Check All tunables and kernel paramters for workloadHint
+func checkTunedParameters(workerRTNodes []corev1.Node, stalld bool, sysctlMap map[string]string, kernelParameters []string, rtkernel bool) {
+	for _, node := range workerRTNodes {
+		stalld_pid, err := nodes.ExecCommandOnNode([]string{"pidof", "stalld"}, &node)
+		if stalld {
+			Expect(err).ToNot(HaveOccurred())
+			Expect(stalld_pid).ToNot(BeEmpty())
+		} else {
+			Expect(err).To(HaveOccurred())
+			Expect(stalld_pid).To(BeEmpty())
+		}
+	}
+
+	key := types.NamespacedName{
+		Name:      components.GetComponentName(testutils.PerformanceProfileName, components.ProfileNamePerformance),
+		Namespace: components.NamespaceNodeTuningOperator,
+	}
+	tuned := &tunedv1.Tuned{}
+	err := testclient.Client.Get(context.TODO(), key, tuned)
+	Expect(err).ToNot(HaveOccurred(), "Cannot find the cluster Node Tuning Operator object "+key.String())
+	if stalld {
+		Expect(*tuned.Spec.Profile[0].Data).To(ContainSubstring("stalld"))
+	} else {
+		Expect(*tuned.Spec.Profile[0].Data).ToNot(ContainSubstring("stalld"))
+	}
+
+	for _, node := range workerRTNodes {
+		for param, expected := range sysctlMap {
+			By(fmt.Sprintf("Executing he command \"sysctl -n %s\"", param))
+			out, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"sysctl", "-n", param})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(strings.TrimSpace(string(out))).Should(Equal(expected), "parameter %s value is not %s. ", param, expected)
+		}
+	}
+	for _, node := range workerRTNodes {
+		cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"cat", "/proc/cmdline"})
+		Expect(err).ToNot(HaveOccurred())
+		for _, paramter := range kernelParameters {
+			Expect(string(cmdline)).To(ContainSubstring(paramter))
+		}
+	}
+
+	if !rtkernel {
+		for _, node := range workerRTNodes {
+			cmd := []string{"uname", "-a"}
+			kernel, err := nodes.ExecCommandOnNode(cmd, &node)
+			Expect(err).ToNot(HaveOccurred(), "failed to execute uname")
+			Expect(kernel).To(ContainSubstring("Linux"), "Kernel should report itself as Linux")
+
+			err = nodes.HasPreemptRTKernel(&node)
+			Expect(err).To(HaveOccurred(), "Node should have non-RT kernel")
+		}
+	}
 }
