@@ -596,7 +596,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1"}
-				checkWorkLoadHintTunables(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
 			})
 		})
 		When("HighPower Consumption workload enabled", func() {
@@ -620,7 +620,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for MCP being updated")
 				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 
-				rcuNocbs := fmt.Sprintf("rcu_nocbs=%s", *profile.Spec.CPU.Isolated)
 				stalldEnabled, rtKernel := false, false
 				sysctlMap := map[string]string{
 					"kernel.hung_task_timeout_secs": "600",
@@ -628,8 +627,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"kernel.sched_rt_runtime_us":    "950000",
 					"vm.stat_interval":              "10",
 				}
-				kernelParameters := []string{rcuNocbs, "processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable"}
-				checkWorkLoadHintTunables(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+				kernelParameters := []string{"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable"}
+				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
 			})
 		})
 
@@ -666,7 +665,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
 					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
-				checkWorkLoadHintTunables(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
 			})
 		})
 
@@ -804,7 +803,7 @@ func getUpdatedNodes() []corev1.Node {
 }
 
 //Check All tunables and kernel paramters for workloadHint
-func checkWorkLoadHintTunables(workerRTNodes []corev1.Node, stalld bool, sysctlMap map[string]string, kernelParameters []string, rtkernel bool) {
+func checkTunedParameters(workerRTNodes []corev1.Node, stalld bool, sysctlMap map[string]string, kernelParameters []string, rtkernel bool) {
 	for _, node := range workerRTNodes {
 		stalld_pid, err := nodes.ExecCommandOnNode([]string{"pidof", "stalld"}, &node)
 		if stalld {
