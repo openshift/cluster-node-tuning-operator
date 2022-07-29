@@ -140,7 +140,7 @@ func CPUMaskToCPUSet(cpuMask string) (cpuset.CPUSet, error) {
 		}
 		mask, err := strconv.ParseUint(chunk, 16, bitsInWord)
 		if err != nil {
-			return cpuset.NewCPUSet(), fmt.Errorf("failed to parse the CPU mask %q: %v", cpuMask, err)
+			return cpuset.NewCPUSet(), fmt.Errorf("failed to parse the CPU mask %q (chunk %q): %v", cpuMask, chunk, err)
 		}
 		for j := 0; j < bitsInWord; j++ {
 			if mask&1 == 1 {
