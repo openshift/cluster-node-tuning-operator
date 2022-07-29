@@ -38,8 +38,10 @@ transparent_hugepages=never
 
 {{if not .GloballyDisableIrqLoadBalancing}}
 [irqbalance]
-#> Override the value set by cpu-partitioning with an empty one
-banned_cpus=""
+# Disable the plugin entirely, which was enabled by the parent profile `cpu-partitioning`.
+# It can be racy if TuneD restarts for whatever reason.
+#> cpu-partitioning
+enabled=false
 {{end}}
 
 [scheduler]
