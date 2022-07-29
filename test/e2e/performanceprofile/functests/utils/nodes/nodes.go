@@ -227,17 +227,28 @@ func BannedCPUs(node corev1.Node) (banned cpuset.CPUSet, err error) {
 		return cpuset.NewCPUSet(), fmt.Errorf("failed to execute %v: %v", cmd, err)
 	}
 
-	if bannedCPUs == "" {
+	testlog.Infof("Banned CPUs on node %q raw value is {%s}", node.Name, bannedCPUs)
+
+	unquotedBannedCPUs := unquote(bannedCPUs)
+
+	if unquotedBannedCPUs == "" {
 		testlog.Infof("Banned CPUs on node %q returned empty set", node.Name)
 		return cpuset.NewCPUSet(), nil // TODO: should this be a error?
 	}
 
-	banned, err = components.CPUMaskToCPUSet(bannedCPUs)
+	banned, err = components.CPUMaskToCPUSet(unquotedBannedCPUs)
 	if err != nil {
 		return cpuset.NewCPUSet(), fmt.Errorf("failed to parse the banned CPUs: %v", err)
 	}
 
 	return banned, nil
+}
+
+func unquote(s string) string {
+	q := "\""
+	s = strings.TrimPrefix(s, q)
+	s = strings.TrimSuffix(s, q)
+	return s
 }
 
 // GetDefaultSmpAffinitySet returns the default smp affinity mask for the node
