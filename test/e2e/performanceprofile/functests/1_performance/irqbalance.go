@@ -78,7 +78,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", func() {
 			}
 
 			targetNodeIdx := pickNodeIdx(workerRTNodes)
-			targetNode = workerRTNodes[nodeIdx]
+			targetNode = &workerRTNodes[targetNodeIdx]
 			Expect(targetNode).ToNot(BeNil(), "missing target node")
 			By(fmt.Sprintf("verifying worker node %q", targetNode.Name))
 
@@ -276,6 +276,9 @@ func getIrqBalanceBannedCPUs(node *corev1.Node) (cpuset.CPUSet, error) {
 	items := strings.FieldsFunc(keyValue, func(c rune) bool {
 		return c == '='
 	})
+	if len(items) == 1 {
+		return cpuset.NewCPUSet(), nil
+	}
 	if len(items) != 2 {
 		return cpuset.NewCPUSet(), fmt.Errorf("malformed CPU ban list in the configuration")
 	}
