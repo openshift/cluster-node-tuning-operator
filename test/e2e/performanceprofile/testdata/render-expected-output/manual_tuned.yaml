@@ -53,7 +53,7 @@ spec:
       overrides cpu-partitioning cmdline\ncmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores}
       tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded}
       intel_iommu=on iommu=pt\n\n\ncmdline_isolation=+isolcpus=managed_irq,${isolated_cores}\n\n\n\ncmdline_realtime=+nohz_full=${isolated_cores}
-      tsc=nowatchdog nosoftlockup nmi_watchdog=0 mce=off skew_tick=1\n\n\n\n\n\n\ncmdline_hugepages=+
+      tsc=nowatchdog nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11\n\n\n\n\n\n\ncmdline_hugepages=+
       default_hugepagesz=1G   hugepagesz=2M hugepages=128 \n\ncmdline_additionalArg=+\n"
     name: openshift-node-performance-manual
   recommend:
