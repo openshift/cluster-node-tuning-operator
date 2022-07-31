@@ -138,7 +138,7 @@ cmdline_isolation=+isolcpus=managed_irq,${isolated_cores}
 {{end}}
 
 {{if .RealTime}}
-cmdline_realtime=+nohz_full=${isolated_cores} tsc=nowatchdog nosoftlockup nmi_watchdog=0 mce=off skew_tick=1
+cmdline_realtime=+nohz_full=${isolated_cores} tsc=nowatchdog nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11
 {{end}}
 
 {{if .HighPowerConsumption}}
