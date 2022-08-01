@@ -111,7 +111,7 @@ func UpdateWithRetry(profile *performancev2.PerformanceProfile) {
 		}
 
 		updatedProfile.Spec = *profile.Spec.DeepCopy()
-		if err := testclient.Client.Update(context.TODO(), profile); err != nil {
+		if err := testclient.Client.Update(context.TODO(), updatedProfile); err != nil {
 			if !errors.IsConflict(err) {
 				testlog.Errorf("failed to update the profile %q: %v", profile.Name, err)
 			}
