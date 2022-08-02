@@ -2,7 +2,7 @@
 
 The `Performance Profile Controller` optimizes OpenShift clusters for applications sensitive to cpu and network latency.
 
-![alt text](https://github.com/openshift/cluster-node-tuning-operator/blob/master/docs/performanceprofile/interactions/diagram.png "How Performance Profile Controller interacts with other components and operators")
+!["How Performance Addon Controller interacts with other components and operators"](https://github.com/openshift/cluster-node-tuning-operator/blob/master/docs/performanceprofile/interactions/diagram.png )
 
 ## PerformanceProfile
 
@@ -12,17 +12,17 @@ for applying various performance tunings to cluster nodes.
 The performance profile API is documented in detail in the [Performance Profile](performance_profile.md) doc.
 Follow the [API versions](api-versions.md) doc to check the supported API versions.
 
-# Building and pushing the operator images
+## Building and pushing the operator images
 
 TBD
 
-# Deploying
+## Deploying
 
 If you use your own images, make sure they are made public in your quay.io account!
 
 Deploy a perfomance profile configuration by running:
 
-```
+```shell
 CLUSTER=manual make cluster-deploy-pao
 ```
 
@@ -37,18 +37,17 @@ The deployment will be retried in a loop until everything is deployed successful
 In CI the `test/e2e/performanceprofile/cluster-setup/ci-cluster/performance/` dir will be used. The difference is that the CI cluster will deploy
 the PerformanceProfile in the test code, while the `manual` cluster includes it in the kustomize based deployment.
 
-
 Now you need to label the nodes which should be tuned. This can be done with
 
-```
+```shell
 make cluster-label-worker-cnf
 ```
 
 This will label 1 worker node with the `worker-cnf` role, and OCP's `Machine Config Operator` will start tuning this node.
 
-In order to wait until MCO is ready, you can watch the `MachineConfigPool` until it is marked as updated with 
+In order to wait until MCO is ready, you can watch the `MachineConfigPool` until it is marked as updated with
 
-```
+```shell
 CLUSTER=manual make cluster-wait-for-pao-mcp
 ```
 
@@ -56,45 +55,48 @@ CLUSTER=manual make cluster-wait-for-pao-mcp
 
 > Note: in CI this step is skipped, because the test code will wait for the MCP being up to date.
 
-# Render mode
+## Render mode
 
 The operator can render manifests for all the components it supposes to create, based on Given a `PerformanceProfile`  
 
 You need to provide the following environment variables
-```
-export PERFORMANCE_PROFILE_INPUT_FILES=<your PerformanceProfile directory path>
+
+```shell
+export PERFORMANCE_PROFILE_INPUT_FILES=<comma separated list of your Performance Profiles>
 export ASSET_OUTPUT_DIR=<output path for the rendered manifests>
 ```
 
 Build and invoke the binary
-```
+
+```shell
 _output/cluster-node-tuning-operator render
 ```
 
 Or provide the variables via command line arguments
-```
+
+```shell
 _output/cluster-node-tuning-operator render --performance-profile-input-files <path> --asset-output-dir<path>
 ```
 
-# Troubleshooting
+## Troubleshooting
 
 When the deployment fails, or the performance tuning does not work as expected, follow the [Troubleshooting Guide](troubleshooting.md)
 for debugging the cluster. Please provide as much info from troubleshooting as possible when reporting issues. Thanks!
 
-# Testing
+## Testing
 
-## Unit tests
+### Unit tests
 
 Unit tests can be executed with `make test-unit`.
 
-## Func tests
+### Func tests
 
 The functional tests are located in `/functests`. They can be executed with `make pao-functests-only` on a cluster with a
 deployed Performance Profile Controller and configured MCP and nodes. It will create its own Performance profile!
 
-### Latency test
+#### Latency test
 
-The latency-test container image gives the possibility to run the latency 
+The latency-test container image gives the possibility to run the latency
 test without need to install go, ginkgo or other go related modules.
 
 The test itself is running the `oslat` `cyclictest` and `hwlatdetect` binaries and verifies if the maximal latency returned by each one of the tools is
@@ -102,7 +104,7 @@ less than specified value under the `MAXIMUM_LATENCY`.
 
 To run the latency test inside the container:
 
-```
+```shell
 docker run --rm -v /kubeconfig:/kubeconfig \
 -e KUBECONFIG=/kubeconfig \
 -e LATENCY_TEST_RUN=true \
@@ -124,4 +126,3 @@ You can run the container with different ENV variables, but the bare minimum is 
 - `CYCLICTEST_MAXIMUM_LATENCY` the expected maximum latency for the cyclictest test.
 - `HWLATDETECT_MAXIMUM_LATENCY` the expected maximum latency for the hwlatdetect test.
 - `MAXIMUM_LATENCY` a unified value for the expected maximum latency for all tests (In case both provided, the specific variables will have precedence over the unified one).
-
