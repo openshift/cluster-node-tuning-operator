@@ -88,7 +88,7 @@ var _ = ginkgo.Describe("[reboots][machine_config_labels] Node Tuning Operator m
 
 			// Check the key kernel parameters for the realtime profile to be present in /proc/cmdline
 			ginkgo.By("ensuring the custom worker node profile was set")
-			for _, v := range []string{"skew_tick", "intel_pstate=disable", "nosoftlockup", "tsc=nowatchdog"} {
+			for _, v := range []string{"skew_tick", "intel_pstate=disable", "nosoftlockup", "tsc=reliable"} {
 				gomega.Expect(strings.Contains(cmdlineNew, v)).To(gomega.BeTrue(), "missing '%s' in %s: %s", v, procCmdline, cmdlineNew)
 			}
 
