@@ -13,7 +13,142 @@ WOL_VALUES = "pumbagsd"
 
 class NetTuningPlugin(base.Plugin):
 	"""
-	Plugin for ethernet card options tuning.
+	`net`::
+	
+	Configures network driver, hardware and Netfilter settings.
+	Dynamic change of the interface speed according to the interface
+	utilization is also supported. The dynamic tuning is controlled by
+	the [option]`dynamic` and the global [option]`dynamic_tuning`
+	option in `tuned-main.conf`.
+	+
+	The [option]`wake_on_lan` option sets wake-on-lan to the specified
+	value as when using the `ethtool` utility.
+	+
+	.Set Wake-on-LAN for device eth0 on MagicPacket(TM)
+	====
+	----
+	[net]
+	devices=eth0
+	wake_on_lan=g
+	----
+	====
+	+
+	The [option]`coalesce` option allows changing coalescing settings
+	for the specified network devices. The syntax is:
+	+
+	[subs="+quotes,+macros"]
+	----
+	coalesce=__param1__ __value1__ __param2__ __value2__ ... __paramN__ __valueN__
+	----
+	Note that not all the coalescing parameters are supported by all
+	network cards. For the list of coalescing parameters of your network
+	device, use `ethtool -c device`.
+	+	
+	.Setting coalescing parameters rx/tx-usecs for all network devices
+	====
+	----
+	[net]
+	coalesce=rx-usecs 3 tx-usecs 16
+	----
+	====
+	+
+	The [option]`features` option allows changing 
+	the offload parameters and other features for the specified
+	network devices. To query the features of your network device,
+	use `ethtool -k device`. The syntax of the option is the same as
+	the [option]`coalesce` option.
+	+
+	.Turn off TX checksumming, generic segmentation and receive offload 
+	====
+	----
+	[net]
+	features=tx off gso off gro off
+	----
+	====
+	The [option]`pause` option allows changing the pause parameters for
+	the specified network devices. To query the pause parameters of your
+	network device, use `ethtool -a device`. The syntax of the option
+	is the same as the [option]`coalesce` option.
+	+
+	.Disable autonegotiation
+	====
+	----
+	[net]
+	pause=autoneg off
+	----
+	====
+	+
+	The [option]`ring` option allows changing the rx/tx ring parameters
+	for the specified network devices. To query the ring parameters of your
+	network device, use `ethtool -g device`. The syntax of the option
+	is the same as the [option]`coalesce` option.
+	+	
+	.Change the number of ring entries for the Rx/Tx rings to 1024/512 respectively
+	=====
+	-----
+	[net]
+	ring=rx 1024 tx 512
+	-----
+	=====
+	+
+	The [option]`channels` option allows changing the numbers of channels
+	for the specified network device. A channel is an IRQ and the set
+	of queues that can trigger that IRQ. To query the channels parameters of your
+	network device, use `ethtool -l device`. The syntax of the option
+	is the same as the [option]`coalesce` option.
+	+
+	.Set the number of multi-purpose channels to 16
+	=====
+	-----
+	[net]
+	channels=combined 16
+	-----
+	=====
+	+   
+	A network device either supports rx/tx or combined queue
+	mode. The [option]`channels` option automatically adjusts the
+	parameters based on the mode supported by the device as long as a
+	valid configuration is requested.
+	+
+	The [option]`nf_conntrack_hashsize` option sets the size of the hash
+	table which stores lists of conntrack entries by writing to
+	`/sys/module/nf_conntrack/parameters/hashsize`.
+	+
+	.Adjust the size of the conntrack hash table
+	====
+	----
+	[net]
+	nf_conntrack_hashsize=131072
+	----
+	====
+	+
+	The [option]`txqueuelen` option allows changing txqueuelen (the length
+	of the transmit queue). It uses `ip` utility that is in package	iproute
+	recommended for TuneD, so the package needs to be installed for its correct
+	functionality. To query the txqueuelen parameters of your network device
+	use `ip link show` and the current value is shown after the qlen column.
+	+
+	.Adjust the length of the transmit queue
+	====
+	----
+	[net]
+	txqueuelen=5000
+	----
+	====
+	+
+	The [option]`mtu` option allows changing MTU (Maximum Transmission Unit).
+	It uses `ip` utility that is in package	iproute recommended for TuneD, so
+	the package needs to be installed for its correct functionality. To query
+	the MTU parameters of your network device use `ip link show` and the
+	current value is shown after the MTU column.
+	+
+	.Adjust the size of the MTU
+	====
+	----
+	[net]
+	mtu=9000
+	----
+	====
 	"""
 
 	def __init__(self, *args, **kwargs):
@@ -21,7 +156,7 @@ class NetTuningPlugin(base.Plugin):
 		self._load_smallest = 0.05
 		self._level_steps = 6
 		self._cmd = commands()
-		self._re_ip_link_show_qlen = None
+		self._re_ip_link_show = {}
 		self._use_ip = True
 
 	def _init_devices(self):
@@ -144,6 +279,7 @@ class NetTuningPlugin(base.Plugin):
 			"ring": None,
 			"channels": None,
 			"txqueuelen": None,
+			"mtu": None,
 		}
 
 	def _init_stats_and_idle(self, instance, device):
@@ -325,10 +461,13 @@ class NetTuningPlugin(base.Plugin):
 				return None
 		return value
 
-	def _get_re_ip_link_show_qlen(self):
-		if self._re_ip_link_show_qlen is None:
-			self._re_ip_link_show_qlen = re.compile(r".*\s+qlen\s+(\d+)")
-		return self._re_ip_link_show_qlen
+	def _get_re_ip_link_show(self, arg):
+		"""
+		Return regex for int arg value from "ip link show" command
+		"""
+		if arg not in self._re_ip_link_show:
+			self._re_ip_link_show[arg] = re.compile(r".*\s+%s\s+(\d+)" % arg)
+		return self._re_ip_link_show[arg]
 
 	@command_get("txqueuelen")
 	def _get_txqueuelen(self, device, ignore_missing=False):
@@ -337,11 +476,42 @@ class NetTuningPlugin(base.Plugin):
 			if not ignore_missing:
 				log.info("Cannot get 'ip link show' result for txqueuelen value for device '%s'" % device)
 			return None
-		res = self._get_re_ip_link_show_qlen().search(out)
+		res = self._get_re_ip_link_show("qlen").search(out)
 		if res is None:
 			# We can theoretically get device without qlen (http://linux-ip.net/gl/ip-cref/ip-cref-node17.html)
 			if not ignore_missing:
 				log.info("Cannot get txqueuelen value from 'ip link show' result for device '%s'" % device)
+			return None
+		return res.group(1)
+
+	@command_set("mtu", per_device=True)
+	def _set_mtu(self, value, device, sim):
+		if value is None:
+			return None
+		try:
+			int(value)
+		except ValueError:
+			log.warn("mtu value '%s' is not integer" % value)
+			return None
+		if not sim:
+			res = self._call_ip_link(["set", "dev", device, "mtu", value])
+			if res is None:
+				log.warn("Cannot set mtu for device '%s'" % device)
+				return None
+		return value
+
+	@command_get("mtu")
+	def _get_mtu(self, device, ignore_missing=False):
+		out = self._ip_link_show(device)
+		if out is None:
+			if not ignore_missing:
+				log.info("Cannot get 'ip link show' result for mtu value for device '%s'" % device)
+			return None
+		res = self._get_re_ip_link_show("mtu").search(out)
+		if res is None:
+			# mtu value should be always present, but it's better to have a test
+			if not ignore_missing:
+				log.info("Cannot get mtu value from 'ip link show' result for device '%s'" % device)
 			return None
 		return res.group(1)
 
