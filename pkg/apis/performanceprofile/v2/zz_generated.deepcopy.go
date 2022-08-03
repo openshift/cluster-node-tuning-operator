@@ -380,6 +380,11 @@ func (in *WorkloadHints) DeepCopyInto(out *WorkloadHints) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.PerPodPowerManagement != nil {
+		in, out := &in.PerPodPowerManagement, &out.PerPodPowerManagement
+		*out = new(bool)
+		**out = **in
+	}
 	return
 }
 

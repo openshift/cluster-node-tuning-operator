@@ -81,8 +81,9 @@ func NewPerformanceProfile(name string) *performancev2.PerformanceProfile {
 				"nodekey": "nodeValue",
 			},
 			WorkloadHints: &performancev2.WorkloadHints{
-				HighPowerConsumption: pointer.BoolPtr(false),
-				RealTime:             pointer.BoolPtr(true),
+				HighPowerConsumption:  pointer.BoolPtr(false),
+				RealTime:              pointer.BoolPtr(true),
+				PerPodPowerManagement: pointer.BoolPtr(false),
 			},
 			AdditionalKernelArgs: additionalKernelArgs,
 		},

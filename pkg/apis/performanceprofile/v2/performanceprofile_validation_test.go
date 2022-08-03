@@ -367,6 +367,17 @@ var _ = Describe("PerformanceProfile", func() {
 					Expect(errors[0].Error()).To(ContainSubstring("realtime kernel is enabled, but realtime workload hint is explicitly disable"))
 				})
 			})
+			When("HighPowerConsumption hint is enabled and PerPodPowerManagement hint is enabled", func() {
+				It("should raise validation error", func() {
+					profile.Spec.WorkloadHints = &WorkloadHints{
+						HighPowerConsumption:  pointer.BoolPtr(true),
+						PerPodPowerManagement: pointer.BoolPtr(true),
+					}
+					errors := profile.validateWorkloadHints()
+					Expect(errors).NotTo(BeEmpty())
+					Expect(errors[0].Error()).To(ContainSubstring("Invalid WorkloadHints configuration: HighPowerConsumption and PerPodPowerManagement can not be both enabled"))
+				})
+			})
 		})
 	})
 })

@@ -323,5 +323,11 @@ func (r *PerformanceProfile) validateWorkloadHints() field.ErrorList {
 		}
 	}
 
+	if r.Spec.WorkloadHints.HighPowerConsumption != nil && *r.Spec.WorkloadHints.HighPowerConsumption {
+		if r.Spec.WorkloadHints.PerPodPowerManagement != nil && *r.Spec.WorkloadHints.PerPodPowerManagement {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec.workloadHints.HighPowerConsumption"), r.Spec.WorkloadHints.HighPowerConsumption, "Invalid WorkloadHints configuration: HighPowerConsumption and PerPodPowerManagement can not be both enabled"))
+		}
+	}
+
 	return allErrs
 }
