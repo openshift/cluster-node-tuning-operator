@@ -781,7 +781,7 @@ func promotePodToGuaranteed(pod *corev1.Pod) *corev1.Pod {
 	return pod
 }
 
-func getTestPodWithAnnotations(annotations map[string]string, cpus int) *corev1.Pod {
+func getTestPodWithProfileAndAnnotations(perfProf *performancev2.PerformanceProfile, annotations map[string]string, cpus int) *corev1.Pod {
 	testpod := pods.GetTestPod()
 	if len(annotations) > 0 {
 		testpod.Annotations = annotations
@@ -801,8 +801,17 @@ func getTestPodWithAnnotations(annotations map[string]string, cpus int) *corev1.
 		},
 	}
 
-	runtimeClassName := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
-	testpod.Spec.RuntimeClassName = &runtimeClassName
+	if perfProf != nil {
+		runtimeClassName := components.GetComponentName(perfProf.Name, components.ComponentNamePrefix)
+		testpod.Spec.RuntimeClassName = &runtimeClassName
+	}
+
+	return testpod
+}
+
+func getTestPodWithAnnotations(annotations map[string]string, cpus int) *corev1.Pod {
+	testpod := getTestPodWithProfileAndAnnotations(profile, annotations, cpus)
+
 	testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
 
 	return testpod

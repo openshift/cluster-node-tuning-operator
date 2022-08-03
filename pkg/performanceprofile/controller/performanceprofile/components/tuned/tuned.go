@@ -109,8 +109,7 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 		templateArgs[templateAdditionalArgs] = strings.Join(profile.Spec.AdditionalKernelArgs, cmdlineDelimiter)
 	}
 
-	if profile.Spec.GloballyDisableIrqLoadBalancing != nil &&
-		*profile.Spec.GloballyDisableIrqLoadBalancing == true {
+	if IsIRQBalancingGloballyDisabled(profile) {
 		templateArgs[templateGloballyDisableIrqLoadBalancing] = strconv.FormatBool(true)
 	}
 
@@ -217,4 +216,8 @@ func getProfileData(tunedTemplate string, data interface{}) (string, error) {
 		return "", err
 	}
 	return profile.String(), nil
+}
+
+func IsIRQBalancingGloballyDisabled(profile *performancev2.PerformanceProfile) bool {
+	return profile.Spec.GloballyDisableIrqLoadBalancing != nil && *profile.Spec.GloballyDisableIrqLoadBalancing
 }
