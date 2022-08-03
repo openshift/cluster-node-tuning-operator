@@ -3,11 +3,7 @@ import re
 import errno
 import procfs
 import subprocess
-try:
-	from configparser import ConfigParser, Error
-except ImportError:
-	# python2.7 support, remove RHEL-7 support end
-	from ConfigParser import ConfigParser, Error
+from tuned.utils.config_parser import ConfigParser, Error
 
 try:
 	import syspurpose.files
@@ -60,13 +56,14 @@ class ProfileRecommender:
 
 	def process_config(self, fname, has_root=True):
 		matching_profile = None
+		syspurpose_error_logged = False
 		try:
 			if not os.path.isfile(fname):
 				return None
-			config = ConfigParser()
+			config = ConfigParser(delimiters=('='), inline_comment_prefixes=('#'))
 			config.optionxform = str
 			with open(fname) as f:
-				config.readfp(f)
+				config.read_file(f, fname)
 			for section in config.sections():
 				match = True
 				for option in config.options(section):
@@ -101,11 +98,11 @@ class ProfileRecommender:
 						if not re.match(value, chassis_type, re.IGNORECASE):
 							match = False
 					elif option == "syspurpose_role":
+						role = ""
 						if have_syspurpose:
 							s = syspurpose.files.SyspurposeStore(
 									syspurpose.files.USER_SYSPURPOSE,
 									raise_on_error = True)
-							role = ""
 							try:
 								s.read_file()
 								role = s.contents["role"]
@@ -113,11 +110,13 @@ class ProfileRecommender:
 								if hasattr(e, "errno") and e.errno != errno.ENOENT:
 									log.error("Failed to load the syspurpose\
 										file: %s" % e)
-							if re.match(value, role, re.IGNORECASE) is None:
-								match = False
 						else:
-							log.error("Failed to process 'syspurpose_role' in '%s'\
-								, the syspurpose module is not available" % fname)
+							if not syspurpose_error_logged:
+								log.error("Failed to process 'syspurpose_role' in '%s'\
+									, the syspurpose module is not available" % fname)
+								syspurpose_error_logged = True
+						if re.match(value, role, re.IGNORECASE) is None:
+							match = False
 
 				if match:
 					# remove the ",.*" suffix
