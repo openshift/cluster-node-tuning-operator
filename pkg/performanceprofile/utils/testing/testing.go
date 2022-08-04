@@ -32,6 +32,9 @@ const (
 	MachineConfigPoolLabelValue = "mcpValue"
 )
 
+// Additional Kernel Args
+var AdditionalKernelArgs = []string{"audit=0", "processor.max_cstate=1", "idle=poll", "intel_idle.max_cstate=0"}
+
 // NewPerformanceProfile returns new performance profile object that used for tests
 func NewPerformanceProfile(name string) *performancev2.PerformanceProfile {
 	size := HugePageSize
@@ -39,6 +42,7 @@ func NewPerformanceProfile(name string) *performancev2.PerformanceProfile {
 	reservedCPUs := ReservedCPUs
 	offlineCPUs := OfflinedCPUs
 	numaPolicy := SingleNUMAPolicy
+	additionalKernelArgs := AdditionalKernelArgs
 
 	return &performancev2.PerformanceProfile{
 		TypeMeta: metav1.TypeMeta{Kind: "PerformanceProfile"},
@@ -75,6 +79,11 @@ func NewPerformanceProfile(name string) *performancev2.PerformanceProfile {
 			},
 			NodeSelector: map[string]string{
 				"nodekey": "nodeValue",
+			},
+			AdditionalKernelArgs: additionalKernelArgs,
+			WorkloadHints: &performancev2.WorkloadHints{
+				HighPowerConsumption: pointer.BoolPtr(false),
+				RealTime:             pointer.BoolPtr(true),
 			},
 		},
 	}

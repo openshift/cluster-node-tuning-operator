@@ -29,12 +29,9 @@ var (
 	cmdlineHighPowerConsumption             = regexp.MustCompile(`\s*cmdline_power_performance=\+\s*processor.max_cstate=1\s+intel_idle.max_cstate=0\s+intel_pstate=disable\s*`)
 	cmdlineHighPowerConsumptionWithRealtime = regexp.MustCompile(`\s*cmdline_idle_poll=\+\s*idle=poll\s*`)
 	cmdlineHugepages                        = regexp.MustCompile(`\s*cmdline_hugepages=\+\s*default_hugepagesz=1G\s+hugepagesz=1G\s+hugepages=4\s*`)
-	cmdlineAdditionalArg                    = regexp.MustCompile(`\s*cmdline_additionalArg=\+\s*test1=val1\s+test2=val2\s*`)
 	cmdlineDummy2MHugePages                 = regexp.MustCompile(`\s*cmdline_hugepages=\+\s*default_hugepagesz=1G\s+hugepagesz=1G\s+hugepages=4\s+hugepagesz=2M\s+hugepages=0\s*`)
 	cmdlineMultipleHugePages                = regexp.MustCompile(`\s*cmdline_hugepages=\+\s*default_hugepagesz=1G\s+hugepagesz=1G\s+hugepages=4\s+hugepagesz=2M\s+hugepages=128\s*`)
 )
-
-var additionalArgs = []string{"test1=val1", "test2=val2"}
 
 var _ = Describe("Tuned", func() {
 	var profile *performancev2.PerformanceProfile
@@ -68,8 +65,6 @@ var _ = Describe("Tuned", func() {
 			Expect(cmdlineWithStaticIsolation.MatchString(manifest)).To(BeTrue())
 			By("Populating hugepages cmdline")
 			Expect(cmdlineHugepages.MatchString(manifest)).To(BeTrue())
-			By("Populating empty additional kernel arguments cmdline")
-			Expect(manifest).To(ContainSubstring("cmdline_additionalArg="))
 			By("Populating realtime cmdline")
 			Expect(cmdlineWithRealtime.MatchString(manifest)).To(BeTrue())
 		})
@@ -87,6 +82,25 @@ var _ = Describe("Tuned", func() {
 				Expect(manifest).ToNot(ContainSubstring("kernel.sched_rt_runtime_us=-1"))
 				By("Populating realtime cmdline")
 				Expect(cmdlineWithRealtime.MatchString(manifest)).ToNot(BeTrue())
+			})
+		})
+
+		When("PerformanceProfile has additional kernel args", func() {
+			It("should contain additional additional parameters", func() {
+				manifest := getTunedManifest(profile)
+				Expect(manifest).To(ContainSubstring("audit=0"))
+				Expect(manifest).To(ContainSubstring("processor.max_cstate=1"))
+				Expect(manifest).To(ContainSubstring("idle=poll"))
+				Expect(manifest).To(ContainSubstring("intel_idle.max_cstate=0"))
+			})
+
+			It("should not contain additional additional parameters", func() {
+				profile.Spec.AdditionalKernelArgs = nil
+				manifest := getTunedManifest(profile)
+				Expect(manifest).ToNot(ContainSubstring("audit=0"))
+				Expect(manifest).ToNot(ContainSubstring("processor.max_cstate=1"))
+				Expect(manifest).ToNot(ContainSubstring("idle=poll"))
+				Expect(manifest).ToNot(ContainSubstring("intel_idle.max_cstate=0"))
 			})
 		})
 
@@ -125,13 +139,6 @@ var _ = Describe("Tuned", func() {
 			manifest := getTunedManifest(profile)
 
 			Expect(cmdlineWithoutStaticIsolation.MatchString(manifest)).To(BeTrue())
-		})
-
-		It("should generate yaml with expected parameters for additional kernel arguments", func() {
-			profile.Spec.AdditionalKernelArgs = additionalArgs
-			manifest := getTunedManifest(profile)
-
-			Expect(cmdlineAdditionalArg.MatchString(manifest)).To(BeTrue())
 		})
 
 		It("should not allocate hugepages on the specific NUMA node via kernel arguments", func() {
