@@ -14,6 +14,8 @@ import (
 	. "github.com/onsi/gomega"
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
@@ -23,6 +25,7 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
@@ -764,6 +767,61 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 			By("Waiting when mcp finishes updates")
 			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+		})
+	})
+
+	// Automates https://bugzilla.redhat.com/show_bug.cgi?id=1986681
+	Context("Verify required PerformanceProfile parameters", func() {
+		It("Verify spec.cpu.reserved is required in PerformanceProfile [negative]", func() {
+			initialProfile = profile.DeepCopy()
+			isolated := performancev2.CPUSet("1-3")
+
+			if initialProfile != nil {
+				profile.Spec.CPU = &performancev2.CPU{
+					Isolated: &isolated,
+				}
+
+				spec, err := json.Marshal(profile.Spec)
+				Expect(err).ToNot(HaveOccurred())
+
+				By("Trying to Patch the current PerformanceProfile")
+				err = testclient.Client.Patch(context.TODO(), profile,
+					client.RawPatch(types.JSONPatchType,
+						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec))))
+				Expect(err).To(HaveOccurred())
+
+			} else {
+				By("Define PerformanceProfile")
+				profile := &performancev2.PerformanceProfile{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "PerformanceProfile",
+						APIVersion: performancev2.GroupVersion.String(),
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name: utils.PerformanceProfileName,
+					},
+					Spec: performancev2.PerformanceProfileSpec{
+						CPU: &performancev2.CPU{
+							Isolated: &isolated,
+						},
+						NodeSelector: testutils.NodeSelectorLabels,
+					},
+				}
+
+				By("Trying to create the PerformanceProfile")
+				err := testclient.Client.Create(context.TODO(), profile)
+				Expect(err).To(HaveOccurred())
+			}
+
+			By("return initial configuration")
+			spec, err := json.Marshal(initialProfile.Spec)
+			Expect(err).ToNot(HaveOccurred())
+
+			err = testclient.Client.Patch(context.TODO(), profile,
+				client.RawPatch(types.JSONPatchType,
+					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec))))
+			Expect(err).ToNot(HaveOccurred())
+
 		})
 	})
 })
