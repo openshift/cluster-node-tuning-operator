@@ -138,6 +138,8 @@ type Controller struct {
 		stderr string
 		// stopping is true while the controller tries to stop the TuneD daemon.
 		stopping bool
+		// the TuneD profile we wish to be applied.
+		recommendedProfile string
 	}
 
 	tunedCmd     *exec.Cmd       // external command (tuned) being prepared or run
@@ -206,7 +208,7 @@ func newController(stopCh <-chan struct{}) (*Controller, error) {
 		stopCh:       stopCh,
 		changeCh:     make(chan bool, 1),
 		changeChRet:  make(chan bool, 1),
-		tunedTicker:  time.NewTicker(tunedInitialTimeout),
+		tunedTicker:  time.NewTicker(math.MaxInt64),
 		tunedTimeout: tunedInitialTimeout,
 	}
 	controller.tunedTicker.Stop() // The ticker will be started/reset when TuneD starts.
@@ -272,7 +274,7 @@ func (c *Controller) sync(key wqKey) error {
 			return fmt.Errorf("failed to get Tuned %s: %v", key.name, err)
 		}
 
-		change, err := profilesSync(tuned.Spec.Profile)
+		change, err := profilesSync(tuned.Spec.Profile, c.daemon.recommendedProfile)
 		if err != nil {
 			return err
 		}
@@ -298,7 +300,8 @@ func (c *Controller) sync(key wqKey) error {
 			return err
 		}
 
-		err = tunedRecommendFileWrite(profile.Spec.Config.TunedProfile)
+		c.daemon.recommendedProfile = profile.Spec.Config.TunedProfile
+		err = tunedRecommendFileWrite(c.daemon.recommendedProfile)
 		if err != nil {
 			return err
 		}
@@ -372,16 +375,11 @@ func profilesEqual(profileFile string, profileData string) bool {
 // - A map with successfully extracted TuneD profile names.
 // - A map with names of TuneD profiles the current TuneD recommended profile depends on.
 // - Error if any or nil.
-func profilesExtract(profiles []tunedv1.TunedProfile) (bool, map[string]bool, map[string]bool, error) {
+func profilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string) (bool, map[string]bool, map[string]bool, error) {
 	var (
 		change bool
 	)
 	klog.Infof("extracting TuneD profiles")
-
-	recommendedProfile, err := getRecommendedProfile()
-	if err != nil {
-		return change, map[string]bool{}, map[string]bool{}, err
-	}
 
 	// Get a list of TuneD profiles names the recommended profile depends on.
 	recommendedProfileDeps := profileDepends(recommendedProfile)
@@ -437,14 +435,18 @@ func profilesExtract(profiles []tunedv1.TunedProfile) (bool, map[string]bool, ma
 // - True if the data in the to-be-extracted recommended profile or the profiles being
 //   included from the current recommended profile have changed.
 // - Error if any or nil.
-func profilesSync(profiles []tunedv1.TunedProfile) (bool, error) {
-	change, extractedNew, recommendedProfileDeps, err := profilesExtract(profiles)
+func profilesSync(profiles []tunedv1.TunedProfile, recommendedProfile string) (bool, error) {
+	change, extractedNew, recommendedProfileDeps, err := profilesExtract(profiles, recommendedProfile)
 	if err != nil {
 		return change, err
 	}
 
 	// Deal with TuneD profiles absent from Tuned CRs, but still present in /etc/tuned/<profile>/ the recommended profile depends on.
 	for profile := range recommendedProfileDeps {
+		if len(profile) == 0 {
+			continue
+		}
+
 		if !extractedNew[profile] {
 			// TuneD profile does not exist in the Tuned CR, but the recommended profile depends on it.
 			profileDir := fmt.Sprintf("%s/%s", tunedProfilesDirCustom, profile)
@@ -742,22 +744,6 @@ func getBootcmdline() (string, error) {
 	return responseString, nil
 }
 
-func getRecommendedProfile() (string, error) {
-	var stdout, stderr bytes.Buffer
-
-	klog.V(1).Infof("getting recommended profile...")
-	cmd := exec.Command("/usr/sbin/tuned-adm", "recommend")
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err != nil {
-		return "", fmt.Errorf("error getting recommended profile: %v: %v", err, stderr.String())
-	}
-
-	responseString := strings.TrimSpace(stdout.String())
-	return responseString, nil
-}
-
 // Method changeSyncer performs k8s Profile object updates and TuneD daemon
 // reloads as needed.  Returns indication whether the change was successfully
 // synced and an error.  Only critical errors are returned, as non-nil errors
@@ -792,11 +778,8 @@ func (c *Controller) changeSyncer() (synced bool, err error) {
 	// Check whether reload of the TuneD daemon is really necessary due to a Profile change.
 	if c.change.profile {
 		// The node Profile k8s object changed.
-		var activeProfile, recommendedProfile string
+		var activeProfile string
 		if activeProfile, err = getActiveProfile(); err != nil {
-			return false, err
-		}
-		if recommendedProfile, err = getRecommendedProfile(); err != nil {
 			return false, err
 		}
 		if (c.daemon.status & scApplied) == 0 {
@@ -808,8 +791,8 @@ func (c *Controller) changeSyncer() (synced bool, err error) {
 		} else if (c.daemon.status & scError) != 0 {
 			klog.Infof("re-applying profile (%s) as the previous application ended with error(s)", activeProfile)
 			reload = true
-		} else if activeProfile != recommendedProfile {
-			klog.Infof("active profile (%s) != recommended profile (%s)", activeProfile, recommendedProfile)
+		} else if activeProfile != c.daemon.recommendedProfile {
+			klog.Infof("active profile (%s) != recommended profile (%s)", activeProfile, c.daemon.recommendedProfile)
 			reload = true
 			c.daemon.status = scUnknown
 		} else {
