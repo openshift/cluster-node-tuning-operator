@@ -28,6 +28,11 @@ func (in *CPU) DeepCopyInto(out *CPU) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.Offlined != nil {
+		in, out := &in.Offlined, &out.Offlined
+		*out = new(CPUSet)
+		**out = **in
+	}
 	return
 }
 
