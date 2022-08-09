@@ -46,8 +46,9 @@ type NumaNodes struct {
 
 // NodeCPU Structure
 type NodeCPU struct {
-	CPU  string `json:"cpu"`
 	Node string `json:"node"`
+	Core string `json:"core"`
+	CPU  string `json:"cpu"`
 }
 
 // GetByRole returns all nodes with the specified role
@@ -275,7 +276,7 @@ func GetSMTLevel(cpuID int, node *corev1.Node) int {
 
 // GetNumaNodes returns the number of numa nodes and the associated cpus as list on the node
 func GetNumaNodes(node *corev1.Node) (map[int][]int, error) {
-	lscpuCmd := []string{"lscpu", "-e=cpu,node", "-J"}
+	lscpuCmd := []string{"lscpu", "-e=node,core,cpu", "-J"}
 	cmdout, err := ExecCommandOnNode(lscpuCmd, node)
 	var numaNode, cpu int
 	if err != nil {
@@ -297,6 +298,29 @@ func GetNumaNodes(node *corev1.Node) (map[int][]int, error) {
 		numaCpus[numaNode] = append(numaCpus[numaNode], cpu)
 	}
 	return numaCpus, err
+}
+
+// GetCoreSiblings returns the siblings of core per numa node
+func GetCoreSiblings(node *corev1.Node) (map[int]map[int][]int, error) {
+	lscpuCmd := []string{"lscpu", "-e=node,core,cpu", "-J"}
+	out, err := ExecCommandOnNode(lscpuCmd, node)
+	var result NumaNodes
+	var numaNode, core, cpu int
+	coreSiblings := make(map[int]map[int][]int)
+	err = json.Unmarshal([]byte(out), &result)
+	if err != nil {
+		return nil, err
+	}
+	for _, value := range result.Cpus {
+		if numaNode, err = strconv.Atoi(value.Node); err != nil {
+			break
+		}
+		if coreSiblings[numaNode] == nil {
+			coreSiblings[numaNode] = make(map[int][]int)
+		}
+		coreSiblings[numaNode][core] = append(coreSiblings[numaNode][core], cpu)
+	}
+	return coreSiblings, err
 }
 
 //TunedForNode find tuned pod for appropriate node
