@@ -89,6 +89,8 @@ spec:
     tlsConfig:
       caFile: /etc/prometheus/configmaps/serving-certs-ca-bundle/service-ca.crt
       serverName: node-tuning-operator.openshift-cluster-node-tuning-operator.svc
+      certFile: /etc/prometheus/secrets/metrics-client-certs/tls.crt
+      keyFile: /etc/prometheus/secrets/metrics-client-certs/tls.key
   selector:
     matchLabels:
       name: node-tuning-operator
