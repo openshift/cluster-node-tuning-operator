@@ -167,6 +167,10 @@ dist-docs-generator:
 		echo "Using pre-built docs-generator tool";\
 	fi
 
+.PHONY: dist-latency-tests
+dist-latency-tests:
+	./hack/build-latency-test-bin.sh
+
 .PHONY: cluster-label-worker-cnf
 cluster-label-worker-cnf:
 	@echo "Adding worker-cnf label to worker nodes"
@@ -192,6 +196,12 @@ pao-functests-only:
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
 	hack/run-functests.sh
+
+.PHONY: pao-functests-latency-testing
+pao-functests-latency-testing: dist-latency-tests
+	@echo "Cluster Version"
+	hack/show-cluster-version.sh
+	hack/run-latency-testing.sh
 
 .PHONY: cluster-clean-pao
 cluster-clean-pao:
