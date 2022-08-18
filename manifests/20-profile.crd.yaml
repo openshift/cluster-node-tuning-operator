@@ -107,9 +107,6 @@ spec:
                       type:
                         description: type specifies the aspect reported by this condition.
                         type: string
-                stalld:
-                  description: 'deploy stall daemon: https://git.kernel.org/pub/scm/utils/stalld/stalld.git'
-                  type: boolean
                 tunedProfile:
                   description: the current profile in use by the Tuned daemon
                   type: string
