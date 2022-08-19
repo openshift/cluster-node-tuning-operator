@@ -71,9 +71,7 @@ var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing syste
 			_, _, err = util.ExecAndLogCommand("oc", "create", "-f", mcpRealtime)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By("waiting for worker-rt MachineConfigPool UpdatedMachineCount == 1")
-			err = util.WaitForPoolUpdatedMachineCount(cs, "worker-rt", 1)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			waitForMCPFlip()
 
 			waitForTuneD := func() {
 				ginkgo.By(fmt.Sprintf("waiting for the TuneD daemon running on node %s", node.Name))
