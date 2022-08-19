@@ -268,8 +268,8 @@ func fixMaskPadding(rawMask string, maskLen int) string {
 	testlog.Infof("fixed mask (dealing with incorrect crio padding) on node is {%s} len=%d", fixedMask, maskLen)
 
 	retMask := fixedMask[0:8]
-	for i := 8; i+8 <= len(maskString); i += 8 {
-		retMask = retMask + "," + maskString[i:i+8]
+	for i := 8; i+8 <= len(fixedMask); i += 8 {
+		retMask = retMask + "," + fixedMask[i:i+8]
 	}
 	return retMask
 }
