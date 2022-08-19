@@ -83,9 +83,7 @@ var _ = ginkgo.Describe("[reboots][kernel_parameter_add_rm] Node Tuning Operator
 			_, _, err = util.ExecAndLogCommand("oc", "create", "-f", mcpRealtime)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By("waiting for worker-rt MachineConfigPool UpdatedMachineCount == 1")
-			err = util.WaitForPoolUpdatedMachineCount(cs, "worker-rt", 1)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			waitForMCPFlip()
 
 			ginkgo.By(fmt.Sprintf("getting the current %s value in Pod %s", procCmdline, pod.Name))
 			cmdlineNew, err := util.WaitForCmdInPod(pollInterval, waitDuration, pod, cmdCatCmdline...)
@@ -102,14 +100,7 @@ var _ = ginkgo.Describe("[reboots][kernel_parameter_add_rm] Node Tuning Operator
 			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileChild)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			// By creating the custom child profile, we will first see worker-rt MachineConfigPool UpdatedMachineCount drop to 0 first...
-			ginkgo.By("waiting for worker-rt MachineConfigPool UpdatedMachineCount == 0")
-			err = util.WaitForPoolUpdatedMachineCount(cs, "worker-rt", 0)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			// ...and go up to 1 again next.
-			ginkgo.By("waiting for worker-rt MachineConfigPool UpdatedMachineCount == 1")
-			err = util.WaitForPoolUpdatedMachineCount(cs, "worker-rt", 1)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			waitForMCPFlip()
 
 			ginkgo.By(fmt.Sprintf("getting the current %s value in Pod %s", procCmdline, pod.Name))
 			cmdlineNew, err = util.WaitForCmdInPod(pollInterval, waitDuration, pod, cmdCatCmdline...)
