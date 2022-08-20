@@ -359,6 +359,12 @@ func GetCoreSiblings(node *corev1.Node) (map[int]map[int][]int, error) {
 		if numaNode, err = strconv.Atoi(value.Node); err != nil {
 			break
 		}
+		if core, err = strconv.Atoi(value.Core); err != nil {
+			break
+		}
+		if cpu, err = strconv.Atoi(value.CPU); err != nil {
+			break
+		}
 		if coreSiblings[numaNode] == nil {
 			coreSiblings[numaNode] = make(map[int][]int)
 		}
