@@ -14,9 +14,7 @@ RUN INSTALL_PKGS=" \
     LC_COLLATE=C cat ../patches/*.diff | patch -Np1 && \
     dnf build-dep tuned.spec -y && \
     make rpm PYTHON=/usr/bin/python3 && \
-    rm -rf /root/rpmbuild/RPMS/noarch/{tuned-gtk*,tuned-utils*,tuned-profiles-compat*} && \
-    cd ../stalld && \
-    make
+    rm -rf /root/rpmbuild/RPMS/noarch/{tuned-gtk*,tuned-utils*,tuned-profiles-compat*}
 
 FROM registry.ci.openshift.org/ocp/4.12:base
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/cluster-node-tuning-operator /usr/bin/
@@ -37,7 +35,6 @@ RUN INSTALL_PKGS=" \
     mkdir -p /etc/grub.d/ /boot && \
     dnf install --setopt=tsflags=nodocs -y $INSTALL_PKGS && \
     rpm -V $INSTALL_PKGS && \
-    cp -a /var/lib/tuned/tuned/stalld/{stalld,scripts/throttlectl.sh} /usr/local/bin && \
     rm -rf /var/lib/tuned/tuned && \
     touch /etc/sysctl.conf $APP_ROOT/provider && \
     dnf clean all && \

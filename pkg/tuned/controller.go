@@ -83,10 +83,6 @@ const (
 	wqKindDaemon  = "daemon"
 	wqKindTuned   = "tuned"
 	wqKindProfile = "profile"
-	// If useSystemStalld is set to true, use the OS-shipped stalld; otherwise, use the
-	// NTO-shipped version.  The aim here is to switch back to the legacy code easily just
-	// by setting this constant to false.
-	useSystemStalld = true
 )
 
 // Types
@@ -901,39 +897,12 @@ func getNodeName() string {
 	return name
 }
 
-func (c *Controller) stalldRequested(profileName string) (*bool, error) {
-	var ret bool
-
-	tuned, err := c.listers.TunedResources.Get(tunedv1.TunedRenderedResourceName)
-	if err != nil {
-		return &ret, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
-	}
-
-	for index, profile := range tuned.Spec.Profile {
-		if profile.Name == nil {
-			klog.Warningf("tunedHasStalld(): profile name missing for Profile %v", index)
-			continue
-		}
-		if *profile.Name != profileName {
-			continue
-		}
-		if profile.Data == nil {
-			klog.Warningf("tunedHasStalld(): profile data missing for Profile %v", index)
-			continue
-		}
-		return profileHasStalld(profile.Data), nil
-	}
-
-	return &ret, nil
-}
-
 // Method updateTunedProfile updates a Tuned Profile with information to report back
 // to the operator.  Note this method must be called only when the TuneD daemon is
 // not reloading.
 func (c *Controller) updateTunedProfile() (err error) {
 	var (
-		bootcmdline     string
-		stalldRequested *bool
+		bootcmdline string
 	)
 
 	if bootcmdline, err = getBootcmdline(); err != nil {
@@ -948,12 +917,6 @@ func (c *Controller) updateTunedProfile() (err error) {
 		return fmt.Errorf("failed to get Profile %s: %v", profileName, err)
 	}
 
-	if !useSystemStalld {
-		if stalldRequested, err = c.stalldRequested(profile.Spec.Config.TunedProfile); err != nil {
-			return fmt.Errorf("unable to assess whether stalld is requested: %v", err)
-		}
-	}
-
 	activeProfile, err := getActiveProfile()
 	if err != nil {
 		return err
@@ -961,9 +924,7 @@ func (c *Controller) updateTunedProfile() (err error) {
 
 	statusConditions := computeStatusConditions(c.daemon.status, c.daemon.stderr, profile.Status.Conditions)
 
-	stalldUnchanged := util.PtrBoolEqual(profile.Status.Stalld, stalldRequested)
-
-	if profile.Status.Bootcmdline == bootcmdline && stalldUnchanged &&
+	if profile.Status.Bootcmdline == bootcmdline &&
 		profile.Status.TunedProfile == activeProfile && conditionsEqual(profile.Status.Conditions, statusConditions) {
 		// Do not update node Profile unnecessarily (e.g. bootcmdline did not change).
 		// This will save operator CPU cycles trying to reconcile objects that do not
@@ -975,7 +936,6 @@ func (c *Controller) updateTunedProfile() (err error) {
 	profile = profile.DeepCopy() // never update the objects from cache
 
 	profile.Status.Bootcmdline = bootcmdline
-	profile.Status.Stalld = stalldRequested
 	profile.Status.TunedProfile = activeProfile
 	profile.Status.Conditions = statusConditions
 	if profile.ObjectMeta.Annotations == nil {
@@ -986,7 +946,7 @@ func (c *Controller) updateTunedProfile() (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to update Profile %s status: %v", profile.Name, err)
 	}
-	klog.Infof("updated Profile %s stalld=%v, bootcmdline: %s", profile.Name, stalldRequested, bootcmdline)
+	klog.Infof("updated Profile %s bootcmdline: %s", profile.Name, bootcmdline)
 
 	return nil
 }
