@@ -41,7 +41,6 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/openshift/cluster-node-tuning-operator/version"
 
-	ign3types "github.com/coreos/ignition/v2/config/v3_2/types"
 	mcfgclientset "github.com/openshift/machine-config-operator/pkg/generated/clientset/versioned"
 	mcfginformers "github.com/openshift/machine-config-operator/pkg/generated/informers/externalversions"
 )
@@ -664,8 +663,6 @@ func (c *Controller) getProviderName(nodeName string) (string, error) {
 func (c *Controller) syncMachineConfig(name string, labels map[string]string, profile *tunedv1.Profile) error {
 	var (
 		kernelArguments []string
-		ignFiles        []ign3types.File
-		ignUnits        []ign3types.Unit
 	)
 
 	if v := profile.ObjectMeta.Annotations[tunedv1.GeneratedByOperandVersionAnnotationKey]; v != os.Getenv("RELEASE_VERSION") {
@@ -675,7 +672,6 @@ func (c *Controller) syncMachineConfig(name string, labels map[string]string, pr
 	}
 
 	bootcmdline := profile.Status.Bootcmdline
-	stalld := profile.Status.Stalld
 	logline := func(bIgn, bCmdline bool, bootcmdline string) string {
 		var (
 			sb strings.Builder
@@ -697,8 +693,6 @@ func (c *Controller) syncMachineConfig(name string, labels map[string]string, pr
 		return sb.String()
 	}
 	kernelArguments = util.SplitKernelArguments(bootcmdline)
-	ignFiles = tunedpkg.ProvideIgnitionFiles(stalld)
-	ignUnits = tunedpkg.ProvideSystemdUnits(stalld)
 
 	annotations := map[string]string{GeneratedByControllerVersionAnnotationKey: version.Version}
 
@@ -706,32 +700,27 @@ func (c *Controller) syncMachineConfig(name string, labels map[string]string, pr
 	if err != nil {
 		if errors.IsNotFound(err) {
 			klog.V(2).Infof("syncMachineConfig(): MachineConfig %s not found, creating one", name)
-			haveIgnition := len(ignFiles) != 0 || len(ignUnits) != 0
-			if len(bootcmdline) == 0 && !haveIgnition {
-				// Creating a new MachineConfig with empty kernelArguments/Ignition only causes unnecessary node
+			if len(bootcmdline) == 0 {
+				// Creating a new MachineConfig with empty kernelArguments only causes unnecessary node
 				// reboots.
-				klog.V(2).Infof("not creating a MachineConfig with empty kernelArguments/Ignition")
+				klog.V(2).Infof("not creating a MachineConfig with empty kernelArguments")
 				return nil
 			}
-			mc = newMachineConfig(name, annotations, labels, kernelArguments, ignFiles, ignUnits)
+			mc = newMachineConfig(name, annotations, labels, kernelArguments, nil, nil)
 			_, err = c.clients.MC.MachineconfigurationV1().MachineConfigs().Create(context.TODO(), mc, metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to create MachineConfig %s: %v", mc.ObjectMeta.Name, err)
 			}
-			klog.Infof("created MachineConfig %s with%s", mc.ObjectMeta.Name, logline(haveIgnition, len(bootcmdline) != 0, bootcmdline))
+			klog.Infof("created MachineConfig %s with%s", mc.ObjectMeta.Name, logline(false, len(bootcmdline) != 0, bootcmdline))
 			return nil
 		}
 		return err
 	}
 
-	mcNew := newMachineConfig(name, annotations, labels, kernelArguments, ignFiles, ignUnits)
+	mcNew := newMachineConfig(name, annotations, labels, kernelArguments, nil, nil)
 
-	ignEq, err := ignEqual(mc, mcNew)
-	if err != nil {
-		return fmt.Errorf("failed to sync MachineConfig %s: %v", mc.ObjectMeta.Name, err)
-	}
 	kernelArgsEq := util.StringSlicesEqual(mc.Spec.KernelArguments, kernelArguments)
-	if kernelArgsEq && ignEq {
+	if kernelArgsEq {
 		// No update needed
 		klog.V(2).Infof("syncMachineConfig(): MachineConfig %s doesn't need updating", mc.ObjectMeta.Name)
 		return nil
@@ -741,7 +730,7 @@ func (c *Controller) syncMachineConfig(name string, labels map[string]string, pr
 	mc.Spec.KernelArguments = kernelArguments
 	mc.Spec.Config = mcNew.Spec.Config
 
-	l := logline(!ignEq, !kernelArgsEq, bootcmdline)
+	l := logline(false, !kernelArgsEq, bootcmdline)
 	klog.V(2).Infof("syncMachineConfig(): updating MachineConfig %s with%s", mc.ObjectMeta.Name, l)
 	_, err = c.clients.MC.MachineconfigurationV1().MachineConfigs().Update(context.TODO(), mc, metav1.UpdateOptions{})
 	if err != nil {

@@ -107,34 +107,6 @@ func getIniFileSectionSlice(data *string, section, key, separator string) []stri
 	return ret
 }
 
-// profileHasStalld returns pointer to a boolean value.  The dereferenced
-// pointer value depends on the Tuned [service] plugin enabling/disabling
-// the "stalld" service.  If the "stalld" service "service.stalld" key is
-// not found in Tuned [service] section, nil is returned.
-func profileHasStalld(profile *string) *bool {
-	var ret bool
-
-	stalldServiceVal := getIniFileSectionSlice(profile, "service", "service.stalld", ",")
-
-	if len(stalldServiceVal) == 0 {
-		// There was no service.stalld key in [service] section.
-		return nil
-	}
-
-	for _, v := range stalldServiceVal {
-		if v == "enable" {
-			ret = true
-			return &ret
-		}
-		if v == "disable" {
-			return &ret
-		}
-	}
-
-	// Default to "disable" if "enable" is not present as value by service.stalld key.
-	return &ret
-}
-
 // profileIncludesRaw returns a slice of strings containing TuneD profile names
 // profile <tunedProfilesDir>/<profileName> includes.  The profile names may
 // contain built-in functions that still need to be expanded.

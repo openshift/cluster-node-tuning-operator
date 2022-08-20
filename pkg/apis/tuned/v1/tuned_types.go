@@ -177,10 +177,6 @@ type ProfileStatus struct {
 	// +patchStrategy=merge
 	// +optional
 	Conditions []ProfileStatusCondition `json:"conditions,omitempty"  patchStrategy:"merge" patchMergeKey:"type"`
-
-	// deploy stall daemon: https://git.kernel.org/pub/scm/utils/stalld/stalld.git
-	// +optional
-	Stalld *bool `json:"stalld"`
 }
 
 // ProfileStatusCondition represents a partial state of the per-node Profile application.
