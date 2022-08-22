@@ -50,14 +50,14 @@ const (
 	// 5ms, 10ms, 20ms, 40ms, 80ms, 160ms, 320ms, 640ms, 1.3s, 2.6s, 5.1s, 10.2s, 20.4s, 41s, 82s
 	maxRetries = 15
 	// workqueue related constants
-	wqKindPod                = "pod"
-	wqKindNode               = "node"
-	wqKindClusterOperator    = "clusteroperator"
-	wqKindDaemonSet          = "daemonset"
-	wqKindTuned              = "tuned"
-	wqKindProfile            = "profile"
-	wqKindConfigMap          = "configmap"
-	wqKindMachineConfigPool  = "machineconfigpool"
+	wqKindPod               = "pod"
+	wqKindNode              = "node"
+	wqKindClusterOperator   = "clusteroperator"
+	wqKindDaemonSet         = "daemonset"
+	wqKindTuned             = "tuned"
+	wqKindProfile           = "profile"
+	wqKindConfigMap         = "configmap"
+	wqKindMachineConfigPool = "machineconfigpool"
 
 	tunedConfigMapAnnotation = "hypershift.openshift.io/tuned-config"
 	tunedConfigMapConfigKey  = "tuned"
@@ -149,16 +149,15 @@ func NewController() (*Controller, error) {
 		return nil, err
 	}
 
-	// TODO if in hypershift
-	// TODO Add as field to controller?
-	managementKubeconfig, err := ntoclient.GetInClusterConfig()
-	if err != nil {
-		return nil, err
-	}
-	// For Hypershift
-	controller.clients.ManagementKube, err = kubeset.NewForConfig(managementKubeconfig)
-	if err != nil {
-		return nil, err
+	if ntoconfig.InHyperShift() {
+		managementKubeconfig, err := ntoclient.GetInClusterConfig()
+		if err != nil {
+			return nil, err
+		}
+		controller.clients.ManagementKube, err = kubeset.NewForConfig(managementKubeconfig)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return controller, nil
@@ -299,7 +298,13 @@ func (c *Controller) sync(key wqKey) error {
 		}
 		return nil
 
-	// TODO make sure this isn't called in hypershift with key.kind == wqKindMachineConfigPool
+	case key.kind == wqKindConfigMap:
+		// This can only happen in HyperShift when NTO is used to manage tuning
+		// of hosted cluster nodes.
+		klog.V(2).Infof("sync(): wqKindConfigMap %s", key.name)
+		err = c.syncHostedClusterTuneds()
+		return err
+
 	case key.kind == wqKindMachineConfigPool:
 		klog.V(2).Infof("sync(): MachineConfigPool %s", key.name)
 
@@ -371,9 +376,6 @@ func (c *Controller) sync(key wqKey) error {
 		return fmt.Errorf("failed to sync DaemonSet: %v", err)
 	}
 
-	klog.V(1).Infof("WORKQUEUE KIND IS  %s, event is %s, name is %s ", key.kind, key.event, key.name)
-	err = c.syncHostedClusterTuneds()
-
 	// Tuned CR changed, this can affect all profiles, list them and trigger profile updates
 	klog.V(2).Infof("sync(): Tuned %s", key.name)
 
@@ -394,7 +396,6 @@ func (c *Controller) sync(key wqKey) error {
 		if err != nil {
 			return err
 		}
-
 	}
 
 	return nil
@@ -558,7 +559,7 @@ func (c *Controller) syncDaemonSet(tuned *tunedv1.Tuned) error {
 	}
 
 	// DaemonSet comparison is non-trivial and expensive
-	klog.V(2).Infof("syncDaemonSet(): found DaemonSet %s [%s], not changing it", ds.Name, operatorReleaseVersion, &ds.ObjectMeta.UID)
+	klog.V(2).Infof("syncDaemonSet(): found DaemonSet %s [%s], not changing it", ds.Name, operatorReleaseVersion)
 
 	return nil
 }
@@ -651,7 +652,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 				}
 			}
 		} else {
-			klog.Infof("Ignoring MachineConfig label matching for Profile %s. MachineConfig API not currently supported in Hypershift.", tunedProfileName)
+			klog.Infof("Ignoring MachineConfig label matching for Profile %s. MachineConfig API not currently supported in HyperShift.", tunedProfileName)
 		}
 	}
 
@@ -867,6 +868,7 @@ func (c *Controller) informerEventHandler(workqueueKey wqKey) cache.ResourceEven
 				klog.Errorf("unable to get accessor for old object: %s", err)
 				return
 			}
+			// TODO (jmencak): measure the impact of periodic resync for all resources.
 			_, periodicSyncNeeded := o.(*tunedv1.Profile)
 			if newAccessor.GetResourceVersion() == oldAccessor.GetResourceVersion() && !periodicSyncNeeded {
 				// Periodic resync will send update events for all known resources.
@@ -1014,10 +1016,12 @@ func (c *Controller) removeResources() error {
 		}
 	}
 
-	/*err = c.pruneMachineConfigs()
-	if err != nil {
-		lastErr = fmt.Errorf("failed to prune operator-created MachineConfigs: %v", err)
-	}*/
+	if !ntoconfig.InHyperShift() {
+		err = c.pruneMachineConfigs()
+		if err != nil {
+			lastErr = fmt.Errorf("failed to prune operator-created MachineConfigs: %v", err)
+		}
+	}
 
 	return lastErr
 }
@@ -1128,4 +1132,3 @@ func tunedMapFromList(tuneds []tunedv1.Tuned) map[string]tunedv1.Tuned {
 	}
 	return ret
 }
-

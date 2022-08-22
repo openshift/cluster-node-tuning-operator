@@ -21,4 +21,3 @@ type Listers struct {
 	MachineConfigs     mcfglisters.MachineConfigLister
 	MachineConfigPools mcfglisters.MachineConfigPoolLister
 }
-

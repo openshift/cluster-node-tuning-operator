@@ -188,9 +188,9 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[stri
 			}
 
 			if config.InHyperShift() {
-				pools, err = pc.getPoolsForNode(node)
-			} else {
 				pools, err = nil, nil
+			} else {
+				pools, err = pc.getPoolsForNode(node)
 			}
 
 			if err != nil {

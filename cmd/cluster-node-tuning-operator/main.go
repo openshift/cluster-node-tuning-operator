@@ -102,8 +102,9 @@ func operatorRun() {
 	}
 
 	// We have two namespaces that we need to watch:
-	// 1. NTO namespace - for NTO resources
-	// 2. None namespace - for cluster wide resources
+	// 1. NTO namespace: for NTO resources.  Note this is not necessarily where the operator itself
+	//    runs, for example operator managing HyperShift hosted clusters.
+	// 2. None namespace: for cluster-wide resources
 	ntoNamespace := config.WatchNamespace()
 	namespaces := []string{
 		ntoNamespace,

@@ -44,9 +44,10 @@ func GetConfig() (*rest.Config, error) {
 }
 
 func GetInClusterConfig() (*rest.Config, error) {
-	if c, err := rest.InClusterConfig(); err == nil {
+	c, err := rest.InClusterConfig()
+	if err == nil {
 		return c, nil
 	}
 
-	return nil, fmt.Errorf("could not locate a kubeconfig")
+	return nil, fmt.Errorf("failed to get in-cluster config: %v", err)
 }
