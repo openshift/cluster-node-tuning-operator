@@ -426,6 +426,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		newRole := "worker-test"
 		newLabel := fmt.Sprintf("%s/%s", testutils.LabelRole, newRole)
 		newNodeSelector := map[string]string{newLabel: ""}
+		newMcpSelector := map[string]string{
+			fmt.Sprintf("%s/%s", "machineconfiguration.openshift.io", "role"): newRole,
+		}
 
 		testutils.BeforeAll(func() {
 			nonPerformancesWorkers, err := nodes.GetNonPerformancesWorkers(profile.Spec.NodeSelector)
@@ -454,6 +457,11 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			By("Updating Node Selector performance profile")
 			profile.Spec.NodeSelector = newNodeSelector
 			spec, err := json.Marshal(profile.Spec)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Updating Machine config Pool")
+			profile.Spec.MachineConfigPoolSelector = newMcpSelector
+			spec, err = json.Marshal(profile.Spec)
 			Expect(err).ToNot(HaveOccurred())
 
 			By("Applying changes in performance profile and waiting until mcp will start updating")
