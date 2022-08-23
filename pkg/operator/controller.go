@@ -59,7 +59,7 @@ const (
 	wqKindConfigMap         = "configmap"
 	wqKindMachineConfigPool = "machineconfigpool"
 
-	tunedConfigMapAnnotation = "hypershift.openshift.io/tuned-config"
+	tunedConfigMapLabel      = "hypershift.openshift.io/tuned-config"
 	tunedConfigMapConfigKey  = "tuned"
 )
 
@@ -863,19 +863,6 @@ func (c *Controller) informerEventHandler(workqueueKey wqKey) cache.ResourceEven
 				klog.Errorf("unable to get accessor for new object: %s", err)
 				return
 			}
-			oldAccessor, err := kmeta.Accessor(o)
-			if err != nil {
-				klog.Errorf("unable to get accessor for old object: %s", err)
-				return
-			}
-			// TODO (jmencak): measure the impact of periodic resync for all resources.
-			_, periodicSyncNeeded := o.(*tunedv1.Profile)
-			if newAccessor.GetResourceVersion() == oldAccessor.GetResourceVersion() && !periodicSyncNeeded {
-				// Periodic resync will send update events for all known resources.
-				// Two different versions of the same resource will always have different RVs.
-				// Don't add this Update to workqueue if the object has not changed unless periodic resync is needed.
-				return
-			}
 			if clusterOperator, ok := o.(*configapiv1.ClusterOperator); ok {
 				if clusterOperator.GetName() != tunedv1.TunedClusterOperatorResourceName {
 					// Don't add ClusterOperator updates for ClusterOperator objects we do not own.
@@ -1067,7 +1054,7 @@ func (c *Controller) run(ctx context.Context) {
 	var mcfgInformerFactory mcfginformers.SharedInformerFactory
 	if ntoconfig.InHyperShift() {
 		labelOptions := kubeinformers.WithTweakListOptions(func(opts *metav1.ListOptions) {
-			opts.LabelSelector = tunedConfigMapAnnotation + "=true"
+			opts.LabelSelector = tunedConfigMapLabel + "=true"
 		})
 		configMapInformerFactory = kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.ManagementKube, ntoconfig.ResyncPeriod(), kubeinformers.WithNamespace(ntoconfig.OperatorNamespace()), labelOptions)
 

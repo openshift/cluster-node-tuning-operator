@@ -16,9 +16,16 @@ import (
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 )
 
-// TODO remove unnecessary debugging log lines and describe what this function does.
+// TODO remove unnecessary debugging log lines.
+// syncHostedClusterTuneds synchronizes Tuned objects embedded in ConfigMaps
+// in management's cluster hosted namespace with Tuned objects in the hosted
+// cluster.  Returns non-nil error only when retry/resync is needed.
 func (c *Controller) syncHostedClusterTuneds() error {
 	cmTuneds, err := c.getObjFromTunedConfigMap()
+	if err != nil {
+		return err
+	}
+
 	hcTunedList, err := c.clients.Tuned.TunedV1().Tuneds(ntoconfig.WatchNamespace()).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to list Tuneds: %v", err)
@@ -72,8 +79,8 @@ func (c *Controller) syncHostedClusterTuneds() error {
 	}
 	// Anything left in hcMap should be deleted
 	for tunedName := range hcTunedMap {
-		if tunedName != "default" && tunedName != "rendered" {
-			klog.V(1).Infof("found Tuned in HostedCluster named %s. Deleting.", tunedName)
+		if tunedName != tunedv1.TunedDefaultResourceName && tunedName != tunedv1.TunedRenderedResourceName {
+			klog.V(1).Infof("deleting stale Tuned %s in hosted cluster", tunedName)
 			err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.WatchNamespace()).Delete(context.TODO(), tunedName, metav1.DeleteOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to delete Tuned %s: %v", tunedName, err)
@@ -84,12 +91,15 @@ func (c *Controller) syncHostedClusterTuneds() error {
 	return nil
 }
 
-// TODO: describe what this function does.
+// getObjFromTunedConfigMap retrieves all ConfigMaps with embedded Tuned objects
+// from management's cluster hosted namespace and returns a slice of the
+// retrieved Tuned objects.  Duplicate Tuned objects are ignored.  Returns non-nil
+// error only when retry is needed.
 func (c *Controller) getObjFromTunedConfigMap() ([]tunedv1.Tuned, error) {
 	var cmTuneds []tunedv1.Tuned
 
 	cmListOptions := metav1.ListOptions{
-		LabelSelector: tunedConfigMapAnnotation + "=true",
+		LabelSelector: tunedConfigMapLabel + "=true",
 	}
 
 	cmList, err := c.clients.ManagementKube.CoreV1().ConfigMaps(ntoconfig.OperatorNamespace()).List(context.TODO(), cmListOptions)
@@ -97,7 +107,6 @@ func (c *Controller) getObjFromTunedConfigMap() ([]tunedv1.Tuned, error) {
 		return cmTuneds, fmt.Errorf("error listing ConfigMaps in namespace %s: %v", ntoconfig.OperatorNamespace(), err)
 	}
 
-	// TODO test cluster upgrades.
 	seenTunedObject := map[string]bool{}
 	for _, cm := range cmList.Items {
 		tunedConfig, ok := cm.Data[tunedConfigMapConfigKey]
