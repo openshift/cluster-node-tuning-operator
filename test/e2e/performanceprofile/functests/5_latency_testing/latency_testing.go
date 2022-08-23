@@ -15,7 +15,9 @@ import (
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 )
 
+//TODO get commonly used variables from one shared file that defines constants
 const (
+	testExecutablePath = "../../../../../build/_output/bin/latency-e2e.test"
 	//tool to test
 	oslat       = "oslat"
 	cyclictest  = "cyclictest"
@@ -94,10 +96,10 @@ var _ = table.DescribeTable("Test latency measurement tools tests", func(testGro
 		clearEnv()
 		testDescription := setEnvAndGetDescription(test)
 		By(testDescription)
-		if _, err := os.Stat("../../build/_output/bin/latency-e2e.test"); os.IsNotExist(err) {
+		if _, err := os.Stat(testExecutablePath); os.IsNotExist(err) {
 			Skip("The executable test file does not exist , skipping the test.")
 		}
-		output, err := exec.Command("../../build/_output/bin/latency-e2e.test", "-ginkgo.focus", test.toolToTest).Output()
+		output, err := exec.Command(testExecutablePath, "-ginkgo.focus", test.toolToTest).Output()
 		if err != nil {
 			//we don't log Error level here because the test might be a negative check
 			testlog.Info(err.Error())
