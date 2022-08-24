@@ -54,6 +54,7 @@ const (
 	setCPUsOffline            = "set-cpus-offline"
 	ociHooks                  = "low-latency-hooks"
 	setRPSMask                = "set-rps-mask"
+	setNSRPSMask              = "set-ns-rps-mask"
 	clearIRQBalanceBannedCPUs = "clear-irqbalance-banned-cpus"
 )
 
@@ -148,7 +149,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile) (*igntypes.Con
 	// add script files under the node /usr/local/bin directory
 	if profileutil.IsRpsEnabled(profile) || profile.Spec.WorkloadHints == nil ||
 		profile.Spec.WorkloadHints.RealTime == nil || *profile.Spec.WorkloadHints.RealTime {
-		scripts = []string{hugepagesAllocation, ociHooks, setRPSMask, setCPUsOffline, clearIRQBalanceBannedCPUs}
+		scripts = []string{hugepagesAllocation, ociHooks, setRPSMask, setNSRPSMask, setCPUsOffline, clearIRQBalanceBannedCPUs}
 	} else {
 		// realtime is explicitly disabled by workload hint
 		scripts = []string{hugepagesAllocation, setCPUsOffline, clearIRQBalanceBannedCPUs}
