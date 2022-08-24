@@ -38,7 +38,7 @@ func WatchNamespace() string {
 	return operatorNamespaceDefault
 }
 
-// OperatorNamespace returns the namespace that the operator is running in
+// OperatorNamespace returns the namespace that the operator is running in.
 func OperatorNamespace() string {
 	operatorNamespace := os.Getenv("MY_NAMESPACE")
 

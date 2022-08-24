@@ -59,8 +59,8 @@ const (
 	wqKindConfigMap         = "configmap"
 	wqKindMachineConfigPool = "machineconfigpool"
 
-	tunedConfigMapLabel      = "hypershift.openshift.io/tuned-config"
-	tunedConfigMapConfigKey  = "tuned"
+	tunedConfigMapLabel     = "hypershift.openshift.io/tuned-config"
+	tunedConfigMapConfigKey = "tuned"
 )
 
 // Controller is the controller implementation for Tuned resources
@@ -299,8 +299,7 @@ func (c *Controller) sync(key wqKey) error {
 		return nil
 
 	case key.kind == wqKindConfigMap:
-		// This can only happen in HyperShift when NTO is used to manage tuning
-		// of hosted cluster nodes.
+		// This should only happen in HyperShift
 		klog.V(2).Infof("sync(): wqKindConfigMap %s", key.name)
 		err = c.syncHostedClusterTuneds()
 		return err

@@ -111,7 +111,7 @@ func (c *Controller) getObjFromTunedConfigMap() ([]tunedv1.Tuned, error) {
 	for _, cm := range cmList.Items {
 		tunedConfig, ok := cm.Data[tunedConfigMapConfigKey]
 		if !ok {
-			klog.Warning("Tuned config in ConfigMap %s has no data for field %s", cm.ObjectMeta.Name, tunedConfigMapConfigKey)
+			klog.Warning("Tuned in ConfigMap %s has no data for field %s", cm.ObjectMeta.Name, tunedConfigMapConfigKey)
 			continue
 		}
 
@@ -133,12 +133,6 @@ func (c *Controller) getObjFromTunedConfigMap() ([]tunedv1.Tuned, error) {
 		}
 
 		cmTuneds = append(cmTuneds, tunedsFromConfigMapUnique...)
-
-		// TODO remove these log lines
-		for _, t := range cmTuneds {
-			klog.Infof("got Tuned %v from ConfigMap: %v", t.Name, cm.Name)
-		}
-		//klog.V(1).Infof("TunedConfig from ConfigMap: %v", string(tunedConfig[:]))
 	}
 
 	return cmTuneds, nil
@@ -154,12 +148,11 @@ func parseTunedManifests(data []byte) ([]tunedv1.Tuned, error) {
 		t := tunedv1.Tuned{}
 		if err := d.Decode(&t); err != nil {
 			if err == io.EOF {
-				klog.Infof("parseTunedManifests: EOF reached, num tuneds: %d", len(tuneds)) // TODO: do we want this log/verbosity here?
 				return tuneds, nil
 			}
 			return tuneds, fmt.Errorf("error parsing Tuned manifests: %v", err)
 		}
-		klog.Infof("parseTunedManifests: name: %s", t.GetName()) // TODO: do we want this log/verbosity here?
+		klog.V(2).Infof("parseTunedManifests: name: %s", t.GetName())
 
 		tuneds = append(tuneds, t)
 	}
