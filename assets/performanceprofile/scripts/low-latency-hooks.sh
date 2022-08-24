@@ -14,7 +14,9 @@ ns=$(${IP} netns identify "${pid}" 2>&1)
 [[ $? -eq 0 && -n "${ns}" ]] || { logger "${0} Failed to identify the namespace: ${ns}"; exit 0; }
 
 # Updates the container veth RPS mask on the node
-netns_link_indexes=$(${IP} netns exec "${ns}" ${IP} -j link | ${JQ} ".[] | select(.link_index != null) | .link_index")
+jlink=$(${IP} netns exec "${ns}" ${IP} -j link)
+netns_link_indexes=$(${JQ} ".[] | select(.link_index != null) | .link_index" <<< ${jlink} | sort --unique)
+
 for link_index in ${netns_link_indexes}; do
   container_veth=$(${IP} -j link | ${JQ} ".[] | select(.ifindex == ${link_index}) | .ifname" | tr -d '"')
   echo ${mask} > /sys/devices/virtual/net/${container_veth}/queues/rx-0/rps_cpus
