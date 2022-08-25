@@ -16,6 +16,7 @@ var cpuListToMask = []listToMask{
 	{"0", "00000001"},
 	{"2-3", "0000000c"},
 	{"3,4,53-55,61-63", "e0e00000,00000018"},
+	{"1,3-7", "000000fa"},
 	{"0-127", "ffffffff,ffffffff,ffffffff,ffffffff"},
 	{"0-255", "ffffffff,ffffffff,ffffffff,ffffffff,ffffffff,ffffffff,ffffffff,ffffffff"},
 }
