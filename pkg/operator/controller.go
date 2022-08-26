@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/dynamic"
 	kubeinformers "k8s.io/client-go/informers"
 	corev1informers "k8s.io/client-go/informers/core/v1"
 	kubeset "k8s.io/client-go/kubernetes"
@@ -32,6 +33,7 @@ import (
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	tunedset "github.com/openshift/cluster-node-tuning-operator/pkg/generated/clientset/versioned"
 	tunedinformers "github.com/openshift/cluster-node-tuning-operator/pkg/generated/informers/externalversions"
@@ -41,6 +43,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/openshift/cluster-node-tuning-operator/version"
 
+	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	mcfgclientset "github.com/openshift/machine-config-operator/pkg/generated/clientset/versioned"
 	mcfginformers "github.com/openshift/machine-config-operator/pkg/generated/informers/externalversions"
 )
@@ -155,6 +158,10 @@ func NewController() (*Controller, error) {
 			return nil, err
 		}
 		controller.clients.ManagementKube, err = kubeset.NewForConfig(managementKubeconfig)
+		if err != nil {
+			return nil, err
+		}
+		controller.clients.ManagementDynamic, err = dynamic.NewForConfig(managementKubeconfig)
 		if err != nil {
 			return nil, err
 		}
@@ -352,6 +359,16 @@ func (c *Controller) sync(key wqKey) error {
 	}
 
 	// Tuned CR changed and the operator components need to be managed.
+
+	// In HyperShift clusters, any Tuned changes should be overwritten by the tuned config
+	// in the management cluster
+	if config.InHyperShift() {
+		err = c.syncHostedClusterTuneds()
+		if err != nil {
+			return fmt.Errorf("failed to sync hosted cluster Tuneds: %v", err)
+		}
+	}
+
 	klog.V(2).Infof("sync(): Tuned %s", tunedv1.TunedRenderedResourceName)
 	err = c.syncTunedRendered(cr)
 	if err != nil {
@@ -564,6 +581,13 @@ func (c *Controller) syncDaemonSet(tuned *tunedv1.Tuned) error {
 }
 
 func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
+	var (
+		tunedProfileName string
+		mcLabels         map[string]string
+		pools            []*mcfgv1.MachineConfigPool
+		operand          tunedv1.OperandConfig
+		nodePoolName     string
+	)
 	profileMf := ntomf.TunedProfile()
 	profileMf.ObjectMeta.OwnerReferences = getDefaultTunedRefs(tuned)
 
@@ -590,10 +614,18 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		return nil
 	}
 
-	tunedProfileName, mcLabels, pools, operand, err := c.pc.calculateProfile(nodeName)
-	if err != nil {
-		return err
+	if ntoconfig.InHyperShift() {
+		tunedProfileName, nodePoolName, operand, err = c.pc.calculateProfileHyperShift(nodeName)
+		if err != nil {
+			return err
+		}
+	} else {
+		tunedProfileName, mcLabels, pools, operand, err = c.pc.calculateProfile(nodeName)
+		if err != nil {
+			return err
+		}
 	}
+
 	metrics.ProfileCalculated(profileMf.Name, tunedProfileName)
 
 	profile, err := c.listers.TunedProfiles.Get(profileMf.Name)
@@ -637,8 +669,13 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		return fmt.Errorf("failed to get ProviderName: %v", err)
 	}
 
-	if mcLabels != nil {
-		if !ntoconfig.InHyperShift() {
+	if ntoconfig.InHyperShift() {
+		// In HyperShift
+		if profile.Status.TunedProfile == tunedProfileName && profileApplied(profile) {
+			klog.V(2).Infof("MachineConfigs not yet supported in HyperShift. Skipping for profile %s on node %s for NodePool %s", tunedProfileName, nodeName, nodePoolName)
+		}
+	} else {
+		if mcLabels != nil {
 			// The Tuned daemon profile 'tunedProfileName' for nodeName matched with MachineConfig
 			// labels set for additional machine configuration.  Sync the operator-created
 			// MachineConfig for MachineConfigPools 'pools'.
@@ -650,8 +687,6 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 					return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
 				}
 			}
-		} else {
-			klog.Infof("Ignoring MachineConfig label matching for Profile %s. MachineConfig API not currently supported in HyperShift.", tunedProfileName)
 		}
 	}
 

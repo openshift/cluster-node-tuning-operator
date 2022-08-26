@@ -113,7 +113,6 @@ func operatorRun() {
 
 	restConfig := ctrl.GetConfigOrDie()
 	le := util.GetLeaderElectionConfig(restConfig, enableLeaderElection)
-
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		NewCache:                cache.MultiNamespacedCacheBuilder(namespaces),
 		Scheme:                  scheme,

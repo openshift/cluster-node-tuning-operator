@@ -129,8 +129,12 @@ func tunedRenderedProfiles(tuned *tunedv1.Tuned, m map[string]tunedv1.TunedProfi
 	if tuned.Spec.Profile != nil {
 		for _, v := range tuned.Spec.Profile {
 			if v.Name != nil && v.Data != nil {
-				if _, found := m[*v.Name]; found {
-					klog.Warningf("WARNING: Duplicate profile %s", *v.Name)
+				if existingProfile, found := m[*v.Name]; found {
+					if *v.Data == *existingProfile.Data {
+						klog.Infof("duplicate profiles names %s but they have the same contents", *v.Name)
+					} else {
+						klog.Warningf("WARNING: duplicate profiles named %s with different contents", *v.Name)
+					}
 				}
 				m[*v.Name] = v
 			}
