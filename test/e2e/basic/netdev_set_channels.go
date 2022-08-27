@@ -34,7 +34,7 @@ var _ = ginkgo.Describe("[basic][netdev_set_channels] Node Tuning Operator adjus
 			if node != nil {
 				util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelNetdev+"-")
 			}
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileNetdev)
+			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileNetdev)
 		})
 
 		ginkgo.It("adjust netdev queue count for physical network devices via ethtool", func() {
@@ -142,7 +142,7 @@ var _ = ginkgo.Describe("[basic][netdev_set_channels] Node Tuning Operator adjus
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("creating profile %s", profileNetdev))
-			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileNetdev)
+			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.WatchNamespace(), "-f", profileNetdev)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("ensuring the number of multi-purpose channels is set to %d for %s on node %s", chLen, phyDev, node.Name))
@@ -162,7 +162,7 @@ var _ = ginkgo.Describe("[basic][netdev_set_channels] Node Tuning Operator adjus
 			gomega.Expect(err).NotTo(gomega.HaveOccurred(), explain)
 
 			ginkgo.By(fmt.Sprintf("deleting profile %s", profileNetdev))
-			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileNetdev)
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileNetdev)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("removing label %s from node %s", nodeLabelNetdev, node.Name))

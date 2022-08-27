@@ -36,11 +36,11 @@ var _ = ginkgo.Describe("[basic][tuned_errors_and_recovery] Cause TuneD daemon e
 			if node != nil {
 				util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelCauseTunedFailure+"-")
 			}
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileCauseTunedFailure)
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileDummy)
+			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileCauseTunedFailure)
+			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileDummy)
 			if pod != nil {
 				// Without removing the profile directory this e2e test fails when invoking for the second time on the same system.
-				util.ExecAndLogCommand("oc", "exec", "-n", ntoconfig.OperatorNamespace(), pod.Name, "--", "rm", "-rf", "/etc/tuned/openshift-dummy")
+				util.ExecAndLogCommand("oc", "exec", "-n", ntoconfig.WatchNamespace(), pod.Name, "--", "rm", "-rf", "/etc/tuned/openshift-dummy")
 			}
 		})
 
@@ -70,7 +70,7 @@ var _ = ginkgo.Describe("[basic][tuned_errors_and_recovery] Cause TuneD daemon e
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("creating the custom profile %s", profileCauseTunedFailure))
-			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileCauseTunedFailure)
+			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.WatchNamespace(), "-f", profileCauseTunedFailure)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("waiting for ClusterOperator/%s condition %s reason %s", tunedv1.TunedClusterOperatorResourceName, configv1.OperatorAvailable, reasonProfileDegraded))
@@ -78,7 +78,7 @@ var _ = ginkgo.Describe("[basic][tuned_errors_and_recovery] Cause TuneD daemon e
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("creating the custom profile %s", profileDummy))
-			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileDummy)
+			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.WatchNamespace(), "-f", profileDummy)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			// Check for rhbz#1998247, reload TuneD when deps of recommended profile change.
@@ -87,11 +87,11 @@ var _ = ginkgo.Describe("[basic][tuned_errors_and_recovery] Cause TuneD daemon e
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("deleting the custom profile %s", profileCauseTunedFailure))
-			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileCauseTunedFailure)
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileCauseTunedFailure)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("deleting the custom profile %s", profileDummy))
-			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileDummy)
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileDummy)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("waiting for ClusterOperator/%s condition %s reason %s", tunedv1.TunedClusterOperatorResourceName, configv1.OperatorAvailable, reasonAsExpected))

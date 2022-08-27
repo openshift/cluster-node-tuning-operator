@@ -51,7 +51,7 @@ var _ = ginkgo.Describe("[basic][metrics] Node Tuning Operator certificate rotat
 
 			ginkgo.By("checking if server TLS certificate matches TLS certificate in Secret")
 			err = wait.PollImmediate(pollInterval, waitDuration, func() (bool, error) {
-				tlsSecret, err := cs.Secrets(ntoconfig.OperatorNamespace()).Get(context.TODO(), "node-tuning-operator-tls", metav1.GetOptions{})
+				tlsSecret, err := cs.Secrets(ntoconfig.WatchNamespace()).Get(context.TODO(), "node-tuning-operator-tls", metav1.GetOptions{})
 				if err != nil {
 					util.Logf("error getting secret/node-tuning-operator-tls. May not exist yet. Err: %v", err)
 					return false, nil
@@ -78,14 +78,14 @@ var _ = ginkgo.Describe("[basic][metrics] Node Tuning Operator certificate rotat
 // waits up to 2 minutes for it to be recreated with the new certificate.
 func rotateTLSCertSecret() error {
 	// Get original Secret.
-	tlsSecret, err := cs.Secrets(ntoconfig.OperatorNamespace()).Get(context.TODO(), "node-tuning-operator-tls", metav1.GetOptions{})
+	tlsSecret, err := cs.Secrets(ntoconfig.WatchNamespace()).Get(context.TODO(), "node-tuning-operator-tls", metav1.GetOptions{})
 	if err != nil {
 		util.Logf("Error getting secret/node-tuning-operator-tls. May not exist yet. Err: %v", err)
 		return err
 	}
 	origCertContents := string(tlsSecret.Data["tls.crt"])
 
-	_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "secret/node-tuning-operator-tls")
+	_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "secret/node-tuning-operator-tls")
 	if err != nil {
 		util.Logf("Error deleting secret/node-tuning-operator/tls")
 		return err
@@ -93,7 +93,7 @@ func rotateTLSCertSecret() error {
 
 	// Wait for new certificate to be injected into the Secret.
 	err = wait.PollImmediate(2*time.Second, 2*time.Minute, func() (bool, error) {
-		tlsSecret, err = cs.Secrets(ntoconfig.OperatorNamespace()).Get(context.TODO(), "node-tuning-operator-tls", metav1.GetOptions{})
+		tlsSecret, err = cs.Secrets(ntoconfig.WatchNamespace()).Get(context.TODO(), "node-tuning-operator-tls", metav1.GetOptions{})
 		if err != nil {
 			util.Logf("Error getting secret/node-tuning-operator-tls. May not exist yet. Err: %v", err)
 			return false, nil

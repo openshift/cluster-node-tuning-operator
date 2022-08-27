@@ -30,7 +30,7 @@ func TunedRenderedResource(tunedSlice []*tunedv1.Tuned) *tunedv1.Tuned {
 	cr := &tunedv1.Tuned{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      tunedv1.TunedRenderedResourceName,
-			Namespace: ntoconfig.OperatorNamespace(),
+			Namespace: ntoconfig.WatchNamespace(),
 		},
 		Spec: tunedv1.TunedSpec{
 			Recommend: []tunedv1.TunedRecommend{},
@@ -129,8 +129,12 @@ func tunedRenderedProfiles(tuned *tunedv1.Tuned, m map[string]tunedv1.TunedProfi
 	if tuned.Spec.Profile != nil {
 		for _, v := range tuned.Spec.Profile {
 			if v.Name != nil && v.Data != nil {
-				if _, found := m[*v.Name]; found {
-					klog.Warningf("WARNING: Duplicate profile %s", *v.Name)
+				if existingProfile, found := m[*v.Name]; found {
+					if *v.Data == *existingProfile.Data {
+						klog.Infof("duplicate profiles names %s but they have the same contents", *v.Name)
+					} else {
+						klog.Warningf("WARNING: duplicate profiles named %s with different contents", *v.Name)
+					}
 				}
 				m[*v.Name] = v
 			}
