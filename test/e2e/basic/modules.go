@@ -33,7 +33,7 @@ var _ = ginkgo.Describe("[basic][modules] Node Tuning Operator load kernel modul
 			if node != nil {
 				util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelModules+"-")
 			}
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileModules)
+			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileModules)
 		})
 
 		ginkgo.It(fmt.Sprintf("modules: %s loaded", moduleName), func() {
@@ -65,7 +65,7 @@ var _ = ginkgo.Describe("[basic][modules] Node Tuning Operator load kernel modul
 			gomega.Expect(err).To(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("creating profile %s", profileModules))
-			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileModules)
+			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.WatchNamespace(), "-f", profileModules)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("ensuring the %s module is loaded", moduleName))
@@ -73,7 +73,7 @@ var _ = ginkgo.Describe("[basic][modules] Node Tuning Operator load kernel modul
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("deleting profile %s", profileModules))
-			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileModules)
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileModules)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("removing label %s from node %s", nodeLabelModules, node.Name))

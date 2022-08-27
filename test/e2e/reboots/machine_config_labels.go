@@ -36,7 +36,7 @@ var _ = ginkgo.Describe("[reboots][machine_config_labels] Node Tuning Operator m
 			if node != nil {
 				util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelRealtime+"-")
 			}
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileRealtime)
+			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileRealtime)
 			util.ExecAndLogCommand("oc", "delete", "-f", mcpRealtime)
 		})
 
@@ -70,7 +70,7 @@ var _ = ginkgo.Describe("[reboots][machine_config_labels] Node Tuning Operator m
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("creating custom realtime profile %s", profileRealtime))
-			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileRealtime)
+			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.WatchNamespace(), "-f", profileRealtime)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("creating custom MachineConfigPool %s", mcpRealtime))
@@ -98,7 +98,7 @@ var _ = ginkgo.Describe("[reboots][machine_config_labels] Node Tuning Operator m
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("deleting the custom realtime profile %s", profileRealtime))
-			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileRealtime)
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileRealtime)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			// Wait for the worker machineCount to go to the original value when the node was not part of worker-rt pool.

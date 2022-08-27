@@ -1,6 +1,7 @@
 package operator
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -9,10 +10,12 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
@@ -187,6 +190,7 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[stri
 			}
 
 			pools, err = pc.getPoolsForNode(node)
+
 			if err != nil {
 				return "", nil, nil, operand, err
 			}
@@ -206,6 +210,61 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[stri
 	}
 
 	return defaultProfile, nil, nil, operand, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
+}
+
+// calculateProfileHyperShift calculates a tuned profile for Node nodeName.
+//
+// Returns
+// * the tuned daemon profile name
+// * the NodePool name for this Node
+// * whether to run the Tuned daemon in debug mode on node nodeName
+// * an error if any
+func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (string, string, tunedv1.OperandConfig, error) {
+	var operand tunedv1.OperandConfig
+
+	klog.V(3).Infof("calculateProfileHyperShift(%s)", nodeName)
+
+	node, err := pc.listers.Nodes.Get(nodeName)
+	if err != nil {
+		return "", "", operand, err
+	}
+
+	nodePoolName, err := pc.getNodePoolNameForNode(node)
+	if err != nil {
+		return "", "", operand, err
+	}
+
+	// In HyperShift, we only consider the default profile and
+	// the Tuned profiles from Tuneds referenced in this Nodes NodePool spec.
+	tunedList, err := pc.listers.TunedResources.List(labels.SelectorFromValidatedSet(
+		map[string]string{
+			hypershiftNodePoolNameLabel: nodePoolName,
+		}))
+	if err != nil {
+		return "", "", operand, fmt.Errorf("failed to list Tuneds in NodePool %s: %v", nodePoolName, err)
+	}
+	defaultTuned, err := pc.listers.TunedResources.Get(tunedv1.TunedDefaultResourceName)
+	if err != nil {
+		return defaultProfile, "", operand, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
+	}
+	tunedList = append(tunedList, defaultTuned)
+
+	for _, recommend := range tunedRecommend(tunedList) {
+		// Start with node/pod label based matching
+		if recommend.Match != nil && pc.profileMatches(recommend.Match, nodeName) {
+			klog.V(2).Infof("calculateProfileHyperShift: node / pod label matching used. node: %s, tunedProfileName: %s, nodePoolName: %s, operand: %v", nodeName, *recommend.Profile, "", recommend.Operand)
+			return *recommend.Profile, "", recommend.Operand, nil
+		}
+
+		// If recommend.Match is empty, NodePool based matching is assumed
+		// or this is the default profile
+		if recommend.Match == nil {
+			klog.V(2).Infof("calculateProfileHyperShift: NodePool based matching used. node: %s, tunedProfileName:  %s, nodePoolName: %s", nodeName, *recommend.Profile, nodePoolName)
+			return *recommend.Profile, nodePoolName, recommend.Operand, nil
+		}
+	}
+
+	return defaultProfile, "", operand, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
 }
 
 // profileMatches returns true, if Node 'nodeName' fulfills all the necessary
@@ -460,6 +519,45 @@ func (pc *ProfileCalculator) tunedsUsePodLabels(tunedSlice []*tunedv1.Tuned) boo
 	return false
 }
 
+// This can be simplified and cleaned up a lot after
+// https://github.com/openshift/hypershift/pull/1702 merges.
+// Then the nodes will have a label with the NodePool name.
+func (pc *ProfileCalculator) getNodePoolNameForNode(node *corev1.Node) (string, error) {
+	var nodeMachineSetName string
+	var resourceGVK schema.GroupVersionResource
+
+	if node.Annotations[hypershiftNodeOwnerKindLabel] == "MachineSet" {
+		nodeMachineSetName = node.Annotations[hypershiftNodeOwnerNameLabel]
+		resourceGVK = schema.GroupVersionResource{
+			Group:    "cluster.x-k8s.io",
+			Version:  "v1beta1",
+			Resource: "machinesets"}
+	} else {
+		klog.Warning("unexpected node owner kind on Node %s: %s", node.Name, hypershiftNodeOwnerKindLabel)
+	}
+
+	unstructuredMachineSet, err := pc.clients.ManagementDynamic.Resource(resourceGVK).Namespace(config.OperatorNamespace()).Get(context.TODO(), nodeMachineSetName, metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("error getting MachineSet for Node %s: %v", node.Name, err)
+	}
+
+	machineSetMetadata, ok := unstructuredMachineSet.Object["metadata"].(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("unable to get annotations of unstructured MachineSet for node: %s", node.Name)
+	}
+	machineSetAnnotations, ok := machineSetMetadata["annotations"].(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("unable to get metadata of unstructured MachineSet for node: %s", node.Name)
+	}
+	nodePoolNamespacedName, ok := machineSetAnnotations[hypershiftNodePoolNamespacedNameLabel].(string)
+	if !ok {
+		return "", fmt.Errorf("unable to get nodePool annotation value of unstructured MachineSet for node: %s", node.Name)
+	}
+	nodePoolName := parseNamespacedName((nodePoolNamespacedName))
+	klog.Infof("calculated nodePoolName: %s for node %s with nodeMachineSet value: %s", nodePoolName, node.Name, nodeMachineSetName)
+	return nodePoolName, nil
+}
+
 // tunedRecommend returns a priority-sorted TunedRecommend slice out of
 // a slice of Tuned objects for profile-calculation purposes.
 func tunedRecommend(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedRecommend {
@@ -490,7 +588,11 @@ func tunedRecommend(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedRecommend {
 		if recommendAll[i].Priority == nil || recommendAll[i+1].Priority == nil {
 			continue
 		}
-		if *recommendAll[i].Priority == *recommendAll[i+1].Priority {
+		// Warn if two profiles have the same priority, and different names.
+		// If they have the same name and different contents a separate warning
+		// will be issued by manifests.tunedRenderedProfiles()
+		if *recommendAll[i].Priority == *recommendAll[i+1].Priority &&
+			*recommendAll[i].Profile != *recommendAll[i+1].Profile {
 			klog.Warningf("profiles %s/%s have the same priority %d, please use a different priority for your custom profiles!",
 				*recommendAll[i].Profile, *recommendAll[i+1].Profile, *recommendAll[i].Priority)
 		}

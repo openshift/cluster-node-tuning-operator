@@ -39,7 +39,7 @@ var _ = ginkgo.Describe("[basic][default_irq_smp_affinity] Node Tuning Operator 
 			if node != nil {
 				util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelAffinity+"-")
 			}
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileAffinity0)
+			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileAffinity0)
 		})
 
 		ginkgo.It(fmt.Sprintf("default_irq_smp_affinity: %s set", procIrqDefaultSmpAffinity), func() {
@@ -82,7 +82,7 @@ var _ = ginkgo.Describe("[basic][default_irq_smp_affinity] Node Tuning Operator 
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("creating the custom affinity profile %s", profileAffinity0))
-			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileAffinity0)
+			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.WatchNamespace(), "-f", profileAffinity0)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			// Check only the last nibble of the /proc/irq/default_smp_affinity mask.  Some virtualized (Xen) systems have
@@ -97,7 +97,7 @@ var _ = ginkgo.Describe("[basic][default_irq_smp_affinity] Node Tuning Operator 
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("applying the custom affinity profile %s", profileAffinity1))
-			_, _, err = util.ExecAndLogCommand("oc", "apply", "-n", ntoconfig.OperatorNamespace(), "-f", profileAffinity1)
+			_, _, err = util.ExecAndLogCommand("oc", "apply", "-n", ntoconfig.WatchNamespace(), "-f", profileAffinity1)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("ensuring the correct value of %s was set in the last nibble of %s", maskExp1, procIrqDefaultSmpAffinity))
@@ -105,7 +105,7 @@ var _ = ginkgo.Describe("[basic][default_irq_smp_affinity] Node Tuning Operator 
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("deleting the custom affinity profile %s", profileAffinity0))
-			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileAffinity0)
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileAffinity0)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("ensuring the original value of %s was set in the last nibble of %s", valOrig, procIrqDefaultSmpAffinity))

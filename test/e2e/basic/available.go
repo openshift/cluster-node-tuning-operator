@@ -39,7 +39,7 @@ var _ = ginkgo.Describe("[basic][available] Node Tuning Operator availability", 
 	ginkgo.It(fmt.Sprintf("Tuned/%s exists", tunedv1.TunedDefaultResourceName), func() {
 		ginkgo.By(fmt.Sprintf("waiting for Tuned/%s existence", tunedv1.TunedDefaultResourceName))
 		err := wait.PollImmediate(pollInterval, waitDuration, func() (bool, error) {
-			_, err := cs.Tuneds(ntoconfig.OperatorNamespace()).Get(context.TODO(), tunedv1.TunedDefaultResourceName, metav1.GetOptions{})
+			_, err := cs.Tuneds(ntoconfig.WatchNamespace()).Get(context.TODO(), tunedv1.TunedDefaultResourceName, metav1.GetOptions{})
 			if err != nil {
 				explain = err.Error()
 				return false, nil

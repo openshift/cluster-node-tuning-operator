@@ -35,7 +35,7 @@ var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing syste
 			if node != nil {
 				util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelRealtime+"-")
 			}
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileStalldOn)
+			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileStalldOn)
 			util.ExecAndLogCommand("oc", "delete", "-f", mcpRealtime)
 		})
 
@@ -64,7 +64,7 @@ var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing syste
 
 			// BZ1926903: check for the systemd/TuneD [service] plug-in race
 			ginkgo.By(fmt.Sprintf("creating custom realtime profile %s with stalld service stopped,disabled", profileStalldOff))
-			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.OperatorNamespace(), "-f", profileStalldOff)
+			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.WatchNamespace(), "-f", profileStalldOff)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("creating custom MachineConfigPool %s", mcpRealtime))
@@ -90,7 +90,7 @@ var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing syste
 			gomega.Expect(err).To(gomega.HaveOccurred()) // pidof exits 1 when there is no running process found
 
 			ginkgo.By(fmt.Sprintf("applying custom realtime profile %s with stalld service", profileStalldOn))
-			_, _, err = util.ExecAndLogCommand("oc", "apply", "-n", ntoconfig.OperatorNamespace(), "-f", profileStalldOn)
+			_, _, err = util.ExecAndLogCommand("oc", "apply", "-n", ntoconfig.WatchNamespace(), "-f", profileStalldOn)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("checking the stalld daemon is running on node %s", node.Name))
@@ -106,7 +106,7 @@ var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing syste
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("deleting the custom realtime profile %s with stalld service", profileStalldOn))
-			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.OperatorNamespace(), "-f", profileStalldOn)
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileStalldOn)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			// Wait for the worker machineCount to go to the original value when the node was not part of worker-rt pool.

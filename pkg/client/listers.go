@@ -12,6 +12,7 @@ import (
 
 type Listers struct {
 	DaemonSets         kappslisters.DaemonSetNamespaceLister
+	ConfigMaps         kcorelisters.ConfigMapNamespaceLister
 	Pods               kcorelisters.PodLister
 	Nodes              kcorelisters.NodeLister
 	ClusterOperators   configlisters.ClusterOperatorLister
