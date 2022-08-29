@@ -50,10 +50,11 @@ const (
 	udevRpsRules         = "99-netdev-rps.rules"
 	udevPhysicalRpsRules = "99-netdev-physical-rps.rules"
 	// scripts
-	hugepagesAllocation = "hugepages-allocation"
-	setCPUsOffline      = "set-cpus-offline"
-	ociHooks            = "low-latency-hooks"
-	setRPSMask          = "set-rps-mask"
+	hugepagesAllocation       = "hugepages-allocation"
+	setCPUsOffline            = "set-cpus-offline"
+	ociHooks                  = "low-latency-hooks"
+	setRPSMask                = "set-rps-mask"
+	clearIRQBalanceBannedCPUs = "clear-irqbalance-banned-cpus"
 )
 
 const (
@@ -70,6 +71,7 @@ const (
 )
 
 const (
+	systemdServiceIRQBalance  = "irqbalance.service"
 	systemdServiceKubelet     = "kubelet.service"
 	systemdServiceTypeOneshot = "oneshot"
 	systemdTargetMultiUser    = "multi-user.target"
@@ -144,7 +146,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile) (*igntypes.Con
 
 	// add script files under the node /usr/local/bin directory
 	mode := 0700
-	for _, script := range []string{hugepagesAllocation, ociHooks, setRPSMask, setCPUsOffline} {
+	for _, script := range []string{hugepagesAllocation, ociHooks, setRPSMask, setCPUsOffline, clearIRQBalanceBannedCPUs} {
 		dst := getBashScriptPath(script)
 		content, err := assets.Scripts.ReadFile(fmt.Sprintf("scripts/%s.sh", script))
 		if err != nil {
@@ -249,6 +251,17 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile) (*igntypes.Con
 		})
 	}
 
+	clearIRQBalanceBannedCPUsService, err := getSystemdContent(getIRQBalanceBannedCPUsOptions())
+	if err != nil {
+		return nil, err
+	}
+
+	ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
+		Contents: &clearIRQBalanceBannedCPUsService,
+		Enabled:  pointer.BoolPtr(true),
+		Name:     getSystemdService(clearIRQBalanceBannedCPUs),
+	})
+
 	return ignitionConfig, nil
 }
 
@@ -306,6 +319,27 @@ func GetHugepagesSizeKilobytes(hugepagesSize performancev2.HugePageSize) (string
 		return "2048", nil
 	default:
 		return "", fmt.Errorf("can not convert size %q to kilobytes", hugepagesSize)
+	}
+}
+
+func getIRQBalanceBannedCPUsOptions() []*unit.UnitOption {
+	return []*unit.UnitOption{
+		// [Unit]
+		// Description
+		unit.NewUnitOption(systemdSectionUnit, systemdDescription, "Clear the IRQBalance Banned CPU mask early in the boot"),
+		// Before
+		unit.NewUnitOption(systemdSectionUnit, systemdBefore, systemdServiceKubelet),
+		unit.NewUnitOption(systemdSectionUnit, systemdBefore, systemdServiceIRQBalance),
+		// [Service]
+		// Type
+		unit.NewUnitOption(systemdSectionService, systemdType, systemdServiceTypeOneshot),
+		// RemainAfterExit
+		unit.NewUnitOption(systemdSectionService, systemdRemainAfterExit, systemdTrue),
+		// ExecStart
+		unit.NewUnitOption(systemdSectionService, systemdExecStart, getBashScriptPath(clearIRQBalanceBannedCPUs)),
+		// [Install]
+		// WantedBy
+		unit.NewUnitOption(systemdSectionInstall, systemdWantedBy, systemdTargetMultiUser),
 	}
 }
 

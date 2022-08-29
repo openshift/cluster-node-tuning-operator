@@ -51,6 +51,24 @@ const offlineCPUS = `
         name: set-cpus-offline.service
 `
 
+const clearBannedCPUs = `
+      - contents: |
+          [Unit]
+          Description=Clear the IRQBalance Banned CPU mask early in the boot
+          Before=kubelet.service
+          Before=irqbalance.service
+
+          [Service]
+          Type=oneshot
+          RemainAfterExit=true
+          ExecStart=/usr/local/bin/clear-irqbalance-banned-cpus.sh
+
+          [Install]
+          WantedBy=multi-user.target
+        enabled: true
+        name: clear-irqbalance-banned-cpus.service
+`
+
 var CPUs = []int{1, 2, 3, 4, 5, 6, 7, 8, 9}
 var CPUstring = "1,2,3,4,5,6,7,8,9"
 
@@ -97,12 +115,38 @@ var _ = Describe("Machine Config", func() {
 		It("should add systemd unit to offlineCPUs", func() {
 			Expect(manifest).To(ContainSubstring(offlineCPUS))
 		})
+
+		// doesn't depend on hugepages or offlined CPUs
+		It("should create systemd unit for clearing banned CPUs", func() {
+			Expect(manifest).To(ContainSubstring(clearBannedCPUs))
+		})
 	})
 
 	Context("check listToString ", func() {
 		It("should create string from CPUSet", func() {
 			res := components.ListToString(CPUs)
 			Expect(res).To(Equal(CPUstring))
+		})
+	})
+
+	Context("check systemd units", func() {
+		It("should generate clear-banned-cpus unit", func() {
+			unit, err := getSystemdContent(getIRQBalanceBannedCPUsOptions())
+			Expect(err).ToNot(HaveOccurred())
+			expected := `[Unit]
+Description=Clear the IRQBalance Banned CPU mask early in the boot
+Before=kubelet.service
+Before=irqbalance.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart=/usr/local/bin/clear-irqbalance-banned-cpus.sh
+
+[Install]
+WantedBy=multi-user.target
+`
+			Expect(unit).To(Equal(expected))
 		})
 	})
 })
