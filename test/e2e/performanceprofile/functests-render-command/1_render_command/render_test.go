@@ -28,7 +28,7 @@ var _ = Describe("render command e2e test", func() {
 	})
 
 	Context("With a single performance-profile", func() {
-		It("Gets cli args and produces the expected components to output directory", func() {
+		FIt("Gets cli args and produces the expected components to output directory", func() {
 
 			cmdline := []string{
 				filepath.Join(binPath, "cluster-node-tuning-operator"),
