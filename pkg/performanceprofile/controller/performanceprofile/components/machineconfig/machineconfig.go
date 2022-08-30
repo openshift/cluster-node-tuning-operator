@@ -44,7 +44,6 @@ const (
 	// OCIHooksConfigDir is the default directory for the OCI hooks
 	OCIHooksConfigDir = "/etc/containers/oci/hooks.d"
 	// OCIHooksConfig file contains the low latency hooks configuration
-	OCIHooksConfig       = "99-low-latency-hooks.json"
 	ociTemplateRPSMask   = "RPSMask"
 	udevRulesDir         = "/etc/udev/rules.d"
 	udevRpsRules         = "99-netdev-rps.rules"
@@ -52,7 +51,6 @@ const (
 	// scripts
 	hugepagesAllocation = "hugepages-allocation"
 	setCPUsOffline      = "set-cpus-offline"
-	ociHooks            = "low-latency-hooks"
 	setRPSMask          = "set-rps-mask"
 )
 
@@ -144,7 +142,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile) (*igntypes.Con
 
 	// add script files under the node /usr/local/bin directory
 	mode := 0700
-	for _, script := range []string{hugepagesAllocation, ociHooks, setRPSMask, setCPUsOffline} {
+	for _, script := range []string{hugepagesAllocation, setRPSMask, setCPUsOffline} {
 		dst := getBashScriptPath(script)
 		content, err := assets.Scripts.ReadFile(fmt.Sprintf("scripts/%s.sh", script))
 		if err != nil {
@@ -161,15 +159,6 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile) (*igntypes.Con
 	}
 	crioConfSnippetDst := filepath.Join(crioConfd, crioRuntimesConfig)
 	addContent(ignitionConfig, crioConfigSnippetContent, crioConfSnippetDst, &crioConfdRuntimesMode)
-
-	// add crio hooks config  under the node cri-o hook directory
-	crioHooksConfigsMode := 0644
-	ociHooksConfigContent, err := GetOCIHooksConfigContent(OCIHooksConfig, profile)
-	if err != nil {
-		return nil, err
-	}
-	ociHookConfigDst := filepath.Join(OCIHooksConfigDir, OCIHooksConfig)
-	addContent(ignitionConfig, ociHooksConfigContent, ociHookConfigDst, &crioHooksConfigsMode)
 
 	// add rps udev rule
 	rpsRulesMode := 0644
