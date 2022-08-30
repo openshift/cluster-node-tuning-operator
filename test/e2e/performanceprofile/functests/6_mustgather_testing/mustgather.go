@@ -131,6 +131,8 @@ var _ = Describe("[rfe_id: 50649] Performance Addon Operator Must Gather", func(
 				"podresources.json",
 				"proc_cmdline",
 				"sysinfo.log",
+				"ethtool_features",
+				"ethtool_channels",
 			}
 
 			err = checkfilesExist(nodeSpecificFiles, snapShotPath)
