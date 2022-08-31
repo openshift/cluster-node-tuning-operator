@@ -29,6 +29,7 @@ min_perf_pct=100
 
 {{if .RealTime}}
 [service]
+#uname_regex=rt
 service.stalld=start,enable
 {{end}}
 
@@ -59,6 +60,7 @@ default_irq_smp_affinity = ignore
 {{end}}
 
 [sysctl]
+#uname_regex=rt
 {{if .RealTime}}
 #> cpu-partitioning #realtime
 kernel.hung_task_timeout_secs=600
