@@ -1,7 +1,6 @@
 package operator
 
 import (
-	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -10,12 +9,10 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
@@ -519,42 +516,10 @@ func (pc *ProfileCalculator) tunedsUsePodLabels(tunedSlice []*tunedv1.Tuned) boo
 	return false
 }
 
-// This can be simplified and cleaned up a lot after
-// https://github.com/openshift/hypershift/pull/1702 merges.
-// Then the nodes will have a label with the NodePool name.
+// getNodePoolNameForNode returns the NodePool name from a label on the hosted cluster Node
 func (pc *ProfileCalculator) getNodePoolNameForNode(node *corev1.Node) (string, error) {
-	var nodeMachineSetName string
-	var resourceGVK schema.GroupVersionResource
-
-	if node.Annotations[hypershiftNodeOwnerKindLabel] == "MachineSet" {
-		nodeMachineSetName = node.Annotations[hypershiftNodeOwnerNameLabel]
-		resourceGVK = schema.GroupVersionResource{
-			Group:    "cluster.x-k8s.io",
-			Version:  "v1beta1",
-			Resource: "machinesets"}
-	} else {
-		klog.Warning("unexpected node owner kind on Node %s: %s", node.Name, hypershiftNodeOwnerKindLabel)
-	}
-
-	unstructuredMachineSet, err := pc.clients.ManagementDynamic.Resource(resourceGVK).Namespace(config.OperatorNamespace()).Get(context.TODO(), nodeMachineSetName, metav1.GetOptions{})
-	if err != nil {
-		return "", fmt.Errorf("error getting MachineSet for Node %s: %v", node.Name, err)
-	}
-
-	machineSetMetadata, ok := unstructuredMachineSet.Object["metadata"].(map[string]interface{})
-	if !ok {
-		return "", fmt.Errorf("unable to get annotations of unstructured MachineSet for node: %s", node.Name)
-	}
-	machineSetAnnotations, ok := machineSetMetadata["annotations"].(map[string]interface{})
-	if !ok {
-		return "", fmt.Errorf("unable to get metadata of unstructured MachineSet for node: %s", node.Name)
-	}
-	nodePoolNamespacedName, ok := machineSetAnnotations[hypershiftNodePoolNamespacedNameLabel].(string)
-	if !ok {
-		return "", fmt.Errorf("unable to get nodePool annotation value of unstructured MachineSet for node: %s", node.Name)
-	}
-	nodePoolName := parseNamespacedName((nodePoolNamespacedName))
-	klog.Infof("calculated nodePoolName: %s for node %s with nodeMachineSet value: %s", nodePoolName, node.Name, nodeMachineSetName)
+	nodePoolName := node.GetLabels()[hypershiftNodePoolLabel]
+	klog.Infof("calculated nodePoolName: %s for node %s", nodePoolName, node.Name)
 	return nodePoolName, nil
 }
 
