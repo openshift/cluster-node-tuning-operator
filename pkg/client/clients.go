@@ -1,7 +1,6 @@
 package client
 
 import (
-	dynamic "k8s.io/client-go/dynamic"
 	kubeset "k8s.io/client-go/kubernetes"
 	appsset "k8s.io/client-go/kubernetes/typed/apps/v1"
 	coreset "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -13,13 +12,12 @@ import (
 )
 
 type Clients struct {
-	Kube              *kubeset.Clientset
-	ConfigClientSet   *configclientset.Clientset
-	ConfigV1Client    *configv1client.ConfigV1Client
-	Tuned             *tunedset.Clientset
-	MC                *mcfgclientset.Clientset
-	Core              *coreset.CoreV1Client
-	Apps              *appsset.AppsV1Client
-	ManagementKube    *kubeset.Clientset
-	ManagementDynamic dynamic.Interface
+	Kube            *kubeset.Clientset
+	ConfigClientSet *configclientset.Clientset
+	ConfigV1Client  *configv1client.ConfigV1Client
+	Tuned           *tunedset.Clientset
+	MC              *mcfgclientset.Clientset
+	Core            *coreset.CoreV1Client
+	Apps            *appsset.AppsV1Client
+	ManagementKube  *kubeset.Clientset
 }
