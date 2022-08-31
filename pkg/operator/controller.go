@@ -14,7 +14,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/dynamic"
 	kubeinformers "k8s.io/client-go/informers"
 	corev1informers "k8s.io/client-go/informers/core/v1"
 	kubeset "k8s.io/client-go/kubernetes"
@@ -158,10 +157,6 @@ func NewController() (*Controller, error) {
 			return nil, err
 		}
 		controller.clients.ManagementKube, err = kubeset.NewForConfig(managementKubeconfig)
-		if err != nil {
-			return nil, err
-		}
-		controller.clients.ManagementDynamic, err = dynamic.NewForConfig(managementKubeconfig)
 		if err != nil {
 			return nil, err
 		}

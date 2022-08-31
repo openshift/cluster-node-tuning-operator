@@ -19,10 +19,10 @@ import (
 )
 
 const (
-	hypershiftNodeOwnerNameLabel          = "cluster.x-k8s.io/owner-name"
-	hypershiftNodeOwnerKindLabel          = "cluster.x-k8s.io/owner-kind"
-	hypershiftNodePoolNamespacedNameLabel = "hypershift.openshift.io/nodePool"
-	hypershiftNodePoolNameLabel           = "hypershift.openshift.io/nodePoolName"
+	hypershiftNodeOwnerNameLabel = "cluster.x-k8s.io/owner-name"
+	hypershiftNodeOwnerKindLabel = "cluster.x-k8s.io/owner-kind"
+	hypershiftNodePoolLabel      = "hypershift.openshift.io/nodePool"
+	hypershiftNodePoolNameLabel  = "hypershift.openshift.io/nodePoolName"
 )
 
 // syncHostedClusterTuneds synchronizes Tuned objects embedded in ConfigMaps
@@ -124,9 +124,9 @@ func (c *Controller) getObjFromTunedConfigMap() ([]tunedv1.Tuned, error) {
 			continue
 		}
 
-		cmNodePoolNamespacedName, ok := cm.Annotations[hypershiftNodePoolNamespacedNameLabel]
+		cmNodePoolNamespacedName, ok := cm.Annotations[hypershiftNodePoolLabel]
 		if !ok {
-			klog.Warningf("failed to parseTunedManifests in ConfigMap %s, no label %s", cm.ObjectMeta.Name, hypershiftNodePoolNamespacedNameLabel)
+			klog.Warningf("failed to parseTunedManifests in ConfigMap %s, no label %s", cm.ObjectMeta.Name, hypershiftNodePoolLabel)
 			continue
 		}
 		nodePoolName := parseNamespacedName(cmNodePoolNamespacedName)
@@ -192,8 +192,8 @@ func hashStruct(o interface{}) string {
 // parseNamespacedName expects a string with the format "namespace/name"
 // and returns the name only.
 // If given a string in the format "name" returns "name".
-func parseNamespacedName(nodePoolFullName string) string {
-	parts := strings.SplitN(nodePoolFullName, "/", 2)
+func parseNamespacedName(namespacedName string) string {
+	parts := strings.SplitN(namespacedName, "/", 2)
 	if len(parts) > 1 {
 		return parts[1]
 	}
