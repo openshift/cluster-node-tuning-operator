@@ -55,6 +55,7 @@ func newMachineConfig(name string, annotations map[string]string, labels map[str
 	return &mcfgv1.MachineConfig{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: mcfgv1.SchemeGroupVersion.String(),
+			Kind:       "MachineConfig",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
@@ -259,4 +260,25 @@ func (pc *ProfileCalculator) getPrimaryPoolForNode(node *corev1.Node) (*mcfgv1.M
 		return nil, nil
 	}
 	return pools[0], nil
+}
+
+func machineConfigGenerationLogLine(bIgn, bCmdline bool, bootcmdline string) string {
+	var (
+		sb strings.Builder
+	)
+
+	if bIgn {
+		sb.WriteString(" ignition")
+		if bCmdline {
+			sb.WriteString(" and")
+		}
+	}
+
+	if bCmdline {
+		sb.WriteString(" kernel parameters: [")
+		sb.WriteString(bootcmdline)
+		sb.WriteString("]")
+	}
+
+	return sb.String()
 }
