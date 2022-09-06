@@ -38,16 +38,25 @@ func Logf(format string, args ...interface{}) (n int, err error) {
 	return fmt.Fprintf(ginkgo.GinkgoWriter, format+"\n", args...)
 }
 
-// GetNodesByRole returns a list of nodes that match a given role.
-func GetNodesByRole(cs *framework.ClientSet, role string) ([]corev1.Node, error) {
+// getNodes returns a list of nodes that match the labelSelector.
+func getNodesByLabel(cs *framework.ClientSet, labelSelector string) ([]corev1.Node, error) {
 	listOptions := metav1.ListOptions{
-		LabelSelector: labels.SelectorFromSet(labels.Set{fmt.Sprintf("node-role.kubernetes.io/%s", role): ""}).String(),
+		LabelSelector: labelSelector,
 	}
 	nodeList, err := cs.CoreV1Interface.Nodes().List(context.TODO(), listOptions)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't get a list of nodes by role (%s): %v", role, err)
+		return nil, fmt.Errorf("couldn't get a list of nodes by label selector (%s): %v", labelSelector, err)
 	}
 	return nodeList.Items, nil
+}
+
+// GetNodesByRole returns a list of nodes that match a given role.
+func GetNodesByRole(cs *framework.ClientSet, role string) ([]corev1.Node, error) {
+	nodeList, err := getNodesByLabel(cs, "node-role.kubernetes.io/"+role)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't get a list of nodes by role (%s): %v", role, err)
+	}
+	return nodeList, nil
 }
 
 // GetTunedForNode returns a Pod that runs on a given node.
@@ -334,36 +343,44 @@ func GetUpdatedMachineCountForPool(cs *framework.ClientSet, pool string) (int32,
 
 // WaitForPoolMachineCount polls a pool until its machineCount equals to 'count'.
 func WaitForPoolMachineCount(cs *framework.ClientSet, pool string, count int32) error {
+	var explain error
+
 	startTime := time.Now()
 	if err := wait.Poll(5*time.Second, 20*time.Minute, func() (bool, error) {
 		mcp, err := cs.MachineConfigPools().Get(context.TODO(), pool, metav1.GetOptions{})
 		if err != nil {
-			return false, err
+			// This is not fatal.  On SNO, API server will be unavailable during reboots.
+			explain = err
+			return false, nil
 		}
 		if mcp.Status.MachineCount == count {
 			return true, nil
 		}
 		return false, nil
 	}); err != nil {
-		return errors.Wrapf(err, "pool %s MachineCount != %d (waited %s)", pool, count, time.Since(startTime))
+		return errors.Wrapf(err, "pool %s MachineCount != %d (waited %s): ", pool, count, time.Since(startTime), explain)
 	}
 	return nil
 }
 
 // WaitForPoolUpdatedMachineCount polls a pool until its UpdatedMachineCount equals to 'count'.
 func WaitForPoolUpdatedMachineCount(cs *framework.ClientSet, pool string, count int32) error {
+	var explain error
+
 	startTime := time.Now()
 	if err := wait.Poll(5*time.Second, 20*time.Minute, func() (bool, error) {
 		mcp, err := cs.MachineConfigPools().Get(context.TODO(), pool, metav1.GetOptions{})
 		if err != nil {
-			return false, err
+			// This is not fatal.  On SNO, API server will be unavailable during reboots.
+			explain = err
+			return false, nil
 		}
 		if mcp.Status.UpdatedMachineCount == count {
 			return true, nil
 		}
 		return false, nil
 	}); err != nil {
-		return errors.Wrapf(err, "pool %s UpdatedMachineCount != %d (waited %s)", pool, count, time.Since(startTime))
+		return errors.Wrapf(err, "pool %s UpdatedMachineCount != %d (waited %s): %v", pool, count, time.Since(startTime), explain)
 	}
 	return nil
 }
@@ -379,4 +396,27 @@ func GetDefaultWorkerProfile(node *corev1.Node) string {
 	}
 
 	return DefaultWorkerProfile
+}
+
+// GetClusterControlPlaneTopology returns infrastructures/cluster objects's ControlPlaneTopology
+// status field and an error if any.  It is HighlyAvailable on regular clusters, SingleReplica
+// on SNO and External on HyperShift.
+func GetClusterControlPlaneTopology(cs *framework.ClientSet) (configv1.TopologyMode, error) {
+	const infraResourceName = "cluster"
+
+	infra, err := cs.ConfigV1Interface.Infrastructures().Get(context.TODO(), infraResourceName, metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("unable to get cluster infrastructure status: %v", err)
+	}
+	return infra.Status.ControlPlaneTopology, nil
+}
+
+// GetClusterNodes returns the number of cluster nodes and an error if any.
+func GetClusterNodes(cs *framework.ClientSet) (int, error) {
+	nodes, err := getNodesByLabel(cs, "")
+	if err != nil {
+		return 0, fmt.Errorf("unable to get the number of cluster nodes: %v", err)
+	}
+
+	return len(nodes), nil
 }
