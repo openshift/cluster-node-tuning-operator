@@ -24,22 +24,22 @@ func TestNodeTuningOperator(t *testing.T) {
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	nodeCount, err := util.GetClusterNodes(cs)
-	if nodeCount == 1 && controlPlaneTopology == configv1.SingleReplicaTopologyMode {
-		// This looks like an SNO cluster.  For the "reboots" tests to work, "master" MCP needs to be targetted.
-		util.Logf("seeing only %d node and control plane topology is %v, skipping test suite", nodeCount, controlPlaneTopology)
+	if nodeCount != 1 || controlPlaneTopology != configv1.SingleReplicaTopologyMode {
+		// This does not seem to be an SNO cluster.
+		util.Logf("the cluster does not seem to be an SNO cluster, skipping test suite")
 		return
 	}
 
-	ginkgo.RunSpecs(t, "Node Tuning Operator e2e tests: reboots")
+	ginkgo.RunSpecs(t, "Node Tuning Operator SNO e2e tests: reboots")
 }
 
 func waitForMCPFlip() {
 	// By creating the custom child profile, we will first see worker-rt MachineConfigPool UpdatedMachineCount drop to 0 first...
-	ginkgo.By("waiting for worker-rt MachineConfigPool UpdatedMachineCount == 0")
-	err := util.WaitForPoolUpdatedMachineCount(cs, "worker-rt", 0)
+	ginkgo.By("waiting for master MachineConfigPool UpdatedMachineCount == 0")
+	err := util.WaitForPoolUpdatedMachineCount(cs, "master", 0)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	// ...and go up to 1 again next.
-	ginkgo.By("waiting for worker-rt MachineConfigPool UpdatedMachineCount == 1")
-	err = util.WaitForPoolUpdatedMachineCount(cs, "worker-rt", 1)
+	ginkgo.By("waiting for master MachineConfigPool UpdatedMachineCount == 1")
+	err = util.WaitForPoolUpdatedMachineCount(cs, "master", 1)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 }
