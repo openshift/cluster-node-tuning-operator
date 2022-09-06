@@ -93,7 +93,7 @@ $(GOBINDATA_BIN):
 	$(GO) build -o $(GOBINDATA_BIN) ./vendor/github.com/kevinburke/go-bindata/go-bindata
 
 test-e2e:
-	for d in core basic reboots; do \
+	for d in core basic reboots reboots/sno; do \
 	  KUBERNETES_CONFIG="$(KUBECONFIG)" $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.noColor -ginkgo.failFast || exit; \
 	done
 
