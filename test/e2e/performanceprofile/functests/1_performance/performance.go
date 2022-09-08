@@ -293,7 +293,7 @@ var _ = Describe("[rfe_id:27368][performance]", func() {
 
 	Context("RPS configuration", func() {
 		It("Should have the correct RPS configuration", func() {
-			if profile.Spec.CPU == nil || profile.Spec.CPU.Reserved != nil {
+			if profile.Spec.CPU == nil || profile.Spec.CPU.Reserved == nil {
 				return
 			}
 			if profile.Spec.WorkloadHints != nil && profile.Spec.WorkloadHints.RealTime != nil && !*profile.Spec.WorkloadHints.RealTime {
