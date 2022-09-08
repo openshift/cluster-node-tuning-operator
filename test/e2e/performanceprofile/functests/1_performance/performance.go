@@ -296,11 +296,13 @@ var _ = Describe("[rfe_id:27368][performance]", func() {
 			if profile.Spec.CPU == nil || profile.Spec.CPU.Reserved != nil {
 				return
 			}
+			if profile.Spec.WorkloadHints != nil && profile.Spec.WorkloadHints.RealTime != nil && !*profile.Spec.WorkloadHints.RealTime {
+				return
+			}
 
 			expectedRPSCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
 			Expect(err).ToNot(HaveOccurred())
 			ociHookPath := filepath.Join("/rootfs", machineconfig.OCIHooksConfigDir, machineconfig.OCIHooksConfig)
-			Expect(err).ToNot(HaveOccurred())
 			for _, node := range workerRTNodes {
 				// Verify the OCI RPS hook uses the correct RPS mask
 				hooksConfig, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"cat", ociHookPath})
@@ -360,6 +362,21 @@ var _ = Describe("[rfe_id:27368][performance]", func() {
 						Expect(err).ToNot(HaveOccurred())
 						Expect(rpsCPUs).To(Equal(expectedRPSCPUs), pod.Name+" has a device rps mask different from the reserved CPUs")
 					}
+				}
+			}
+		})
+		It("Should not have RPS configuration set when realtime workload hint is explicitly set", func() {
+
+			if profile.Spec.WorkloadHints != nil && profile.Spec.WorkloadHints.RealTime != nil && !*profile.Spec.WorkloadHints.RealTime {
+				ociHookPath := filepath.Join("/rootfs", machineconfig.OCIHooksConfigDir, machineconfig.OCIHooksConfig)
+				for _, node := range workerRTNodes {
+					// Verify the OCI RPS hook does not exist
+					_, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"cat", ociHookPath})
+					Expect(err).To(HaveOccurred())
+					// Verify the systemd RPS services were not created
+					cmd := []string{"sed", "-n", "s/^ExecStart=.*echo \\([A-Fa-f0-9]*\\) .*/\\1/p", "/rootfs/etc/systemd/system/update-rps@.service"}
+					_, err = nodes.ExecCommandOnNode(cmd, &node)
+					Expect(err).To(HaveOccurred())
 				}
 			}
 		})

@@ -135,6 +135,7 @@ func GetMachineConfigName(profile *performancev2.PerformanceProfile) string {
 }
 
 func getIgnitionConfig(profile *performancev2.PerformanceProfile) (*igntypes.Config, error) {
+	var scripts []string
 	ignitionConfig := &igntypes.Config{
 		Ignition: igntypes.Ignition{
 			Version: defaultIgnitionVersion,
@@ -145,8 +146,14 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile) (*igntypes.Con
 	}
 
 	// add script files under the node /usr/local/bin directory
+	if profile.Spec.WorkloadHints != nil && profile.Spec.WorkloadHints.RealTime != nil && !*profile.Spec.WorkloadHints.RealTime {
+		// realtime is explicitly disabled by workload hint
+		scripts = []string{hugepagesAllocation, setCPUsOffline, clearIRQBalanceBannedCPUs}
+	} else {
+		scripts = []string{hugepagesAllocation, ociHooks, setRPSMask, setCPUsOffline, clearIRQBalanceBannedCPUs}
+	}
 	mode := 0700
-	for _, script := range []string{hugepagesAllocation, ociHooks, setRPSMask, setCPUsOffline, clearIRQBalanceBannedCPUs} {
+	for _, script := range scripts {
 		dst := getBashScriptPath(script)
 		content, err := assets.Scripts.ReadFile(fmt.Sprintf("scripts/%s.sh", script))
 		if err != nil {
@@ -164,28 +171,48 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile) (*igntypes.Con
 	crioConfSnippetDst := filepath.Join(crioConfd, crioRuntimesConfig)
 	addContent(ignitionConfig, crioConfigSnippetContent, crioConfSnippetDst, &crioConfdRuntimesMode)
 
-	// add crio hooks config  under the node cri-o hook directory
-	crioHooksConfigsMode := 0644
-	ociHooksConfigContent, err := GetOCIHooksConfigContent(OCIHooksConfig, profile)
-	if err != nil {
-		return nil, err
-	}
-	ociHookConfigDst := filepath.Join(OCIHooksConfigDir, OCIHooksConfig)
-	addContent(ignitionConfig, ociHooksConfigContent, ociHookConfigDst, &crioHooksConfigsMode)
+	// do not add RPS handling when realtime is explicitly disabled by workload hint
+	if profile.Spec.WorkloadHints == nil || profile.Spec.WorkloadHints.RealTime == nil || *profile.Spec.WorkloadHints.RealTime {
+		// add crio hooks config  under the node cri-o hook directory
+		crioHooksConfigsMode := 0644
+		ociHooksConfigContent, err := GetOCIHooksConfigContent(OCIHooksConfig, profile)
+		if err != nil {
+			return nil, err
+		}
+		ociHookConfigDst := filepath.Join(OCIHooksConfigDir, OCIHooksConfig)
+		addContent(ignitionConfig, ociHooksConfigContent, ociHookConfigDst, &crioHooksConfigsMode)
 
-	// add rps udev rule
-	rpsRulesMode := 0644
-	var rpsRulesContent []byte
-	if profileutil.IsRpsEnabled(profile) {
-		rpsRulesContent, err = assets.Configs.ReadFile(filepath.Join("configs", udevPhysicalRpsRules))
-	} else {
-		rpsRulesContent, err = assets.Configs.ReadFile(filepath.Join("configs", udevRpsRules))
+		// add rps udev rule
+		rpsRulesMode := 0644
+		var rpsRulesContent []byte
+		if profileutil.IsRpsEnabled(profile) {
+			rpsRulesContent, err = assets.Configs.ReadFile(filepath.Join("configs", udevPhysicalRpsRules))
+		} else {
+			rpsRulesContent, err = assets.Configs.ReadFile(filepath.Join("configs", udevRpsRules))
+		}
+		if err != nil {
+			return nil, err
+		}
+		rpsRulesDst := filepath.Join(udevRulesDir, udevRpsRules)
+		addContent(ignitionConfig, rpsRulesContent, rpsRulesDst, &rpsRulesMode)
+
+		if profile.Spec.CPU != nil && profile.Spec.CPU.Reserved != nil {
+			rpsMask, err := components.CPUListToMaskList(string(*profile.Spec.CPU.Reserved))
+			if err != nil {
+				return nil, err
+			}
+
+			rpsService, err := getSystemdContent(getRPSUnitOptions(rpsMask))
+			if err != nil {
+				return nil, err
+			}
+
+			ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
+				Contents: &rpsService,
+				Name:     getSystemdService("update-rps@"),
+			})
+		}
 	}
-	if err != nil {
-		return nil, err
-	}
-	rpsRulesDst := filepath.Join(udevRulesDir, udevRpsRules)
-	addContent(ignitionConfig, rpsRulesContent, rpsRulesDst, &rpsRulesMode)
 
 	if profile.Spec.HugePages != nil {
 		for _, page := range profile.Spec.HugePages.Pages {
@@ -214,23 +241,6 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile) (*igntypes.Con
 				Name:     getSystemdService(fmt.Sprintf("%s-%skB-NUMA%d", hugepagesAllocation, hugepagesSize, *page.Node)),
 			})
 		}
-	}
-
-	if profile.Spec.CPU != nil && profile.Spec.CPU.Reserved != nil {
-		rpsMask, err := components.CPUListToMaskList(string(*profile.Spec.CPU.Reserved))
-		if err != nil {
-			return nil, err
-		}
-
-		rpsService, err := getSystemdContent(getRPSUnitOptions(rpsMask))
-		if err != nil {
-			return nil, err
-		}
-
-		ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
-			Contents: &rpsService,
-			Name:     getSystemdService("update-rps@"),
-		})
 	}
 
 	if profile.Spec.CPU.Offlined != nil {
