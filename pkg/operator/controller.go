@@ -1255,19 +1255,31 @@ func (c *Controller) run(ctx context.Context) {
 		tpInformer.Informer().HasSynced,
 	}
 
-	var configMapInformerFactory kubeinformers.SharedInformerFactory
+	var tunedConfigMapInformerFactory kubeinformers.SharedInformerFactory
+	var mcfgConfigMapInformerFactory kubeinformers.SharedInformerFactory
 	var mcfgInformerFactory mcfginformers.SharedInformerFactory
 	if ntoconfig.InHyperShift() {
-		labelOptions := kubeinformers.WithTweakListOptions(func(opts *metav1.ListOptions) {
-			opts.LabelSelector = tunedConfigMapLabel + "=true"
-		})
-		configMapInformerFactory = kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.ManagementKube, ntoconfig.ResyncPeriod(), kubeinformers.WithNamespace(ntoconfig.OperatorNamespace()), labelOptions)
+		tunedConfigMapInformerFactory = kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.ManagementKube,
+			ntoconfig.ResyncPeriod(),
+			kubeinformers.WithNamespace(ntoconfig.OperatorNamespace()),
+			kubeinformers.WithTweakListOptions(func(opts *metav1.ListOptions) {
+				opts.LabelSelector = tunedConfigMapLabel + "=true"
+			}))
+		tunedConfigMapInformer := tunedConfigMapInformerFactory.Core().V1().ConfigMaps()
+		c.listers.ConfigMaps = tunedConfigMapInformer.Lister().ConfigMaps(ntoconfig.OperatorNamespace())
+		tunedConfigMapInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindConfigMap}))
 
-		configMapInformer := configMapInformerFactory.Core().V1().ConfigMaps()
-		c.listers.ConfigMaps = configMapInformer.Lister().ConfigMaps(ntoconfig.OperatorNamespace())
-		configMapInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindConfigMap}))
-		InformerFuncs = append(InformerFuncs, configMapInformer.Informer().HasSynced)
+		mcfgConfigMapInformerFactory = kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.ManagementKube,
+			ntoconfig.ResyncPeriod(),
+			kubeinformers.WithNamespace(ntoconfig.OperatorNamespace()),
+			kubeinformers.WithTweakListOptions(func(opts *metav1.ListOptions) {
+				opts.LabelSelector = operatorGeneratedMachineConfig + "=true"
+			}))
+		mcfgConfigMapInformer := mcfgConfigMapInformerFactory.Core().V1().ConfigMaps()
+		c.listers.ConfigMaps = mcfgConfigMapInformer.Lister().ConfigMaps(ntoconfig.OperatorNamespace())
+		mcfgConfigMapInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindConfigMap}))
 
+		InformerFuncs = append(InformerFuncs, tunedConfigMapInformer.Informer().HasSynced, mcfgConfigMapInformer.Informer().HasSynced)
 	} else {
 		mcfgInformerFactory = mcfginformers.NewSharedInformerFactory(c.clients.MC, ntoconfig.ResyncPeriod())
 		mcInformer := mcfgInformerFactory.Machineconfiguration().V1().MachineConfigs()
@@ -1277,7 +1289,7 @@ func (c *Controller) run(ctx context.Context) {
 		mcpInformer := mcfgInformerFactory.Machineconfiguration().V1().MachineConfigPools()
 		c.listers.MachineConfigPools = mcpInformer.Lister()
 		mcpInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindMachineConfigPool}))
-		InformerFuncs = append(InformerFuncs, mcInformer.Informer().HasSynced, mcInformer.Informer().HasSynced)
+		InformerFuncs = append(InformerFuncs, mcInformer.Informer().HasSynced, mcpInformer.Informer().HasSynced)
 	}
 
 	configInformerFactory.Start(ctx.Done())  // ClusterOperator
@@ -1285,7 +1297,8 @@ func (c *Controller) run(ctx context.Context) {
 	tunedInformerFactory.Start(ctx.Done())   // Tuned/Profile
 
 	if ntoconfig.InHyperShift() {
-		configMapInformerFactory.Start(ctx.Done())
+		tunedConfigMapInformerFactory.Start(ctx.Done())
+		mcfgConfigMapInformerFactory.Start(ctx.Done())
 	} else {
 		mcfgInformerFactory.Start(ctx.Done()) // MachineConfig/MachineConfigPool
 	}
