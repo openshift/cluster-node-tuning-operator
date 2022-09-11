@@ -146,11 +146,12 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile) (*igntypes.Con
 	}
 
 	// add script files under the node /usr/local/bin directory
-	if profile.Spec.WorkloadHints != nil && profile.Spec.WorkloadHints.RealTime != nil && !*profile.Spec.WorkloadHints.RealTime {
+	if profileutil.IsRpsEnabled(profile) || profile.Spec.WorkloadHints == nil ||
+		profile.Spec.WorkloadHints.RealTime == nil || *profile.Spec.WorkloadHints.RealTime {
+		scripts = []string{hugepagesAllocation, ociHooks, setRPSMask, setCPUsOffline, clearIRQBalanceBannedCPUs}
+	} else {
 		// realtime is explicitly disabled by workload hint
 		scripts = []string{hugepagesAllocation, setCPUsOffline, clearIRQBalanceBannedCPUs}
-	} else {
-		scripts = []string{hugepagesAllocation, ociHooks, setRPSMask, setCPUsOffline, clearIRQBalanceBannedCPUs}
 	}
 	mode := 0700
 	for _, script := range scripts {
@@ -172,7 +173,8 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile) (*igntypes.Con
 	addContent(ignitionConfig, crioConfigSnippetContent, crioConfSnippetDst, &crioConfdRuntimesMode)
 
 	// do not add RPS handling when realtime is explicitly disabled by workload hint
-	if profile.Spec.WorkloadHints == nil || profile.Spec.WorkloadHints.RealTime == nil || *profile.Spec.WorkloadHints.RealTime {
+	if profileutil.IsRpsEnabled(profile) || profile.Spec.WorkloadHints == nil ||
+		profile.Spec.WorkloadHints.RealTime == nil || *profile.Spec.WorkloadHints.RealTime {
 		// add crio hooks config  under the node cri-o hook directory
 		crioHooksConfigsMode := 0644
 		ociHooksConfigContent, err := GetOCIHooksConfigContent(OCIHooksConfig, profile)
@@ -185,7 +187,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile) (*igntypes.Con
 		// add rps udev rule
 		rpsRulesMode := 0644
 		var rpsRulesContent []byte
-		if profileutil.IsRpsEnabled(profile) {
+		if profileutil.IsPhysicalRpsEnabled(profile) {
 			rpsRulesContent, err = assets.Configs.ReadFile(filepath.Join("configs", udevPhysicalRpsRules))
 		} else {
 			rpsRulesContent, err = assets.Configs.ReadFile(filepath.Join("configs", udevRpsRules))

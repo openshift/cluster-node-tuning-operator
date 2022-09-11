@@ -8,6 +8,60 @@ Instructions for editing (add/remove/change) kernel arguments,sysfs,proc paramet
 
 Default tunings are applied with the [openshift-performance](../../assets/performanceprofile/tuned/openshift-node-performance) base profile, it is the base for creating a Tuned CR that would be detected by the Node Tuning Operator and finally be executed by [tuned](https://github.com/redhat-performance/tuned).
 
+## RPS settings
+
+The default RPS settings for a performance profile are to set the RPS mask as the [reserved CPUs](performance_profile.md#cpu),\
+on the host level for all network devices excluding virtual(veth) devices and physical devices(pci)\
+and on the container level for all virtual network devices(veth).
+### RPS and workload hints
+
+When the realtime workload hint is explicitly disabled there is no need for any RPS settings to be applied since it is relevant only for the realtime use case.\
+The following will result in no RPS settings applied on the cluster at all:
+
+```yaml
+performance_profile.yaml
+apiVersion: performance.openshift.io/v2
+kind: PerformanceProfile
+metadata:
+  name: example-performanceprofile
+spec:
+  workloadHints:
+    realTime: false
+```
+
+In special cases where there is a need to explicitly specify the realtime workload hint as false but keep the RPS settings,
+an override annotation `performance.openshift.io/enable-rps` could be added to the performance profile that will keep the default [RPS settings](#rps-settings):
+
+```yaml
+performance_profile.yaml
+apiVersion: performance.openshift.io/v2
+kind: PerformanceProfile
+metadata:
+  name: example-performanceprofile
+  annotations:
+     performance.openshift.io/enable-rps: "true"  
+spec:
+  workloadHints:
+    realTime: false
+```
+
+### Enable RPS on physical devices annotation
+
+In case there is a need to set RPS mask for physical(pci) devices as well on the host side an override annotation `performance.openshift.io/enable-physical-dev-rps` to the default [RPS settings](#rps-settings) could be added to the performance profile:
+
+```yaml
+performance_profile.yaml
+apiVersion: performance.openshift.io/v2
+kind: PerformanceProfile
+metadata:
+  name: example-performanceprofile
+  annotations:
+     performance.openshift.io/enable-physical-dev-rps: "true"
+```
+
+> Note: `performance.openshift.io/enable-physical-dev-rps` annotation can be applied only when realtime workload hint is 
+NOT explicitly set to false unless `performance.openshift.io/enable-rps` is set to true.
+
 ## Additional kernel arguments
 
 When creating a [performance profile CR](../../examples/performanceprofile/samples/performance_v1_performanceprofile.yaml) , a default set of kernel arguments are created from the [openshift-performance](../../assets/performanceprofile/tuned/openshift-node-performance) base profile in addition to tuned generated argument and can include for example:
