@@ -1,13 +1,18 @@
 package __performance
 
 import (
+	"context"
 	"fmt"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"k8s.io/apimachinery/pkg/types"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
+	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 )
@@ -70,5 +75,26 @@ var _ = Describe("[performance]RT Kernel", func() {
 
 		err = nodes.HasPreemptRTKernel(&nonPerformancesWorkers[0])
 		Expect(err).To(HaveOccurred(), "Node should have non-RT kernel")
+	})
+
+	It("[test_id:rctree] Should have kernel param rcutree.kthread", func() {
+		key := types.NamespacedName{
+			Name:      components.GetComponentName(testutils.PerformanceProfileName, components.ProfileNamePerformance),
+			Namespace: components.NamespaceNodeTuningOperator,
+		}
+		tuned := &tunedv1.Tuned{}
+		err := testclient.Client.Get(context.TODO(), key, tuned)
+		Expect(err).ToNot(HaveOccurred(), "Cannot find the cluster Node Tuning Operator object "+key.String())
+		Expect(*tuned.Spec.Profile[0].Data).To(ContainSubstring("rcutree.kthread_prio=11"))
+
+		workerRTNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
+		Expect(err).ToNot(HaveOccurred())
+
+		cmd := []string{"cat", "/proc/cmdline"}
+		for _, node := range workerRTNodes {
+			cmdline, err := nodes.ExecCommandOnNode(cmd, &node)
+			Expect(err).ToNot(HaveOccurred(), "Failed to read /proc/cmdline")
+			Expect(cmdline).To(ContainSubstring("rcutree.kthread_prio=11"), "Boot Parameters should contain rctree.kthread_prio=11")
+		}
 	})
 })
