@@ -1024,6 +1024,14 @@ var _ = Describe("[rfe_id:27368][performance]", func() {
 			})
 		})
 	})
+
+	It("[test_id:54083] Should have kernel param rcutree.kthread", func() {
+		for _, node := range workerRTNodes {
+			cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"cat", "/proc/cmdline"})
+			Expect(err).ToNot(HaveOccurred(), "Failed to read /proc/cmdline")
+			Expect(string(cmdline)).To(ContainSubstring("rcutree.kthread_prio=11"), "Boot Parameters should contain rctree.kthread_prio=11")
+		}
+	})
 })
 
 func verifyV1alpha1Conversion(v1alpha1Profile *performancev1alpha1.PerformanceProfile, v1Profile *performancev1.PerformanceProfile) error {
