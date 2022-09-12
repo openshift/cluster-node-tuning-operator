@@ -249,14 +249,14 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (string
 	for _, recommend := range tunedRecommend(tunedList) {
 		// Start with node/pod label based matching
 		if recommend.Match != nil && pc.profileMatches(recommend.Match, nodeName) {
-			klog.V(2).Infof("calculateProfileHyperShift: node / pod label matching used. node: %s, tunedProfileName: %s, nodePoolName: %s, operand: %v", nodeName, *recommend.Profile, "", recommend.Operand)
+			klog.V(3).Infof("calculateProfileHyperShift: node / pod label matching used for node: %s, tunedProfileName: %s, nodePoolName: %s, operand: %v", nodeName, *recommend.Profile, "", recommend.Operand)
 			return *recommend.Profile, "", recommend.Operand, nil
 		}
 
 		// If recommend.Match is empty, NodePool based matching is assumed
 		// or this is the default profile
 		if recommend.Match == nil {
-			klog.V(2).Infof("calculateProfileHyperShift: NodePool based matching used. node: %s, tunedProfileName:  %s, nodePoolName: %s", nodeName, *recommend.Profile, nodePoolName)
+			klog.V(3).Infof("calculateProfileHyperShift: NodePool based matching or default profile used for node: %s, tunedProfileName:  %s, nodePoolName: %s", nodeName, *recommend.Profile, nodePoolName)
 			return *recommend.Profile, nodePoolName, recommend.Operand, nil
 		}
 	}
@@ -519,7 +519,7 @@ func (pc *ProfileCalculator) tunedsUsePodLabels(tunedSlice []*tunedv1.Tuned) boo
 // getNodePoolNameForNode returns the NodePool name from a label on the hosted cluster Node
 func (pc *ProfileCalculator) getNodePoolNameForNode(node *corev1.Node) (string, error) {
 	nodePoolName := node.GetLabels()[hypershiftNodePoolLabel]
-	klog.Infof("calculated nodePoolName: %s for node %s", nodePoolName, node.Name)
+	klog.V(3).Infof("calculated nodePoolName: %s for node %s", nodePoolName, node.Name)
 	return nodePoolName, nil
 }
 
