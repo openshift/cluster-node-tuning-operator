@@ -9,13 +9,17 @@ import (
 	"reflect"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
-	"k8s.io/klog/v2"
-
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
+	"github.com/openshift/cluster-node-tuning-operator/version"
+	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	serializer "k8s.io/apimachinery/pkg/runtime/serializer/json"
+	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -23,6 +27,13 @@ const (
 	hypershiftNodeOwnerKindLabel = "cluster.x-k8s.io/owner-kind"
 	hypershiftNodePoolLabel      = "hypershift.openshift.io/nodePool"
 	hypershiftNodePoolNameLabel  = "hypershift.openshift.io/nodePoolName"
+
+	tunedConfigMapLabel     = "hypershift.openshift.io/tuned-config"
+	tunedConfigMapConfigKey = "tuned"
+
+	operatorGeneratedMachineConfig = "hypershift.openshift.io/nto-generated-machine-config"
+	mcConfigMapDataKey             = "config"
+	generatedConfigMapPrefix       = "nto-mc-"
 )
 
 // syncHostedClusterTuneds synchronizes Tuned objects embedded in ConfigMaps
@@ -182,6 +193,10 @@ func parseTunedManifests(data []byte, nodePoolName string) ([]tunedv1.Tuned, err
 	}
 }
 
+func mcConfigMapName(name string) string {
+	return generatedConfigMapPrefix + name
+}
+
 func hashStruct(o interface{}) string {
 	hash := fnv.New32a()
 	hash.Write([]byte(fmt.Sprintf("%v", o)))
@@ -198,4 +213,81 @@ func parseNamespacedName(namespacedName string) string {
 		return parts[1]
 	}
 	return parts[0]
+}
+
+func getMachineConfigFromConfigMap(config *corev1.ConfigMap) (*mcfgv1.MachineConfig, error) {
+	scheme := runtime.NewScheme()
+	mcfgv1.Install(scheme)
+
+	YamlSerializer := serializer.NewSerializerWithOptions(
+		serializer.DefaultMetaFactory, scheme, scheme,
+		serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true},
+	)
+
+	manifest := []byte(config.Data[mcConfigMapDataKey])
+	cr, _, err := YamlSerializer.Decode(manifest, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error decoding MachineConfig from ConfigMap: %s, %v", config.Name, err)
+	}
+
+	mcObj, ok := cr.(*mcfgv1.MachineConfig)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type in ConfigMap: %T, must be MachineConfig", cr)
+	}
+	return mcObj, nil
+}
+
+func newConfigMapForMachineConfig(configMapName string, nodePoolName string, mc *mcfgv1.MachineConfig) (*corev1.ConfigMap, error) {
+	mcManifest, err := serializeMachineConfig(mc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize ConfigMap for MachineConfig %s: %v", mc.Name, err)
+	}
+
+	ret := &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ConfigMap",
+			APIVersion: corev1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      configMapName,
+			Namespace: ntoconfig.OperatorNamespace(),
+			Labels:    generatedConfigMapLabels(nodePoolName),
+			Annotations: map[string]string{
+				GeneratedByControllerVersionAnnotationKey: version.Version,
+			},
+		},
+		Data: map[string]string{
+			mcConfigMapDataKey: string(mcManifest),
+		},
+	}
+
+	return ret, nil
+}
+
+func serializeMachineConfig(mc *mcfgv1.MachineConfig) ([]byte, error) {
+	scheme := runtime.NewScheme()
+	mcfgv1.Install(scheme)
+
+	YamlSerializer := serializer.NewSerializerWithOptions(
+		serializer.DefaultMetaFactory, scheme, scheme,
+		serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true},
+	)
+	buff := bytes.Buffer{}
+	if err := YamlSerializer.Encode(mc, &buff); err != nil {
+		return nil, fmt.Errorf("failed to encode ConfigMap for MachineConfig %s: %v", mc.Name, err)
+	}
+	return buff.Bytes(), nil
+}
+
+func generatedConfigMapLabels(nodePoolName string) map[string]string {
+	return map[string]string{
+		operatorGeneratedMachineConfig: "true",
+		hypershiftNodePoolLabel:        nodePoolName,
+	}
+}
+
+func generatedConfigMapAnnotations(nodePoolName string) map[string]string {
+	return map[string]string{
+		hypershiftNodePoolLabel: nodePoolName,
+	}
 }
