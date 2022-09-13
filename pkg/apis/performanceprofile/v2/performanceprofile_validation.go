@@ -108,6 +108,7 @@ func (r *PerformanceProfile) validateFields() field.ErrorList {
 	allErrs = append(allErrs, r.validateHugePages()...)
 	allErrs = append(allErrs, r.validateNUMA()...)
 	allErrs = append(allErrs, r.validateNet()...)
+	allErrs = append(allErrs, r.validateWorkloadHints()...)
 
 	return allErrs
 }
