@@ -12,7 +12,7 @@ func TestBuiltinExpansion(t *testing.T) {
 		// Basic expansion.
 		{
 			input:          "provider-cloudX",
-			expectedOutput: "provider-cloudX",
+			expectedOutput: "provider-cloudY",
 		},
 		{
 			input:          "provider-${f:exec:printf:cloudX}",
