@@ -59,7 +59,9 @@ var _ = ginkgo.Describe("[basic][metrics] Node Tuning Operator certificate rotat
 				secretCertContents := string(tlsSecret.Data["tls.crt"])
 
 				operatorPodIP := operatorPod.Status.PodIP
-				opensslCmd := "/host/usr/bin/openssl s_client -connect " + operatorPodIP + ":60000 2>/dev/null </dev/null | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p'"
+				// We need chroot because host may be using system libraries incompatible with the container
+				// image system libraries.  Alternatively, use container-shipped openssl.
+				opensslCmd := "/usr/sbin/chroot /host /usr/bin/openssl s_client -connect " + operatorPodIP + ":60000 2>/dev/null </dev/null | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p'"
 
 				serverCertContents, err := util.ExecCmdInPod(tunedPod, "/bin/bash", "-c", opensslCmd)
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
