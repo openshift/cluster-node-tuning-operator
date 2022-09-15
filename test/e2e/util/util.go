@@ -358,7 +358,7 @@ func WaitForPoolMachineCount(cs *framework.ClientSet, pool string, count int32) 
 		}
 		return false, nil
 	}); err != nil {
-		return errors.Wrapf(err, "pool %s MachineCount != %d (waited %s): ", pool, count, time.Since(startTime), explain)
+		return errors.Wrapf(err, "pool %s MachineCount != %d (waited %s): %v", pool, count, time.Since(startTime), explain)
 	}
 	return nil
 }
