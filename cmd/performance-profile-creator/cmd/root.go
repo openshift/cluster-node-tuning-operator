@@ -85,19 +85,20 @@ var (
 
 // ProfileData collects and stores all the data needed for profile creation
 type ProfileData struct {
-	isolatedCPUs             string
-	reservedCPUs             string
-	offlinedCPUs             string
-	nodeSelector             *metav1.LabelSelector
-	mcpSelector              map[string]string
-	performanceProfileName   string
-	topologyPolicy           string
-	rtKernel                 bool
-	additionalKernelArgs     []string
-	userLevelNetworking      *bool
-	disableHT                bool
-	realtimeHint             *bool
-	highPowerConsumptionHint *bool
+	isolatedCPUs              string
+	reservedCPUs              string
+	offlinedCPUs              string
+	nodeSelector              *metav1.LabelSelector
+	mcpSelector               map[string]string
+	performanceProfileName    string
+	topologyPolicy            string
+	rtKernel                  bool
+	additionalKernelArgs      []string
+	userLevelNetworking       *bool
+	disableHT                 bool
+	realtimeHint              *bool
+	highPowerConsumptionHint  *bool
+	perPodPowerManagementHint *bool
 }
 
 // ClusterData collects the cluster wide information, each mcp points to a list of ghw node handlers
@@ -113,7 +114,8 @@ func init() {
 // NewRootCommand returns entrypoint command to interact with all other commands
 func NewRootCommand() *cobra.Command {
 	pcArgs := &ProfileCreatorArgs{
-		UserLevelNetworking: pointer.BoolPtr(false),
+		UserLevelNetworking:   pointer.BoolPtr(false),
+		PerPodPowerManagement: pointer.BoolPtr(false),
 	}
 
 	var requiredFlags = []string{
@@ -190,6 +192,7 @@ func NewRootCommand() *cobra.Command {
 	root.PersistentFlags().StringVar(&pcArgs.ProfileName, "profile-name", "performance", "Name of the performance profile to be created")
 	root.PersistentFlags().StringVar(&pcArgs.TMPolicy, "topology-manager-policy", kubeletconfig.RestrictedTopologyManagerPolicy, fmt.Sprintf("Kubelet Topology Manager Policy of the performance profile to be created. [Valid values: %s, %s, %s]", kubeletconfig.SingleNumaNodeTopologyManagerPolicy, kubeletconfig.BestEffortTopologyManagerPolicy, kubeletconfig.RestrictedTopologyManagerPolicy))
 	root.PersistentFlags().StringVar(&pcArgs.Info, "info", infoModeLog, fmt.Sprintf("Show cluster information; requires --must-gather-dir-path, ignore the other arguments. [Valid values: %s]", strings.Join(validInfoModes, ", ")))
+	root.PersistentFlags().BoolVar(pcArgs.PerPodPowerManagement, "per-pod-power-management", false, "Enable Per Pod Power Management")
 
 	return root
 }
@@ -396,6 +399,7 @@ func getDataFromFlags(cmd *cobra.Command) (ProfileCreatorArgs, error) {
 	if err != nil {
 		return creatorArgs, fmt.Errorf("failed to parse disable-ht flag: %v", err)
 	}
+
 	creatorArgs = ProfileCreatorArgs{
 		MustGatherDirPath:           mustGatherDirPath,
 		ProfileName:                 profileName,
@@ -415,6 +419,14 @@ func getDataFromFlags(cmd *cobra.Command) (ProfileCreatorArgs, error) {
 			return creatorArgs, fmt.Errorf("failed to parse user-level-networking flag: %v", err)
 		}
 		creatorArgs.UserLevelNetworking = &userLevelNetworkingEnabled
+	}
+
+	if cmd.Flag("per-pod-power-management").Changed {
+		perPodPowerManagementEnabled, err := strconv.ParseBool(cmd.Flag("per-pod-power-management").Value.String())
+		if err != nil {
+			return creatorArgs, fmt.Errorf("failed to parse user-level-networking flag: %v", err)
+		}
+		creatorArgs.PerPodPowerManagement = &perPodPowerManagementEnabled
 	}
 
 	return creatorArgs, nil
@@ -475,17 +487,18 @@ func getProfileData(args ProfileCreatorArgs, cluster ClusterData) (*ProfileData,
 	log.Infof("%d isolated CPUs allocated: %v", isolatedCPUs.Size(), isolatedCPUs.String())
 	kernelArgs := profilecreator.GetAdditionalKernelArgs(args.DisableHT)
 	profileData := &ProfileData{
-		reservedCPUs:           reservedCPUs.String(),
-		offlinedCPUs:           offlinedCPUs.String(),
-		isolatedCPUs:           isolatedCPUs.String(),
-		nodeSelector:           mcp.Spec.NodeSelector,
-		mcpSelector:            mcpSelector,
-		performanceProfileName: args.ProfileName,
-		topologyPolicy:         args.TMPolicy,
-		rtKernel:               args.RTKernel,
-		additionalKernelArgs:   kernelArgs,
-		userLevelNetworking:    args.UserLevelNetworking,
-		disableHT:              args.DisableHT,
+		reservedCPUs:              reservedCPUs.String(),
+		offlinedCPUs:              offlinedCPUs.String(),
+		isolatedCPUs:              isolatedCPUs.String(),
+		nodeSelector:              mcp.Spec.NodeSelector,
+		mcpSelector:               mcpSelector,
+		performanceProfileName:    args.ProfileName,
+		topologyPolicy:            args.TMPolicy,
+		rtKernel:                  args.RTKernel,
+		additionalKernelArgs:      kernelArgs,
+		userLevelNetworking:       args.UserLevelNetworking,
+		disableHT:                 args.DisableHT,
+		perPodPowerManagementHint: args.PerPodPowerManagement,
 	}
 
 	// setting workload hints
@@ -502,7 +515,13 @@ func getProfileData(args ProfileCreatorArgs, cluster ClusterData) (*ProfileData,
 	case ultraLowLatency:
 		profileData.realtimeHint = pointer.BoolPtr(true)
 		profileData.highPowerConsumptionHint = pointer.BoolPtr(true)
+		if profileData.perPodPowerManagementHint != nil && *profileData.perPodPowerManagementHint {
+			return nil, fmt.Errorf(
+				"please use one of %v power consumption modes together with the perPodPowerManagement",
+				validPowerConsumptionModes[:2],
+			)
 
+		}
 	}
 	return profileData, nil
 }
@@ -538,6 +557,7 @@ type ProfileCreatorArgs struct {
 	MCPName                     string `json:"mcp-name"`
 	TMPolicy                    string `json:"topology-manager-policy"`
 	Info                        string `json:"info"`
+	PerPodPowerManagement       *bool  `json:"per-pod-power-management,omitempty"`
 }
 
 func createProfile(profileData ProfileData) error {
@@ -580,15 +600,21 @@ func createProfile(profileData ProfileData) error {
 
 	// configuring workload hints
 	profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-		HighPowerConsumption: pointer.BoolPtr(false),
-		RealTime:             pointer.BoolPtr(false),
+		HighPowerConsumption:  pointer.BoolPtr(false),
+		RealTime:              pointer.BoolPtr(false),
+		PerPodPowerManagement: pointer.BoolPtr(false),
 	}
+
 	if profileData.highPowerConsumptionHint != nil {
 		profile.Spec.WorkloadHints.HighPowerConsumption = profileData.highPowerConsumptionHint
 	}
 
 	if profileData.realtimeHint != nil {
 		profile.Spec.WorkloadHints.RealTime = profileData.realtimeHint
+	}
+
+	if profileData.perPodPowerManagementHint != nil {
+		profile.Spec.WorkloadHints.PerPodPowerManagement = profileData.perPodPowerManagementHint
 	}
 
 	if profileData.userLevelNetworking != nil {

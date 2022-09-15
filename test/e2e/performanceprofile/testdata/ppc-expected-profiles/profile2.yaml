@@ -19,3 +19,4 @@ spec:
   workloadHints:
     highPowerConsumption: false
     realTime: false
+    perPodpowerManagement: false
