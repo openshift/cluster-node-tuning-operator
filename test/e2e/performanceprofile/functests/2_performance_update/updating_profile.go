@@ -1,6 +1,7 @@
 package __performance_update
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -712,6 +713,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(onlineCPUInt).Should(BeNumerically(">=", 3))
+				if onlineCPUInt <= 8 {
+					Skip(fmt.Sprintf("This test needs more than 8 CPUs online to work correctly, current online CPUs are %s", onlineCPUCount))
+				}
 			}
 
 			// Create new performance with offlined
@@ -750,20 +754,27 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		AfterEach(func() {
 			By("Reverting the Profile")
-			spec, err := json.Marshal(initialProfile.Spec)
+			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(testclient.Client.Patch(context.TODO(), profile,
-				client.RawPatch(
-					types.JSONPatchType,
-					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-				),
-			)).ToNot(HaveOccurred())
+			currentSpec, _ := json.Marshal(profile.Spec)
+			spec, _ := json.Marshal(initialProfile.Spec)
+			// revert only if the profile changes.
+			if !bytes.Equal(currentSpec, spec) {
+				spec, err := json.Marshal(initialProfile.Spec)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(testclient.Client.Patch(context.TODO(), profile,
+					client.RawPatch(
+						types.JSONPatchType,
+						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
+					),
+				)).ToNot(HaveOccurred())
 
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+				By("Applying changes in performance profile and waiting until mcp will start updating")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
 
-			By("Waiting when mcp finishes updates")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				By("Waiting when mcp finishes updates")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			}
 		})
 	})
 })
