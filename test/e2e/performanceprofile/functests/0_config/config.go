@@ -195,8 +195,9 @@ func testProfile() *performancev2.PerformanceProfile {
 				UserLevelNetworking: pointer.BoolPtr(true),
 			},
 			WorkloadHints: &performancev2.WorkloadHints{
-				HighPowerConsumption: pointer.BoolPtr(false),
-				RealTime:             pointer.BoolPtr(true),
+				RealTime:              pointer.BoolPtr(true),
+				HighPowerConsumption:  pointer.BoolPtr(false),
+				PerPodPowerManagement: pointer.BoolPtr(false),
 			},
 		},
 	}
