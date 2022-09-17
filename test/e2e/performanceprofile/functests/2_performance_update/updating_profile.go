@@ -14,6 +14,7 @@ import (
 	"github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
+	"gopkg.in/ini.v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
@@ -24,6 +25,7 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/tuned"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
@@ -636,8 +638,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		When("realtime and high power consumption enabled", func() {
 			It("[test_id:50993][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					HighPowerConsumption: pointer.BoolPtr(true),
-					RealTime:             pointer.BoolPtr(true),
+					HighPowerConsumption:  pointer.BoolPtr(true),
+					RealTime:              pointer.BoolPtr(true),
+					PerPodPowerManagement: pointer.BoolPtr(false),
 				}
 				By("Patching the performance profile with workload hints")
 				workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
@@ -667,6 +670,51 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
 					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
 				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+			})
+		})
+
+		When("perPodPowerManagent enabled", func() {
+			It("should update kernel arguments and tuned accordingly", func() {
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+					PerPodPowerManagement: pointer.BoolPtr(true),
+					HighPowerConsumption:  pointer.BoolPtr(false),
+					RealTime:              pointer.BoolPtr(true),
+				}
+				By("Patching the performance profile with workload hints")
+				workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(testclient.Client.Patch(context.TODO(), profile,
+					client.RawPatch(
+						types.JSONPatchType,
+						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec/workloadHints", "value": %s }]`, workloadHints)),
+					),
+				)).ToNot(HaveOccurred())
+
+				By("Applying changes in performance profile and waiting until mcp will start updating")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+				By("Waiting when mcp finishes updates")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
+				By("Verifying node kernel arguments")
+				cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(&workerRTNodes[0], []string{"cat", "/proc/cmdline"})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(cmdline).To(ContainSubstring("intel_pstate=passive"))
+				Expect(cmdline).ToNot(ContainSubstring("intel_pstate=disable"))
+
+				By("Verifying tuned profile")
+				key := types.NamespacedName{
+					Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
+					Namespace: components.NamespaceNodeTuningOperator,
+				}
+				tuned := &tunedv1.Tuned{}
+				err = testclient.Client.Get(context.TODO(), key, tuned)
+				Expect(err).ToNot(HaveOccurred(), "cannot find the Cluster Node Tuning Operator object")
+				tunedData := getTunedStructuredData(profile)
+				cpuSection, err := tunedData.GetSection("cpu")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(cpuSection.Key("enabled").String()).To(Equal("false"))
 			})
 		})
 
@@ -866,4 +914,13 @@ func checkTunedParameters(workerRTNodes []corev1.Node, stalld bool, sysctlMap ma
 			Expect(err).To(HaveOccurred(), "Node should have non-RT kernel")
 		}
 	}
+}
+
+func getTunedStructuredData(profile *performancev2.PerformanceProfile) *ini.File {
+	tuned, err := tuned.NewNodePerformance(profile)
+	Expect(err).ToNot(HaveOccurred())
+	tunedData := []byte(*tuned.Spec.Profile[0].Data)
+	cfg, err := ini.Load(tunedData)
+	Expect(err).ToNot(HaveOccurred())
+	return cfg
 }

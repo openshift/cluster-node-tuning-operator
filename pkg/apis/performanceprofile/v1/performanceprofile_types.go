@@ -175,6 +175,10 @@ type WorkloadHints struct {
 	// +default=true
 	// +optional
 	RealTime *bool `json:"realTime,omitempty"`
+	// +optional
+	// PerPodPowerManagement defines if the node should be configured in per pod power management.
+	// PerPodPowerManagement and HighPowerConsumption hints can not be enabled together.
+	PerPodPowerManagement *bool `json:"perPodPowerManagement,omitempty"`
 }
 
 // PerformanceProfileStatus defines the observed state of PerformanceProfile.

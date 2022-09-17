@@ -23,16 +23,18 @@ const expectedMatchSelector = `
 `
 
 var (
-	cmdlineCPUsPartitioning       = "+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded} intel_iommu=on iommu=pt"
-	cmdlineWithStaticIsolation    = "+isolcpus=domain,managed_irq,${isolated_cores}"
-	cmdlineWithoutStaticIsolation = "+isolcpus=managed_irq,${isolated_cores}"
-	cmdlineRealtime               = "+nohz_full=${isolated_cores} tsc=nowatchdog nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11"
-	cmdlineHighPowerConsumption   = "+processor.max_cstate=1 intel_idle.max_cstate=0 intel_pstate=disable"
-	cmdlineIdlePoll               = "+idle=poll"
-	cmdlineHugepages              = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4"
-	cmdlineAdditionalArgs         = "+ audit=0 processor.max_cstate=1 idle=poll intel_idle.max_cstate=0"
-	cmdlineDummy2MHugePages       = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=0"
-	cmdlineMultipleHugePages      = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=128"
+	cmdlineCPUsPartitioning           = "+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded} intel_iommu=on iommu=pt"
+	cmdlineWithStaticIsolation        = "+isolcpus=domain,managed_irq,${isolated_cores}"
+	cmdlineWithoutStaticIsolation     = "+isolcpus=managed_irq,${isolated_cores}"
+	cmdlineRealtime                   = "+nohz_full=${isolated_cores} tsc=nowatchdog nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11"
+	cmdlineHighPowerConsumption       = "+processor.max_cstate=1 intel_idle.max_cstate=0"
+	cmdlineIdlePoll                   = "+idle=poll"
+	cmdlineHugepages                  = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4"
+	cmdlineAdditionalArgs             = "+ audit=0 processor.max_cstate=1 idle=poll intel_idle.max_cstate=0"
+	cmdlineDummy2MHugePages           = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=0"
+	cmdlineMultipleHugePages          = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=128"
+	cmdlinePerPodPowerManagementHint  = "+intel_pstate=passive"
+	cmdlineHighPowerConsumptionPstate = "+intel_pstate=disable"
 )
 
 var _ = Describe("Tuned", func() {
@@ -160,24 +162,12 @@ var _ = Describe("Tuned", func() {
 					bootLoader, err := tunedData.GetSection("bootloader")
 					Expect(err).ToNot(HaveOccurred())
 					Expect(bootLoader.Key("cmdline_power_performance").String()).To(Equal(cmdlineHighPowerConsumption))
+					Expect(bootLoader.Key("cmdline_pstate").String()).To(Equal(cmdlineHighPowerConsumptionPstate))
 				})
 			})
 
 			When("realtime workload enabled", func() {
 				It("should not contain idle=poll cmdline", func() {
-					profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-						RealTime:             pointer.BoolPtr(false),
-						HighPowerConsumption: pointer.BoolPtr(false),
-					}
-					tunedData := getTunedStructuredData(profile)
-					bootLoader, err := tunedData.GetSection("bootloader")
-					Expect(err).ToNot(HaveOccurred())
-					Expect(bootLoader.Key("cmdline_idle_poll").String()).ToNot(Equal(cmdlineIdlePoll))
-				})
-			})
-
-			When("realtime workload disabled", func() {
-				It("should contain idle=poll cmdline", func() {
 					profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 						HighPowerConsumption: pointer.BoolPtr(true),
 						RealTime:             pointer.BoolPtr(true),
@@ -187,6 +177,58 @@ var _ = Describe("Tuned", func() {
 					Expect(err).ToNot(HaveOccurred())
 					Expect(bootLoader.Key("cmdline_idle_poll").String()).To(Equal(cmdlineIdlePoll))
 				})
+			})
+
+			When("realtime workload disabled", func() {
+				It("should contain idle=poll cmdline", func() {
+					profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+						HighPowerConsumption: pointer.BoolPtr(true),
+						RealTime:             pointer.BoolPtr(false),
+					}
+					tunedData := getTunedStructuredData(profile)
+					bootLoader, err := tunedData.GetSection("bootloader")
+					Expect(err).ToNot(HaveOccurred())
+					Expect(bootLoader.Key("cmdline_idle_poll").String()).ToNot(Equal(cmdlineIdlePoll))
+				})
+			})
+
+			When("perPodPowerManagement Hint to true", func() {
+				It("should fail as PerPodPowerManagement and HighPowerConsumption can not be set to true", func() {
+					profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+						HighPowerConsumption:  pointer.BoolPtr(true),
+						PerPodPowerManagement: pointer.BoolPtr(true),
+					}
+					_, err := NewNodePerformance(profile)
+					Expect(err.Error()).To(ContainSubstring("Invalid WorkloadHints configuration: HighPowerConsumption is true and PerPodPowerManagement is true"))
+				})
+			})
+		})
+
+		When("perPodPowerManagement Hint is false", func() {
+			It("should not contain perPodPowerManagement related parameters", func() {
+				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.BoolPtr(false)
+				tunedData := getTunedStructuredData(profile)
+				cpuSection, err := tunedData.GetSection("cpu")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(cpuSection.Key("enabled").String()).ToNot(Equal("false"))
+				bootLoaderSection, err := tunedData.GetSection("bootloader")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(bootLoaderSection.Key("cmdline_pstate").String()).ToNot(Equal(cmdlinePerPodPowerManagementHint))
+				Expect(bootLoaderSection.Key("cmdline_pstate").String()).ToNot(Equal(cmdlineHighPowerConsumptionPstate))
+			})
+		})
+
+		When("perPodPowerManagement Hint to true", func() {
+			It("should contain perPodPowerManagement related parameters", func() {
+				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.BoolPtr(true)
+				tunedData := getTunedStructuredData(profile)
+				cpuSection, err := tunedData.GetSection("cpu")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(cpuSection.Key("enabled").String()).To(Equal("false"))
+				bootLoader, err := tunedData.GetSection("bootloader")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(bootLoader.Key("cmdline_pstate").String()).To(Equal(cmdlinePerPodPowerManagementHint))
+				Expect(bootLoader.Key("cmdline_pstate").String()).ToNot(Equal(cmdlineHighPowerConsumptionPstate))
 			})
 		})
 
