@@ -60,6 +60,9 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 			if args.UserLevelNetworking != nil {
 				cmdArgs = append(cmdArgs, fmt.Sprintf("--user-level-networking=%v", *args.UserLevelNetworking))
 			}
+			if args.PerPodPowerManagement != nil {
+				cmdArgs = append(cmdArgs, fmt.Sprintf("--per-pod-power-management=%v", *args.PerPodPowerManagement))
+			}
 
 			// do not pass empty strings for optional args
 			if len(args.ProfileName) > 0 {
@@ -298,6 +301,64 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 				Expect(*profile.Spec.WorkloadHints.RealTime).To(BeTrue())
 				Expect(profile.Spec.WorkloadHints.HighPowerConsumption).ToNot(BeNil())
 				Expect(*profile.Spec.WorkloadHints.HighPowerConsumption).To(BeTrue())
+			})
+		})
+
+		Context("with perPodPowerManagement enabled and hihgPowerConsumption disabled", func() {
+			BeforeEach(func() {
+				extraArgs = append(extraArgs, "--rt-kernel=false")
+				extraArgs = append(extraArgs, "--power-consumption-mode=default")
+				extraArgs = append(extraArgs, "--per-pod-power-management=true")
+			})
+
+			It("should set perPodPowerManagement hint to true and highPowerConsumption to false", func() {
+				outData, _, err := testutils.ExecAndLogCommandWithStderr(ppcPath, extraArgs...)
+				Expect(err).ToNot(HaveOccurred())
+
+				profile := &performancev2.PerformanceProfile{}
+				Expect(yaml.Unmarshal(outData, profile)).ToNot(HaveOccurred())
+				Expect(profile.Spec.WorkloadHints).NotTo(BeNil())
+				Expect(profile.Spec.WorkloadHints.PerPodPowerManagement).ToNot(BeNil())
+				Expect(*profile.Spec.WorkloadHints.PerPodPowerManagement).To(BeTrue())
+				Expect(profile.Spec.WorkloadHints.HighPowerConsumption).ToNot(BeNil())
+				Expect(*profile.Spec.WorkloadHints.HighPowerConsumption).ToNot(BeTrue())
+			})
+		})
+
+		Context("with perPodPowerManagement enabled and highPowerConsumption disabled", func() {
+			BeforeEach(func() {
+				extraArgs = append(extraArgs, "--rt-kernel=true")
+				extraArgs = append(extraArgs, "--power-consumption-mode=ultra-low-latency")
+				extraArgs = append(extraArgs, "--per-pod-power-management=false")
+			})
+
+			It("should set perPodPowerManagement hint to false and highPowerConsumption to true", func() {
+				outData, _, err := testutils.ExecAndLogCommandWithStderr(ppcPath, extraArgs...)
+				Expect(err).ToNot(HaveOccurred())
+
+				profile := &performancev2.PerformanceProfile{}
+				Expect(yaml.Unmarshal(outData, profile)).ToNot(HaveOccurred())
+				Expect(profile.Spec.WorkloadHints).NotTo(BeNil())
+				Expect(profile.Spec.WorkloadHints.PerPodPowerManagement).ToNot(BeNil())
+				Expect(*profile.Spec.WorkloadHints.PerPodPowerManagement).ToNot(BeTrue())
+				Expect(profile.Spec.WorkloadHints.HighPowerConsumption).ToNot(BeNil())
+				Expect(*profile.Spec.WorkloadHints.HighPowerConsumption).To(BeTrue())
+			})
+		})
+
+		Context("with perPodPowerManagement enabled and highPowerConsumption enabled", func() {
+			BeforeEach(func() {
+				extraArgs = append(extraArgs, "--rt-kernel=true")
+				extraArgs = append(extraArgs, "--power-consumption-mode=ultra-low-latency")
+				extraArgs = append(extraArgs, "--per-pod-power-management=true")
+			})
+
+			It("should return an error", func() {
+				_, errData, err := testutils.ExecAndLogCommandWithStderr(ppcPath, extraArgs...)
+				Expect(err).To(HaveOccurred())
+				Expect(errData).ToNot(BeEmpty())
+				fmt.Print(err)
+				Expect(string(errData)).To(ContainSubstring("please use one of [default low-latency] power consumption modes together with the perPodPowerManagement"))
 			})
 		})
 	})
