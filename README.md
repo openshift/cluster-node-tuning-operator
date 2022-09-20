@@ -23,7 +23,7 @@ node-level settings it has applied before gracefully shutting down.
 
 ## Perfomance Profile Controller
 [Performance Profile Controller](docs/performanceprofile/performance_controller.md), 
-previously known as Performance Profile Controller and now a part of the Node Tuning Operator, 
+previously known as Performance Addon Operator and now a part of the Node Tuning Operator, 
 optimizes OpenShift clusters for applications sensitive to cpu and network latency.
 
 ## Deploying the Node Tuning Operator
