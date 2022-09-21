@@ -420,34 +420,75 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 	})
 
-	// TODO: we have a dependency between tests(that in general bad practice, but saves us some tests run time),
-	// once we will want to run tests in the random order or without failFast we will need to refactor tests
 	Context("Updating of nodeSelector parameter and node labels", func() {
 		var mcp *machineconfigv1.MachineConfigPool
 		var newCnfNode *corev1.Node
 
 		newRole := "worker-test"
 		newLabel := fmt.Sprintf("%s/%s", testutils.LabelRole, newRole)
+		var labelsDeletion = false
 		newNodeSelector := map[string]string{newLabel: ""}
 
-		testutils.BeforeAll(func() {
+		//fetch the latest profile
+		profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+		Expect(err).ToNot(HaveOccurred())
+		var oldMcpSelector, oldNodeSelector map[string]string
+		var removeLabels func(map[string]string, *corev1.Node) error
+
+		//fetch existing MCP Selector if exists in profile
+		BeforeEach(func() {
+			//fetch existing MCP Selector if exists in profile
+			if profile.Spec.MachineConfigPoolSelector != nil {
+				oldMcpSelector = profile.Spec.DeepCopy().MachineConfigPoolSelector
+			}
+
+			//fetch existing Node Selector
+			if profile.Spec.NodeSelector != nil {
+				oldNodeSelector = profile.Spec.DeepCopy().NodeSelector
+			}
+			removeLabels = func(nodeSelector map[string]string, targetNode *corev1.Node) error {
+				for l := range nodeSelector {
+					delete(targetNode.Labels, l)
+				}
+				label, err := json.Marshal(targetNode.Labels)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(testclient.Client.Patch(context.TODO(), targetNode,
+					client.RawPatch(
+						types.JSONPatchType,
+						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/metadata/labels", "value": %s }]`, label)),
+					),
+				)).ToNot(HaveOccurred())
+				mcps.WaitForCondition(testutils.RoleWorker, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+				By("Waiting when MCP Worker complete updates and verifying that node reverted back configuration")
+				mcps.WaitForCondition(testutils.RoleWorker, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				return nil
+			}
+
 			nonPerformancesWorkers, err := nodes.GetNonPerformancesWorkers(profile.Spec.NodeSelector)
 			Expect(err).ToNot(HaveOccurred())
 			if len(nonPerformancesWorkers) != 0 {
 				newCnfNode = &nonPerformancesWorkers[0]
 			}
-		})
-
-		JustBeforeEach(func() {
 			if newCnfNode == nil {
 				Skip("Skipping the test - cluster does not have another available worker node ")
 			}
-		})
 
-		It("[test_id:28440]Verifies that nodeSelector can be updated in performance profile", func() {
 			nodeLabel = newNodeSelector
 			newCnfNode.Labels[newLabel] = ""
+
 			Expect(testclient.Client.Update(context.TODO(), newCnfNode)).ToNot(HaveOccurred())
+
+			//Remove the MCP Selector if exists
+			if profile.Spec.MachineConfigPoolSelector != nil {
+				By("Removing Machine Config Selector")
+				Expect(testclient.Client.Patch(context.TODO(), profile,
+					client.RawPatch(
+						types.JSONPatchType,
+						[]byte(fmt.Sprintf(`[{"op": "remove", "path": "/spec/%s"}]`, "machineConfigPoolSelector")),
+					),
+				)).ToNot(HaveOccurred())
+			}
 
 			By("Creating new MachineConfigPool")
 			mcp = mcps.New(newRole, newNodeSelector)
@@ -468,36 +509,24 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			)).ToNot(HaveOccurred())
 			mcps.WaitForCondition(newRole, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
 
-			By("Waiting when MCP finishes updates and verifying new node has updated configuration")
+			By("Waiting when MCP finishes updates and verifying new node has MCP Selector removed")
 			mcps.WaitForCondition(newRole, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+		})
 
-			kblcfg, err := nodes.ExecCommandOnNode(chkKubeletConfig, newCnfNode)
-			Expect(err).ToNot(HaveOccurred(), "failed to execute %s", chkKubeletConfig)
-			Expect(kblcfg).To(ContainSubstring("topologyManagerPolicy"))
-
+		It("[test_id:28440]Verifies that nodeSelector can be updated in performance profile", func() {
+			kubeletConfig, err := nodes.GetKubeletConfig(newCnfNode)
+			Expect(kubeletConfig.TopologyManagerPolicy).ToNot(BeEmpty())
 			cmdline, err := nodes.ExecCommandOnNode(chkCmdLine, newCnfNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to execute %s", chkCmdLine)
 			Expect(cmdline).To(ContainSubstring("tuned.non_isolcpus"))
+
 		})
 
 		It("[test_id:27484]Verifies that node is reverted to plain worker when the extra labels are removed", func() {
 			By("Deleting cnf labels from the node")
-			for l := range profile.Spec.NodeSelector {
-				delete(newCnfNode.Labels, l)
-			}
-			label, err := json.Marshal(newCnfNode.Labels)
+			err = removeLabels(profile.Spec.NodeSelector, newCnfNode)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(testclient.Client.Patch(context.TODO(), newCnfNode,
-				client.RawPatch(
-					types.JSONPatchType,
-					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/metadata/labels", "value": %s }]`, label)),
-				),
-			)).ToNot(HaveOccurred())
-			mcps.WaitForCondition(testutils.RoleWorker, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-
-			By("Waiting when MCP Worker complete updates and verifying that node reverted back configuration")
-			mcps.WaitForCondition(testutils.RoleWorker, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
-
+			labelsDeletion = true
 			// Check if node is Ready
 			for i := range newCnfNode.Status.Conditions {
 				if newCnfNode.Status.Conditions[i].Type == corev1.NodeReady {
@@ -513,9 +542,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			Expect(err).ToNot(HaveOccurred(), "failed to execute %s", chkCmdLine)
 			Expect(cmdline).NotTo(ContainSubstring("tuned.non_isolcpus"))
 
-			kblcfg, err := nodes.ExecCommandOnNode(chkKubeletConfig, newCnfNode)
-			Expect(err).ToNot(HaveOccurred(), "failed to execute %s", chkKubeletConfig)
-			Expect(kblcfg).NotTo(ContainSubstring("reservedSystemCPUs"))
+			kblcfg, err := nodes.GetKubeletConfig(newCnfNode)
+			Expect(kblcfg.ReservedSystemCPUs).NotTo(ContainSubstring("reservedSystemCPUs"))
 
 			Expect(profile.Spec.CPU.Reserved).NotTo(BeNil())
 			reservedCPU := string(*profile.Spec.CPU.Reserved)
@@ -526,16 +554,23 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			Expect(irqBal).NotTo(ContainSubstring(cpuMask))
 		})
 
-		It("Reverts back nodeSelector and cleaning up leftovers", func() {
+		AfterEach(func() {
+			if labelsDeletion == false {
+				err = removeLabels(profile.Spec.NodeSelector, newCnfNode)
+				Expect(err).ToNot(HaveOccurred())
+			}
+
 			var selectorLabels []string
-			for k, v := range testutils.NodeSelectorLabels {
+			for k, v := range oldNodeSelector {
 				selectorLabels = append(selectorLabels, fmt.Sprintf(`"%s":"%s"`, k, v))
 			}
 			nodeSelector := strings.Join(selectorLabels, ",")
+			profile.Spec.NodeSelector = oldNodeSelector
+			spec, err := json.Marshal(profile.Spec)
 			Expect(testclient.Client.Patch(context.TODO(), profile,
 				client.RawPatch(
 					types.JSONPatchType,
-					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec/nodeSelector", "value": {%s} }]`, nodeSelector)),
+					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
 				),
 			)).ToNot(HaveOccurred())
 
@@ -561,7 +596,31 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 			// revert node label to have the expected value
 			nodeLabel = testutils.NodeSelectorLabels
+
+			//check the saved existingMcpSelector is not nil. If it's nil that means profile did not had
+			// any MCP Selector defined so nothing to restore . Else we restore the saved MCP selector
+			if oldMcpSelector != nil {
+				By("Restoring Machine config selector")
+				profile.Spec.MachineConfigPoolSelector = oldMcpSelector
+				//check we were able to marshal the old MCP Selector
+				spec, err := json.Marshal(profile.Spec)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(testclient.Client.Patch(context.TODO(), profile,
+					client.RawPatch(
+						types.JSONPatchType,
+						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
+					),
+				)).ToNot(HaveOccurred())
+
+				By("Applying changes in performance profile and waiting until mcp will start updating")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+				By("Waiting when mcp finishes updates")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			}
 		})
+
 	})
 
 	Context("WorkloadHints", func() {
