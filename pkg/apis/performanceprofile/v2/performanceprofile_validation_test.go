@@ -380,6 +380,61 @@ var _ = Describe("PerformanceProfile", func() {
 			})
 		})
 	})
+
+	Describe("validation of validateFields function", func() {
+		It("should check all fields", func() {
+			// config all specs to rise an error in every func inside validateFields()
+			reservedCPUs := CPUSet("")
+			isolatedCPUs := CPUSet("0-6")
+			offlinedCPUs := CPUSet("7")
+			profile.Spec.CPU.Reserved = &reservedCPUs
+			profile.Spec.CPU.Isolated = &isolatedCPUs
+			profile.Spec.CPU.Offlined = &offlinedCPUs
+
+			profile.Spec.MachineConfigLabel["foo"] = "bar"
+
+			incorrectDefaultSize := HugePageSize("!#@")
+			profile.Spec.HugePages.DefaultHugePagesSize = &incorrectDefaultSize
+
+			profile.Spec.WorkloadHints = &WorkloadHints{
+				RealTime: pointer.BoolPtr(false),
+			}
+			profile.Spec.RealTimeKernel = &RealTimeKernel{
+				Enabled: pointer.BoolPtr(true),
+			}
+
+			invalidVendor := "123"
+			invalidDevice := "0x12345"
+			profile.Spec.Net.Devices[0].InterfaceName = pointer.StringPtr("")
+			profile.Spec.Net.Devices[0].VendorID = pointer.StringPtr(invalidVendor)
+			profile.Spec.Net.Devices[0].DeviceID = pointer.StringPtr(invalidDevice)
+
+			errors := profile.validateFields()
+
+			type void struct{}
+			var member void
+			errorMsgs := make(map[string]void)
+
+			errorMsgs["reserved CPUs can not be empty"] = member
+			errorMsgs["you should provide only 1 MachineConfigLabel"] = member
+			errorMsgs[`hugepages default size should be equal to "1G" or "2M"`] = member
+			errorMsgs["device name cannot be empty"] = member
+			errorMsgs[fmt.Sprintf("device vendor ID %s has an invalid format. Vendor ID should be represented as 0x<4 hexadecimal digits> (16 bit representation)", invalidVendor)] = member
+			errorMsgs[fmt.Sprintf("device model ID %s has an invalid format. Model ID should be represented as 0x<4 hexadecimal digits> (16 bit representation)", invalidDevice)] = member
+			errorMsgs["realtime kernel is enabled, but realtime workload hint is explicitly disable"] = member
+
+			for _, err := range errors {
+				_, exists := errorMsgs[err.Detail]
+				if exists {
+					delete(errorMsgs, err.Detail)
+				}
+			}
+
+			for errorMsg, ok := range errorMsgs {
+				Expect(ok).To(BeTrue(), "missing expected error: %q", errorMsg)
+			}
+		})
+	})
 })
 
 func setValidNodeSelector(profile *PerformanceProfile) {
