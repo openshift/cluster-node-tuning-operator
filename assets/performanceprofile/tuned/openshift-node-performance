@@ -156,9 +156,12 @@ cmdline_power_performance=+processor.max_cstate=1 intel_idle.max_cstate=0
 cmdline_idle_poll=+idle=poll
 {{end}}
 
-cmdline_hugepages=+{{if .DefaultHugepagesSize}} default_hugepagesz={{.DefaultHugepagesSize}} {{end}} {{if .Hugepages}} {{.Hugepages}} {{end}}
+{{if .DefaultHugepagesSize}}
+cmdline_hugepages=+ default_hugepagesz={{.DefaultHugepagesSize}} {{end}} {{if .Hugepages}} {{.Hugepages}} {{end}}
 
-cmdline_additionalArg=+{{if .AdditionalArgs}} {{.AdditionalArgs}} {{end}}
+{{if .AdditionalArgs}}
+cmdline_additionalArg=+{{.AdditionalArgs}} 
+{{end}}
 
 {{if .PerPodPowerManagement}}
 cmdline_pstate=+intel_pstate=passive
