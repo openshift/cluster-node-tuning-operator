@@ -30,7 +30,7 @@ var (
 	cmdlineHighPowerConsumption       = "+processor.max_cstate=1 intel_idle.max_cstate=0"
 	cmdlineIdlePoll                   = "+idle=poll"
 	cmdlineHugepages                  = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4"
-	cmdlineAdditionalArgs             = "+ audit=0 processor.max_cstate=1 idle=poll intel_idle.max_cstate=0"
+	cmdlineAdditionalArgs             = "+audit=0 processor.max_cstate=1 idle=poll intel_idle.max_cstate=0"
 	cmdlineDummy2MHugePages           = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=0"
 	cmdlineMultipleHugePages          = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=128"
 	cmdlinePerPodPowerManagementHint  = "+intel_pstate=passive"
