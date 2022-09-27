@@ -168,19 +168,17 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 		}
 	}
 
-	if profile.Spec.WorkloadHints != nil {
-		if IsRealTimeHintEnabled(profile) {
-			templateArgs[templateRealTimeHint] = "true"
-		}
+	if IsRealTimeHintEnabled(profile) {
+		templateArgs[templateRealTimeHint] = "true"
+	}
 
-		if IsHighPowerConsumptionHintEnabled(profile) && IsPerPodPowerManagementEnabled(profile) {
-			err := fmt.Errorf("Invalid WorkloadHints configuration: HighPowerConsumption is %t and PerPodPowerManagement is %t", *profile.Spec.WorkloadHints.HighPowerConsumption, *profile.Spec.WorkloadHints.PerPodPowerManagement)
-			return nil, err
-		} else if IsHighPowerConsumptionHintEnabled(profile) {
-			templateArgs[templateHighPowerConsumption] = "true"
-		} else if IsPerPodPowerManagementEnabled(profile) {
-			templateArgs[templatePerPodPowerManagement] = "true"
-		}
+	if IsHighPowerConsumptionHintEnabled(profile) && IsPerPodPowerManagementEnabled(profile) {
+		err := fmt.Errorf("Invalid WorkloadHints configuration: HighPowerConsumption is %t and PerPodPowerManagement is %t", *profile.Spec.WorkloadHints.HighPowerConsumption, *profile.Spec.WorkloadHints.PerPodPowerManagement)
+		return nil, err
+	} else if IsHighPowerConsumptionHintEnabled(profile) {
+		templateArgs[templateHighPowerConsumption] = "true"
+	} else if IsPerPodPowerManagementEnabled(profile) {
+		templateArgs[templatePerPodPowerManagement] = "true"
 	}
 
 	profileData, err := getProfileData(filepath.Join("tuned", components.ProfileNamePerformance), templateArgs)
@@ -225,13 +223,13 @@ func IsIRQBalancingGloballyDisabled(profile *performancev2.PerformanceProfile) b
 }
 
 func IsRealTimeHintEnabled(profile *performancev2.PerformanceProfile) bool {
-	return profile.Spec.WorkloadHints.RealTime != nil && *profile.Spec.WorkloadHints.RealTime
+	return profile.Spec.WorkloadHints == nil || profile.Spec.WorkloadHints.RealTime == nil || *profile.Spec.WorkloadHints.RealTime
 }
 
 func IsHighPowerConsumptionHintEnabled(profile *performancev2.PerformanceProfile) bool {
-	return profile.Spec.WorkloadHints.HighPowerConsumption != nil && *profile.Spec.WorkloadHints.HighPowerConsumption
+	return profile.Spec.WorkloadHints != nil && profile.Spec.WorkloadHints.HighPowerConsumption != nil && *profile.Spec.WorkloadHints.HighPowerConsumption
 }
 
 func IsPerPodPowerManagementEnabled(profile *performancev2.PerformanceProfile) bool {
-	return profile.Spec.WorkloadHints.PerPodPowerManagement != nil && *profile.Spec.WorkloadHints.PerPodPowerManagement
+	return profile.Spec.WorkloadHints != nil && profile.Spec.WorkloadHints.PerPodPowerManagement != nil && *profile.Spec.WorkloadHints.PerPodPowerManagement
 }
