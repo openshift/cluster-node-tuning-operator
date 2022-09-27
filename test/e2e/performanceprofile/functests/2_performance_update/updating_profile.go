@@ -569,6 +569,37 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			By("Saving the old performance profile")
 			initialProfile = profile.DeepCopy()
 		})
+		When("workloadHint RealTime is disabled", func() {
+			It("should update kernel arguments and tuned accordingly to realTime Hint enabled by default", func() {
+				By("Modifying profile")
+				profile.Spec.WorkloadHints = nil
+
+				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
+					Enabled: pointer.BoolPtr(false),
+				}
+
+				By("Updating the performance profile")
+				profiles.UpdateWithRetry(profile)
+
+				By("Applying changes in performance profile and waiting until mcp will start updating")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+				By("Waiting for MCP being updated")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
+				stalldEnabled, rtKernel := true, false
+				noHzParam := fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
+				sysctlMap := map[string]string{
+					"kernel.hung_task_timeout_secs": "600",
+					"kernel.nmi_watchdog":           "0",
+					"kernel.sched_rt_runtime_us":    "-1",
+					"vm.stat_interval":              "10",
+				}
+				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1"}
+				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+			})
+		})
+
 		When("RealTime Workload with RealTime Kernel set to false", func() {
 			It("[test_id:50991][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
 				By("Modifying profile")
