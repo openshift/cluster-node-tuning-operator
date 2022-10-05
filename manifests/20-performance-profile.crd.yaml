@@ -61,6 +61,7 @@ spec:
                   type: object
                   required:
                     - isolated
+                    - reserved
                   properties:
                     balanceIsolated:
                       description: BalanceIsolated toggles whether or not the Isolated CPU set is eligible for load balancing work loads. When this option is set to "false", the Isolated CPU set will be static, meaning workloads have to explicitly assign each thread to a specific cpu in order to work across multiple CPUs. Setting this to "true" allows workloads to be balanced across CPUs. Setting this to "false" offers the most predictable performance for guaranteed workloads, but it offloads the complexity of cpu load balancing to the application. Defaults to "true"
