@@ -33,4 +33,6 @@ function find_dev_dir {
 [ -d "${dev_dir}" ] || { sleep 5; find_dev_dir; }  # search failed, wait a little and try again
 [ -d "${dev_dir}" ] || { echo "${dev_dir}" directory not found >&2 ; exit 0; } # the interface disappeared, not an error
 
-find "${dev_dir}"/queues -type f -name rps_cpus -exec sh -c "echo ${mask} | cat > {}" \;
+for i in "${dev_dir}"/queues/rx-*/rps_cpus; do
+  echo "${mask}" > "${i}"
+done
