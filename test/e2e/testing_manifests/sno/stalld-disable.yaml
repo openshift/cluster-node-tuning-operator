@@ -1,0 +1,27 @@
+apiVersion: tuned.openshift.io/v1
+kind: Tuned
+metadata:
+  name: openshift-realtime
+  namespace: openshift-cluster-node-tuning-operator
+spec:
+  profile:
+  - data: |
+      [main]
+      summary=Custom OpenShift realtime profile
+      include=openshift-node,realtime
+      [variables]
+      # isolated_cores take a list of ranges; e.g. isolated_cores=2,4-7
+      isolated_cores=1
+      #isolate_managed_irq=Y
+      not_isolated_cores_expanded=${f:cpulist_invert:${isolated_cores_expanded}}
+      [bootloader]
+      cmdline_ocp_realtime=+systemd.cpu_affinity=${not_isolated_cores_expanded}
+      [service]
+      service.stalld=stop,disable
+    name: openshift-realtime
+
+  recommend:
+  - machineConfigLabels:
+      machineconfiguration.openshift.io/role: "master"
+    priority: 20
+    profile: openshift-realtime

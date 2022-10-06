@@ -3,7 +3,7 @@ package e2e
 import (
 	"testing"
 
-	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 	configv1 "github.com/openshift/api/config/v1"
 
@@ -19,7 +19,7 @@ var (
 func TestNodeTuningOperator(t *testing.T) {
 	gomega.RegisterFailHandler(ginkgo.Fail)
 
-	ginkgo.By("getting cluster ControlPlaneTopology")
+	util.Logf("getting cluster ControlPlaneTopology")
 	controlPlaneTopology, err := util.GetClusterControlPlaneTopology(cs)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 

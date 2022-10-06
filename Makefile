@@ -94,14 +94,14 @@ $(GOBINDATA_BIN):
 
 test-e2e:
 	for d in core basic reboots reboots/sno; do \
-	  KUBERNETES_CONFIG="$(KUBECONFIG)" $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.noColor -ginkgo.failFast || exit; \
+	  KUBERNETES_CONFIG="$(KUBECONFIG)" $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.no-color ginkgo.fail-fast || exit; \
 	done
 
 .PHONY: test-e2e-local
 test-e2e-local: $(BINDATA) performance-profile-creator-tests
 	$(GO_BUILD_RECIPE)
 	for d in performanceprofile/functests-render-command/1_render_command; do \
-	  $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.noColor -ginkgo.failFast || exit; \
+	  $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.no-color -ginkgo.fail-fast || exit; \
 	done
 
 verify:	verify-gofmt
