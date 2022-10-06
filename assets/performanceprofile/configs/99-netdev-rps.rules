@@ -1,1 +1,1 @@
-SUBSYSTEM=="net", ACTION=="add", ENV{DEVPATH}!="/devices/virtual/net/veth*", ENV{ID_BUS}!="pci", TAG+="systemd", ENV{SYSTEMD_WANTS}="update-rps@%k.service"
+SUBSYSTEM=="net", ACTION=="add", ENV{ID_BUS}!="pci", TAG+="systemd", ENV{SYSTEMD_WANTS}="update-rps@%k.service"
