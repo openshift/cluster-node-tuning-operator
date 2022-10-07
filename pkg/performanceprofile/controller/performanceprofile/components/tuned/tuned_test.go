@@ -204,9 +204,10 @@ var _ = Describe("Tuned", func() {
 			})
 		})
 
-		When("perPodPowerManagement Hint is false", func() {
+		When("perPodPowerManagement Hint is false realTime Hint false", func() {
 			It("should not contain perPodPowerManagement related parameters", func() {
 				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.BoolPtr(false)
+				profile.Spec.WorkloadHints.RealTime = pointer.BoolPtr(false)
 				tunedData := getTunedStructuredData(profile)
 				cpuSection, err := tunedData.GetSection("cpu")
 				Expect(err).ToNot(HaveOccurred())
@@ -215,6 +216,21 @@ var _ = Describe("Tuned", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(bootLoaderSection.Key("cmdline_pstate").String()).ToNot(Equal(cmdlinePerPodPowerManagementHint))
 				Expect(bootLoaderSection.Key("cmdline_pstate").String()).ToNot(Equal(cmdlineHighPowerConsumptionPstate))
+			})
+		})
+
+		When("perPodPowerManagement Hint is false realTime Hint true", func() {
+			It("should not contain perPodPowerManagement related parameters but intel_pstate=disable", func() {
+				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.BoolPtr(false)
+				profile.Spec.WorkloadHints.RealTime = pointer.BoolPtr(true)
+				tunedData := getTunedStructuredData(profile)
+				cpuSection, err := tunedData.GetSection("cpu")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(cpuSection.Key("enabled").String()).ToNot(Equal("false"))
+				bootLoaderSection, err := tunedData.GetSection("bootloader")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(bootLoaderSection.Key("cmdline_pstate").String()).ToNot(Equal(cmdlinePerPodPowerManagementHint))
+				Expect(bootLoaderSection.Key("cmdline_pstate").String()).To(Equal(cmdlineHighPowerConsumptionPstate))
 			})
 		})
 
