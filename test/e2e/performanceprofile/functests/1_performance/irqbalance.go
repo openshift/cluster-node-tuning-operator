@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -76,7 +77,10 @@ var _ = Describe("[performance] Checking IRQBalance settings", func() {
 				Skip("this test needs dynamic IRQ balancing")
 			}
 
+			targetNodeIdx := pickNodeIdx(workerRTNodes)
+			targetNode = &workerRTNodes[targetNodeIdx]
 			Expect(targetNode).ToNot(BeNil(), "missing target node")
+			By(fmt.Sprintf("verifying worker node %q", targetNode.Name))
 
 			irqAffBegin, err := getIrqDefaultSMPAffinity(targetNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to extract the default IRQ affinity from node %q", targetNode.Name)
@@ -163,6 +167,89 @@ var _ = Describe("[performance] Checking IRQBalance settings", func() {
 
 			Expect(postRestartBannedCPUs.ToSlice()).To(Equal(postCreateBannedCPUs.ToSlice()), "banned CPUs changed post tuned restart on node %q", postRestartBannedCPUs.ToSlice(), targetNode.Name)
 		})
+
+		It("Should store empty cpu mask in the backup file", func() {
+			// crio stores the irqbalance CPU ban list in the backup file once, at startup, if the file doesn't exist.
+			// This _likely_ means the first time the provisioned node boots, and in this case is _likely_ the node
+			// has not any IRQ pinning, thus the saved CPU ban list is the empty list. But we don't control nor declare this state.
+			// It's all best effort.
+
+			nodeIdx := pickNodeIdx(workerRTNodes)
+			node := &workerRTNodes[nodeIdx]
+			By(fmt.Sprintf("verifying worker node %q", node.Name))
+
+			By(fmt.Sprintf("Checking the default IRQ affinity on node %q", node.Name))
+			smpAffinitySet, err := nodes.GetDefaultSmpAffinitySet(node)
+			Expect(err).ToNot(HaveOccurred(), "failed to get default smp affinity")
+
+			By(fmt.Sprintf("Checking the online CPU Set on node %q", node.Name))
+			onlineCPUsSet, err := nodes.GetOnlineCPUsSet(node)
+			Expect(err).ToNot(HaveOccurred(), "failed to get Online CPUs list")
+
+			// expect no irqbalance run in the system already, AKA start from pristine conditions.
+			// This is not an hard requirement, just the easier state to manage and check
+			Expect(smpAffinitySet.Equals(onlineCPUsSet)).To(BeTrue(), "found default_smp_affinity %v, expected %v - IRQBalance already run?", smpAffinitySet, onlineCPUsSet)
+
+			origBannedCPUsFile := "/etc/sysconfig/orig_irq_banned_cpus"
+			By(fmt.Sprintf("Checking content of %q on node %q", origBannedCPUsFile, node.Name))
+			expectFileEmpty(node, origBannedCPUsFile)
+		})
+
+		It("Should DO overwrite the banned CPU set on CRI-O restart", func() {
+
+			nodeIdx := pickNodeIdx(workerRTNodes)
+			node := &workerRTNodes[nodeIdx]
+			By(fmt.Sprintf("verifying worker node %q", node.Name))
+
+			var err error
+
+			By(fmt.Sprintf("Checking the default IRQ affinity on node %q", node.Name))
+			smpAffinitySet, err := nodes.GetDefaultSmpAffinitySet(node)
+			Expect(err).ToNot(HaveOccurred(), "failed to get default smp affinity")
+
+			By(fmt.Sprintf("Checking the online CPU Set on node %q", node.Name))
+			onlineCPUsSet, err := nodes.GetOnlineCPUsSet(node)
+			Expect(err).ToNot(HaveOccurred(), "failed to get Online CPUs list")
+
+			// expect no irqbalance run in the system already, AKA start from pristine conditions.
+			// This is not an hard requirement, just the easier state to manage and check
+			Expect(smpAffinitySet.Equals(onlineCPUsSet)).To(BeTrue(), "found default_smp_affinity %v, expected %v - IRQBalance already run?", smpAffinitySet, onlineCPUsSet)
+
+			// setup the CRI-O managed irq banned cpu list
+			By("Preparing fake data for the irqbalance config file")
+			irqBalanceConfFile := "/etc/sysconfig/irqbalance"
+			restoreIRQBalance := makeBackupForFile(node, irqBalanceConfFile)
+			defer restoreIRQBalance()
+
+			// completely fake data. We are backupping the original file anyway, and we succeed if we have empty ban list anyway. So it's good.
+			_, err = nodes.ExecCommandOnNode([]string{"echo", "IRQBALANCE_BANNED_CPUS=2,3", ">", "/rootfs/" + irqBalanceConfFile}, node)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Preparing fake data for the irqbalance cpu ban list file")
+			origBannedCPUsFile := "/etc/sysconfig/orig_irq_banned_cpus"
+			restoreBanned := makeBackupForFile(node, origBannedCPUsFile)
+			defer restoreBanned()
+
+			// because a limitation of ExecCommandOnNode, which interprets lack of output og any kind as failure (!), we
+			// need a command which emits output.
+			_, err = nodes.ExecCommandOnNode([]string{"/usr/bin/dd", "if=/dev/null", "of=/rootfs/" + origBannedCPUsFile}, node)
+			Expect(err).ToNot(HaveOccurred())
+
+			By(fmt.Sprintf("Restarting CRI-O on %q", node.Name))
+			_, err = nodes.ExecCommandOnNode([]string{"/usr/bin/systemctl", "restart", "crio"}, node)
+			Expect(err).ToNot(HaveOccurred())
+
+			var bannedCPUs cpuset.CPUSet
+			By(fmt.Sprintf("Getting again banned CPUs on %q", node.Name))
+			Eventually(func() bool {
+				bannedCPUs, err = getIrqBalanceBannedCPUs(node)
+				if err != nil {
+					fmt.Fprintf(GinkgoWriter, "getting banned CPUS from %q: %v", node.Name, err)
+					return false
+				}
+				return bannedCPUs.IsEmpty()
+			}).WithTimeout(5*time.Minute).WithPolling(10*time.Second).ShouldNot(BeTrue(), "banned CPUs %v not empty on node %q", bannedCPUs, node.Name)
+		})
 	})
 })
 
@@ -189,6 +276,9 @@ func getIrqBalanceBannedCPUs(node *corev1.Node) (cpuset.CPUSet, error) {
 	items := strings.FieldsFunc(keyValue, func(c rune) bool {
 		return c == '='
 	})
+	if len(items) == 1 {
+		return cpuset.NewCPUSet(), nil
+	}
 	if len(items) != 2 {
 		return cpuset.NewCPUSet(), fmt.Errorf("malformed CPU ban list in the configuration")
 	}
@@ -224,6 +314,21 @@ func findIrqBalanceBannedCPUsVarFromConf(conf string) string {
 	return ""
 }
 
+func makeBackupForFile(node *corev1.Node, path string) func() {
+	fullPath := filepath.Join("/", "rootfs", path)
+	savePath := fullPath + ".save"
+
+	out, err := nodes.ExecCommandOnNode([]string{"/usr/bin/cp", "-v", fullPath, savePath}, node)
+	ExpectWithOffset(1, err).ToNot(HaveOccurred())
+	fmt.Fprintf(GinkgoWriter, "%s", out)
+
+	return func() {
+		out, err := nodes.ExecCommandOnNode([]string{"/usr/bin/mv", "-v", savePath, fullPath}, node)
+		Expect(err).ToNot(HaveOccurred())
+		fmt.Fprintf(GinkgoWriter, "%s", out)
+	}
+}
+
 func pickNodeIdx(nodes []corev1.Node) int {
 	name, ok := os.LookupEnv("E2E_PAO_TARGET_NODE")
 	if !ok {
@@ -244,4 +349,12 @@ func unquote(s string) string {
 	s = strings.TrimPrefix(s, q)
 	s = strings.TrimSuffix(s, q)
 	return s
+}
+
+func expectFileEmpty(node *corev1.Node, path string) {
+	fullPath := filepath.Join("/", "rootfs", path)
+	out, err := nodes.ExecCommandOnNode([]string{"wc", "-c", fullPath}, node)
+	ExpectWithOffset(1, err).ToNot(HaveOccurred())
+	expected := "0 " + fullPath
+	ExpectWithOffset(1, out).To(Equal(expected), "file %s (%s) not empty", path, fullPath)
 }
