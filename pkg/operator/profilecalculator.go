@@ -24,6 +24,9 @@ const (
 )
 
 type tunedState struct {
+	profileLastUpdatedGeneration map[string]int64
+	// Node name:                    ^^^^^^
+	// Last time operator changed profile:  ^^^
 	nodeLabels map[string]map[string]string
 	// Node name:  ^^^^^^
 	// Node-specific label:   ^^^^^^
@@ -50,6 +53,7 @@ func NewProfileCalculator(listers *ntoclient.Listers, clients *ntoclient.Clients
 	pc.state.nodeLabels = map[string]map[string]string{}
 	pc.state.podLabels = map[string]map[string]map[string]string{}
 	pc.state.providerIDs = map[string]string{}
+	pc.state.profileLastUpdatedGeneration = map[string]int64{}
 	return pc
 }
 
@@ -254,9 +258,12 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (string
 		}
 
 		// If recommend.Match is empty, NodePool based matching is assumed
-		// or this is the default profile
 		if recommend.Match == nil {
-			klog.V(3).Infof("calculateProfileHyperShift: NodePool based matching or default profile used for node: %s, tunedProfileName:  %s, nodePoolName: %s", nodeName, *recommend.Profile, nodePoolName)
+			if *recommend.Profile == defaultProfile {
+				// Don't set nodepool for default profile, no MachineConfigs should be generated.
+				return *recommend.Profile, "", recommend.Operand, nil
+			}
+			klog.V(3).Infof("calculateProfileHyperShift: NodePool based matching used for node: %s, tunedProfileName: %s, nodePoolName: %s", nodeName, *recommend.Profile, nodePoolName)
 			return *recommend.Profile, nodePoolName, recommend.Operand, nil
 		}
 	}
