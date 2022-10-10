@@ -2,7 +2,6 @@ package __performance
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"reflect"
@@ -303,30 +302,13 @@ var _ = Describe("[rfe_id:27368][performance]", func() {
 
 			expectedRPSCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
 			Expect(err).ToNot(HaveOccurred())
-			ociHookPath := filepath.Join("/rootfs", machineconfig.OCIHooksConfigDir, machineconfig.OCIHooksConfig)
 			for _, node := range workerRTNodes {
-				// Verify the OCI RPS hook uses the correct RPS mask
-				hooksConfig, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"cat", ociHookPath})
-				Expect(err).ToNot(HaveOccurred())
-
-				var hooks map[string]interface{}
-				err = json.Unmarshal(hooksConfig, &hooks)
-				Expect(err).ToNot(HaveOccurred())
-				hook := hooks["hook"].(map[string]interface{})
-				Expect(hook).ToNot(BeNil())
-				args := hook["args"].([]interface{})
-				Expect(len(args)).To(Equal(2), "unexpected arguments: %v", args)
-
-				rpsCPUs, err := components.CPUMaskToCPUSet(args[1].(string))
-				Expect(err).ToNot(HaveOccurred())
-				Expect(rpsCPUs).To(Equal(expectedRPSCPUs), "the hook rps mask is different from the reserved CPUs")
-
 				// Verify the systemd RPS service uses the correct RPS mask
 				cmd := []string{"sed", "-n", "s/^ExecStart=.*echo \\([A-Fa-f0-9]*\\) .*/\\1/p", "/rootfs/etc/systemd/system/update-rps@.service"}
 				serviceRPSCPUs, err := nodes.ExecCommandOnNode(cmd, &node)
 				Expect(err).ToNot(HaveOccurred())
 
-				rpsCPUs, err = components.CPUMaskToCPUSet(serviceRPSCPUs)
+				rpsCPUs, err := components.CPUMaskToCPUSet(serviceRPSCPUs)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(rpsCPUs).To(Equal(expectedRPSCPUs), "the service rps mask is different from the reserved CPUs")
 
@@ -346,6 +328,7 @@ var _ = Describe("[rfe_id:27368][performance]", func() {
 					Expect(rpsCPUs).To(Equal(expectedRPSCPUs), "a host device rps mask is different from the reserved CPUs")
 				}
 
+				// TODO - probably remove
 				// Verify all node pod network devices have the correct RPS mask
 				nodePods := &corev1.PodList{}
 				listOptions := &client.ListOptions{
@@ -370,14 +353,10 @@ var _ = Describe("[rfe_id:27368][performance]", func() {
 
 			if profile.Spec.WorkloadHints != nil && profile.Spec.WorkloadHints.RealTime != nil &&
 				!*profile.Spec.WorkloadHints.RealTime && !profileutil.IsRpsEnabled(profile) {
-				ociHookPath := filepath.Join("/rootfs", machineconfig.OCIHooksConfigDir, machineconfig.OCIHooksConfig)
 				for _, node := range workerRTNodes {
-					// Verify the OCI RPS hook does not exist
-					_, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"cat", ociHookPath})
-					Expect(err).To(HaveOccurred())
 					// Verify the systemd RPS services were not created
 					cmd := []string{"ls", "/rootfs/etc/systemd/system/update-rps@.service"}
-					_, err = nodes.ExecCommandOnNode(cmd, &node)
+					_, err := nodes.ExecCommandOnNode(cmd, &node)
 					Expect(err).To(HaveOccurred())
 				}
 			}
