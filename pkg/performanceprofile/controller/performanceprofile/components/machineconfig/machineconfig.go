@@ -44,7 +44,6 @@ const (
 	// OCIHooksConfigDir is the default directory for the OCI hooks
 	OCIHooksConfigDir = "/etc/containers/oci/hooks.d"
 	// OCIHooksConfig file contains the low latency hooks configuration
-	OCIHooksConfig       = "99-low-latency-hooks.json"
 	ociTemplateRPSMask   = "RPSMask"
 	udevRulesDir         = "/etc/udev/rules.d"
 	udevRpsRules         = "99-netdev-rps.rules"
@@ -52,7 +51,6 @@ const (
 	// scripts
 	hugepagesAllocation       = "hugepages-allocation"
 	setCPUsOffline            = "set-cpus-offline"
-	ociHooks                  = "low-latency-hooks"
 	setRPSMask                = "set-rps-mask"
 	clearIRQBalanceBannedCPUs = "clear-irqbalance-banned-cpus"
 )
@@ -148,7 +146,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile) (*igntypes.Con
 	// add script files under the node /usr/local/bin directory
 	if profileutil.IsRpsEnabled(profile) || profile.Spec.WorkloadHints == nil ||
 		profile.Spec.WorkloadHints.RealTime == nil || *profile.Spec.WorkloadHints.RealTime {
-		scripts = []string{hugepagesAllocation, ociHooks, setRPSMask, setCPUsOffline, clearIRQBalanceBannedCPUs}
+		scripts = []string{hugepagesAllocation, setRPSMask, setCPUsOffline, clearIRQBalanceBannedCPUs}
 	} else {
 		// realtime is explicitly disabled by workload hint
 		scripts = []string{hugepagesAllocation, setCPUsOffline, clearIRQBalanceBannedCPUs}
@@ -175,14 +173,6 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile) (*igntypes.Con
 	// do not add RPS handling when realtime is explicitly disabled by workload hint
 	if profileutil.IsRpsEnabled(profile) || profile.Spec.WorkloadHints == nil ||
 		profile.Spec.WorkloadHints.RealTime == nil || *profile.Spec.WorkloadHints.RealTime {
-		// add crio hooks config  under the node cri-o hook directory
-		crioHooksConfigsMode := 0644
-		ociHooksConfigContent, err := GetOCIHooksConfigContent(OCIHooksConfig, profile)
-		if err != nil {
-			return nil, err
-		}
-		ociHookConfigDst := filepath.Join(OCIHooksConfigDir, OCIHooksConfig)
-		addContent(ignitionConfig, ociHooksConfigContent, ociHookConfigDst, &crioHooksConfigsMode)
 
 		// add rps udev rule
 		rpsRulesMode := 0644
