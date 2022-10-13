@@ -3,6 +3,7 @@ package __latency_testing_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"reflect"
 	"testing"
@@ -49,6 +50,7 @@ var _ = BeforeSuite(func() {
 	var err error
 	profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 	Expect(err).ToNot(HaveOccurred())
+	By(fmt.Sprintf("verify if the isolated cpus value under the performance profile %q is appropriate for this test suite", profile.Name))
 	workerNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -57,18 +59,16 @@ var _ = BeforeSuite(func() {
 	//updated both sets to ensure there is no overlap
 	latencyIsolatedSet := performancev2.CPUSet("1-9")
 	latencyReservedSet := performancev2.CPUSet("0")
-
+	testlog.Infof("current isolated cpus: %s, desired is %s", string(*initialIsolated), latencyIsolatedSet)
 	totalCpus := cpuset.MustParse(string(latencyIsolatedSet)).Size() + cpuset.MustParse(string(latencyReservedSet)).Size()
 	nodesWithSufficientCpu := nodes.GetByCpuCapacity(workerNodes, totalCpus)
 	//before applying the changes verify that there are compute nodes with sufficient cpus
-	if len(nodesWithSufficientCpu) != 0 {
-		if *initialIsolated != latencyIsolatedSet || *initialReserved != latencyReservedSet {
-			testlog.Info("Update the isolated and reserved cpus sets of the profile")
-			err = profilesupdate.UpdateIsolatedReservedCpus(latencyIsolatedSet, latencyReservedSet)
-			if err != nil {
-				testlog.Error("could not update the profile with the desired CPUs sets")
-			}
-		}
+	Expect(len(nodesWithSufficientCpu)).NotTo(Equal(0), "found 0 nodes with sufficient cpus %d for the performance profile configuration.", totalCpus)
+
+	if *initialIsolated != latencyIsolatedSet || *initialReserved != latencyReservedSet {
+		By("Update the isolated and reserved cpus sets of the profile")
+		err = profilesupdate.UpdateIsolatedReservedCpus(latencyIsolatedSet, latencyReservedSet)
+		Expect(err).ToNot(HaveOccurred(), "could not update the profile with the desired CPUs sets")
 	}
 
 	if err := createNamespace(); err != nil {
@@ -94,7 +94,7 @@ var _ = AfterSuite(func() {
 	currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 	Expect(err).ToNot(HaveOccurred())
 	if reflect.DeepEqual(currentProfile.Spec, profile.Spec) != true {
-		testlog.Info("Restore initial performance profile")
+		By("Restore initial performance profile")
 		err = profilesupdate.ApplyProfile(profile)
 		if err != nil {
 			testlog.Errorf("could not restore the initial profile: %v", err)
