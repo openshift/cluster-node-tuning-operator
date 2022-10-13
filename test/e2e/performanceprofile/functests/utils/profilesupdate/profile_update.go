@@ -34,7 +34,7 @@ func UpdateIsolatedReservedCpus(isolatedSet performancev2.CPUSet, reservedSet pe
 
 	err = ApplyProfile(updatedProfile)
 	if err == nil {
-		testlog.Infof("successfully updated performance profile %q with new isolated cpus set: %q and new reserved cpus set: %q", profile.Name, updatedProfile.Spec.CPU.Isolated, updatedProfile.Spec.CPU.Reserved)
+		testlog.Infof("successfully updated performance profile %q with new isolated cpus set: %q and new reserved cpus set: %q", profile.Name, string(*updatedProfile.Spec.CPU.Isolated), string(*updatedProfile.Spec.CPU.Reserved))
 	}
 	return err
 }
