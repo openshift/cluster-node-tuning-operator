@@ -46,10 +46,10 @@ func ApplyProfile(profile *performancev2.PerformanceProfile) error {
 	key, value := components.GetFirstKeyAndValue(mcpLabel)
 	mcpsByLabel, err := mcps.GetByLabel(key, value)
 	if err != nil {
-		return fmt.Errorf("Failed getting MCP by label key %v value %v: %v", key, value, err)
+		return fmt.Errorf("failed getting MCP by label key %v value %v: %v", key, value, err)
 	}
 	if len(mcpsByLabel) != 1 {
-		return fmt.Errorf("Unexpected number of MCPs found: %v", len(mcpsByLabel))
+		return fmt.Errorf("unexpected number of MCPs found: %v", len(mcpsByLabel))
 	}
 	performanceMCP := &mcpsByLabel[0]
 	testlog.Info("Verifying that mcp is ready for update")
