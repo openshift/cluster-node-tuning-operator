@@ -72,7 +72,7 @@ func ApplyProfile(profile *performancev2.PerformanceProfile) error {
 		return fmt.Errorf("could not fetch the profile: %v", err)
 	}
 
-	if reflect.DeepEqual(updatedProfile.Spec, profile.Spec) != true {
+	if !reflect.DeepEqual(updatedProfile.Spec, profile.Spec) {
 		return fmt.Errorf("the profile %q was not updated as expected", updatedProfile.Name)
 	}
 	return nil
