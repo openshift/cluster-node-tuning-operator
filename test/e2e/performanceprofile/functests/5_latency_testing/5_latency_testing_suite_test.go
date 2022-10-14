@@ -59,7 +59,7 @@ var _ = BeforeSuite(func() {
 	latencyReservedSet := performancev2.CPUSet("0")
 
 	totalCpus := cpuset.MustParse(string(latencyIsolatedSet)).Size() + cpuset.MustParse(string(latencyReservedSet)).Size()
-	nodesWithSufficientCpu := nodes.GetByCpuAllocatable(workerNodes, totalCpus)
+	nodesWithSufficientCpu := nodes.GetByCpuCapacity(workerNodes, totalCpus)
 	//before applying the changes verify that there are compute nodes with sufficient cpus
 	if len(nodesWithSufficientCpu) != 0 {
 		if *initialIsolated != latencyIsolatedSet || *initialReserved != latencyReservedSet {
