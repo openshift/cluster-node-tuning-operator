@@ -414,3 +414,14 @@ func GetByCpuAllocatable(nodesList []corev1.Node, cpuQty int) []corev1.Node {
 	}
 	return nodesWithSufficientCpu
 }
+
+func GetByCpuCapacity(nodesList []corev1.Node, cpuQty int) []corev1.Node {
+	nodesWithSufficientCpu := []corev1.Node{}
+	for _, node := range nodesList {
+		capacityCPU, _ := node.Status.Capacity.Cpu().AsInt64()
+		if capacityCPU >= int64(cpuQty) {
+			nodesWithSufficientCpu = append(nodesWithSufficientCpu, node)
+		}
+	}
+	return nodesWithSufficientCpu
+}
