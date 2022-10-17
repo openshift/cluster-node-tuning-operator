@@ -627,7 +627,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"kernel.sched_rt_runtime_us":    "950000",
 					"vm.stat_interval":              "10",
 				}
-				kernelParameters := []string{"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable"}
+				kernelParameters := []string{"processor.max_cstate=1", "intel_idle.max_cstate=0"}
 				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
 			})
 		})

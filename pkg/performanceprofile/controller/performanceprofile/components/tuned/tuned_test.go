@@ -26,12 +26,13 @@ var (
 	cmdlineWithStaticIsolation              = regexp.MustCompile(`\s*cmdline_isolation=\+\s*isolcpus=managed_irq,\${isolated_cores}\s*`)
 	cmdlineWithoutStaticIsolation           = regexp.MustCompile(`\s*cmdline_isolation=\+\s*isolcpus=domain,managed_irq,\${isolated_cores}\s*`)
 	cmdlineWithRealtime                     = regexp.MustCompile(`\s*cmdline_realtime=\+\s*nohz_full=\${isolated_cores}\s+tsc=nowatchdog\s+nosoftlockup\s+nmi_watchdog=0\s+mce=off\s+skew_tick=1\s*`)
-	cmdlineHighPowerConsumption             = regexp.MustCompile(`\s*cmdline_power_performance=\+\s*processor.max_cstate=1\s+intel_idle.max_cstate=0\s+intel_pstate=disable\s*`)
+	cmdlineHighPowerConsumption             = regexp.MustCompile(`\s*cmdline_power_performance=\+\s*processor.max_cstate=1\s+intel_idle.max_cstate=0\s*`)
 	cmdlineHighPowerConsumptionWithRealtime = regexp.MustCompile(`\s*cmdline_idle_poll=\+\s*idle=poll\s*`)
 	cmdlineHugepages                        = regexp.MustCompile(`\s*cmdline_hugepages=\+\s*default_hugepagesz=1G\s+hugepagesz=1G\s+hugepages=4\s*`)
 	cmdlineAdditionalArg                    = regexp.MustCompile(`\s*cmdline_additionalArg=\+\s*test1=val1\s+test2=val2\s*`)
 	cmdlineDummy2MHugePages                 = regexp.MustCompile(`\s*cmdline_hugepages=\+\s*default_hugepagesz=1G\s+hugepagesz=1G\s+hugepages=4\s+hugepagesz=2M\s+hugepages=0\s*`)
 	cmdlineMultipleHugePages                = regexp.MustCompile(`\s*cmdline_hugepages=\+\s*default_hugepagesz=1G\s+hugepagesz=1G\s+hugepages=4\s+hugepagesz=2M\s+hugepages=128\s*`)
+	cmdlinePstateDisable                    = regexp.MustCompile(`\s*cmdline_pstate=\+\s*intel_pstate=disable\s*`)
 )
 
 var additionalArgs = []string{"test1=val1", "test2=val2"}
@@ -72,6 +73,8 @@ var _ = Describe("Tuned", func() {
 			Expect(manifest).To(ContainSubstring("cmdline_additionalArg="))
 			By("Populating realtime cmdline")
 			Expect(cmdlineWithRealtime.MatchString(manifest)).To(BeTrue())
+			By("Populating pstate disable default cmdline")
+			Expect(cmdlinePstateDisable.MatchString(manifest)).To(BeTrue())
 		})
 
 		When("realtime hint disabled", func() {
@@ -87,6 +90,8 @@ var _ = Describe("Tuned", func() {
 				Expect(manifest).ToNot(ContainSubstring("kernel.sched_rt_runtime_us=-1"))
 				By("Populating realtime cmdline")
 				Expect(cmdlineWithRealtime.MatchString(manifest)).ToNot(BeTrue())
+				By("Populating pstate disable cmdline")
+				Expect(cmdlinePstateDisable.MatchString(manifest)).ToNot(BeTrue())
 			})
 		})
 
