@@ -63,6 +63,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", func() {
 
 		nodeIdx := pickNodeIdx(workerRTNodes)
 		targetNode = &workerRTNodes[nodeIdx]
+		Expect(targetNode).ToNot(BeNil(), "missing target node")
 		By(fmt.Sprintf("verifying worker node %q", targetNode.Name))
 	})
 
@@ -76,11 +77,6 @@ var _ = Describe("[performance] Checking IRQBalance settings", func() {
 			if tuned.IsIRQBalancingGloballyDisabled(profile) {
 				Skip("this test needs dynamic IRQ balancing")
 			}
-
-			targetNodeIdx := pickNodeIdx(workerRTNodes)
-			targetNode = &workerRTNodes[targetNodeIdx]
-			Expect(targetNode).ToNot(BeNil(), "missing target node")
-			By(fmt.Sprintf("verifying worker node %q", targetNode.Name))
 
 			irqAffBegin, err := getIrqDefaultSMPAffinity(targetNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to extract the default IRQ affinity from node %q", targetNode.Name)
@@ -174,16 +170,12 @@ var _ = Describe("[performance] Checking IRQBalance settings", func() {
 			// has not any IRQ pinning, thus the saved CPU ban list is the empty list. But we don't control nor declare this state.
 			// It's all best effort.
 
-			nodeIdx := pickNodeIdx(workerRTNodes)
-			node := &workerRTNodes[nodeIdx]
-			By(fmt.Sprintf("verifying worker node %q", node.Name))
-
-			By(fmt.Sprintf("Checking the default IRQ affinity on node %q", node.Name))
-			smpAffinitySet, err := nodes.GetDefaultSmpAffinitySet(node)
+			By(fmt.Sprintf("Checking the default IRQ affinity on node %q", targetNode.Name))
+			smpAffinitySet, err := nodes.GetDefaultSmpAffinitySet(targetNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to get default smp affinity")
 
-			By(fmt.Sprintf("Checking the online CPU Set on node %q", node.Name))
-			onlineCPUsSet, err := nodes.GetOnlineCPUsSet(node)
+			By(fmt.Sprintf("Checking the online CPU Set on node %q", targetNode.Name))
+			onlineCPUsSet, err := nodes.GetOnlineCPUsSet(targetNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to get Online CPUs list")
 
 			// expect no irqbalance run in the system already, AKA start from pristine conditions.
@@ -191,24 +183,17 @@ var _ = Describe("[performance] Checking IRQBalance settings", func() {
 			Expect(smpAffinitySet.Equals(onlineCPUsSet)).To(BeTrue(), "found default_smp_affinity %v, expected %v - IRQBalance already run?", smpAffinitySet, onlineCPUsSet)
 
 			origBannedCPUsFile := "/etc/sysconfig/orig_irq_banned_cpus"
-			By(fmt.Sprintf("Checking content of %q on node %q", origBannedCPUsFile, node.Name))
-			expectFileEmpty(node, origBannedCPUsFile)
+			By(fmt.Sprintf("Checking content of %q on node %q", origBannedCPUsFile, targetNode.Name))
+			expectFileEmpty(targetNode, origBannedCPUsFile)
 		})
 
 		It("Should DO overwrite the banned CPU set on CRI-O restart", func() {
-
-			nodeIdx := pickNodeIdx(workerRTNodes)
-			node := &workerRTNodes[nodeIdx]
-			By(fmt.Sprintf("verifying worker node %q", node.Name))
-
-			var err error
-
-			By(fmt.Sprintf("Checking the default IRQ affinity on node %q", node.Name))
-			smpAffinitySet, err := nodes.GetDefaultSmpAffinitySet(node)
+			By(fmt.Sprintf("Checking the default IRQ affinity on node %q", targetNode.Name))
+			smpAffinitySet, err := nodes.GetDefaultSmpAffinitySet(targetNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to get default smp affinity")
 
-			By(fmt.Sprintf("Checking the online CPU Set on node %q", node.Name))
-			onlineCPUsSet, err := nodes.GetOnlineCPUsSet(node)
+			By(fmt.Sprintf("Checking the online CPU Set on node %q", targetNode.Name))
+			onlineCPUsSet, err := nodes.GetOnlineCPUsSet(targetNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to get Online CPUs list")
 
 			// expect no irqbalance run in the system already, AKA start from pristine conditions.
@@ -218,37 +203,37 @@ var _ = Describe("[performance] Checking IRQBalance settings", func() {
 			// setup the CRI-O managed irq banned cpu list
 			By("Preparing fake data for the irqbalance config file")
 			irqBalanceConfFile := "/etc/sysconfig/irqbalance"
-			restoreIRQBalance := makeBackupForFile(node, irqBalanceConfFile)
+			restoreIRQBalance := makeBackupForFile(targetNode, irqBalanceConfFile)
 			defer restoreIRQBalance()
 
 			// completely fake data. We are backupping the original file anyway, and we succeed if we have empty ban list anyway. So it's good.
-			_, err = nodes.ExecCommandOnNode([]string{"echo", "IRQBALANCE_BANNED_CPUS=2,3", ">", "/rootfs/" + irqBalanceConfFile}, node)
+			_, err = nodes.ExecCommandOnNode([]string{"echo", "IRQBALANCE_BANNED_CPUS=2,3", ">", "/rootfs/" + irqBalanceConfFile}, targetNode)
 			Expect(err).ToNot(HaveOccurred())
 
 			By("Preparing fake data for the irqbalance cpu ban list file")
 			origBannedCPUsFile := "/etc/sysconfig/orig_irq_banned_cpus"
-			restoreBanned := makeBackupForFile(node, origBannedCPUsFile)
+			restoreBanned := makeBackupForFile(targetNode, origBannedCPUsFile)
 			defer restoreBanned()
 
 			// because a limitation of ExecCommandOnNode, which interprets lack of output og any kind as failure (!), we
 			// need a command which emits output.
-			_, err = nodes.ExecCommandOnNode([]string{"/usr/bin/dd", "if=/dev/null", "of=/rootfs/" + origBannedCPUsFile}, node)
+			_, err = nodes.ExecCommandOnNode([]string{"/usr/bin/dd", "if=/dev/null", "of=/rootfs/" + origBannedCPUsFile}, targetNode)
 			Expect(err).ToNot(HaveOccurred())
 
-			By(fmt.Sprintf("Restarting CRI-O on %q", node.Name))
-			_, err = nodes.ExecCommandOnNode([]string{"/usr/bin/systemctl", "restart", "crio"}, node)
+			By(fmt.Sprintf("Restarting CRI-O on %q", targetNode.Name))
+			_, err = nodes.ExecCommandOnNode([]string{"/usr/bin/systemctl", "restart", "crio"}, targetNode)
 			Expect(err).ToNot(HaveOccurred())
 
 			var bannedCPUs cpuset.CPUSet
-			By(fmt.Sprintf("Getting again banned CPUs on %q", node.Name))
+			By(fmt.Sprintf("Getting again banned CPUs on %q", targetNode.Name))
 			Eventually(func() bool {
-				bannedCPUs, err = getIrqBalanceBannedCPUs(node)
+				bannedCPUs, err = getIrqBalanceBannedCPUs(targetNode)
 				if err != nil {
-					fmt.Fprintf(GinkgoWriter, "getting banned CPUS from %q: %v", node.Name, err)
+					fmt.Fprintf(GinkgoWriter, "getting banned CPUS from %q: %v", targetNode.Name, err)
 					return false
 				}
 				return bannedCPUs.IsEmpty()
-			}).WithTimeout(5*time.Minute).WithPolling(10*time.Second).ShouldNot(BeTrue(), "banned CPUs %v not empty on node %q", bannedCPUs, node.Name)
+			}).WithTimeout(5*time.Minute).WithPolling(10*time.Second).ShouldNot(BeTrue(), "banned CPUs %v not empty on node %q", bannedCPUs, targetNode.Name)
 		})
 	})
 })
