@@ -233,7 +233,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", func() {
 					return false
 				}
 				return bannedCPUs.IsEmpty()
-			}).WithTimeout(5*time.Minute).WithPolling(10*time.Second).ShouldNot(BeTrue(), "banned CPUs %v not empty on node %q", bannedCPUs, targetNode.Name)
+			}).WithTimeout(5*time.Minute).WithPolling(10*time.Second).Should(BeTrue(), "banned CPUs %v not empty on node %q", bannedCPUs, targetNode.Name)
 		})
 	})
 })
