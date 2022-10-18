@@ -28,8 +28,8 @@ const (
 	hypershiftNodePoolLabel      = "hypershift.openshift.io/nodePool"
 	hypershiftNodePoolNameLabel  = "hypershift.openshift.io/nodePoolName"
 
-	tunedConfigMapLabel     = "hypershift.openshift.io/tuned-config"
-	tunedConfigMapConfigKey = "tuned"
+	tunedConfigMapLabel      = "hypershift.openshift.io/tuned-config"
+	tuningConfigMapConfigKey = "tuning"
 
 	operatorGeneratedMachineConfig = "hypershift.openshift.io/nto-generated-machine-config"
 	mcConfigMapDataKey             = "config"
@@ -129,9 +129,9 @@ func (c *Controller) getObjFromTunedConfigMap() ([]tunedv1.Tuned, error) {
 
 	seenTunedObject := map[string]bool{}
 	for _, cm := range cmList.Items {
-		tunedConfig, ok := cm.Data[tunedConfigMapConfigKey]
+		tunedConfig, ok := cm.Data[tuningConfigMapConfigKey]
 		if !ok {
-			klog.Warning("Tuned in ConfigMap %s has no data for field %s", cm.ObjectMeta.Name, tunedConfigMapConfigKey)
+			klog.Warningf("ConfigMap %s has no data in field %s. Expected Tuned manifests.", cm.ObjectMeta.Name, tuningConfigMapConfigKey)
 			continue
 		}
 
