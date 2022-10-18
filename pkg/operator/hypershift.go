@@ -30,6 +30,8 @@ const (
 
 	tunedConfigMapLabel      = "hypershift.openshift.io/tuned-config"
 	tuningConfigMapConfigKey = "tuning"
+	// TODO remove once HyperShift has switched to using new key.
+	tunedConfigMapConfigKeyDeprecated = "tuned"
 
 	operatorGeneratedMachineConfig = "hypershift.openshift.io/nto-generated-machine-config"
 	mcConfigMapDataKey             = "config"
@@ -131,8 +133,13 @@ func (c *Controller) getObjFromTunedConfigMap() ([]tunedv1.Tuned, error) {
 	for _, cm := range cmList.Items {
 		tunedConfig, ok := cm.Data[tuningConfigMapConfigKey]
 		if !ok {
-			klog.Warningf("ConfigMap %s has no data in field %s. Expected Tuned manifests.", cm.ObjectMeta.Name, tuningConfigMapConfigKey)
-			continue
+			tunedConfig, ok = cm.Data[tunedConfigMapConfigKeyDeprecated]
+			if !ok {
+				klog.Warningf("ConfigMap %s has no data in field %s or %s (deprecated). Expected Tuned manifests.", cm.ObjectMeta.Name, tuningConfigMapConfigKey, tunedConfigMapConfigKeyDeprecated)
+				continue
+			} else {
+				klog.Infof("Deprecated key %s used in ConfigMap %s", tunedConfigMapConfigKeyDeprecated, cm.ObjectMeta.Name)
+			}
 		}
 
 		cmNodePoolNamespacedName, ok := cm.Annotations[hypershiftNodePoolLabel]
