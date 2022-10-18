@@ -79,7 +79,7 @@ const (
 	// If useSystemStalld is set to true, use the OS-shipped stalld; otherwise, use the
 	// NTO-shipped version.  The aim here is to switch back to the legacy code easily just
 	// by setting this constant to false.
-	useSystemStalld = false
+	useSystemStalld = true
 )
 
 // Types
