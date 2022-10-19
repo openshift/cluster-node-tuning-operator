@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -424,4 +425,49 @@ func GetByCpuCapacity(nodesList []corev1.Node, cpuQty int) []corev1.Node {
 		}
 	}
 	return nodesWithSufficientCpu
+}
+
+// GetCpuSiblings function returns the cpus siblings associated with core
+// Also updates the map by deleting the cpu siblings returned
+func GetCpuSiblings(numaCoreSiblings map[int]map[int][]int, coreKey int) []string {
+	var cpuSiblings []string
+	for key := range numaCoreSiblings {
+		for _, c := range numaCoreSiblings[key][coreKey] {
+			cpuSiblings = append(cpuSiblings, strconv.Itoa(c))
+			delete(numaCoreSiblings[key], c)
+		}
+	}
+	return cpuSiblings
+}
+
+//GetNumaRanges function Splits the numa Siblings in to multiple Ranges
+//Example for Cpu Siblings:  10,50,11,51,12,52,13,53,14,54 , will return 10-14,50-54
+func GetNumaRanges(cpuString string) string {
+	cpuList := strings.Split(cpuString, ",")
+	var cpuIds = []int{}
+	for _, v := range cpuList {
+		cpuId, _ := strconv.Atoi(v)
+		cpuIds = append(cpuIds, cpuId)
+	}
+	sort.Ints(cpuIds)
+	offlineCpuRanges := []string{}
+	var j, k int
+	for i := 0; i < len(cpuIds); i++ {
+		j = i + 1
+		if j < len(cpuIds) {
+			if (cpuIds[i] + 1) != cpuIds[j] {
+				r := make([]int, 0)
+				for ; k < j; k++ {
+					r = append(r, cpuIds[k])
+				}
+				k = j
+				offlineCpuRanges = append(offlineCpuRanges, fmt.Sprintf("%d-%d", r[0], r[len(r)-1]))
+			}
+		}
+	}
+	//left overs
+	for i := k; i < len(cpuIds); i++ {
+		offlineCpuRanges = append(offlineCpuRanges, fmt.Sprintf("%d", cpuIds[i]))
+	}
+	return strings.Join(offlineCpuRanges, ",")
 }
