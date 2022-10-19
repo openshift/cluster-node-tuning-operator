@@ -652,6 +652,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 			profileMf.Spec.Config.Debug = operand.Debug
 			profileMf.Spec.Config.TuneDConfig = operand.TuneDConfig
 			profileMf.Status.Conditions = tunedpkg.InitializeStatusConditions()
+			c.pc.state.profileLastUpdatedGeneration[profileMf.Name] = 1
 			_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.WatchNamespace()).Create(context.TODO(), profileMf, metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to create Profile %s: %v", profileMf.Name, err)
@@ -676,19 +677,27 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		return fmt.Errorf("failed to get ProviderName: %v", err)
 	}
 
+	// profileLastUpdatedGeneration is set for each Profile when it is created or updated.
+	// In the case where it is not already set due to an operator restart, set it and
+	// clear profile.Status.Bootcmdline instead of syncing MachineConfigs.
+	_, lastUpdateGenSet := c.pc.state.profileLastUpdatedGeneration[profile.Name]
+
 	if ntoconfig.InHyperShift() {
 		// nodePoolName is the name of the NodePool which the Node corresponding to this Profile
 		// is a part of. If nodePoolName is the empty string, it either means that Node label
 		// based matching was used, or we don't know the NodePool, so we should not sync the
 		// MachineConfigs.
-		if nodePoolName != "" {
-			// In HyperShift
-			if profile.Status.TunedProfile == tunedProfileName && profileApplied(profile) {
-				// Synchronize MachineConfig only once the (calculated) TuneD profile 'tunedProfileName'
-				// has been successfully applied.
-				err := c.syncMachineConfigHyperShift(nodePoolName, profile)
-				if err != nil {
-					return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
+		if nodePoolName != "" && lastUpdateGenSet {
+			if profile.Generation > c.pc.state.profileLastUpdatedGeneration[profile.Name]+1 {
+				klog.Infof("refusing to sync MachineConfig because Profile %s is more than 1 generation ahead of last update by operator", profile.Name)
+			} else {
+				if profile.Status.TunedProfile == tunedProfileName && profileApplied(profile) {
+					// Synchronize MachineConfig only once the (calculated) TuneD profile 'tunedProfileName'
+					// has been successfully applied.
+					err := c.syncMachineConfigHyperShift(nodePoolName, profile)
+					if err != nil {
+						return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
+					}
 				}
 			}
 		}
@@ -708,10 +717,13 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		}
 	}
 
+	// Only update Profile if the spec needs to be changed OR if !lastUpdateGenSet.
+	// Update, triggering the operand to update the Profile status.
 	if profile.Spec.Config.TunedProfile == tunedProfileName &&
 		profile.Spec.Config.Debug == operand.Debug &&
 		reflect.DeepEqual(profile.Spec.Config.TuneDConfig, operand.TuneDConfig) &&
-		profile.Spec.Config.ProviderName == providerName {
+		profile.Spec.Config.ProviderName == providerName &&
+		lastUpdateGenSet {
 		klog.V(2).Infof("syncProfile(): no need to update Profile %s", nodeName)
 		return nil
 	}
@@ -722,7 +734,9 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	profile.Spec.Config.ProviderName = providerName
 	profile.Status.Conditions = tunedpkg.InitializeStatusConditions()
 
-	klog.V(2).Infof("syncProfile(): updating Profile %s [%s]", profile.Name, tunedProfileName)
+	c.pc.state.profileLastUpdatedGeneration[profile.Name] = profile.Generation + 1 // after this update
+
+	klog.V(2).Infof("syncProfile(): updating Profile %s [%s]. Last operator updated generation: %d", profile.Name, tunedProfileName, c.pc.state.profileLastUpdatedGeneration[profile.Name])
 	_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.WatchNamespace()).Update(context.TODO(), profile, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
@@ -844,7 +858,7 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 			if err != nil {
 				return fmt.Errorf("failed to create ConfigMap %s for MachineConfig %s: %v", configMapName, mc.ObjectMeta.Name, err)
 			}
-			klog.Infof("created ConfigMap %s for MachineConfig %s with%s", mc.ObjectMeta.Name, machineConfigGenerationLogLine(false, len(bootcmdline) != 0, bootcmdline))
+			klog.Infof("created ConfigMap %s for MachineConfig %s with%s", configMapName, mc.ObjectMeta.Name, machineConfigGenerationLogLine(false, len(bootcmdline) != 0, bootcmdline))
 			return nil
 		}
 		return err
