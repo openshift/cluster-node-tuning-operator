@@ -144,7 +144,7 @@ cmdline_realtime=+nohz_full=${isolated_cores} tsc=nowatchdog nosoftlockup nmi_wa
 {{end}}
 
 {{if .HighPowerConsumption}}
-cmdline_power_performance=+processor.max_cstate=1 intel_idle.max_cstate=0 intel_pstate=disable
+cmdline_power_performance=+processor.max_cstate=1 intel_idle.max_cstate=0 
 {{end}}
 
 {{if and .HighPowerConsumption .RealTime}}
@@ -154,3 +154,7 @@ cmdline_idle_poll=+idle=poll
 cmdline_hugepages=+{{if .DefaultHugepagesSize}} default_hugepagesz={{.DefaultHugepagesSize}} {{end}} {{if .Hugepages}} {{.Hugepages}} {{end}}
 
 cmdline_additionalArg=+{{if .AdditionalArgs}} {{.AdditionalArgs}} {{end}}
+
+{{if .RealTime}}
+cmdline_pstate=+intel_pstate=disable
+{{end}}
