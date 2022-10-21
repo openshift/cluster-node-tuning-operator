@@ -194,62 +194,6 @@ var _ = Describe("[performance] Checking IRQBalance settings", func() {
 			By(fmt.Sprintf("Checking content of %q on node %q", origBannedCPUsFile, node.Name))
 			expectFileEmpty(node, origBannedCPUsFile)
 		})
-
-		It("Should DO overwrite the banned CPU set on CRI-O restart", func() {
-
-			nodeIdx := pickNodeIdx(workerRTNodes)
-			node := &workerRTNodes[nodeIdx]
-			By(fmt.Sprintf("verifying worker node %q", node.Name))
-
-			var err error
-
-			By(fmt.Sprintf("Checking the default IRQ affinity on node %q", node.Name))
-			smpAffinitySet, err := nodes.GetDefaultSmpAffinitySet(node)
-			Expect(err).ToNot(HaveOccurred(), "failed to get default smp affinity")
-
-			By(fmt.Sprintf("Checking the online CPU Set on node %q", node.Name))
-			onlineCPUsSet, err := nodes.GetOnlineCPUsSet(node)
-			Expect(err).ToNot(HaveOccurred(), "failed to get Online CPUs list")
-
-			// expect no irqbalance run in the system already, AKA start from pristine conditions.
-			// This is not an hard requirement, just the easier state to manage and check
-			Expect(smpAffinitySet.Equals(onlineCPUsSet)).To(BeTrue(), "found default_smp_affinity %v, expected %v - IRQBalance already run?", smpAffinitySet, onlineCPUsSet)
-
-			// setup the CRI-O managed irq banned cpu list
-			By("Preparing fake data for the irqbalance config file")
-			irqBalanceConfFile := "/etc/sysconfig/irqbalance"
-			restoreIRQBalance := makeBackupForFile(node, irqBalanceConfFile)
-			defer restoreIRQBalance()
-
-			// completely fake data. We are backupping the original file anyway, and we succeed if we have empty ban list anyway. So it's good.
-			_, err = nodes.ExecCommandOnNode([]string{"echo", "IRQBALANCE_BANNED_CPUS=2,3", ">", "/rootfs/" + irqBalanceConfFile}, node)
-			Expect(err).ToNot(HaveOccurred())
-
-			By("Preparing fake data for the irqbalance cpu ban list file")
-			origBannedCPUsFile := "/etc/sysconfig/orig_irq_banned_cpus"
-			restoreBanned := makeBackupForFile(node, origBannedCPUsFile)
-			defer restoreBanned()
-
-			// because a limitation of ExecCommandOnNode, which interprets lack of output og any kind as failure (!), we
-			// need a command which emits output.
-			_, err = nodes.ExecCommandOnNode([]string{"/usr/bin/dd", "if=/dev/null", "of=/rootfs/" + origBannedCPUsFile}, node)
-			Expect(err).ToNot(HaveOccurred())
-
-			By(fmt.Sprintf("Restarting CRI-O on %q", node.Name))
-			_, err = nodes.ExecCommandOnNode([]string{"/usr/bin/systemctl", "restart", "crio"}, node)
-			Expect(err).ToNot(HaveOccurred())
-
-			var bannedCPUs cpuset.CPUSet
-			By(fmt.Sprintf("Getting again banned CPUs on %q", node.Name))
-			Eventually(func() bool {
-				bannedCPUs, err = getIrqBalanceBannedCPUs(node)
-				if err != nil {
-					fmt.Fprintf(GinkgoWriter, "getting banned CPUS from %q: %v", node.Name, err)
-					return false
-				}
-				return bannedCPUs.IsEmpty()
-			}).WithTimeout(5*time.Minute).WithPolling(10*time.Second).ShouldNot(BeTrue(), "banned CPUs %v not empty on node %q", bannedCPUs, node.Name)
-		})
 	})
 })
 
