@@ -195,7 +195,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", func() {
 			expectFileEmpty(node, origBannedCPUsFile)
 		})
 
-		It("Should DO overwrite the banned CPU set on CRI-O restart", func() {
+		It("Should DO overwrite the banned CPU set on CRI-O restart, recovering and overwriting the state from the backup file", func() {
 
 			nodeIdx := pickNodeIdx(workerRTNodes)
 			node := &workerRTNodes[nodeIdx]
@@ -236,19 +236,21 @@ var _ = Describe("[performance] Checking IRQBalance settings", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			By(fmt.Sprintf("Restarting CRI-O on %q", node.Name))
-			_, err = nodes.ExecCommandOnNode([]string{"/usr/bin/systemctl", "restart", "crio"}, node)
+			out, err := nodes.ExecCommandOnNode([]string{"/usr/bin/systemctl", "restart", "crio"}, node)
 			Expect(err).ToNot(HaveOccurred())
 
+			testlog.Infof("crio restart log:\n>>> %s", out)
+
 			var bannedCPUs cpuset.CPUSet
-			By(fmt.Sprintf("Getting again banned CPUs on %q", node.Name))
+			By(fmt.Sprintf("Getting again banned CPUs on %q - expect empty set from empty backup file", node.Name))
 			Eventually(func() bool {
 				bannedCPUs, err = getIrqBalanceBannedCPUs(node)
 				if err != nil {
-					fmt.Fprintf(GinkgoWriter, "getting banned CPUS from %q: %v", node.Name, err)
+					testlog.Warningf("getting banned CPUS from %q: %v", node.Name, err)
 					return false
 				}
 				return bannedCPUs.IsEmpty()
-			}).WithTimeout(5*time.Minute).WithPolling(10*time.Second).ShouldNot(BeTrue(), "banned CPUs %v not empty on node %q", bannedCPUs, node.Name)
+			}).WithTimeout(5*time.Minute).WithPolling(10*time.Second).Should(BeTrue(), "banned CPUs %v is not empty on node %q (from backup file)", bannedCPUs, node.Name)
 		})
 	})
 })
@@ -320,12 +322,12 @@ func makeBackupForFile(node *corev1.Node, path string) func() {
 
 	out, err := nodes.ExecCommandOnNode([]string{"/usr/bin/cp", "-v", fullPath, savePath}, node)
 	ExpectWithOffset(1, err).ToNot(HaveOccurred())
-	fmt.Fprintf(GinkgoWriter, "%s", out)
+	testlog.Infof("%s", out)
 
 	return func() {
 		out, err := nodes.ExecCommandOnNode([]string{"/usr/bin/mv", "-v", savePath, fullPath}, node)
 		Expect(err).ToNot(HaveOccurred())
-		fmt.Fprintf(GinkgoWriter, "%s", out)
+		testlog.Infof("%s", out)
 	}
 }
 
