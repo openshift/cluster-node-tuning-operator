@@ -19,7 +19,9 @@ import (
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -204,7 +206,13 @@ func removePerformanceOLMOperator(cfg *rest.Config) error {
 
 	var performanceOperatorCSVs []olmv1alpha1.ClusterServiceVersion
 	csvs := &olmv1alpha1.ClusterServiceVersionList{}
-	if err := k8sclient.List(context.TODO(), csvs); err != nil {
+	csvSelector := labels.NewSelector()
+	req, err := labels.NewRequirement(olmv1alpha1.CopiedLabelKey, selection.DoesNotExist, []string{})
+	if err != nil {
+		return err
+	}
+	csvSelector.Add(*req)
+	if err := k8sclient.List(context.TODO(), csvs, client.MatchingLabelsSelector{Selector: csvSelector}); err != nil {
 		if !errors.IsNotFound(err) {
 			return err
 		}
