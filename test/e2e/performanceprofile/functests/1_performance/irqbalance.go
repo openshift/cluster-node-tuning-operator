@@ -292,6 +292,7 @@ func unquote(s string) string {
 	q := "\""
 	s = strings.TrimPrefix(s, q)
 	s = strings.TrimSuffix(s, q)
+
 	return s
 }
 
