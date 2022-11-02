@@ -17,6 +17,7 @@ import (
 	"gopkg.in/ini.v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
@@ -29,9 +30,11 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/tuned"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 )
 
@@ -71,6 +74,14 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 	}
 
 	nodeLabel := testutils.NodeSelectorLabels
+
+	var RunningOnSingleNode bool
+
+	testutils.CustomBeforeAll(func() {
+		isSNO, err := cluster.IsSingleNode()
+		Expect(err).ToNot(HaveOccurred())
+		RunningOnSingleNode = isSNO
+	})
 
 	BeforeEach(func() {
 		if discovery.Enabled() && testutils.ProfileNotFound {
@@ -549,6 +560,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 	})
 
 	Context("WorkloadHints", func() {
+		var testpod *corev1.Pod
 		BeforeEach(func() {
 			By("Saving the old performance profile")
 			initialProfile = profile.DeepCopy()
@@ -689,7 +701,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		When("perPodPowerManagent enabled", func() {
-			It("should update kernel arguments and tuned accordingly", func() {
+			It("[test_id:54177]should update kernel arguments and tuned accordingly", func() {
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					PerPodPowerManagement: pointer.BoolPtr(true),
 					HighPowerConsumption:  pointer.BoolPtr(false),
@@ -731,6 +743,394 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(err).ToNot(HaveOccurred())
 				Expect(cpuSection.Key("enabled").String()).To(Equal("false"))
 			})
+
+			It("[test_id:54178]Verify System is tuned when updating from HighPowerConsumption to PerPodPowermanagment", func() {
+
+				// This test requires real hardware with powermanagement settings done on BIOS
+				// Using numa nodes to check if we are running on real hardware.
+				checkHardwareCapability(workerRTNodes)
+				// First enable HighPowerConsumption
+				By("Modifying profile")
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+					HighPowerConsumption:  pointer.Bool(true),
+					RealTime:              pointer.Bool(true),
+					PerPodPowerManagement: pointer.BoolPtr(false),
+				}
+				if !*profile.Spec.RealTimeKernel.Enabled {
+					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
+						Enabled: pointer.BoolPtr(true),
+					}
+				}
+
+				By("Patching the performance profile with workload hints")
+				spec, err := json.Marshal(profile.Spec)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(testclient.Client.Patch(context.TODO(), profile,
+					client.RawPatch(
+						types.JSONPatchType,
+						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
+					),
+				)).ToNot(HaveOccurred())
+
+				By("Applying changes in performance profile and waiting until mcp will start updating")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+				By("Waiting when mcp finishes updates")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
+				stalldEnabled, rtKernel := true, true
+				noHzParam := fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
+				sysctlMap := map[string]string{
+					"kernel.hung_task_timeout_secs": "600",
+					"kernel.nmi_watchdog":           "0",
+					"kernel.sched_rt_runtime_us":    "-1",
+					"vm.stat_interval":              "10",
+				}
+
+				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
+					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
+				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+
+				//Update the profile to disable HighPowerConsumption and enable PerPodPowerManagment
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+					HighPowerConsumption:  pointer.Bool(false),
+					RealTime:              pointer.Bool(true),
+					PerPodPowerManagement: pointer.BoolPtr(true),
+				}
+				if !*profile.Spec.RealTimeKernel.Enabled {
+					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
+						Enabled: pointer.BoolPtr(true),
+					}
+				}
+
+				By("Patching the performance profile with workload hints")
+				newspec, err := json.Marshal(profile.Spec)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(testclient.Client.Patch(context.TODO(), profile,
+					client.RawPatch(
+						types.JSONPatchType,
+						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, newspec)),
+					),
+				)).ToNot(HaveOccurred())
+
+				By("Applying changes in performance profile and waiting until mcp will start updating")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+				By("Waiting when mcp finishes updates")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
+				stalldEnabled, rtKernel = true, true
+				noHzParam = fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
+				sysctlMap = map[string]string{
+					"kernel.hung_task_timeout_secs": "600",
+					"kernel.nmi_watchdog":           "0",
+					"kernel.sched_rt_runtime_us":    "-1",
+					"vm.stat_interval":              "10",
+				}
+
+				kernelParameters = []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1", "intel_pstate=passive"}
+				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+
+			})
+
+			It("[test_id:54179]Verify System is tuned when reverting from PerPodPowerManagement to HighPowerConsumption", func() {
+
+				// This test requires real hardware with powermanagement settings done on BIOS
+				// Using numa nodes to check if we are running on real hardware.
+				checkHardwareCapability(workerRTNodes)
+				// First enable HighPowerConsumption
+				By("Modifying profile")
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+					HighPowerConsumption:  pointer.Bool(false),
+					RealTime:              pointer.Bool(true),
+					PerPodPowerManagement: pointer.BoolPtr(true),
+				}
+				if !*profile.Spec.RealTimeKernel.Enabled {
+					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
+						Enabled: pointer.BoolPtr(true),
+					}
+				}
+
+				By("Patching the performance profile with workload hints")
+				spec, err := json.Marshal(profile.Spec)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(testclient.Client.Patch(context.TODO(), profile,
+					client.RawPatch(
+						types.JSONPatchType,
+						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
+					),
+				)).ToNot(HaveOccurred())
+
+				By("Applying changes in performance profile and waiting until mcp will start updating")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+				By("Waiting when mcp finishes updates")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
+				stalldEnabled, rtKernel := true, true
+				noHzParam := fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
+				sysctlMap := map[string]string{
+					"kernel.hung_task_timeout_secs": "600",
+					"kernel.nmi_watchdog":           "0",
+					"kernel.sched_rt_runtime_us":    "-1",
+					"vm.stat_interval":              "10",
+				}
+
+				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1", "intel_pstate=passive"}
+				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+
+				//Update the profile to disable HighPowerConsumption and enable PerPodPowerManagment
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+					HighPowerConsumption:  pointer.Bool(true),
+					RealTime:              pointer.Bool(true),
+					PerPodPowerManagement: pointer.BoolPtr(false),
+				}
+				if !*profile.Spec.RealTimeKernel.Enabled {
+					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
+						Enabled: pointer.BoolPtr(true),
+					}
+				}
+
+				By("Patching the performance profile with workload hints")
+				newspec, err := json.Marshal(profile.Spec)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(testclient.Client.Patch(context.TODO(), profile,
+					client.RawPatch(
+						types.JSONPatchType,
+						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, newspec)),
+					),
+				)).ToNot(HaveOccurred())
+
+				By("Applying changes in performance profile and waiting until mcp will start updating")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+				By("Waiting when mcp finishes updates")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
+				stalldEnabled, rtKernel = true, true
+				noHzParam = fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
+				sysctlMap = map[string]string{
+					"kernel.hung_task_timeout_secs": "600",
+					"kernel.nmi_watchdog":           "0",
+					"kernel.sched_rt_runtime_us":    "-1",
+					"vm.stat_interval":              "10",
+				}
+
+				kernelParameters = []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
+					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
+				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+			})
+
+			It("[test_id:54184]Verify enabling both HighPowerConsumption and PerPodPowerManagment fails", func() {
+
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+					PerPodPowerManagement: pointer.BoolPtr(true),
+					HighPowerConsumption:  pointer.BoolPtr(true),
+					RealTime:              pointer.BoolPtr(true),
+				}
+				EventuallyWithOffset(1, func() string {
+					err := testclient.Client.Update(context.TODO(), profile)
+					if err != nil {
+						statusErr, _ := err.(*errors.StatusError)
+						return statusErr.Status().Message
+					}
+					return fmt.Sprint("Profile applied successfully")
+				}, time.Minute, 5*time.Second).Should(ContainSubstring("HighPowerConsumption and PerPodPowerManagement can not be both enabled"))
+			})
+
+			It("[test_id:54185] Verify sysfs parameters of guaranteed pod with powersave annotations", func() {
+
+				// This test requires real hardware with powermanagement settings done on BIOS
+				// Using numa nodes to check if we are running on real hardware.
+				checkHardwareCapability(workerRTNodes)
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+					PerPodPowerManagement: pointer.BoolPtr(true),
+					HighPowerConsumption:  pointer.BoolPtr(false),
+					RealTime:              pointer.BoolPtr(true),
+				}
+				By("Patching the performance profile with workload hints")
+				workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(testclient.Client.Patch(context.TODO(), profile,
+					client.RawPatch(
+						types.JSONPatchType,
+						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec/workloadHints", "value": %s }]`, workloadHints)),
+					),
+				)).ToNot(HaveOccurred())
+				By("Applying changes in performance profile and waiting until mcp will start updating")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+				By("Waiting when mcp finishes updates")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
+				annotations := map[string]string{
+					"cpu-c-states.crio.io":      "enable",
+					"cpu-freq-governor.crio.io": "schedutil",
+				}
+
+				cpuCount := "2"
+				resCpu := resource.MustParse(cpuCount)
+				resMem := resource.MustParse("100Mi")
+				testpod = pods.GetTestPod()
+				testpod.Namespace = testutils.NamespaceTesting
+				testpod.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resCpu,
+						corev1.ResourceMemory: resMem,
+					},
+				}
+				testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNodes[0].Name}
+				testpod.Annotations = annotations
+				runtimeClass := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+				testpod.Spec.RuntimeClassName = &runtimeClass
+
+				By("creating test pod")
+				err = testclient.Client.Create(context.TODO(), testpod)
+				Expect(err).ToNot(HaveOccurred())
+				err = pods.WaitForCondition(testpod, corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(testpod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed), "Test pod does not have QoS class of Guaranteed")
+
+				By("Getting the container cpuset.cpus cgroup")
+				containerID, err := pods.GetContainerIDByName(testpod, "test")
+				Expect(err).ToNot(HaveOccurred())
+
+				containerCgroup := ""
+				Eventually(func() string {
+					cmd := []string{"/bin/bash", "-c", fmt.Sprintf("find /rootfs/sys/fs/cgroup/cpuset/ -name *%s*", containerID)}
+					containerCgroup, err = nodes.ExecCommandOnNode(cmd, &workerRTNodes[0])
+					Expect(err).ToNot(HaveOccurred())
+					return containerCgroup
+				}, (cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode)), 5*time.Second).ShouldNot(BeEmpty(),
+					fmt.Sprintf("cannot find cgroup for container %q", containerID))
+
+				By("Verify powersetting of cpus used by the pod")
+				cmd := []string{"/bin/bash", "-c", fmt.Sprintf("cat %s/cpuset.cpus", containerCgroup)}
+				output, err := nodes.ExecCommandOnNode(cmd, &workerRTNodes[0])
+				Expect(err).ToNot(HaveOccurred())
+				cpus, err := cpuset.Parse(output)
+				targetCpus := cpus.ToSlice()
+				err = checkCpuGovernorsAndResumeLatency(targetCpus, &workerRTNodes[0], "0", "schedutil")
+				Expect(err).ToNot(HaveOccurred())
+				//verify the rest of the cpus do not have powersave cpu governors
+				By("Verify the rest of the cpus donot haver powersave settings")
+				numaInfo, err := nodes.GetNumaNodes(&workerRTNodes[0])
+				Expect(err).ToNot(HaveOccurred())
+				var otherCpus []int
+				for _, cpusiblings := range numaInfo {
+					for _, cpu := range cpusiblings {
+						if cpu != targetCpus[0] && cpu != targetCpus[1] {
+							otherCpus = append(otherCpus, cpu)
+						}
+					}
+				}
+				err = checkCpuGovernorsAndResumeLatency(otherCpus, &workerRTNodes[0], "0", "performance")
+				deleteTestPod(testpod)
+				//Verify after the pod is deleted the cpus assigned to container have default powersave settings
+				By("Verify after pod is delete cpus assigned to container have default powersave settings")
+				err = checkCpuGovernorsAndResumeLatency(targetCpus, &workerRTNodes[0], "0", "performance")
+			})
+
+			It("[test_id:54186] Verify sysfs paramters of guaranteed pod with performance annotiations", func() {
+
+				// This test requires real hardware with powermanagement settings done on BIOS
+				// Using numa nodes to check if we are running on real hardware
+				checkHardwareCapability(workerRTNodes)
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+					PerPodPowerManagement: pointer.BoolPtr(false),
+					HighPowerConsumption:  pointer.BoolPtr(true),
+					RealTime:              pointer.BoolPtr(true),
+				}
+				By("Patching the performance profile with workload hints")
+				workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(testclient.Client.Patch(context.TODO(), profile,
+					client.RawPatch(
+						types.JSONPatchType,
+						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec/workloadHints", "value": %s }]`, workloadHints)),
+					),
+				)).ToNot(HaveOccurred())
+				By("Applying changes in performance profile and waiting until mcp will start updating")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+				By("Waiting when mcp finishes updates")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
+				annotations := map[string]string{
+					"cpu-load-balancing.crio.io": "disable",
+					"cpu-quota.crio.io":          "disable",
+					"irq-load-balancing.crio.io": "disable",
+					"cpu-c-states.crio.io":       "disable",
+					"cpu-freq-governor.crio.io":  "performance",
+				}
+
+				cpuCount := "2"
+				resCpu := resource.MustParse(cpuCount)
+				resMem := resource.MustParse("100Mi")
+				testpod = pods.GetTestPod()
+				testpod.Namespace = testutils.NamespaceTesting
+				testpod.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resCpu,
+						corev1.ResourceMemory: resMem,
+					},
+				}
+				testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNodes[0].Name}
+				testpod.Annotations = annotations
+				runtimeClass := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+				testpod.Spec.RuntimeClassName = &runtimeClass
+
+				By("creating test pod")
+				err = testclient.Client.Create(context.TODO(), testpod)
+				Expect(err).ToNot(HaveOccurred())
+				err = pods.WaitForCondition(testpod, corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(testpod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed), "Test pod does not have QoS class of Guaranteed")
+
+				By("Getting the container cpuset.cpus cgroup")
+				containerID, err := pods.GetContainerIDByName(testpod, "test")
+				Expect(err).ToNot(HaveOccurred())
+
+				containerCgroup := ""
+				Eventually(func() string {
+					cmd := []string{"/bin/bash", "-c", fmt.Sprintf("find /rootfs/sys/fs/cgroup/cpuset/ -name *%s*", containerID)}
+					containerCgroup, err = nodes.ExecCommandOnNode(cmd, &workerRTNodes[0])
+					Expect(err).ToNot(HaveOccurred())
+					return containerCgroup
+				}, (cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode)), 5*time.Second).ShouldNot(BeEmpty(),
+					fmt.Sprintf("cannot find cgroup for container %q", containerID))
+
+				By("Verify powersetting of cpus used by the pod")
+				cmd := []string{"/bin/bash", "-c", fmt.Sprintf("cat %s/cpuset.cpus", containerCgroup)}
+				output, err := nodes.ExecCommandOnNode(cmd, &workerRTNodes[0])
+				Expect(err).ToNot(HaveOccurred())
+				cpus, err := cpuset.Parse(output)
+				targetCpus := cpus.ToSlice()
+				err = checkCpuGovernorsAndResumeLatency(targetCpus, &workerRTNodes[0], "n/a", "performance")
+				Expect(err).ToNot(HaveOccurred())
+				By("Verify the rest of cpus have default power setting")
+				var otherCpus []int
+				numaInfo, err := nodes.GetNumaNodes(&workerRTNodes[0])
+				for _, cpusiblings := range numaInfo {
+					for _, cpu := range cpusiblings {
+						if cpu != targetCpus[0] && cpu != targetCpus[1] {
+							otherCpus = append(otherCpus, cpu)
+						}
+					}
+				}
+				//Verify cpus not assigned to the pod have default power settings
+				err = checkCpuGovernorsAndResumeLatency(otherCpus, &workerRTNodes[0], "0", "performance")
+				deleteTestPod(testpod)
+				//Test after pod is deleted the governors are set back to default for the cpus that were alloted to containers.
+				By("Verify after pod is delete cpus assigned to container have default powersave settings")
+				err = checkCpuGovernorsAndResumeLatency(targetCpus, &workerRTNodes[0], "0", "performance")
+			})
 		})
 
 		AfterEach(func() {
@@ -760,6 +1160,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 			By("Waiting when mcp finishes updates")
 			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
 		})
 	})
 
@@ -1088,6 +1489,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 
 			}
+
 			for _, node := range workerRTNodes {
 				numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
 			}
@@ -1159,6 +1561,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				if onlineCPUInt <= 8 {
 					Skip(fmt.Sprintf("This test needs more than 8 CPUs online to work correctly, current online CPUs are %s", onlineCPUCount))
 				}
+
 			}
 
 			for _, node := range workerRTNodes {
@@ -1509,4 +1912,58 @@ func getTunedStructuredData(profile *performancev2.PerformanceProfile) *ini.File
 	cfg, err := ini.Load(tunedData)
 	Expect(err).ToNot(HaveOccurred())
 	return cfg
+}
+
+// deleteTestPod removes guaranteed pod
+func deleteTestPod(testpod *corev1.Pod) {
+	// it possible that the pod already was deleted as part of the test, in this case we want to skip teardown
+	err := testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(testpod), testpod)
+	if errors.IsNotFound(err) {
+		return
+	}
+
+	err = testclient.Client.Delete(context.TODO(), testpod)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = pods.WaitForDeletion(testpod, pods.DefaultDeletionTimeout*time.Second)
+	Expect(err).ToNot(HaveOccurred())
+}
+
+// checkCpuGovernorsAndResumeLatency  Checks power and latency settings of the cpus
+func checkCpuGovernorsAndResumeLatency(cpus []int, targetNode *corev1.Node, pm_qos string, governor string) error {
+	for _, cpu := range cpus {
+		cmd := []string{"/bin/bash", "-c", fmt.Sprintf("cat /sys/devices/system/cpu/cpu%d/power/pm_qos_resume_latency_us", cpu)}
+		output, err := nodes.ExecCommandOnNode(cmd, targetNode)
+		if err != nil {
+			return err
+		}
+		Expect(output).To(Equal(pm_qos))
+		cmd = []string{"/bin/bash", "-c", fmt.Sprintf("cat /sys/devices/system/cpu/cpu%d/cpufreq/scaling_governor", cpu)}
+		output, err = nodes.ExecCommandOnNode(cmd, targetNode)
+		if err != nil {
+			return err
+		}
+		Expect(output).To(Equal(governor))
+	}
+	return nil
+}
+
+// checkHardwareCapability Checks if test is run on baremetal worker
+func checkHardwareCapability(workerRTNodes []corev1.Node) {
+	const totalCpus = 32
+	for _, node := range workerRTNodes {
+		numaInfo, err := nodes.GetNumaNodes(&node)
+		Expect(err).ToNot(HaveOccurred())
+		if len(numaInfo) < 2 {
+			Skip(fmt.Sprintf("This test need 2 NUMA nodes.The number of NUMA nodes on node %s < 2", node.Name))
+		}
+		// Additional check so that test gets skipped on vm with fake numa
+		onlineCPUCount, err := nodes.ExecCommandOnNode([]string{"nproc", "--all"}, &node)
+		Expect(err).ToNot(HaveOccurred())
+		onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
+		Expect(err).ToNot(HaveOccurred())
+		if onlineCPUInt < totalCpus {
+			Skip(fmt.Sprintf("This test needs system with %d CPUs to work correctly, current CPUs are %s", totalCpus, onlineCPUCount))
+		}
+	}
 }
