@@ -36,6 +36,12 @@ const testExecutablePath = "../../../../../build/_output/bin/latency-e2e.test"
 var prePullNamespace = &corev1.Namespace{
 	ObjectMeta: metav1.ObjectMeta{
 		Name: "testing-prepull",
+		Labels: map[string]string{
+			"pod-security.kubernetes.io/audit":               "privileged",
+			"pod-security.kubernetes.io/enforce":             "privileged",
+			"pod-security.kubernetes.io/warn":                "privileged",
+			"security.openshift.io/scc.podSecurityLabelSync": "false",
+		},
 	},
 }
 var profile *performancev2.PerformanceProfile
