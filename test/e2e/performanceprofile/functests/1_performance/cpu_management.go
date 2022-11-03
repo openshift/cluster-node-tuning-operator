@@ -369,7 +369,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", func() {
 		var testpod *corev1.Pod
 
 		BeforeEach(func() {
-			Skip("part of interrupts does not support CPU affinity change because of underlying hardware")
+			//Skip("part of interrupts does not support CPU affinity change because of underlying hardware")
 
 			if profile.Spec.GloballyDisableIrqLoadBalancing != nil && *profile.Spec.GloballyDisableIrqLoadBalancing {
 				Skip("IRQ load balance should be enabled (GloballyDisableIrqLoadBalancing=false), skipping test")
