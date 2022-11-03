@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
+	kubeletv1beta1 "k8s.io/kubernetes/pkg/kubelet/apis/config/v1beta1"
 	"k8s.io/utils/pointer"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
@@ -138,7 +139,8 @@ var _ = Describe("Kubelet Config", func() {
 		It("should set the kubelet config accordingly", func() {
 			profile := testutils.NewPerformanceProfile("test")
 			profile.Annotations = map[string]string{
-				experimentalKubeletSnippetAnnotation: `{"allowedUnsafeSysctls": ["net.core.somaxconn"], "evictionHard": {"memory.available": "200Mi"}}`,
+				experimentalKubeletSnippetAnnotation: `{"allowedUnsafeSysctls": ["net.core.somaxconn"], "evictionHard": {"memory.available": "200Mi",
+				"nodefs.available": "20%", "imagefs.available": "25%", "nodefs.inodesFree": "10%"}}`,
 			}
 			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
 			kc, err := New(profile, map[string]string{selectorKey: selectorValue})
@@ -148,6 +150,29 @@ var _ = Describe("Kubelet Config", func() {
 			manifest := string(y)
 			Expect(manifest).To(ContainSubstring("net.core.somaxconn"))
 			Expect(manifest).To(ContainSubstring("memory.available: 200Mi"))
+			Expect(manifest).To(ContainSubstring("nodefs.available: 20%"))
+			Expect(manifest).To(ContainSubstring("imagefs.available: 25%"))
+			Expect(manifest).To(ContainSubstring("nodefs.inodesFree: 10%"))
+		})
+
+		It("should set the default kubelet config", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
+			kc, err := New(profile, map[string]string{selectorKey: selectorValue})
+			y, err := yaml.Marshal(kc)
+			Expect(err).ToNot(HaveOccurred())
+
+			manifest := string(y)
+
+			memoryAvaialable := "memory.available: " + string(kubeletv1beta1.DefaultEvictionHard[evictionHardMemoryAvailable])
+			nodefsAvailable := "nodefs.available: " + string(kubeletv1beta1.DefaultEvictionHard[evictionHardNodefsAvaialble])
+			imagefsAvailable := "imagefs.available: " + string(kubeletv1beta1.DefaultEvictionHard[evictionHardImagefsAvailable])
+			nodefsInodesFree := "nodefs.inodesFree: " + string(kubeletv1beta1.DefaultEvictionHard[evictionHardNodefsInodesFree])
+
+			Expect(manifest).To(ContainSubstring(memoryAvaialable))
+			Expect(manifest).To(ContainSubstring(nodefsAvailable))
+			Expect(manifest).To(ContainSubstring(imagefsAvailable))
+			Expect(manifest).To(ContainSubstring(nodefsInodesFree))
 		})
 
 		It("should allow to override the cpumanager policy options and update the kubelet config accordingly", func() {
