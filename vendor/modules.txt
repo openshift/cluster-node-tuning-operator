@@ -59,6 +59,10 @@ github.com/coreos/vcontext/validate
 # github.com/davecgh/go-spew v1.1.1
 ## explicit
 github.com/davecgh/go-spew/spew
+# github.com/docker/distribution v2.8.1+incompatible
+## explicit
+github.com/docker/distribution/digestset
+github.com/docker/distribution/reference
 # github.com/emicklei/go-restful v2.10.0+incompatible
 ## explicit
 github.com/emicklei/go-restful
@@ -277,6 +281,9 @@ github.com/onsi/gomega/matchers/support/goraph/edge
 github.com/onsi/gomega/matchers/support/goraph/node
 github.com/onsi/gomega/matchers/support/goraph/util
 github.com/onsi/gomega/types
+# github.com/opencontainers/go-digest v1.0.0
+## explicit; go 1.13
+github.com/opencontainers/go-digest
 # github.com/openshift/api v0.0.0-20220628012702-9368b92de0ab
 ## explicit; go 1.16
 github.com/openshift/api/config/v1
@@ -623,6 +630,10 @@ k8s.io/apimachinery/pkg/watch
 k8s.io/apimachinery/third_party/forked/golang/json
 k8s.io/apimachinery/third_party/forked/golang/netutil
 k8s.io/apimachinery/third_party/forked/golang/reflect
+# k8s.io/apiserver v0.24.2 => k8s.io/apiserver v0.24.2
+## explicit; go 1.16
+k8s.io/apiserver/pkg/features
+k8s.io/apiserver/pkg/util/feature
 # k8s.io/client-go v0.24.2 => k8s.io/client-go v0.24.2
 ## explicit; go 1.16
 k8s.io/client-go/applyconfigurations/admissionregistration/v1
@@ -895,6 +906,7 @@ k8s.io/code-generator/third_party/forked/golang/reflect
 ## explicit; go 1.16
 k8s.io/component-base/config
 k8s.io/component-base/config/v1alpha1
+k8s.io/component-base/featuregate
 # k8s.io/gengo v0.0.0-20211129171323-c02415ce4185
 ## explicit; go 1.13
 k8s.io/gengo/args
@@ -938,7 +950,20 @@ k8s.io/kube-openapi/pkg/validation/spec
 k8s.io/kubelet/config/v1beta1
 # k8s.io/kubernetes v0.24.1 => k8s.io/kubernetes v1.24.2
 ## explicit; go 1.16
+k8s.io/kubernetes/pkg/apis/apps
+k8s.io/kubernetes/pkg/apis/autoscaling
+k8s.io/kubernetes/pkg/apis/core
+k8s.io/kubernetes/pkg/apis/core/v1
+k8s.io/kubernetes/pkg/apis/core/v1/helper/qos
+k8s.io/kubernetes/pkg/apis/scheduling
+k8s.io/kubernetes/pkg/cluster/ports
+k8s.io/kubernetes/pkg/features
+k8s.io/kubernetes/pkg/kubelet/apis/config
+k8s.io/kubernetes/pkg/kubelet/apis/config/v1beta1
 k8s.io/kubernetes/pkg/kubelet/cm/cpuset
+k8s.io/kubernetes/pkg/kubelet/qos
+k8s.io/kubernetes/pkg/kubelet/types
+k8s.io/kubernetes/pkg/util/parsers
 # k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9
 ## explicit; go 1.12
 k8s.io/utils/buffer

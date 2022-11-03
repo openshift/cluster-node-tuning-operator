@@ -132,7 +132,10 @@ spec:
       full-pcpus-only: "true"
     cpuManagerReconcilePeriod: 5s
     evictionHard:
+	    nodefs.available: 15%
       memory.available: 100Mi
+	    imagefs.available: 10%
+	    nodefs.inodesFree: 5%
     evictionPressureTransitionPeriod: 0s
     fileCheckFrequency: 0s
     httpCheckFrequency: 0s

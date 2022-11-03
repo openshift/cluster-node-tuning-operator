@@ -26,6 +26,9 @@ spec:
     cpuManagerReconcilePeriod: 5s
     evictionHard:
       memory.available: 100Mi
+      imagefs.available: 15%
+      nodefs.available: 10%
+      nodefs.inodesFree: 5%
     evictionPressureTransitionPeriod: 0s
     fileCheckFrequency: 0s
     httpCheckFrequency: 0s
