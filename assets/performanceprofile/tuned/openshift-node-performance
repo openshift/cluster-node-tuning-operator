@@ -53,6 +53,7 @@ enabled=false
 runtime=0
 group.ksoftirqd=0:f:11:*:ksoftirqd.*
 group.rcuc=0:f:11:*:rcuc.*
+group.ktimers=0:f:11:*:ktimers.*
 sched_min_granularity_ns=10000000
 sched_migration_cost_ns=5000000
 numa_balancing=0
