@@ -16,7 +16,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
@@ -291,22 +290,31 @@ var _ = Describe("[rfe_id:27368][performance]", func() {
 	})
 
 	Context("RPS configuration", func() {
-		It("Should have the correct RPS configuration", func() {
-			if profile.Spec.CPU == nil || profile.Spec.CPU.Reserved != nil {
-				return
+		It("[test_id:55012] Should have the correct RPS configuration", func() {
+			if profile.Spec.CPU == nil || profile.Spec.CPU.Reserved == nil {
+				Skip("Test Skipped due nil Reserved cpus")
 			}
 			if profile.Spec.WorkloadHints != nil && profile.Spec.WorkloadHints.RealTime != nil &&
 				!*profile.Spec.WorkloadHints.RealTime && !profileutil.IsRpsEnabled(profile) {
-				return
+				Skip("realTime Workload Hints is not enabled")
 			}
 
 			expectedRPSCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
 			Expect(err).ToNot(HaveOccurred())
 			for _, node := range workerRTNodes {
 				// Verify the systemd RPS service uses the correct RPS mask
-				cmd := []string{"sed", "-n", "s/^ExecStart=.*echo \\([A-Fa-f0-9]*\\) .*/\\1/p", "/rootfs/etc/systemd/system/update-rps@.service"}
-				serviceRPSCPUs, err := nodes.ExecCommandOnNode(cmd, &node)
+				var maskContent string
+				cmd := []string{"cat", "/rootfs/etc/systemd/system/update-rps@.service"}
+				unitFileContents, err := nodes.ExecCommandOnNode(cmd, &node)
 				Expect(err).ToNot(HaveOccurred())
+				for _, line := range strings.Split(unitFileContents, "\n") {
+					if strings.Contains(line, "ExecStart=/usr/local/bin/set-rps-mask.sh") {
+						maskContent = line
+					}
+				}
+				rpsMaskContent := strings.TrimSuffix(maskContent, "\r")
+				Expect(len(strings.Split(rpsMaskContent, " "))).To(Equal(3), "systemd unit file rps mask value is empty")
+				serviceRPSCPUs := strings.Split(rpsMaskContent, " ")[2]
 
 				rpsCPUs, err := components.CPUMaskToCPUSet(serviceRPSCPUs)
 				Expect(err).ToNot(HaveOccurred())
@@ -326,26 +334,6 @@ var _ = Describe("[rfe_id:27368][performance]", func() {
 					rpsCPUs, err = components.CPUMaskToCPUSet(devRPS)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(rpsCPUs).To(Equal(expectedRPSCPUs), "a host device rps mask is different from the reserved CPUs")
-				}
-
-				// TODO - probably remove
-				// Verify all node pod network devices have the correct RPS mask
-				nodePods := &corev1.PodList{}
-				listOptions := &client.ListOptions{
-					Namespace:     "",
-					FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": node.Name}),
-				}
-				err = testclient.Client.List(context.TODO(), nodePods, listOptions)
-				Expect(err).ToNot(HaveOccurred())
-
-				for _, pod := range nodePods.Items {
-					cmd := []string{"find", "/sys/devices/virtual", "-type", "f", "-name", "rps_cpus", "-exec", "cat", "{}", ";"}
-					devsRPS, err := pods.WaitForPodOutput(testclient.K8sClient, &pod, cmd)
-					for _, devRPS := range strings.Split(strings.Trim(string(devsRPS), "\n"), "\n") {
-						rpsCPUs, err = components.CPUMaskToCPUSet(devRPS)
-						Expect(err).ToNot(HaveOccurred())
-						Expect(rpsCPUs).To(Equal(expectedRPSCPUs), pod.Name+" has a device rps mask different from the reserved CPUs")
-					}
 				}
 			}
 		})
