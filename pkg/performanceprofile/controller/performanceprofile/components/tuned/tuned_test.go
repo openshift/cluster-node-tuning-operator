@@ -85,6 +85,9 @@ var _ = Describe("Tuned", func() {
 			schedulerSection, err := tunedData.GetSection("scheduler")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(schedulerSection.Key("sched_rt_runtime_us").String()).To(Equal("-1"))
+			Expect(schedulerSection.Key("group.ksoftirqd").String()).To(Equal("0:f:11:*:ksoftirqd.*"))
+			Expect(schedulerSection.Key("group.rcuc").String()).To(Equal("0:f:11:*:rcuc.*"))
+			Expect(schedulerSection.Key("group.ktimers").String()).To(Equal("0:f:11:*:ktimers.*"))
 
 			sysctlSection, err := tunedData.GetSection("sysctl")
 			Expect(err).ToNot(HaveOccurred())
