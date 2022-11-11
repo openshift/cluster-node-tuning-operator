@@ -506,8 +506,8 @@ func getProfileData(args ProfileCreatorArgs, cluster ClusterData) (*ProfileData,
 	case defaultLatency:
 		if profileData.rtKernel {
 			return nil, fmt.Errorf(
-				"please use one of %v power consumption modes together with the real-time kernel",
-				validPowerConsumptionModes[1:],
+				"%v power consumption mode is not available with real-time kernel, please use one of %v modes",
+				defaultLatency, validPowerConsumptionModes[1:],
 			)
 		}
 	case lowLatency:
