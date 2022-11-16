@@ -204,7 +204,7 @@ spec:
   recommend:
   - machineConfigLabels:
       machineconfiguration.openshift.io/role: "worker-cnf"
-    priority: 20
+    priority: 15
     profile: openshift-configuration-hotfixes
 _EOF_
 
@@ -255,7 +255,7 @@ spec:
   recommend:
   - machineConfigLabels:
       machineconfiguration.openshift.io/role: "worker-cnf"
-    priority: 20
+    priority: 15
     profile: openshift-configuration-hotfixes
 _EOF_
 
