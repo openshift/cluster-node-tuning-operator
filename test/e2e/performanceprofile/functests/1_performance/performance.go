@@ -2,7 +2,6 @@ package __performance
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"reflect"
@@ -299,31 +298,13 @@ var _ = Describe("[rfe_id:27368][performance]", func() {
 
 			expectedRPSCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
 			Expect(err).ToNot(HaveOccurred())
-			ociHookPath := filepath.Join("/rootfs", machineconfig.OCIHooksConfigDir, machineconfig.OCIHooksConfig)
-			Expect(err).ToNot(HaveOccurred())
 			for _, node := range workerRTNodes {
-				// Verify the OCI RPS hook uses the correct RPS mask
-				hooksConfig, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"cat", ociHookPath})
-				Expect(err).ToNot(HaveOccurred())
-
-				var hooks map[string]interface{}
-				err = json.Unmarshal(hooksConfig, &hooks)
-				Expect(err).ToNot(HaveOccurred())
-				hook := hooks["hook"].(map[string]interface{})
-				Expect(hook).ToNot(BeNil())
-				args := hook["args"].([]interface{})
-				Expect(len(args)).To(Equal(2), "unexpected arguments: %v", args)
-
-				rpsCPUs, err := components.CPUMaskToCPUSet(args[1].(string))
-				Expect(err).ToNot(HaveOccurred())
-				Expect(rpsCPUs).To(Equal(expectedRPSCPUs), "the hook rps mask is different from the reserved CPUs")
-
 				// Verify the systemd RPS service uses the correct RPS mask
 				cmd := []string{"sed", "-n", "s/^ExecStart=.*echo \\([A-Fa-f0-9]*\\) .*/\\1/p", "/rootfs/etc/systemd/system/update-rps@.service"}
 				serviceRPSCPUs, err := nodes.ExecCommandOnNode(cmd, &node)
 				Expect(err).ToNot(HaveOccurred())
 
-				rpsCPUs, err = components.CPUMaskToCPUSet(serviceRPSCPUs)
+				rpsCPUs, err := components.CPUMaskToCPUSet(serviceRPSCPUs)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(rpsCPUs).To(Equal(expectedRPSCPUs), "the service rps mask is different from the reserved CPUs")
 
