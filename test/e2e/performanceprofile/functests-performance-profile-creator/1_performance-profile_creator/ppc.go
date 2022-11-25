@@ -259,7 +259,7 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 					_, errData, err := testutils.ExecAndLogCommandWithStderr(ppcPath, extraArgs...)
 					Expect(err).To(HaveOccurred())
 					Expect(errData).ToNot(BeEmpty())
-					Expect(string(errData)).To(ContainSubstring("power consumption modes together with the real-time kernel"))
+					Expect(string(errData)).To(ContainSubstring("power consumption mode is not available with real-time kernel, please use one of"))
 				})
 			})
 		})
