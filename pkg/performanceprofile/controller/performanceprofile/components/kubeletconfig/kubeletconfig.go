@@ -26,14 +26,20 @@ const (
 	// 4. Reserved CPUs
 	// 5. Memory manager policy
 	// Please avoid specifying them and use the relevant API to configure these parameters.
-	experimentalKubeletSnippetAnnotation = "kubeletconfig.experimental"
-	cpuManagerPolicyStatic               = "static"
-	cpuManagerPolicyOptionFullPCPUsOnly  = "full-pcpus-only"
-	memoryManagerPolicyStatic            = "Static"
-	defaultKubeReservedMemory            = "500Mi"
-	defaultSystemReservedMemory          = "500Mi"
-	defaultHardEvictionThreshold         = "100Mi"
-	evictionHardMemoryAvailable          = "memory.available"
+	experimentalKubeletSnippetAnnotation         = "kubeletconfig.experimental"
+	cpuManagerPolicyStatic                       = "static"
+	cpuManagerPolicyOptionFullPCPUsOnly          = "full-pcpus-only"
+	memoryManagerPolicyStatic                    = "Static"
+	defaultKubeReservedMemory                    = "500Mi"
+	defaultSystemReservedMemory                  = "500Mi"
+	defaultHardEvictionThresholdMemory           = "100Mi"
+	defaultHardEvictionThresholdNodefs           = "10%"
+	defaultHardEvictionThresholdImagefs          = "15%"
+	defaultHardEvictionThresholdNodefsInodesFree = "5%"
+	evictionHardMemoryAvailable                  = "memory.available"
+	evictionHardNodefsAvaialble                  = "nodefs.available"
+	evictionHardImagefsAvailable                 = "imagefs.available"
+	evictionHardNodefsInodesFree                 = "nodefs.inodesFree"
 )
 
 // New returns new KubeletConfig object for performance sensetive workflows
@@ -60,7 +66,16 @@ func New(profile *performancev2.PerformanceProfile, profileMCPLabels map[string]
 		kubeletConfig.EvictionHard = map[string]string{}
 	}
 	if _, ok := kubeletConfig.EvictionHard[evictionHardMemoryAvailable]; !ok {
-		kubeletConfig.EvictionHard[evictionHardMemoryAvailable] = defaultHardEvictionThreshold
+		kubeletConfig.EvictionHard[evictionHardMemoryAvailable] = defaultHardEvictionThresholdMemory
+	}
+	if _, ok := kubeletConfig.EvictionHard[evictionHardNodefsAvaialble]; !ok {
+		kubeletConfig.EvictionHard[evictionHardNodefsAvaialble] = defaultHardEvictionThresholdNodefs
+	}
+	if _, ok := kubeletConfig.EvictionHard[evictionHardImagefsAvailable]; !ok {
+		kubeletConfig.EvictionHard[evictionHardImagefsAvailable] = defaultHardEvictionThresholdImagefs
+	}
+	if _, ok := kubeletConfig.EvictionHard[evictionHardNodefsInodesFree]; !ok {
+		kubeletConfig.EvictionHard[evictionHardNodefsInodesFree] = defaultHardEvictionThresholdNodefsInodesFree
 	}
 
 	// set the default memory kube-reserved
