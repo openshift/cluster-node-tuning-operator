@@ -1,46 +1,53 @@
 package pao_mustgather
 
 import (
-	"context"
+	"fmt"
 	"os"
-	"path/filepath"
+	"os/exec"
 	"testing"
-	"time"
 
+	"github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 	. "github.com/onsi/gomega"
-
-	"k8s.io/apimachinery/pkg/api/errors"
 
 	ginkgo_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 
-	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
-	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/junit"
-	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/namespaces"
 )
 
+const must_gather_version = "4.12-snapshot"
+const must_gather_image = "quay.io/openshift-kni/performance-addon-operator-must-gather"
+
 var _ = BeforeSuite(func() {
-	Expect(testclient.ClientsEnabled).To(BeTrue(), "package client not enabled")
-	// create test namespace
-	err := testclient.Client.Create(context.TODO(), namespaces.TestingNamespace)
-	if errors.IsAlreadyExists(err) {
-		testlog.Warning("test namespace already exists, that is unexpected")
-		return
+	By("Looking for oc tool")
+	ocExec, err := exec.LookPath("oc")
+	if err != nil {
+		fmt.Fprintf(ginkgo.GinkgoWriter, "Unable to find oc executable: %v\n", err)
+		Skip(fmt.Sprintf("unable to find 'oc' executable %v\n", err))
 	}
-	Expect(err).ToNot(HaveOccurred())
+
+	mgImageParam := fmt.Sprintf("--image=%s:%s", must_gather_image, must_gather_version)
+	mgDestDirParam := fmt.Sprintf("--dest-dir=%s", destDir)
+
+	cmdline := []string{
+		ocExec,
+		"adm",
+		"must-gather",
+		mgImageParam,
+		mgDestDirParam,
+	}
+	ginkgo.By(fmt.Sprintf("running: %v\n", cmdline))
+
+	cmd := exec.Command(cmdline[0], cmdline[1:]...)
+	cmd.Stderr = ginkgo.GinkgoWriter
+
+	_, err = cmd.Output()
+	gomega.Expect(err).ToNot(gomega.HaveOccurred())
 })
 
 var _ = AfterSuite(func() {
-	err := testclient.Client.Delete(context.TODO(), namespaces.TestingNamespace)
-	Expect(err).ToNot(HaveOccurred())
-	err = namespaces.WaitForDeletion(testutils.NamespaceTesting, 5*time.Minute)
-	Expect(err).ToNot(HaveOccurred())
-	snapshotProc := filepath.Join(snapshotDir, "proc")
-	snapshotSys := filepath.Join(snapshotDir, "sys")
-	os.RemoveAll(snapshotProc)
-	os.RemoveAll(snapshotSys)
+	os.RemoveAll(destDir)
 })
 
 func TestPaoMustgatherTests(t *testing.T) {

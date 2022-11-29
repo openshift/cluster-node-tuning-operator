@@ -1,6 +1,0 @@
----
-apiVersion: batch/v1
-items: []
-kind: JobList
-metadata:
-  resourceVersion: "77401"
