@@ -96,6 +96,10 @@ var _ = Describe("[performance] Checking IRQBalance settings", func() {
 			onlineCPUsSet, err := nodes.GetOnlineCPUsSet(targetNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to get Online CPUs list")
 
+			// Mask the smpAffinitySet according to the current onlineCpuSet
+			// as smp_default_affinity is not online cpu aware
+			smpAffinitySet = smpAffinitySet.Intersection(onlineCPUsSet)
+
 			// expect no irqbalance run in the system already, AKA start from pristine conditions.
 			// This is not an hard requirement, just the easier state to manage and check
 			Expect(smpAffinitySet.Equals(onlineCPUsSet)).To(BeTrue(), "found default_smp_affinity %v, expected %v - IRQBalance already run?", smpAffinitySet, onlineCPUsSet)
@@ -185,6 +189,10 @@ var _ = Describe("[performance] Checking IRQBalance settings", func() {
 			By(fmt.Sprintf("Checking the online CPU Set on node %q", node.Name))
 			onlineCPUsSet, err := nodes.GetOnlineCPUsSet(node)
 			Expect(err).ToNot(HaveOccurred(), "failed to get Online CPUs list")
+
+			// Mask the smpAffinitySet according to the current onlineCpuSet
+			// as smp_default_affinity is not online cpu aware
+			smpAffinitySet = smpAffinitySet.Intersection(onlineCPUsSet)
 
 			// expect no irqbalance run in the system already, AKA start from pristine conditions.
 			// This is not an hard requirement, just the easier state to manage and check
