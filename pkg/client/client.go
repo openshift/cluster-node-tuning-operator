@@ -12,7 +12,7 @@ import (
 
 // GetConfig creates a *rest.Config for talking to a Kubernetes apiserver.
 //
-// Config precedence
+// # Config precedence
 //
 // * KUBECONFIG environment variable pointing at a file
 // * In-cluster config if running in cluster

@@ -60,10 +60,10 @@ func NewProfileCalculator(listers *ntoclient.Listers, clients *ntoclient.Clients
 // podChangeHandler processes an event for Pod 'podNamespace/podName'.
 //
 // Returns
-// * the name of the Node the Pod is associated with in the
-//   ProfileCalculator internal data structures
-// * an indication whether the event caused a node-wide Pod label change
-// * an error if any
+//   - the name of the Node the Pod is associated with in the
+//     ProfileCalculator internal data structures
+//   - an indication whether the event caused a node-wide Pod label change
+//   - an error if any
 func (pc *ProfileCalculator) podChangeHandler(podNamespace string, podName string) (string, bool, error) {
 	var sb strings.Builder
 
@@ -430,10 +430,10 @@ func (pc *ProfileCalculator) nodeRemove(nodeName string) {
 // in terms of Pod label uniqueness.
 //
 // Returns
-// * the name of the Node the Pod was removed from (empty string if the removal
-//   didn't take place)
-// * an indication whether the Pod removal causes a Node-wide change in terms
-//   of Pod label uniqueness
+//   - the name of the Node the Pod was removed from (empty string if the removal
+//     didn't take place)
+//   - an indication whether the Pod removal causes a Node-wide change in terms
+//     of Pod label uniqueness
 func (pc *ProfileCalculator) podRemove(podNamespaceNameRemove string) (string, bool) {
 	for nodeName, podsPerNode := range pc.state.podLabels {
 		for podNamespaceName, podLabels := range podsPerNode {

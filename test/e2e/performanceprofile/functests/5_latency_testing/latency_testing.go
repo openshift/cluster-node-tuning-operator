@@ -15,7 +15,7 @@ import (
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 )
 
-//TODO get commonly used variables from one shared file that defines constants
+// TODO get commonly used variables from one shared file that defines constants
 const (
 	testExecutablePath = "../../../../../build/_output/bin/latency-e2e.test"
 	//tool to test
@@ -77,7 +77,7 @@ const (
 	positiveTesting   = true
 )
 
-//Struct to hold each test parameters
+// Struct to hold each test parameters
 type latencyTest struct {
 	testDelay             string
 	testRun               string

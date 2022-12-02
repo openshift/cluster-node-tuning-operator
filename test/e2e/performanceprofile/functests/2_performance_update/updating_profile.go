@@ -1384,7 +1384,7 @@ func getUpdatedNodes() []corev1.Node {
 	return workerRTNodes
 }
 
-//Check All tunables and kernel paramters for workloadHint
+// Check All tunables and kernel paramters for workloadHint
 func checkTunedParameters(workerRTNodes []corev1.Node, stalld bool, sysctlMap map[string]string, kernelParameters []string, rtkernel bool) {
 	for _, node := range workerRTNodes {
 		stalld_pid, err := nodes.ExecCommandOnNode([]string{"pidof", "stalld"}, &node)
