@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,7 +40,7 @@ var prePullNamespace = &corev1.Namespace{
 		Name: "testing-prepull",
 	},
 }
-var profile *performancev2.PerformanceProfile
+var profile, initialProfile *performancev2.PerformanceProfile
 
 var _ = BeforeSuite(func() {
 	Expect(isTestExecutableFound()).To(BeTrue())
@@ -50,15 +51,40 @@ var _ = BeforeSuite(func() {
 	var err error
 	profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 	Expect(err).ToNot(HaveOccurred())
+
+	By("Backing up the profile")
+	initialProfile = profile.DeepCopy()
+
 	By(fmt.Sprintf("verify if the isolated cpus value under the performance profile %q is appropriate for this test suite", profile.Name))
 	workerNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
 	Expect(err).ToNot(HaveOccurred())
 
 	initialIsolated := profile.Spec.CPU.Isolated
 	initialReserved := profile.Spec.CPU.Reserved
+	var numaCoreSiblings map[int]map[int][]int
+	var reserved, isolated []string
+
+	for _, node := range workerNodes {
+		numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
+	}
+	for reservedCores := 0; reservedCores < 2; reservedCores++ {
+		// Get the cpu siblings from the selected core and delete the siblings
+		// from the map. Selected siblings of cores are saved in reservedCpus
+		cpusiblings := nodes.GetCpuSiblings(numaCoreSiblings, reservedCores)
+		reserved = append(reserved, cpusiblings...)
+	}
+	reservedCpus := strings.Join(reserved, ",")
+
+	for node := range numaCoreSiblings {
+		for core := range numaCoreSiblings[node] {
+			cpusiblings := nodes.GetCpuSiblings(numaCoreSiblings, core)
+			isolated = append(isolated, cpusiblings...)
+		}
+	}
+	isolatedCpus := strings.Join(isolated, ",")
 	//updated both sets to ensure there is no overlap
-	latencyIsolatedSet := performancev2.CPUSet("1-9")
-	latencyReservedSet := performancev2.CPUSet("0")
+	latencyIsolatedSet := performancev2.CPUSet(isolatedCpus)
+	latencyReservedSet := performancev2.CPUSet(reservedCpus)
 	testlog.Infof("current isolated cpus: %s, desired is %s", string(*initialIsolated), latencyIsolatedSet)
 	totalCpus := cpuset.MustParse(string(latencyIsolatedSet)).Size() + cpuset.MustParse(string(latencyReservedSet)).Size()
 	nodesWithSufficientCpu := nodes.GetByCpuCapacity(workerNodes, totalCpus)
@@ -67,7 +93,7 @@ var _ = BeforeSuite(func() {
 
 	if *initialIsolated != latencyIsolatedSet || *initialReserved != latencyReservedSet {
 		By("Update the isolated and reserved cpus sets of the profile")
-		err = profilesupdate.UpdateIsolatedReservedCpus(latencyIsolatedSet, latencyReservedSet)
+		err = profilesupdate.UpdateIsolatedReservedCpus(profile, latencyIsolatedSet, latencyReservedSet)
 		Expect(err).ToNot(HaveOccurred(), "could not update the profile with the desired CPUs sets")
 	}
 
@@ -90,12 +116,11 @@ var _ = AfterSuite(func() {
 		testlog.Errorf("namespace %q could not be deleted err=%v", prePullNamespace.Name, err)
 	}
 	namespaces.WaitForDeletion(prePullNamespaceName, 5*time.Minute)
-
 	currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 	Expect(err).ToNot(HaveOccurred())
-	if reflect.DeepEqual(currentProfile.Spec, profile.Spec) != true {
+	if reflect.DeepEqual(currentProfile.Spec, initialProfile.Spec) != true {
 		By("Restore initial performance profile")
-		err = profilesupdate.ApplyProfile(profile)
+		err = profilesupdate.ApplyProfile(initialProfile)
 		if err != nil {
 			testlog.Errorf("could not restore the initial profile: %v", err)
 		}

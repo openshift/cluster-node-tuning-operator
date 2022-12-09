@@ -2,39 +2,37 @@ package profilesupdate
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 
+	. "github.com/onsi/gomega"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	mcv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	profilecontroller "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
-	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 )
 
 // UpdateIsolatedReservedCpus Updates the current performance profile with new sets of isolated and reserved cpus, and returns true if the update was successfull and false otherwise
-func UpdateIsolatedReservedCpus(isolatedSet performancev2.CPUSet, reservedSet performancev2.CPUSet) error {
-	profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-	if err != nil {
-		return fmt.Errorf("could not get the performance profile: %v", err)
-	}
-	updatedProfile := profile.DeepCopy()
-	updatedProfile.Spec.CPU = &performancev2.CPU{
+func UpdateIsolatedReservedCpus(profile *performancev2.PerformanceProfile, isolatedSet performancev2.CPUSet, reservedSet performancev2.CPUSet) error {
+
+	profile.Spec.CPU = &performancev2.CPU{
 		Isolated: &isolatedSet,
 		Reserved: &reservedSet,
 	}
 
-	err = ApplyProfile(updatedProfile)
+	err := ApplyProfile(profile)
 	if err == nil {
-		testlog.Infof("successfully updated performance profile %q with new isolated cpus set: %q and new reserved cpus set: %q", profile.Name, string(*updatedProfile.Spec.CPU.Isolated), string(*updatedProfile.Spec.CPU.Reserved))
+		testlog.Infof("successfully updated performance profile %q with new isolated cpus set: %q and new reserved cpus set: %q", profile.Name, string(*profile.Spec.CPU.Isolated), string(*profile.Spec.CPU.Reserved))
 	}
 	return err
 }
@@ -56,7 +54,15 @@ func ApplyProfile(profile *performancev2.PerformanceProfile) error {
 	mcps.WaitForCondition(performanceMCP.Name, mcv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 
 	testlog.Info("Applying changes in performance profile and waiting until mcp will start updating")
-	profiles.UpdateWithRetry(profile)
+	spec, err := json.Marshal(profile.Spec)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(testclient.Client.Patch(context.TODO(), profile,
+		client.RawPatch(
+			types.JSONPatchType,
+			[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
+		),
+	)).ToNot(HaveOccurred())
+
 	mcps.WaitForCondition(performanceMCP.Name, mcv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
 
 	testlog.Info("Waiting when mcp finishes updates")
