@@ -366,11 +366,11 @@ func profilesEqual(profileFile string, profileData string) bool {
 
 // profilesExtract extracts TuneD daemon profiles to the daemon configuration directory.
 // Returns:
-// - True if the data in the to-be-extracted recommended profile or the profiles being
-//   included from the current recommended profile have changed.
-// - A map with successfully extracted TuneD profile names.
-// - A map with names of TuneD profiles the current TuneD recommended profile depends on.
-// - Error if any or nil.
+//   - True if the data in the to-be-extracted recommended profile or the profiles being
+//     included from the current recommended profile have changed.
+//   - A map with successfully extracted TuneD profile names.
+//   - A map with names of TuneD profiles the current TuneD recommended profile depends on.
+//   - Error if any or nil.
 func profilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string) (bool, map[string]bool, map[string]bool, error) {
 	var (
 		change bool
@@ -428,9 +428,9 @@ func profilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string)
 // and removes any TuneD profiles from /etc/tuned/<profile>/ once the same TuneD
 // <profile> is no longer defined in the 'profiles' slice.
 // Returns:
-// - True if the data in the to-be-extracted recommended profile or the profiles being
-//   included from the current recommended profile have changed.
-// - Error if any or nil.
+//   - True if the data in the to-be-extracted recommended profile or the profiles being
+//     included from the current recommended profile have changed.
+//   - Error if any or nil.
 func profilesSync(profiles []tunedv1.TunedProfile, recommendedProfile string) (bool, error) {
 	change, extractedNew, recommendedProfileDeps, err := profilesExtract(profiles, recommendedProfile)
 	if err != nil {
