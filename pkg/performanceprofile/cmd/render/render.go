@@ -61,7 +61,7 @@ func (ppf *performanceProfileFiles) Set(value string) error {
 	return nil
 }
 
-//NewRenderCommand creates a render command.
+// NewRenderCommand creates a render command.
 func NewRenderCommand() *cobra.Command {
 	renderOpts := renderOpts{}
 

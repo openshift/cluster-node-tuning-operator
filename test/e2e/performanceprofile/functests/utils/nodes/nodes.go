@@ -289,9 +289,10 @@ func GetDefaultSmpAffinityRaw(node *corev1.Node) (string, error) {
 
 // GetDefaultSmpAffinitySet returns the default smp affinity mask for the node
 // Warning: Please note that default smp affinity mask is not aware
-//          of offline cpus and will return the affinity bits for those
-//          as well. You must intersect the mask with the mask returned
-//          by GetOnlineCPUsSet if this is not desired.
+//
+//	of offline cpus and will return the affinity bits for those
+//	as well. You must intersect the mask with the mask returned
+//	by GetOnlineCPUsSet if this is not desired.
 func GetDefaultSmpAffinitySet(node *corev1.Node) (cpuset.CPUSet, error) {
 	defaultSmpAffinity, err := GetDefaultSmpAffinityRaw(node)
 	if err != nil {
@@ -378,7 +379,7 @@ func GetCoreSiblings(node *corev1.Node) (map[int]map[int][]int, error) {
 	return coreSiblings, err
 }
 
-//TunedForNode find tuned pod for appropriate node
+// TunedForNode find tuned pod for appropriate node
 func TunedForNode(node *corev1.Node, sno bool) *corev1.Pod {
 
 	listOptions := &client.ListOptions{
@@ -444,8 +445,8 @@ func GetCpuSiblings(numaCoreSiblings map[int]map[int][]int, coreKey int) []strin
 	return cpuSiblings
 }
 
-//GetNumaRanges function Splits the numa Siblings in to multiple Ranges
-//Example for Cpu Siblings:  10,50,11,51,12,52,13,53,14,54 , will return 10-14,50-54
+// GetNumaRanges function Splits the numa Siblings in to multiple Ranges
+// Example for Cpu Siblings:  10,50,11,51,12,52,13,53,14,54 , will return 10-14,50-54
 func GetNumaRanges(cpuString string) string {
 	cpuList := strings.Split(cpuString, ",")
 	var cpuIds = []int{}
