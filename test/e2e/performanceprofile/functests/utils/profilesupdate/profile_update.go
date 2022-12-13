@@ -34,7 +34,7 @@ func UpdateIsolatedReservedCpus(isolatedSet performancev2.CPUSet, reservedSet pe
 
 	err = ApplyProfile(updatedProfile)
 	if err == nil {
-		testlog.Infof("successfully updated performance profile %q with new isolated cpus set: %q and new reserved cpus set: %q", profile.Name, updatedProfile.Spec.CPU.Isolated, updatedProfile.Spec.CPU.Reserved)
+		testlog.Infof("successfully updated performance profile %q with new isolated cpus set: %q and new reserved cpus set: %q", profile.Name, string(*updatedProfile.Spec.CPU.Isolated), string(*updatedProfile.Spec.CPU.Reserved))
 	}
 	return err
 }
@@ -46,10 +46,10 @@ func ApplyProfile(profile *performancev2.PerformanceProfile) error {
 	key, value := components.GetFirstKeyAndValue(mcpLabel)
 	mcpsByLabel, err := mcps.GetByLabel(key, value)
 	if err != nil {
-		return fmt.Errorf("Failed getting MCP by label key %v value %v: %v", key, value, err)
+		return fmt.Errorf("failed getting MCP by label key %v value %v: %v", key, value, err)
 	}
 	if len(mcpsByLabel) != 1 {
-		return fmt.Errorf("Unexpected number of MCPs found: %v", len(mcpsByLabel))
+		return fmt.Errorf("unexpected number of MCPs found: %v", len(mcpsByLabel))
 	}
 	performanceMCP := &mcpsByLabel[0]
 	testlog.Info("Verifying that mcp is ready for update")
@@ -72,7 +72,7 @@ func ApplyProfile(profile *performancev2.PerformanceProfile) error {
 		return fmt.Errorf("could not fetch the profile: %v", err)
 	}
 
-	if reflect.DeepEqual(updatedProfile.Spec, profile.Spec) != true {
+	if !reflect.DeepEqual(updatedProfile.Spec, profile.Spec) {
 		return fmt.Errorf("the profile %q was not updated as expected", updatedProfile.Name)
 	}
 	return nil
