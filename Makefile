@@ -219,3 +219,7 @@ build-performance-profile-creator:
 performance-profile-creator-tests: build-performance-profile-creator
 	@echo "Running Performance Profile Creator Tests"
 	hack/run-perf-profile-creator-functests.sh
+
+.PHONY: render-sync
+render-sync: build
+	hack/render-sync.sh
