@@ -16,130 +16,127 @@ limitations under the License.
 package render
 
 import (
-	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/ghodss/yaml"
+
+	apicfgv1 "github.com/openshift/api/config/v1"
+	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
+
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
+
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/apimachinery/pkg/types"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/uuid"
+
 	"k8s.io/klog"
 )
 
-type renderOpts struct {
-	performanceProfileInputFiles performanceProfileFiles
-	assetsInDir                  string
-	assetsOutDir                 string
+var (
+	manifestScheme = runtime.NewScheme()
+	codecFactory   serializer.CodecFactory
+	runtimeDecoder runtime.Decoder
+)
+
+func init() {
+	utilruntime.Must(performancev2.AddToScheme(manifestScheme))
+	utilruntime.Must(apicfgv1.Install(manifestScheme))
+	utilruntime.Must(mcfgv1.Install(manifestScheme))
+	codecFactory = serializer.NewCodecFactory(manifestScheme)
+	runtimeDecoder = codecFactory.UniversalDecoder(
+		performancev2.GroupVersion,
+		apicfgv1.GroupVersion,
+		mcfgv1.GroupVersion,
+	)
 }
 
-type performanceProfileFiles []string
+// Render will traverse the input directory and generate the proper performance profile files
+// in to the output dir based on PerformanceProfile manifests contained in the input directory.
+func render(inputDir, outputDir string) error {
 
-func (ppf *performanceProfileFiles) String() string {
-	return fmt.Sprint(*ppf)
-}
+	klog.Info("Rendering files into: ", outputDir)
 
-func (ppf *performanceProfileFiles) Type() string {
-	return "performanceProfileFiles"
-}
-
-// Set parse performance-profile-input-files flag and store it in ppf
-func (ppf *performanceProfileFiles) Set(value string) error {
-	if len(*ppf) > 0 {
-		return errors.New("performance-profile-input-files flag already set")
+	// Read asset directory fileInfo
+	filePaths, err := listFiles(inputDir)
+	if err != nil {
+		return err
 	}
 
-	for _, s := range strings.Split(value, ",") {
-		*ppf = append(*ppf, s)
+	// Make output dir if not present
+	err = os.MkdirAll(outputDir, os.ModePerm)
+	if err != nil {
+		return err
 	}
-	return nil
-}
 
-// NewRenderCommand creates a render command.
-func NewRenderCommand() *cobra.Command {
-	renderOpts := renderOpts{}
+	var (
+		perfProfiles []*performancev2.PerformanceProfile
+		pools        []*mcfgv1.MachineConfigPool
+	)
+	// Iterate through the file paths and read in desired files
+	for _, path := range filePaths {
+		file, err := os.Open(path)
+		if err != nil {
+			return fmt.Errorf("error opening %s: %w", file.Name(), err)
+		}
+		defer file.Close()
 
-	cmd := &cobra.Command{
-		Use:   "render",
-		Short: "Render performance-addon-operator manifests",
-		Run: func(cmd *cobra.Command, args []string) {
+		manifests, err := parseManifests(file.Name(), file)
+		if err != nil {
+			return fmt.Errorf("error parsing manifests from %s: %w", file.Name(), err)
+		}
 
-			if err := renderOpts.Validate(); err != nil {
-				klog.Fatal(err)
+		// Decode manifest files and
+		for idx, m := range manifests {
+			obji, err := runtime.Decode(runtimeDecoder, m.Raw)
+			if err != nil {
+				if runtime.IsNotRegisteredError(err) {
+					klog.V(4).Infof("skipping path %q [%d] manifest because it is not part of expected api group: %v", file.Name(), idx+1, err)
+					continue
+				}
+				return fmt.Errorf("error parsing %q [%d] manifest: %w", file.Name(), idx+1, err)
 			}
 
-			if err := renderOpts.Run(); err != nil {
-				klog.Fatal(err)
+			switch obj := obji.(type) {
+			case *performancev2.PerformanceProfile:
+				perfProfiles = append(perfProfiles, obj)
+			case *mcfgv1.MachineConfigPool:
+				pools = append(pools, obj)
+			default:
+				klog.Infof("skipping %q [%d] manifest because of unhandled %T", file.Name(), idx+1, obji)
 			}
-		},
+		}
 	}
 
-	renderOpts.AddFlags(cmd.Flags())
-
-	return cmd
-}
-
-func (r *renderOpts) AddFlags(fs *pflag.FlagSet) {
-	fs.Var(&r.performanceProfileInputFiles, "performance-profile-input-files", "A comma-separated list of performance-profile manifests.")
-	fs.StringVar(&r.assetsInDir, "asset-input-dir", components.AssetsDir, "Input path for the assets directory.")
-	fs.StringVar(&r.assetsOutDir, "asset-output-dir", r.assetsOutDir, "Output path for the rendered manifests.")
-	// environment variables has precedence over standard input
-	r.readFlagsFromEnv()
-}
-
-func (r *renderOpts) readFlagsFromEnv() {
-	if ppInFiles := os.Getenv("PERFORMANCE_PROFILE_INPUT_FILES"); len(ppInFiles) > 0 {
-		r.performanceProfileInputFiles.Set(ppInFiles)
-	}
-
-	if assetInDir := os.Getenv("ASSET_INPUT_DIR"); len(assetInDir) > 0 {
-		r.assetsInDir = assetInDir
-	}
-
-	if assetsOutDir := os.Getenv("ASSET_OUTPUT_DIR"); len(assetsOutDir) > 0 {
-		r.assetsOutDir = assetsOutDir
-	}
-}
-
-func (r *renderOpts) Validate() error {
-	if len(r.performanceProfileInputFiles) == 0 {
-		return fmt.Errorf("performance-profile-input-files must be specified")
-	}
-
-	if len(r.assetsOutDir) == 0 {
-		return fmt.Errorf("asset-output-dir must be specified")
-	}
-
-	return nil
-}
-
-func (r *renderOpts) Run() error {
-	for _, pp := range r.performanceProfileInputFiles {
-		b, err := ioutil.ReadFile(pp)
+	for _, pp := range perfProfiles {
+		mcp, err := selectMachineConfigPool(pools, pp.Spec.NodeSelector)
 		if err != nil {
 			return err
 		}
 
-		profile := &performancev2.PerformanceProfile{}
-		err = yaml.Unmarshal(b, profile)
+		components, err := manifestset.GetNewComponents(pp, mcp)
 		if err != nil {
 			return err
 		}
 
-		components, err := manifestset.GetNewComponents(profile, nil)
-		if err != nil {
-			return err
+		uid := pp.UID
+		if uid == types.UID("") {
+			uid = uuid.NewUUID()
 		}
+
 		or := []v1.OwnerReference{
 			{
-				Kind: profile.Kind,
-				Name: profile.Name,
+				Kind:       pp.Kind,
+				Name:       pp.Name,
+				APIVersion: pp.APIVersion,
+				UID:        uid,
 			},
 		}
 
@@ -153,8 +150,11 @@ func (r *renderOpts) Run() error {
 				return err
 			}
 
-			fileName := fmt.Sprintf("%s_%s.yaml", profile.Name, strings.ToLower(kind))
-			err = ioutil.WriteFile(filepath.Join(r.assetsOutDir, fileName), b, 0644)
+			fileName := fmt.Sprintf("%s_%s.yaml", pp.Name, strings.ToLower(kind))
+			fullFilePath := filepath.Join(outputDir, fileName)
+			klog.Info("Writing file: ", fullFilePath)
+
+			err = os.WriteFile(fullFilePath, b, 0644)
 			if err != nil {
 				return err
 			}
@@ -162,4 +162,34 @@ func (r *renderOpts) Run() error {
 	}
 
 	return nil
+}
+
+func selectMachineConfigPool(pools []*mcfgv1.MachineConfigPool, selectors map[string]string) (*mcfgv1.MachineConfigPool, error) {
+	profileNodeSelector := labels.Set(selectors)
+	var (
+		mcp   *mcfgv1.MachineConfigPool
+		count = 0
+	)
+
+	for _, pool := range pools {
+		if pool.Spec.NodeSelector == nil {
+			continue
+		}
+
+		mcpNodeSelector, err := v1.LabelSelectorAsSelector(pool.Spec.NodeSelector)
+		if err != nil {
+			return nil, err
+		}
+
+		if mcpNodeSelector.Matches(profileNodeSelector) {
+			mcp = pool
+			count += 1
+		}
+	}
+
+	if count > 1 {
+		return nil, fmt.Errorf("more than one MCP found that matches performance profile node selector %q", profileNodeSelector.String())
+	}
+
+	return mcp, nil
 }
