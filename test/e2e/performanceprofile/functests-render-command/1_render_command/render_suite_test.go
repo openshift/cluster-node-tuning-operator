@@ -18,6 +18,10 @@ var (
 	testDir      string
 	workspaceDir string
 	binPath      string
+
+	ignorePathTestCase = []string{
+		`root["metadata"].(map[string]interface {})["ownerReferences"].([]interface {})[0].(map[string]interface {})["uid"]`,
+	}
 )
 
 func TestRenderCmd(t *testing.T) {
@@ -54,6 +58,12 @@ func getFilesDiff(wantFile, gotFile []byte) (string, error) {
 	if err := yaml.Unmarshal(gotFile, &gotObj); err != nil {
 		return "", fmt.Errorf("failed to unmarshal data for 'got':%s", err)
 	}
-
-	return cmp.Diff(wantObj, gotObj), nil
+	return cmp.Diff(wantObj, gotObj, cmp.FilterPath(func(p cmp.Path) bool {
+		for _, value := range ignorePathTestCase {
+			if p.GoString() == value {
+				return true
+			}
+		}
+		return false
+	}, cmp.Ignore())), nil
 }

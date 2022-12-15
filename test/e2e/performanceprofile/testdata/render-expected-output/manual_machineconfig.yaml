@@ -6,7 +6,7 @@ metadata:
     machineconfiguration.openshift.io/role: worker-cnf
   name: 50-performance-manual
   ownerReferences:
-  - apiVersion: ""
+  - apiVersion: "performance.openshift.io/v2"
     kind: PerformanceProfile
     name: manual
     uid: ""

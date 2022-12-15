@@ -5,7 +5,7 @@ metadata:
   name: openshift-node-performance-manual
   namespace: openshift-cluster-node-tuning-operator
   ownerReferences:
-  - apiVersion: ""
+  - apiVersion: "performance.openshift.io/v2"
     kind: PerformanceProfile
     name: manual
     uid: ""
