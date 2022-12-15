@@ -62,7 +62,7 @@ The operator can render manifests for all the components it supposes to create, 
 You need to provide the following environment variables
 
 ```shell
-export PERFORMANCE_PROFILE_INPUT_FILES=<comma separated list of your Performance Profiles>
+export ASSET_INPUT_DIR=<input path containing performance profile manifests>
 export ASSET_OUTPUT_DIR=<output path for the rendered manifests>
 ```
 
@@ -75,7 +75,7 @@ _output/cluster-node-tuning-operator render
 Or provide the variables via command line arguments
 
 ```shell
-_output/cluster-node-tuning-operator render --performance-profile-input-files <path> --asset-output-dir<path>
+_output/cluster-node-tuning-operator render --asset-input-dir <path> --asset-output-dir <path>
 ```
 
 ## Troubleshooting

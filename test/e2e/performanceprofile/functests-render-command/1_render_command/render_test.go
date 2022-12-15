@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -13,8 +14,8 @@ import (
 
 var (
 	assetsOutDir string
-	assetsInDir  string
-	ppInFiles    string
+	assetsInDirs []string
+	ppDir        string
 	testDataPath string
 )
 
@@ -22,9 +23,10 @@ var _ = Describe("render command e2e test", func() {
 
 	BeforeEach(func() {
 		assetsOutDir = createTempAssetsDir()
-		assetsInDir = filepath.Join(workspaceDir, "build", "assets")
-		ppInFiles = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "manual-cluster", "performance", "performance_profile.yaml")
+		assetsInDir := filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "base", "performance")
+		ppDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "manual-cluster", "performance")
 		testDataPath = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "testdata")
+		assetsInDirs = []string{assetsInDir, ppDir}
 	})
 
 	Context("With a single performance-profile", func() {
@@ -33,8 +35,7 @@ var _ = Describe("render command e2e test", func() {
 			cmdline := []string{
 				filepath.Join(binPath, "cluster-node-tuning-operator"),
 				"render",
-				"--performance-profile-input-files", ppInFiles,
-				"--asset-input-dir", assetsInDir,
+				"--asset-input-dir", strings.Join(assetsInDirs, ","),
 				"--asset-output-dir", assetsOutDir,
 			}
 			fmt.Fprintf(GinkgoWriter, "running: %v\n", cmdline)
@@ -53,8 +54,7 @@ var _ = Describe("render command e2e test", func() {
 
 			cmd := exec.Command(cmdline[0], cmdline[1:]...)
 			cmd.Env = append(cmd.Env,
-				fmt.Sprintf("PERFORMANCE_PROFILE_INPUT_FILES=%s", ppInFiles),
-				fmt.Sprintf("ASSET_INPUT_DIR=%s", assetsInDir),
+				fmt.Sprintf("ASSET_INPUT_DIR=%s", strings.Join(assetsInDirs, ",")),
 				fmt.Sprintf("ASSET_OUTPUT_DIR=%s", assetsOutDir),
 			)
 			runAndCompare(cmd)

@@ -14,7 +14,7 @@ func New(profile *performancev2.PerformanceProfile, handler string) *nodev1.Runt
 	return &nodev1.RuntimeClass{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "RuntimeClass",
-			APIVersion: "node.k8s.io/v1beta1",
+			APIVersion: "node.k8s.io/v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
