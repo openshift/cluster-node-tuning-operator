@@ -467,7 +467,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 			nonPerformancesWorkers, err := nodes.GetNonPerformancesWorkers(profile.Spec.NodeSelector)
 			Expect(err).ToNot(HaveOccurred())
-			if len(nonPerformancesWorkers) != 0 {
+			// we need atleast 2 non performance worker nodes to satisfy pod distribution budget
+			if len(nonPerformancesWorkers) > 1 {
 				newCnfNode = &nonPerformancesWorkers[0]
 			}
 			if newCnfNode == nil {
