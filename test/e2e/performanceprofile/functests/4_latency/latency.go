@@ -471,7 +471,7 @@ func createLatencyTestPod(testPod *corev1.Pod) {
 	}
 
 	By("Waiting another two minutes to give enough time for the cluster to move the pod to Succeeded phase")
-	podTimeout := time.Duration(timeout + 120)
+	podTimeout := time.Duration(timeout + latencyTestDelay + 120)
 	err = pods.WaitForPhase(testPod, corev1.PodSucceeded, podTimeout*time.Second)
 	if err != nil {
 		logEventsForPod(testPod)
