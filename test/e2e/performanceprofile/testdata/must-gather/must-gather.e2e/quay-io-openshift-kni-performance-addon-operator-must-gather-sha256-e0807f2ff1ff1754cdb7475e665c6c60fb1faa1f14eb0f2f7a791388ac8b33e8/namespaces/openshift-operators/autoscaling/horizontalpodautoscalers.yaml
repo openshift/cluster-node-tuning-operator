@@ -1,6 +1,0 @@
----
-apiVersion: autoscaling/v2
-items: []
-kind: HorizontalPodAutoscalerList
-metadata:
-  resourceVersion: "77401"
