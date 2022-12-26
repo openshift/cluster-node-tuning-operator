@@ -938,7 +938,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 			}
 			isolatedCpus := strings.Join(isolated, ",")
-
 			// Create new performance with offlined
 			reservedSet := performancev2.CPUSet(reservedCpus)
 			isolatedSet := performancev2.CPUSet(isolatedCpus)
@@ -972,7 +971,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile))
 			}
 		})
-
 		It("[test_id:50966]verify offlined parameter accepts multiple ranges of cpuid's", func() {
 			var reserved, isolated, offlined []string
 			//This map is of the form numaNode[core][cpu-siblings]
@@ -1013,9 +1011,11 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					cores = append(cores, k)
 				}
 				sort.Ints(cores)
-				middleCoreIds := cores[len(cores)/2]
-				for i := middleCoreIds; i < middleCoreIds+10; i++ {
-					siblings := nodes.GetCpuSiblings(numaCoreSiblings, i)
+				if len(cores) < 20 {
+					Skip(fmt.Sprintf("This test needs systems with at least 20 cores per socket"))
+				}
+				for i := 0; i < len(cores)/2; i++ {
+					siblings := nodes.GetCpuSiblings(numaCoreSiblings, cores[i])
 					offlined = append(offlined, siblings...)
 				}
 			}
