@@ -5,10 +5,10 @@ metadata:
   name: openshift-node-performance-manual
   namespace: openshift-cluster-node-tuning-operator
   ownerReferences:
-  - apiVersion: "performance.openshift.io/v2"
+  - apiVersion: performance.openshift.io/v2
     kind: PerformanceProfile
     name: manual
-    uid: ""
+    uid: a25336fc-1192-49a1-bae6-b71d9da9f4fe
 spec:
   profile:
   - data: "[main]\nsummary=Openshift node optimized for deterministic performance
@@ -27,10 +27,10 @@ spec:
       It can be racy if TuneD restarts for whatever reason.\n#> cpu-partitioning\nenabled=false\n\n\n[scheduler]\nruntime=0\ngroup.ksoftirqd=0:f:11:*:ksoftirqd.*\ngroup.rcuc=0:f:11:*:rcuc.*\ngroup.ktimers=0:f:11:*:ktimers.*\nsched_min_granularity_ns=10000000\nsched_migration_cost_ns=5000000\nnuma_balancing=0\n\nsched_rt_runtime_us=-1\n\n\ndefault_irq_smp_affinity
       = ignore\n\n\n[sysctl]\n\n#> cpu-partitioning #RealTimeHint\nkernel.hung_task_timeout_secs=600\n#>
       cpu-partitioning #RealTimeHint\nkernel.nmi_watchdog=0\n#> RealTimeHint\nkernel.sched_rt_runtime_us=-1\n#>
-      cpu-partitioning  #RealTimeHint\nvm.stat_interval=10\n\n# cpu-partitioning and RealTimeHint
-      for RHEL disable it (= 0)\n# OCP is too dynamic when partitioning and needs
-      to evacuate\n#> scheduled timers when starting a guaranteed workload (= 1)\nkernel.timer_migration=1\n#>
-      network-latency\nkernel.numa_balancing=0\nnet.core.busy_read=50\nnet.core.busy_poll=50\nnet.ipv4.tcp_fastopen=3\n\n#
+      cpu-partitioning  #RealTimeHint\nvm.stat_interval=10\n\n# cpu-partitioning and
+      RealTimeHint for RHEL disable it (= 0)\n# OCP is too dynamic when partitioning
+      and needs to evacuate\n#> scheduled timers when starting a guaranteed workload
+      (= 1)\nkernel.timer_migration=1\n#> network-latency\nkernel.numa_balancing=0\nnet.core.busy_read=50\nnet.core.busy_poll=50\nnet.ipv4.tcp_fastopen=3\n\n#
       ktune sysctl settings for rhel6 servers, maximizing i/o throughput\n#\n# Minimal
       preemption granularity for CPU-bound tasks:\n# (default: 1 msec#  (1 + ilog(ncpus)),
       units: nanoseconds)\n#> latency-performance\nkernel.sched_min_granularity_ns=10000000\n\n#

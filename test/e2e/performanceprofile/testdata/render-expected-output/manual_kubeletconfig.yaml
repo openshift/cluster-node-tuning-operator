@@ -4,10 +4,10 @@ metadata:
   creationTimestamp: null
   name: performance-manual
   ownerReferences:
-  - apiVersion: "performance.openshift.io/v2"
+  - apiVersion: performance.openshift.io/v2
     kind: PerformanceProfile
     name: manual
-    uid: ""
+    uid: a25336fc-1192-49a1-bae6-b71d9da9f4fe
 spec:
   kubeletConfig:
     apiVersion: kubelet.config.k8s.io/v1beta1
@@ -25,8 +25,8 @@ spec:
       full-pcpus-only: "true"
     cpuManagerReconcilePeriod: 5s
     evictionHard:
-      memory.available: 100Mi
       imagefs.available: 15%
+      memory.available: 100Mi
       nodefs.available: 10%
       nodefs.inodesFree: 5%
     evictionPressureTransitionPeriod: 0s
@@ -47,9 +47,9 @@ spec:
     nodeStatusReportFrequency: 0s
     nodeStatusUpdateFrequency: 0s
     reservedMemory:
-      - limits:
-          memory: 1100Mi
-        numaNode: 0
+    - limits:
+        memory: 1100Mi
+      numaNode: 0
     reservedSystemCPUs: "0"
     runtimeRequestTimeout: 0s
     shutdownGracePeriod: 0s

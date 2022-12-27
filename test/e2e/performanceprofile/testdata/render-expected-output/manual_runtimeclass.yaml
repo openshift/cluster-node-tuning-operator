@@ -5,10 +5,10 @@ metadata:
   creationTimestamp: null
   name: performance-manual
   ownerReferences:
-  - apiVersion: "performance.openshift.io/v2"
+  - apiVersion: performance.openshift.io/v2
     kind: PerformanceProfile
     name: manual
-    uid: ""
+    uid: a25336fc-1192-49a1-bae6-b71d9da9f4fe
 scheduling:
   nodeSelector:
     node-role.kubernetes.io/worker-cnf: ""
