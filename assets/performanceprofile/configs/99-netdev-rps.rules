@@ -9,3 +9,4 @@
 # 2. Pod A = receiver, host = sender
 #  In case of no RPS mask on the receiver side, the sender needs to pay the price and do all the processing on its cores.
 SUBSYSTEM=="net", ACTION=="add", ENV{ID_BUS}!="pci", TAG+="systemd", ENV{SYSTEMD_WANTS}="update-rps@%k.service"
+SUBSYSTEM=="queues", ACTION=="add", ENV{DEVPATH}=="/devices/virtual/net/*", TAG+="systemd", RUN+="{{.Executable}} $devpath {{.Mask}}"

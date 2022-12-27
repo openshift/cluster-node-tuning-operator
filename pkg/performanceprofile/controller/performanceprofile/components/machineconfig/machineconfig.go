@@ -85,6 +85,8 @@ const (
 
 const (
 	templateReservedCpus = "ReservedCpus"
+	templateMask         = "Mask"
+	templateExecutable   = "Executable"
 )
 
 // New returns new machine configuration object for performance sensitive workloads
@@ -180,7 +182,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile) (*igntypes.Con
 		if profileutil.IsPhysicalRpsEnabled(profile) {
 			rpsRulesContent, err = assets.Configs.ReadFile(filepath.Join("configs", udevPhysicalRpsRules))
 		} else {
-			rpsRulesContent, err = assets.Configs.ReadFile(filepath.Join("configs", udevRpsRules))
+			rpsRulesContent, err = renderUdevRules(profile, filepath.Join("configs", udevRpsRules))
 		}
 		if err != nil {
 			return nil, err
@@ -436,4 +438,32 @@ func renderCrioConfigSnippet(profile *performancev2.PerformanceProfile, src stri
 	}
 
 	return crioConfig.Bytes(), nil
+}
+
+func renderUdevRules(profile *performancev2.PerformanceProfile, src string) ([]byte, error) {
+	if profile.Spec.CPU == nil || profile.Spec.CPU.Reserved == nil {
+		return nil, nil
+	}
+
+	rpsMask, err := components.CPUListToMaskList(string(*profile.Spec.CPU.Reserved))
+	if err != nil {
+		return nil, err
+	}
+
+	templateArgs := map[string]string{
+		templateMask:       rpsMask,
+		templateExecutable: getBashScriptPath(setRPSMask),
+	}
+
+	udevRulesTemplate, err := template.ParseFS(assets.Configs, src)
+	if err != nil {
+		return nil, err
+	}
+
+	udevRuleConfig := &bytes.Buffer{}
+	if err = udevRulesTemplate.Execute(udevRuleConfig, templateArgs); err != nil {
+		return nil, err
+	}
+
+	return udevRuleConfig.Bytes(), nil
 }

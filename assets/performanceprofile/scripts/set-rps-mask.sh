@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 
-dev=$1
-[ -n "${dev}" ] || { echo "The device argument is missing" >&2 ; exit 1; }
+instance_name=$1
+[ -n "${instance_name}" ] || { echo "The instance name argument is missing" >&2 ; exit 1; }
 
 mask=$2
 [ -n "${mask}" ] || { echo "The mask argument is missing" >&2 ; exit 1; }
 
-dev_dir="/sys/class/net/${dev}"
+# this function is parsing the device name and store it in dev
+# the pattern should look similar to -devices-virtual-net-<dev>-queues-rx-<n>
+function parse_dev_name() {
+ local tmp=${1#*net/}
+ dev=${tmp%/queues*}
+}
 
 function find_dev_dir {
   systemd_devs=$(systemctl list-units -t device | grep sys-subsystem-net-devices | cut -d' ' -f1)
@@ -28,6 +33,11 @@ function find_dev_dir {
     fi
   done
 }
+
+parse_dev_name "${instance_name}"
+[ -n "${dev}" ] || { echo failed to parse device name from "${instance_name}" >&2 ; exit 0; }
+
+dev_dir="/sys/class/net/${dev}"
 
 [ -d "${dev_dir}" ] || find_dev_dir                # the net device was renamed, find the new name
 [ -d "${dev_dir}" ] || { sleep 5; find_dev_dir; }  # search failed, wait a little and try again
