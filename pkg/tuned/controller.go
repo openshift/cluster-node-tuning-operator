@@ -155,17 +155,6 @@ type wqKey struct {
 }
 
 // Functions
-func mkdir(dir string) error {
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		err = os.MkdirAll(dir, os.ModePerm)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func (a *arrayFlags) String() string {
 	return strings.Join(*a, ",")
 }
@@ -395,7 +384,7 @@ func profilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string)
 		profileDir := fmt.Sprintf("%s/%s", tunedProfilesDirCustom, *profile.Name)
 		profileFile := fmt.Sprintf("%s/%s", profileDir, tunedConfFile)
 
-		if err := mkdir(profileDir); err != nil {
+		if err := util.Mkdir(profileDir); err != nil {
 			return change, extracted, recommendedProfileDeps, fmt.Errorf("failed to create TuneD profile directory %q: %v", profileDir, err)
 		}
 
@@ -479,7 +468,7 @@ func providerExtract(provider string) error {
 }
 
 func openshiftTunedPidFileWrite() error {
-	if err := mkdir(openshiftTunedRunDir); err != nil {
+	if err := util.Mkdir(openshiftTunedRunDir); err != nil {
 		return fmt.Errorf("failed to create %s run directory %q: %v", programName, openshiftTunedRunDir, err)
 	}
 	f, err := os.Create(openshiftTunedPidFile)
@@ -495,7 +484,7 @@ func openshiftTunedPidFileWrite() error {
 
 func tunedRecommendFileWrite(profileName string) error {
 	klog.V(2).Infof("tunedRecommendFileWrite(): %s", profileName)
-	if err := mkdir(tunedRecommendDir); err != nil {
+	if err := util.Mkdir(tunedRecommendDir); err != nil {
 		return fmt.Errorf("failed to create directory %q: %v", tunedRecommendDir, err)
 	}
 	f, err := os.Create(tunedRecommendFile)
