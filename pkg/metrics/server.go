@@ -4,26 +4,55 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"time"
 
+	"k8s.io/klog/v2"
+
+	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/fsnotify.v1"
-
-	"k8s.io/klog/v2"
 )
 
 const (
 	tlsSecretDir = "/etc/secrets"
 	tlsCert      = tlsSecretDir + "/tls.crt"
 	tlsKey       = tlsSecretDir + "/tls.key"
+
+	authCADir                = "/tmp/metrics-client-ca"
+	authCAFile               = authCADir + "/ca.crt"
+	AuthConfigMapNamespace   = "kube-system"
+	AuthConfigMapName        = "extension-apiserver-authentication"
+	AuthConfigMapClientCAKey = "client-ca-file"
 )
 
 type Server struct {
+}
+
+// DumpCA writes the root certificate bundle which is used to verify client certificates
+// on incoming requests to 'authCAFile' file.
+func DumpCA(ca string) error {
+	if err := util.Mkdir(authCADir); err != nil {
+		return fmt.Errorf("failed to create directory %q: %v", authCADir, err)
+	}
+
+	f, err := os.Create(authCAFile)
+	if err != nil {
+		return fmt.Errorf("failed to create file %q: %v", authCAFile, err)
+	}
+	defer f.Close()
+	if _, err = f.WriteString(ca); err != nil {
+		return fmt.Errorf("failed to write file %q: %v", authCAFile, err)
+	}
+
+	return nil
 }
 
 func buildServer(port int) *http.Server {
@@ -39,12 +68,30 @@ func buildServer(port int) *http.Server {
 		},
 	)
 
+	tlsConfig := &tls.Config{}
+	caCert, err := ioutil.ReadFile(authCAFile)
+	if err == nil {
+		caCertPool := x509.NewCertPool()
+		if caCertPool.AppendCertsFromPEM(caCert) {
+			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+			tlsConfig.ClientCAs = caCertPool
+		} else {
+			klog.Error("failed to parse %q", authCAFile)
+		}
+	} else {
+		klog.Errorf("failed to read %q: %v", authCAFile, err)
+	}
+	if tlsConfig.ClientCAs == nil {
+		klog.Infof("continuing without client authentication")
+	}
+
 	bindAddr := fmt.Sprintf(":%d", port)
 	router := http.NewServeMux()
 	router.Handle("/metrics", handler)
 	srv := &http.Server{
-		Addr:    bindAddr,
-		Handler: router,
+		Addr:      bindAddr,
+		Handler:   router,
+		TLSConfig: tlsConfig,
 	}
 
 	return srv
@@ -70,8 +117,51 @@ func (Server) Start(ctx context.Context) error {
 	return RunServer(MetricsPort, ctx)
 }
 
-// RunServer starts the server, and watches the tlsCert and tlsKey for certificate changes.
+// RunServer starts the server, and watches the tlsCert, tlsKey and authCAFile for changes.
+// If a change happens to both tlsCert and tlsKey or authCAFile, the metrics server is rebuilt
+// and restarted with the current files.  Every non-nil return from this function is fatal
+// and will restart the whole operator.
 func RunServer(port int, ctx context.Context) error {
+	// Set up and start the file watcher.
+	watcher, err := fsnotify.NewWatcher()
+	if watcher == nil || err != nil {
+		klog.Errorf("failed to create file watcher, cert/key rotation will be disabled %v", err)
+	} else {
+		defer watcher.Close()
+
+		if err := util.Mkdir(authCADir); err != nil {
+			return fmt.Errorf("failed to create directory %q: %v", authCADir, err)
+		}
+
+		if err = watcher.Add(authCADir); err != nil {
+			klog.Errorf("failed to add %v to watcher, CA client authentication and rotation will be disabled: %v", authCADir, err)
+		} else {
+			if ok, _ := fileExistsAndNotEmpty(authCAFile); !ok {
+				// authCAFile does not exist (or is empty); wait for it to be created.
+				select {
+				case <-ctx.Done():
+					return nil
+				case event := <-watcher.Events:
+					klog.V(2).Infof("event from filewatcher on file: %v, event: %v", event.Name, event.Op)
+
+					if event.Name == authCAFile {
+						if ok, _ := fileExistsAndNotEmpty(authCAFile); ok {
+							// authCAFile is now created and is not empty.
+							break
+						}
+					}
+
+				case err = <-watcher.Errors:
+					klog.Warningf("error from metrics server CA client authentication file watcher: %v", err)
+				}
+			}
+		}
+
+		if err = watcher.Add(tlsSecretDir); err != nil {
+			klog.Errorf("failed to add %v to watcher, cert/key rotation will be disabled: %v", tlsSecretDir, err)
+		}
+	}
+
 	srv := buildServer(port)
 	if srv == nil {
 		return fmt.Errorf("failed to build server with port %d", port)
@@ -79,19 +169,9 @@ func RunServer(port int, ctx context.Context) error {
 
 	go startServer(srv)
 
-	// Set up and start the file watcher.
-	watcher, err := fsnotify.NewWatcher()
-	if watcher == nil || err != nil {
-		return fmt.Errorf("failed to create file watcher, cert/key rotation will be disabled  %v", err)
-	} else {
-		defer watcher.Close()
-		if err := watcher.Add(tlsSecretDir); err != nil {
-			return fmt.Errorf("failed to add %v to watcher, cert/key rotation will be disabled: %v", tlsSecretDir, err)
-		}
-	}
-
 	origCertChecksum := checksumFile(tlsCert)
 	origKeyChecksum := checksumFile(tlsKey)
+	origAuthCAChecksum := checksumFile(authCAFile)
 
 	for {
 		select {
@@ -105,10 +185,11 @@ func RunServer(port int, ctx context.Context) error {
 				continue
 			}
 
-			if certsChanged(origCertChecksum, origKeyChecksum) {
+			if certsChanged(origCertChecksum, origKeyChecksum, origAuthCAChecksum) {
 				// Update file checksums with latest files.
 				origCertChecksum = checksumFile(tlsCert)
 				origKeyChecksum = checksumFile(tlsKey)
+				origAuthCAChecksum = checksumFile(authCAFile)
 
 				// restart server
 				klog.Infof("restarting metrics server to rotate certificates")
@@ -122,10 +203,11 @@ func RunServer(port int, ctx context.Context) error {
 	}
 }
 
-// Determine if the certificates have changed and need to be updated.
-// Returns true if both files have changed AND neither is an empty file.
-func certsChanged(origCertChecksum []byte, origKeyChecksum []byte) bool {
-	// Check if both files exist.
+// Determine if both the server certificate/key or auth CA have changed and need to be updated.
+// Given the server certificate/key and auth CA exist and are non-empty, returns true if
+// both server certificate and key have changed or if auth CA have changed.
+func certsChanged(origCertChecksum []byte, origKeyChecksum []byte, origAuthCAChecksum []byte) bool {
+	// Check if all files exist.
 	certNotEmpty, err := fileExistsAndNotEmpty(tlsCert)
 	if err != nil {
 		klog.Warningf("error checking if changed TLS cert file empty/exists: %v", err)
@@ -136,19 +218,27 @@ func certsChanged(origCertChecksum []byte, origKeyChecksum []byte) bool {
 		klog.Warningf("error checking if changed TLS key file empty/exists: %v", err)
 		return false
 	}
+	caNotEmpty, err := fileExistsAndNotEmpty(authCAFile)
+	if err != nil {
+		klog.Warningf("error checking if changed auth CA file empty/exists: %v", err)
+		return false
+	}
 
-	if !certNotEmpty || !keyNotEmpty {
+	if !certNotEmpty || !keyNotEmpty || !caNotEmpty {
 		// One of the files is missing despite some file event.
-		klog.V(1).Infof("certificate or key is missing or empty, certificates will not be rotated")
+		klog.V(1).Infof("certificate, key or auth CA is missing or empty, certificates will not be rotated")
 		return false
 	}
 	currentCertChecksum := checksumFile(tlsCert)
 	currentKeyChecksum := checksumFile(tlsKey)
+	currentAuthCAChecksum := checksumFile(authCAFile)
 
-	klog.V(2).Infof("certificate checksums before: %x, %x. checksums after: %x, %x", origCertChecksum, origKeyChecksum, currentCertChecksum, currentKeyChecksum)
-	// Check if the non-empty certificate/key files have actually changed.
-	if !bytes.Equal(origCertChecksum, currentCertChecksum) && !bytes.Equal(origKeyChecksum, currentKeyChecksum) {
-		klog.Infof("cert and key changed, need to restart the server.")
+	klog.V(2).Infof("certificate checksums before: %x, %x, %x. checksums after: %x, %x, %x",
+		origCertChecksum, origKeyChecksum, origAuthCAChecksum, currentCertChecksum, currentKeyChecksum, currentAuthCAChecksum)
+	// Check if the non-empty certificate/key or auth CA files have actually changed.
+	if !bytes.Equal(origCertChecksum, currentCertChecksum) && !bytes.Equal(origKeyChecksum, currentKeyChecksum) ||
+		!bytes.Equal(origAuthCAChecksum, currentAuthCAChecksum) {
+		klog.Infof("cert and key or auth CA changed, need to restart the metrics server")
 		return true
 	}
 
@@ -159,14 +249,14 @@ func certsChanged(origCertChecksum []byte, origKeyChecksum []byte) bool {
 func checksumFile(fName string) []byte {
 	file, err := os.Open(fName)
 	if err != nil {
-		klog.Infof("failed to open file %v for checksum: %v", fName, err)
+		klog.Errorf("failed to open file %v for checksum: %v", fName, err)
 	}
 	defer file.Close()
 
 	hash := sha256.New()
 
 	if _, err = io.Copy(hash, file); err != nil {
-		klog.Infof("failed to compute checksum for file %v: %v", fName, err)
+		klog.Errorf("failed to compute checksum for file %v: %v", fName, err)
 	}
 
 	return hash.Sum(nil)

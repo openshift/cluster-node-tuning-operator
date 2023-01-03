@@ -296,6 +296,21 @@ func (c *Controller) sync(key wqKey) error {
 		}
 		return nil
 
+	case key.kind == wqKindConfigMap && key.namespace == metrics.AuthConfigMapNamespace:
+		klog.V(2).Infof("sync(): wqKindConfigMap %s: %s/%s", key.kind, key.namespace, key.name)
+
+		cm, err := c.listers.AuthConfigMapCA.Get(metrics.AuthConfigMapName)
+		if err != nil {
+			return fmt.Errorf("failed to get ConfigMap %s/%s: %v", metrics.AuthConfigMapNamespace, metrics.AuthConfigMapName, err)
+		}
+
+		ca, ok := cm.Data[metrics.AuthConfigMapClientCAKey]
+		if !ok {
+			return fmt.Errorf("failed to find key %s in ConfigMap %s/%s", metrics.AuthConfigMapClientCAKey, metrics.AuthConfigMapNamespace, metrics.AuthConfigMapName)
+		}
+
+		return metrics.DumpCA(ca)
+
 	case key.kind == wqKindConfigMap:
 		// This should only happen in HyperShift
 		klog.V(2).Infof("sync(): wqKindConfigMap %s", key.name)
@@ -1245,6 +1260,12 @@ func (c *Controller) run(ctx context.Context) {
 	configInformerFactory := configinformers.NewSharedInformerFactory(c.clients.ConfigClientSet, ntoconfig.ResyncPeriod())
 	kubeNTOInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.Kube, ntoconfig.ResyncPeriod(), kubeinformers.WithNamespace(ntoconfig.WatchNamespace()))
 	tunedInformerFactory := tunedinformers.NewSharedInformerFactoryWithOptions(c.clients.Tuned, ntoconfig.ResyncPeriod(), tunedinformers.WithNamespace(ntoconfig.WatchNamespace()))
+	caConfigMapInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.Kube,
+		ntoconfig.ResyncPeriod(),
+		kubeinformers.WithNamespace(metrics.AuthConfigMapNamespace),
+		kubeinformers.WithTweakListOptions(func(opts *metav1.ListOptions) {
+			opts.FieldSelector = "metadata.name=" + "extension-apiserver-authentication"
+		}))
 
 	coInformer := configInformerFactory.Config().V1().ClusterOperators()
 	c.listers.ClusterOperators = coInformer.Lister()
@@ -1262,11 +1283,16 @@ func (c *Controller) run(ctx context.Context) {
 	c.listers.TunedProfiles = tpInformer.Lister().Profiles(ntoconfig.WatchNamespace())
 	tpInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindProfile}))
 
+	caInformer := caConfigMapInformerFactory.Core().V1().ConfigMaps()
+	c.listers.AuthConfigMapCA = caInformer.Lister().ConfigMaps(metrics.AuthConfigMapNamespace)
+	caInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindConfigMap, namespace: metrics.AuthConfigMapNamespace}))
+
 	InformerFuncs := []cache.InformerSynced{
 		coInformer.Informer().HasSynced,
 		dsInformer.Informer().HasSynced,
 		trInformer.Informer().HasSynced,
 		tpInformer.Informer().HasSynced,
+		caInformer.Informer().HasSynced,
 	}
 
 	var tunedConfigMapInformerFactory kubeinformers.SharedInformerFactory
@@ -1306,9 +1332,10 @@ func (c *Controller) run(ctx context.Context) {
 		InformerFuncs = append(InformerFuncs, mcInformer.Informer().HasSynced, mcpInformer.Informer().HasSynced)
 	}
 
-	configInformerFactory.Start(ctx.Done())  // ClusterOperator
-	kubeNTOInformerFactory.Start(ctx.Done()) // DaemonSet
-	tunedInformerFactory.Start(ctx.Done())   // Tuned/Profile
+	configInformerFactory.Start(ctx.Done())      // ClusterOperator
+	kubeNTOInformerFactory.Start(ctx.Done())     // DaemonSet
+	tunedInformerFactory.Start(ctx.Done())       // Tuned/Profile
+	caConfigMapInformerFactory.Start(ctx.Done()) // Metrics client's ConfigMap CA
 
 	if ntoconfig.InHyperShift() {
 		tunedConfigMapInformerFactory.Start(ctx.Done())
