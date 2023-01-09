@@ -59,7 +59,7 @@ var _ = Describe("[performance]Hugepages", func() {
 	// We have multiple hugepages e2e tests under the upstream, so the only thing that we should check, if the PAO configure
 	// correctly number of hugepages that will be available on the node
 	Context("[rfe_id:27369]when NUMA node specified", func() {
-		It("[test_id:27752][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] should be allocated on the specifed NUMA node ", func() {
+		It("[test_id:27752][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] should be allocated on the specifed NUMA node", func() {
 			for _, page := range profile.Spec.HugePages.Pages {
 				if page.Node == nil {
 					continue
