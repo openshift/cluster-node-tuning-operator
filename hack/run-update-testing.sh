@@ -1,6 +1,6 @@
 #!/bin/bash
 
-GINKGO_SUITS=${GINKGO_SUITS:-"test/e2e/performanceprofile/functests"}
+GINKGO_SUITS=${GINKGO_SUITS:-"test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/2_performance_update"}
 LATENCY_TEST_RUN=${LATENCY_TEST_RUN:-"false"}
 
 which ginkgo
@@ -29,4 +29,4 @@ echo "Running Functional Tests: ${GINKGO_SUITS}"
 # --failFast: ginkgo will stop the suite right after the first spec failure
 # --flakeAttempts: rerun the test if it fails
 # -requireSuite: fail if tests are not executed because of missing suite
-GOFLAGS=-mod=vendor ginkgo $NO_COLOR --v -r --failFast --skipPackage="5_latency_testing,2_performance_update" --flakeAttempts=2 -requireSuite ${GINKGO_SUITS} -- -junitDir /tmp/artifacts
+GOFLAGS=-mod=vendor ginkgo $NO_COLOR --v -r --failFast --flakeAttempts=2 -requireSuite ${GINKGO_SUITS} -- -junitDir /tmp/artifacts

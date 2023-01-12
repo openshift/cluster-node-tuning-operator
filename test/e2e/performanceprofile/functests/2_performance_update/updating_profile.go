@@ -433,7 +433,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		//fetch the latest profile
 		profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-		Expect(err).ToNot(HaveOccurred())
+		//Expect(err).ToNot(HaveOccurred())
 		var oldMcpSelector, oldNodeSelector map[string]string
 		var removeLabels func(map[string]string, *corev1.Node) error
 

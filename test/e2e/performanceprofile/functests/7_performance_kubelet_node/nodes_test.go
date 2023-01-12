@@ -1,4 +1,4 @@
-package __performance_update
+package __performance_kubelet_node_test
 
 import (
 	. "github.com/onsi/ginkgo"
