@@ -1,7 +1,7 @@
 //go:build !unittests
 // +build !unittests
 
-package __performance_update_test
+package __performance_kubelet_node_test
 
 import (
 	"context"
@@ -47,5 +47,5 @@ func TestPerformanceUpdate(t *testing.T) {
 		rr = append(rr, &ginkgo_reporters.Polarion)
 	}
 	rr = append(rr, junit.NewJUnitReporter("performance_update"))
-	RunSpecsWithDefaultAndCustomReporters(t, "Performance Profile Controller Update e2e tests", rr)
+	RunSpecsWithDefaultAndCustomReporters(t, "Performance Profile Controller kubelet and node tests", rr)
 }
