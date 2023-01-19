@@ -1260,12 +1260,6 @@ func (c *Controller) run(ctx context.Context) {
 	configInformerFactory := configinformers.NewSharedInformerFactory(c.clients.ConfigClientSet, ntoconfig.ResyncPeriod())
 	kubeNTOInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.Kube, ntoconfig.ResyncPeriod(), kubeinformers.WithNamespace(ntoconfig.WatchNamespace()))
 	tunedInformerFactory := tunedinformers.NewSharedInformerFactoryWithOptions(c.clients.Tuned, ntoconfig.ResyncPeriod(), tunedinformers.WithNamespace(ntoconfig.WatchNamespace()))
-	caConfigMapInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.Kube,
-		ntoconfig.ResyncPeriod(),
-		kubeinformers.WithNamespace(metrics.AuthConfigMapNamespace),
-		kubeinformers.WithTweakListOptions(func(opts *metav1.ListOptions) {
-			opts.FieldSelector = "metadata.name=" + "extension-apiserver-authentication"
-		}))
 
 	coInformer := configInformerFactory.Config().V1().ClusterOperators()
 	c.listers.ClusterOperators = coInformer.Lister()
@@ -1283,21 +1277,17 @@ func (c *Controller) run(ctx context.Context) {
 	c.listers.TunedProfiles = tpInformer.Lister().Profiles(ntoconfig.WatchNamespace())
 	tpInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindProfile}))
 
-	caInformer := caConfigMapInformerFactory.Core().V1().ConfigMaps()
-	c.listers.AuthConfigMapCA = caInformer.Lister().ConfigMaps(metrics.AuthConfigMapNamespace)
-	caInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindConfigMap, namespace: metrics.AuthConfigMapNamespace}))
-
 	InformerFuncs := []cache.InformerSynced{
 		coInformer.Informer().HasSynced,
 		dsInformer.Informer().HasSynced,
 		trInformer.Informer().HasSynced,
 		tpInformer.Informer().HasSynced,
-		caInformer.Informer().HasSynced,
 	}
 
 	var tunedConfigMapInformerFactory kubeinformers.SharedInformerFactory
 	var mcfgConfigMapInformerFactory kubeinformers.SharedInformerFactory
 	var mcfgInformerFactory mcfginformers.SharedInformerFactory
+	var caConfigMapInformerFactory kubeinformers.SharedInformerFactory
 	if ntoconfig.InHyperShift() {
 		tunedConfigMapInformerFactory = kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.ManagementKube,
 			ntoconfig.ResyncPeriod(),
@@ -1330,18 +1320,29 @@ func (c *Controller) run(ctx context.Context) {
 		c.listers.MachineConfigPools = mcpInformer.Lister()
 		mcpInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindMachineConfigPool}))
 		InformerFuncs = append(InformerFuncs, mcInformer.Informer().HasSynced, mcpInformer.Informer().HasSynced)
+
+		caConfigMapInformerFactory = kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.Kube,
+			ntoconfig.ResyncPeriod(),
+			kubeinformers.WithNamespace(metrics.AuthConfigMapNamespace),
+			kubeinformers.WithTweakListOptions(func(opts *metav1.ListOptions) {
+				opts.FieldSelector = "metadata.name=" + "extension-apiserver-authentication"
+			}))
+		caInformer := caConfigMapInformerFactory.Core().V1().ConfigMaps()
+		c.listers.AuthConfigMapCA = caInformer.Lister().ConfigMaps(metrics.AuthConfigMapNamespace)
+		caInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindConfigMap, namespace: metrics.AuthConfigMapNamespace}))
+		InformerFuncs = append(InformerFuncs, caInformer.Informer().HasSynced)
 	}
 
-	configInformerFactory.Start(ctx.Done())      // ClusterOperator
-	kubeNTOInformerFactory.Start(ctx.Done())     // DaemonSet
-	tunedInformerFactory.Start(ctx.Done())       // Tuned/Profile
-	caConfigMapInformerFactory.Start(ctx.Done()) // Metrics client's ConfigMap CA
+	configInformerFactory.Start(ctx.Done())  // ClusterOperator
+	kubeNTOInformerFactory.Start(ctx.Done()) // DaemonSet
+	tunedInformerFactory.Start(ctx.Done())   // Tuned/Profile
 
 	if ntoconfig.InHyperShift() {
 		tunedConfigMapInformerFactory.Start(ctx.Done())
 		mcfgConfigMapInformerFactory.Start(ctx.Done())
 	} else {
-		mcfgInformerFactory.Start(ctx.Done()) // MachineConfig/MachineConfigPool
+		mcfgInformerFactory.Start(ctx.Done())        // MachineConfig/MachineConfigPool
+		caConfigMapInformerFactory.Start(ctx.Done()) // Metrics client's ConfigMap CA
 	}
 
 	// Wait for the caches to be synced before starting worker(s)
