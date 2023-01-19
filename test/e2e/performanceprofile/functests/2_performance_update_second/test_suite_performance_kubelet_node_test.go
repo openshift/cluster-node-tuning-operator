@@ -1,7 +1,7 @@
 //go:build !unittests
 // +build !unittests
 
-package __performance_kubelet_node_test
+package __2_performance_update_second
 
 import (
 	"context"
