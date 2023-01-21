@@ -16,6 +16,7 @@ import (
 
 	"k8s.io/klog/v2"
 
+	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/fsnotify.v1"
@@ -129,8 +130,11 @@ func RunServer(port int, ctx context.Context) error {
 	} else {
 		defer watcher.Close()
 
-		if err := util.Mkdir(authCADir); err != nil {
-			return fmt.Errorf("failed to create directory %q: %v", authCADir, err)
+		// In HyperShift the CA is mounted in
+		if !ntoconfig.InHyperShift() {
+			if err := util.Mkdir(authCADir); err != nil {
+				return fmt.Errorf("failed to create directory %q: %v", authCADir, err)
+			}
 		}
 
 		if err = watcher.Add(authCADir); err != nil {
