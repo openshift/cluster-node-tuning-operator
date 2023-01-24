@@ -288,6 +288,10 @@ func GetDefaultSmpAffinityRaw(node *corev1.Node) (string, error) {
 }
 
 // GetDefaultSmpAffinitySet returns the default smp affinity mask for the node
+// Warning: Please note that default smp affinity mask is not aware
+//          of offline cpus and will return the affinity bits for those
+//          as well. You must intersect the mask with the mask returned
+//          by GetOnlineCPUsSet if this is not desired.
 func GetDefaultSmpAffinitySet(node *corev1.Node) (cpuset.CPUSet, error) {
 	defaultSmpAffinity, err := GetDefaultSmpAffinityRaw(node)
 	if err != nil {
