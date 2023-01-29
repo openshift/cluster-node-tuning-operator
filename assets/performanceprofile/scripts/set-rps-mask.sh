@@ -8,6 +8,11 @@ mask=$2
 
 dev_dir="/sys/class/net/${dev}"
 
+function set-rps-mask() {
+  for i in "${dev_dir}"/queues/rx-*/rps_cpus; do
+    echo "${mask}" > "${i}"
+  done
+}
 function find_dev_dir {
   systemd_devs=$(systemctl list-units -t device | grep sys-subsystem-net-devices | cut -d' ' -f1)
 
@@ -33,6 +38,8 @@ function find_dev_dir {
 [ -d "${dev_dir}" ] || { sleep 5; find_dev_dir; }  # search failed, wait a little and try again
 [ -d "${dev_dir}" ] || { echo "${dev_dir}" directory not found >&2 ; exit 0; } # the interface disappeared, not an error
 
-for i in "${dev_dir}"/queues/rx-*/rps_cpus; do
-  echo "${mask}" > "${i}"
+set-rps-mask
+# check that all queues were setup correctly
+while [[ $(cat /sys/devices/virtual/net/*/queues/*/rps_cpus | sort -u | wc -l) != "1" ]]; do
+  set-rps-mask
 done
