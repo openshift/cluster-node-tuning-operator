@@ -1,0 +1,4 @@
+[Unit]
+Description=Top level slice used to give openvswitch access to an unrestricted set of cpus
+
+[Slice]
