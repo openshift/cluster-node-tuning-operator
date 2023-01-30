@@ -31,7 +31,7 @@ import (
 	ginkgo_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 )
 
-//TODO get commonly used variables from one shared file that defines constants
+// TODO get commonly used variables from one shared file that defines constants
 const testExecutablePath = "../../../../../build/_output/bin/latency-e2e.test"
 
 var prePullNamespace = &corev1.Namespace{
