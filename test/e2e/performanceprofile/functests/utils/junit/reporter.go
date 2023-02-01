@@ -3,7 +3,7 @@ package junit
 import (
 	"flag"
 	"fmt"
-	"github.com/onsi/ginkgo/reporters"
+	"github.com/onsi/ginkgo/v2/reporters"
 )
 
 var junitDir *string

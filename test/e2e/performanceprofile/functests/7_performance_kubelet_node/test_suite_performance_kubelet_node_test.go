@@ -8,18 +8,18 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
+	"github.com/onsi/ginkgo/v2/reporters"
 	. "github.com/onsi/gomega"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 
-	ginkgo_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
-
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/junit"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/namespaces"
+
+	qe_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 )
 
 var _ = BeforeSuite(func() {
@@ -39,13 +39,14 @@ var _ = AfterSuite(func() {
 	err = namespaces.WaitForDeletion(testutils.NamespaceTesting, 5*time.Minute)
 })
 
-func TestPerformanceUpdate(t *testing.T) {
+func TestPerformanceKubelet(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	rr := []Reporter{}
-	if ginkgo_reporters.Polarion.Run {
-		rr = append(rr, &ginkgo_reporters.Polarion)
-	}
-	rr = append(rr, junit.NewJUnitReporter("performance_update"))
-	RunSpecsWithDefaultAndCustomReporters(t, "Performance Profile Controller kubelet and node tests", rr)
+	RunSpecs(t, "Performance Addon Operator Kubelet")
 }
+
+var _ = ReportAfterSuite("e2e serial suite", func(r Report) {
+	if qe_reporters.Polarion.Run {
+		reporters.ReportViaDeprecatedReporter(&qe_reporters.Polarion, r)
+	}
+})
