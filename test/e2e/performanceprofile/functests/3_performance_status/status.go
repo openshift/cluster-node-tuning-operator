@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 
 	ign2types "github.com/coreos/ignition/config/v2_2/types"
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	v1 "github.com/openshift/custom-resource-status/conditions/v1"
@@ -27,7 +27,7 @@ import (
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 )
 
-var _ = Describe("Status testing of performance profile", func() {
+var _ = Describe("Status testing of performance profile", Ordered, func() {
 	var (
 		workerCNFNodes []corev1.Node
 		err            error

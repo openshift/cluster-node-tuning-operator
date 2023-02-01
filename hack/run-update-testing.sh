@@ -6,9 +6,8 @@ LATENCY_TEST_RUN=${LATENCY_TEST_RUN:-"false"}
 which ginkgo
 if [ $? -ne 0 ]; then
 	echo "Downloading ginkgo tool"
-	# drop -mod=vendor flags, otherwise the installation will fail
-	# because of the package can not be installed under the vendor directory
-    GOFLAGS='' go install github.com/onsi/ginkgo/ginkgo@v1.16.5
+    go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo@v2.5.1
+    ginkgo version
 fi
 
 NO_COLOR=""
@@ -29,4 +28,4 @@ echo "Running Functional Tests: ${GINKGO_SUITS}"
 # --failFast: ginkgo will stop the suite right after the first spec failure
 # --flakeAttempts: rerun the test if it fails
 # -requireSuite: fail if tests are not executed because of missing suite
-GOFLAGS=-mod=vendor ginkgo $NO_COLOR --v -r --failFast --flakeAttempts=2 -requireSuite ${GINKGO_SUITS} -- -junitDir /tmp/artifacts
+GOFLAGS=-mod=vendor ginkgo $NO_COLOR --v -r -timeout=5h --fail-fast --flake-attempts=2 -require-suite ${GINKGO_SUITS} --junit-report=report.xml

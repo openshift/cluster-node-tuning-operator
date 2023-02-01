@@ -17,7 +17,7 @@ import (
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	corev1 "k8s.io/api/core/v1"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/jaypipes/ghw/pkg/snapshot"
@@ -28,7 +28,7 @@ const destDir = "must-gather"
 var _ = Describe("[rfe_id: 50649] Performance Addon Operator Must Gather", func() {
 	mgContentFolder := ""
 
-	testutils.BeforeAll(func() {
+	testutils.CustomBeforeAll(func() {
 		destDirContent, err := ioutil.ReadDir(destDir)
 		Expect(err).NotTo(HaveOccurred(), "unable to read contents from destDir:%s. error: %w", destDir, err)
 

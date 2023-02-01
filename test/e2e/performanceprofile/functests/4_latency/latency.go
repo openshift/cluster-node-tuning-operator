@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -59,7 +59,7 @@ var (
 // LATENCY_TEST_RUNTIME: the amount of time in seconds that the latency test should run
 // LATENCY_TEST_CPUS: the amount of CPUs the pod which run the latency test should request
 
-var _ = Describe("[performance] Latency Test", func() {
+var _ = Describe("[performance] Latency Test", Ordered, func() {
 	var workerRTNode *corev1.Node
 	var profile *performancev2.PerformanceProfile
 	var latencyTestPod *corev1.Pod
@@ -112,14 +112,16 @@ var _ = Describe("[performance] Latency Test", func() {
 	})
 
 	AfterEach(func() {
-		err = testclient.Client.Delete(context.TODO(), latencyTestPod)
-		if err != nil {
-			testlog.Error(err)
-		}
+		if latencyTestPod != nil {
+			err = testclient.Client.Delete(context.TODO(), latencyTestPod)
+			if err != nil {
+				testlog.Error(err)
+			}
 
-		err = pods.WaitForDeletion(latencyTestPod, pods.DefaultDeletionTimeout*time.Second)
-		if err != nil {
-			testlog.Error(err)
+			err = pods.WaitForDeletion(latencyTestPod, pods.DefaultDeletionTimeout*time.Second)
+			if err != nil {
+				testlog.Error(err)
+			}
 		}
 
 		maximumLatency = -1

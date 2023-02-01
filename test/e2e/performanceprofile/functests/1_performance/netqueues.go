@@ -15,7 +15,7 @@ import (
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -29,12 +29,12 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 )
 
-var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", func() {
+var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() {
 	var workerRTNodes []corev1.Node
 	var profile, initialProfile *performancev2.PerformanceProfile
 	var performanceProfileName string
 
-	testutils.BeforeAll(func() {
+	testutils.CustomBeforeAll(func() {
 		isSNO, err := cluster.IsSingleNode()
 		Expect(err).ToNot(HaveOccurred())
 		RunningOnSingleNode = isSNO
@@ -48,7 +48,6 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", func() {
 		profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 
-		By("Backing up the profile")
 		initialProfile = profile.DeepCopy()
 
 		performanceProfileName = profile.Name
