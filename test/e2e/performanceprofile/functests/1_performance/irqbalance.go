@@ -11,7 +11,9 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -40,7 +42,7 @@ var (
 var _ = Describe("[performance] Checking IRQBalance settings", func() {
 	var workerRTNodes []corev1.Node
 	var targetNode *corev1.Node
-	var profile *performancev2.PerformanceProfile
+	var profile, initialProfile *performancev2.PerformanceProfile
 	var performanceMCP string
 	var err error
 
@@ -53,6 +55,9 @@ var _ = Describe("[performance] Checking IRQBalance settings", func() {
 		Expect(err).ToNot(HaveOccurred())
 		profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
+
+		initialProfile = profile.DeepCopy()
+
 		performanceMCP, err = mcps.GetByProfile(profile)
 		Expect(err).ToNot(HaveOccurred())
 
@@ -64,6 +69,89 @@ var _ = Describe("[performance] Checking IRQBalance settings", func() {
 		nodeIdx := pickNodeIdx(workerRTNodes)
 		targetNode = &workerRTNodes[nodeIdx]
 		By(fmt.Sprintf("verifying worker node %q", targetNode.Name))
+	})
+
+	Context("Verify GloballyDisableIrqLoadBalancing Spec field", func() {
+		It("[test_id:36150] Verify that IRQ load balancing is enabled/disabled correctly", func() {
+
+			irqLoadBalancingDisabled := profile.Spec.GloballyDisableIrqLoadBalancing != nil && *profile.Spec.GloballyDisableIrqLoadBalancing
+
+			Expect(profile.Spec.CPU.Isolated).NotTo(BeNil(), "expected isolated CPUs, found none")
+			isolatedCPUSet, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+			Expect(err).ToNot(HaveOccurred())
+
+			verifyNodes := func() error {
+				var expectedBannedCPUs cpuset.CPUSet
+				if irqLoadBalancingDisabled {
+					expectedBannedCPUs = isolatedCPUSet
+				} else {
+					expectedBannedCPUs = cpuset.NewCPUSet()
+				}
+
+				for _, node := range workerRTNodes {
+					By(fmt.Sprintf("verifying worker node %q", node.Name))
+
+					bannedCPUs, err := getIrqBalanceBannedCPUs(&node)
+					Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %s", node.Name)
+
+					if !bannedCPUs.Equals(expectedBannedCPUs) {
+						return fmt.Errorf("banned CPUs %v do not match the expected mask %v on node %s",
+							bannedCPUs, expectedBannedCPUs, node.Name)
+					}
+
+					smpAffinitySet, err := nodes.GetDefaultSmpAffinitySet(&node)
+					Expect(err).ToNot(HaveOccurred(), "failed to get default smp affinity")
+
+					onlineCPUsSet, err := nodes.GetOnlineCPUsSet(&node)
+					Expect(err).ToNot(HaveOccurred(), "failed to get Online CPUs list")
+
+					if irqLoadBalancingDisabled {
+						if !smpAffinitySet.Equals(onlineCPUsSet.Difference(isolatedCPUSet)) {
+							return fmt.Errorf("found default_smp_affinity %v, expected %v",
+								smpAffinitySet, onlineCPUsSet.Difference(isolatedCPUSet))
+						}
+					} else {
+						if !smpAffinitySet.Equals(onlineCPUsSet) {
+							return fmt.Errorf("found default_smp_affinity %v, expected %v",
+								smpAffinitySet, onlineCPUsSet)
+						}
+					}
+				}
+				return nil
+			}
+
+			err = verifyNodes()
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Modifying profile")
+
+			irqLoadBalancingDisabled = !irqLoadBalancingDisabled
+			profile.Spec.GloballyDisableIrqLoadBalancing = &irqLoadBalancingDisabled
+
+			spec, err := json.Marshal(profile.Spec)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Applying changes in performance profile and waiting until mcp will start updating")
+			Expect(testclient.Client.Patch(context.TODO(), profile,
+				client.RawPatch(
+					types.JSONPatchType,
+					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
+				),
+			)).ToNot(HaveOccurred())
+
+			defer func() { // return initial configuration
+				spec, err := json.Marshal(initialProfile.Spec)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(testclient.Client.Patch(context.TODO(), profile,
+					client.RawPatch(
+						types.JSONPatchType,
+						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
+					),
+				)).ToNot(HaveOccurred())
+			}()
+
+			Eventually(verifyNodes, 1*time.Minute, 10*time.Second).ShouldNot(HaveOccurred())
+		})
 	})
 
 	Context("Verify irqbalance configuration handling", func() {
