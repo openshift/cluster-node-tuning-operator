@@ -96,7 +96,7 @@ var _ = table.DescribeTable("Test latency measurement tools tests", func(testGro
 		clearEnv()
 		testDescription := setEnvAndGetDescription(test)
 		By(testDescription)
-		output, err := exec.Command(testExecutablePath, "-ginkgo.focus", test.toolToTest).Output()
+		output, err := exec.Command(testExecutablePath, "-ginkgo.v", "-ginkgo.focus", test.toolToTest).Output()
 		if err != nil {
 			//we don't log Error level here because the test might be a negative check
 			testlog.Info(err.Error())
