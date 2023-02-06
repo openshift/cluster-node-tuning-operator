@@ -439,7 +439,7 @@ func GetCpuSiblings(numaCoreSiblings map[int]map[int][]int, coreKey int) []strin
 	for key := range numaCoreSiblings {
 		for _, c := range numaCoreSiblings[key][coreKey] {
 			cpuSiblings = append(cpuSiblings, strconv.Itoa(c))
-			delete(numaCoreSiblings[key], c)
+			delete(numaCoreSiblings[key], coreKey)
 		}
 	}
 	return cpuSiblings
