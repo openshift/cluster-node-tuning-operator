@@ -52,6 +52,15 @@ type NodeCPU struct {
 	CPU  string `json:"cpu"`
 }
 
+// Node Ether/virtual Interface
+type NodeInterface struct {
+	Name     string
+	Physical bool
+	UP       bool
+	Bridge   bool
+	defRoute bool
+}
+
 // GetByRole returns all nodes with the specified role
 func GetByRole(role string) ([]corev1.Node, error) {
 	selector, err := labels.Parse(fmt.Sprintf("%s/%s=", testutils.LabelRole, role))
@@ -475,4 +484,52 @@ func GetNumaRanges(cpuString string) string {
 		offlineCpuRanges = append(offlineCpuRanges, fmt.Sprintf("%d", cpuIds[i]))
 	}
 	return strings.Join(offlineCpuRanges, ",")
+}
+
+// Get Node Ethernet/Virtual Interfaces
+func GetNodeInterfaces(node corev1.Node) ([]NodeInterface, error) {
+	var nodeInterfaces []NodeInterface
+	listNetworkInterfacesCmd := []string{"/bin/sh", "-c", fmt.Sprintf("ls -l /sys/class/net")}
+	networkInterfaces, err := ExecCommandOnMachineConfigDaemon(&node, listNetworkInterfacesCmd)
+	if err != nil {
+		return nil, err
+	}
+	ipLinkShowCmd := []string{"ip", "link", "show"}
+	interfaceLinksStatus, err := ExecCommandOnMachineConfigDaemon(&node, ipLinkShowCmd)
+	if err != nil {
+		return nil, err
+	}
+	defaultRouteCmd := []string{"ip", "route", "show", "0.0.0.0/0"}
+	defaultRoute, err := ExecCommandOnMachineConfigDaemon(&node, defaultRouteCmd)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, networkInterface := range strings.Split(string(networkInterfaces), "\n") {
+		nodeInterface := new(NodeInterface)
+		splitIface := strings.Split(networkInterface, "/")
+		interfaceName := strings.ReplaceAll(splitIface[len(splitIface)-1], "\r", "")
+		nodeInterface.Name = interfaceName
+		if !strings.Contains(networkInterface, "virtual") {
+			nodeInterface.Physical = true
+		}
+		if len(splitIface) > 1 {
+			for _, interfaceInfo := range strings.Split(string(interfaceLinksStatus), "ff:ff:ff:ff:ff:ff") {
+				strippedInterfaceInfo := strings.Split(interfaceInfo, "\n")[1]
+				if strings.Contains(strippedInterfaceInfo, interfaceName) {
+					if strings.Contains(strippedInterfaceInfo, "state UP") {
+						nodeInterface.UP = true
+					}
+					if strings.Contains(strippedInterfaceInfo, "master") {
+						nodeInterface.Bridge = true
+					}
+					if strings.Contains(string(defaultRoute), interfaceName) {
+						nodeInterface.defRoute = true
+					}
+				}
+			}
+		}
+		nodeInterfaces = append(nodeInterfaces, *nodeInterface)
+	}
+	return nodeInterfaces, err
 }
