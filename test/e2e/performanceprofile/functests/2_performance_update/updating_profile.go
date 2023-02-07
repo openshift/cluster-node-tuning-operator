@@ -1349,6 +1349,145 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			}
 		})
 	})
+	Context("[rfe_id:54374][rps_mask] Network Stack Pinning", func() {
+
+		BeforeEach(func() {
+			//Get Latest profile
+			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Backing up the profile")
+			initialProfile = profile.DeepCopy()
+		})
+
+		AfterEach(func() {
+			//Revert the profile
+			profiles.UpdateWithRetry(initialProfile)
+
+			By("Applying changes in performance profile and waiting until mcp will start updating")
+			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+			By("Waiting when mcp finishes updates")
+			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+		})
+
+		It("[test_id:56006]Verify systemd unit file gets updated when the reserved cpus are modified", func() {
+			var reserved, isolated []string
+			var onlineCPUInt int
+			for _, node := range workerRTNodes {
+				onlineCPUCount, err := nodes.ExecCommandOnNode([]string{"nproc", "--all"}, &node)
+				Expect(err).ToNot(HaveOccurred())
+				onlineCPUInt, err = strconv.Atoi(onlineCPUCount)
+				Expect(err).ToNot(HaveOccurred())
+				if onlineCPUInt <= 8 {
+					Skip(fmt.Sprintf("This test needs more than 8 CPUs online to work correctly, current online CPUs are %s", onlineCPUCount))
+				}
+			}
+			//numaNode[node][coreId][core-siblings]
+			var numaCoreSiblings map[int]map[int][]int
+			for _, node := range workerRTNodes {
+				numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
+			}
+			//Lets take reserved cpus from the middle of the cpu list
+			for numaNode := range numaCoreSiblings {
+				coreids := make([]int, 0)
+				for cores := range numaCoreSiblings[numaNode] {
+					coreids = append(coreids, cores)
+				}
+				sort.Ints(coreids)
+				Expect(len(coreids)).ToNot(Equal(0))
+				middleCoreIds := coreids[len(coreids)/2]
+				coresiblings := nodes.GetCpuSiblings(numaCoreSiblings, middleCoreIds)
+				reserved = append(reserved, coresiblings...)
+			}
+			reservedCpus := strings.Join(reserved, ",")
+			for numaNode := range numaCoreSiblings {
+				for coreids := range numaCoreSiblings[numaNode] {
+					coresiblings := nodes.GetCpuSiblings(numaCoreSiblings, coreids)
+					isolated = append(isolated, coresiblings...)
+				}
+			}
+			isolatedCpus := strings.Join(isolated, ",")
+			// Update performance profile
+			reservedSet := performancev2.CPUSet(reservedCpus)
+			isolatedSet := performancev2.CPUSet(isolatedCpus)
+
+			By("Update reserved, isolated parameters")
+			profile.Spec.CPU = &performancev2.CPU{
+				Reserved: &reservedSet,
+				Isolated: &isolatedSet,
+			}
+
+			By("Updating the performance profile")
+			profiles.UpdateWithRetry(profile)
+
+			By("Applying changes in performance profile and waiting until mcp will start updating")
+			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+			By("Waiting for MCP being updated")
+			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
+			//Check RPS Mask after profile is updated with New reserved Cpus
+			expectedRPSCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
+			Expect(err).ToNot(HaveOccurred())
+			for _, node := range workerRTNodes {
+				// Verify the systemd RPS service uses the correct RPS mask
+				var maskContent string
+				cmd := []string{"cat", "/rootfs/etc/systemd/system/update-rps@.service"}
+				unitFileContents, err := nodes.ExecCommandOnNode(cmd, &node)
+				Expect(err).ToNot(HaveOccurred())
+				for _, line := range strings.Split(unitFileContents, "\n") {
+					if strings.Contains(line, "ExecStart=/usr/local/bin/set-rps-mask.sh") {
+						maskContent = line
+					}
+				}
+				rpsMaskContent := strings.TrimSuffix(maskContent, "\r")
+				Expect(len(strings.Split(rpsMaskContent, " "))).To(Equal(3), "systemd unit file doesn't have proper rpsmask")
+				serviceRPSCPUs := strings.Split(rpsMaskContent, " ")[2]
+				rpsCPUs, err := components.CPUMaskToCPUSet(serviceRPSCPUs)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(rpsCPUs).To(Equal(expectedRPSCPUs), "the service rps mask is different from the reserved CPUs")
+
+				// Verify all host network devices have the correct RPS mask
+				cmd = []string{"find", "/rootfs/sys/devices/virtual", "-type", "f", "-name", "rps_cpus", "-exec", "cat", "{}", ";"}
+				devsRPS, err := nodes.ExecCommandOnNode(cmd, &node)
+				Expect(err).ToNot(HaveOccurred())
+				for _, devRPS := range strings.Split(devsRPS, "\n") {
+					rpsCPUs, err = components.CPUMaskToCPUSet(devRPS)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(rpsCPUs).To(Equal(expectedRPSCPUs), "a host device rps mask is different from the reserved CPUs")
+				}
+			}
+		})
+
+		It("[test_id:54191]Verify RPS Mask is not applied when RealtimeHint is disabled", func() {
+			By("Modifying profile")
+			profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+				HighPowerConsumption:  pointer.BoolPtr(false),
+				RealTime:              pointer.BoolPtr(false),
+				PerPodPowerManagement: pointer.BoolPtr(false),
+			}
+
+			profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
+				Enabled: pointer.BoolPtr(false),
+			}
+			By("Updating the performance profile")
+			profiles.UpdateWithRetry(profile)
+
+			By("Applying changes in performance profile and waiting until mcp will start updating")
+			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+			By("Waiting for MCP being updated")
+			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
+			for _, node := range workerRTNodes {
+				// Verify the systemd RPS services were not created
+				cmd := []string{"ls", "/rootfs/etc/systemd/system/update-rps@.service"}
+				_, err := nodes.ExecCommandOnNode(cmd, &node)
+				Expect(err).To(HaveOccurred())
+			}
+		})
+	})
 })
 
 func hugepagesPathForNode(nodeID, sizeINMb int) string {
