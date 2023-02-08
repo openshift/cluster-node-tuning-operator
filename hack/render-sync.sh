@@ -5,9 +5,8 @@ ARTIFACT_DIR=$(mktemp -d)
 
 cd "${WORKDIR}" || { echo "failed to change dir to ${WORKDIR}"; exit; }
 _output/cluster-node-tuning-operator render \
---performance-profile-input-files "${WORKDIR}"/test/e2e/performanceprofile/cluster-setup/manual-cluster/performance/performance_profile.yaml \
---asset-input-dir "${WORKDIR}"/build/assets \
+--asset-input-dir "${WORKDIR}"/test/e2e/performanceprofile/cluster-setup/manual-cluster/performance,"${WORKDIR}"/test/e2e/performanceprofile/cluster-setup/base/performance \
 --asset-output-dir "${ARTIFACT_DIR}"
 
-cp -r "${ARTIFACT_DIR}"/*  "${WORKDIR}"/test/e2e/performanceprofile/testdata/render-expected-output/
+cp "${ARTIFACT_DIR}"/*  "${WORKDIR}"/test/e2e/performanceprofile/testdata/render-expected-output
 rm -r "${ARTIFACT_DIR}"
