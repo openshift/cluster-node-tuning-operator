@@ -1578,6 +1578,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			for _, node := range workerRTNodes {
 				numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
 			}
+			if len(numaCoreSiblings[0]) < 20 {
+				Skip(fmt.Sprintf("This test needs systems with at least 20 cores per socket"))
+			}
 			// Get reserved core siblings from 0, 1
 			for reservedCores := 0; reservedCores < 2; reservedCores++ {
 				// Get the cpu siblings from the selected core and delete the siblings
@@ -1594,9 +1597,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					cores = append(cores, k)
 				}
 				sort.Ints(cores)
-				if len(cores) < 20 {
-					Skip(fmt.Sprintf("This test needs systems with at least 20 cores per socket"))
-				}
 				for i := 0; i < len(cores)/2; i++ {
 					siblings := nodes.GetCpuSiblings(numaCoreSiblings, cores[i])
 					offlined = append(offlined, siblings...)
