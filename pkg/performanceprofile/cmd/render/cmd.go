@@ -16,6 +16,7 @@ limitations under the License.
 package render
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -54,8 +55,8 @@ func NewRenderCommand() *cobra.Command {
 		},
 	}
 
+	addKlogFlags(cmd)
 	renderOpts.AddFlags(cmd.Flags())
-
 	return cmd
 }
 
@@ -86,4 +87,10 @@ func (r *renderOpts) Validate() error {
 
 func (r *renderOpts) Run() error {
 	return render(r.assetsInDir, r.assetsOutDir)
+}
+
+func addKlogFlags(cmd *cobra.Command) {
+	fs := flag.NewFlagSet("", flag.PanicOnError)
+	klog.InitFlags(fs)
+	cmd.Flags().AddGoFlagSet(fs)
 }

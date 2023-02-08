@@ -66,6 +66,7 @@ func render(inputDir, outputDir string) error {
 
 	// Read asset directory fileInfo
 	filePaths, err := listFiles(inputDir)
+	klog.V(4).Infof("listed files: %v", filePaths)
 	if err != nil {
 		return err
 	}
@@ -115,6 +116,9 @@ func render(inputDir, outputDir string) error {
 		}
 	}
 
+	if len(perfProfiles) == 0 {
+		klog.Warning("zero performance profiles were found")
+	}
 	for _, pp := range perfProfiles {
 		mcp, err := selectMachineConfigPool(pools, pp.Spec.NodeSelector)
 		if err != nil {
