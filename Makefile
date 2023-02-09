@@ -104,6 +104,8 @@ test-e2e-local: $(BINDATA) performance-profile-creator-tests
 	  $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.no-color -ginkgo.fail-fast || exit; \
 	done
 
+update-manifests: update-codegen-crds update-profile-manifests
+
 verify:	verify-gofmt
 
 verify-gofmt:
@@ -134,7 +136,7 @@ local-image:
 local-image-push:
 	$(IMAGE_PUSH_CMD) $(IMAGE_PUSH_EXTRA_OPTS) $(IMAGE)
 
-# This will generate and patch the CRDs. To update the CRDs, run make update-codegen-crds.
+# This will generate and patch the CRDs. To update the CRDs, run "make update-codegen-crds".
 # $1 - target name
 # $2 - apis
 # $3 - manifests
@@ -142,7 +144,8 @@ local-image-push:
 $(call add-crd-gen,tuned,./$(API_TYPES_DIR)/tuned/v1,./manifests,./manifests)
 $(call add-crd-gen,performanceprofile,$(PAO_CRD_APIS),./manifests,./manifests)
 
-# This will include additional actions on the update and verify targets to ensure that profile patches are applied
+# This will include additional actions on the update and verify targets to ensure that profile patches are applied.
+# To update the manifests, run "make update-profile-manifests".
 # to manifest files
 # $0 - macro name
 # $1 - target name
@@ -150,7 +153,7 @@ $(call add-crd-gen,performanceprofile,$(PAO_CRD_APIS),./manifests,./manifests)
 # $3 - manifests directory
 $(call add-profile-manifests,manifests,./profile-patches,./manifests)
 
-.PHONY: all build deepcopy crd-schema-gen test-e2e verify verify-gofmt clean local-image local-image-push
+.PHONY: all build deepcopy crd-schema-gen test-e2e update-manifests verify verify-gofmt clean local-image local-image-push
 
 # PAO
 
