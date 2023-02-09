@@ -6,10 +6,14 @@ import threading
 import signal
 import tuned.logs
 import tuned.consts as consts
+import traceback
+import logging
 from inspect import ismethod
 from tuned.utils.polkit import polkit
 from gi.repository import GLib
 from types import FunctionType
+from dbus.exceptions import DBusException
+from dbus.lowlevel import ErrorMessage
 
 try:
 	# Python3 version
@@ -26,6 +30,29 @@ except ImportError:
 
 log = tuned.logs.get()
 
+# This is mostly copy of the code from the dbus.service module without the
+# code that sends tracebacks through the D-Bus (i.e. no library tracebacks
+# are exposed on the D-Bus now).
+def _method_reply_error(connection, message, exception):
+    name = getattr(exception, '_dbus_error_name', None)
+
+    if name is not None:
+        pass
+    elif getattr(exception, '__module__', '') in ('', '__main__'):
+        name = 'org.freedesktop.DBus.Python.%s' % exception.__class__.__name__
+    else:
+        name = 'org.freedesktop.DBus.Python.%s.%s' % (exception.__module__, exception.__class__.__name__)
+
+    if isinstance(exception, DBusException):
+        contents = exception.get_dbus_message()
+    else:
+        contents = ''.join(traceback.format_exception_only(exception.__class__,
+            exception))
+    reply = ErrorMessage(message, name, contents)
+
+    if not message.get_no_reply():
+        connection.send_message(reply)
+
 class DBusExporter(interfaces.ExporterInterface):
 	"""
 	Export method calls through DBus Interface.
@@ -37,6 +64,14 @@ class DBusExporter(interfaces.ExporterInterface):
 	"""
 
 	def __init__(self, bus_name, interface_name, object_name):
+		# Monkey patching of the D-Bus library _method_reply_error() to reply
+		# tracebacks via D-Bus only if in the debug mode. It doesn't seem there is a
+		# more simple way how to cover all possible exceptions that could occur in
+		# the D-Bus library. Just setting the exception.include_traceback to False doesn't
+		# seem to help because there is only a subset of exceptions that support this flag.
+		if log.getEffectiveLevel() != logging.DEBUG:
+			dbus.service._method_reply_error = _method_reply_error
+
 		dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 
 		self._dbus_object_cls = None
@@ -97,22 +132,23 @@ class DBusExporter(interfaces.ExporterInterface):
 		def wrapper(owner, *args, **kwargs):
 			action_id = consts.NAMESPACE + "." + method.__name__
 			caller = args[-1]
-			log.debug("checking authorization for for action '%s' requested by caller '%s'" % (action_id, caller))
+			log.debug("checking authorization for action '%s' requested by caller '%s'" % (action_id, caller))
 			ret = self._polkit.check_authorization(caller, action_id)
+			args_copy = args
 			if ret == 1:
 					log.debug("action '%s' requested by caller '%s' was successfully authorized by polkit" % (action_id, caller))
 			elif ret == 2:
 					log.warn("polkit error, but action '%s' requested by caller '%s' was successfully authorized by fallback method" % (action_id, caller))
 			elif ret == 0:
 					log.info("action '%s' requested by caller '%s' wasn't authorized, ignoring the request" % (action_id, caller))
-					args[-1] = ""
+					args_copy = list(args[:-1]) + [""]
 			elif ret == -1:
 				log.warn("polkit error and action '%s' requested by caller '%s' wasn't authorized by fallback method, ignoring the request" % (action_id, caller))
-				args[-1] = ""
+				args_copy = list(args[:-1]) + [""]
 			else:
 				log.error("polkit error and unable to use fallback method to authorize action '%s' requested by caller '%s', ignoring the request" % (action_id, caller))
-				args[-1] = ""
-			return method(*args, **kwargs)
+				args_copy = list(args[:-1]) + [""]
+			return method(*args_copy, **kwargs)
 
 		wrapper = self._prepare_for_dbus(method, wrapper)
 		wrapper = dbus.service.method(self._interface_name, in_signature, out_signature, sender_keyword = "caller")(wrapper)
