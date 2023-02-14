@@ -436,14 +436,19 @@ func GetByCpuCapacity(nodesList []corev1.Node, cpuQty int) []corev1.Node {
 // Also updates the map by deleting the cpu siblings returned
 func GetCpuSiblings(numaCoreSiblings map[int]map[int][]int, coreKey int) []string {
 	var cpuSiblings []string
-	var numanode int
+	// key here is Numa node id
 	for key := range numaCoreSiblings {
-		for _, sibling := range numaCoreSiblings[key][coreKey] {
-			cpuSiblings = append(cpuSiblings, strconv.Itoa(sibling))
-			numanode = key
+		_, ok := numaCoreSiblings[key][coreKey]
+		// if coreId exists
+		if ok {
+			for _, sibling := range numaCoreSiblings[key][coreKey] {
+				cpuSiblings = append(cpuSiblings, strconv.Itoa(sibling))
+			}
+			// Delete the cpusiblings of that particular coreid
+			// map is now updated with used cores
+			delete(numaCoreSiblings[key], coreKey)
 		}
 	}
-	delete(numaCoreSiblings[numanode], coreKey)
 	return cpuSiblings
 }
 
