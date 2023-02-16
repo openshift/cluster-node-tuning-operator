@@ -41,6 +41,7 @@ const (
 	scApplied Bits = 1 << iota
 	scWarn
 	scError
+	scSysctlOverride
 	scTimeout
 	scUnknown
 )
@@ -499,6 +500,30 @@ func tunedRecommendFileWrite(profileName string) error {
 	return nil
 }
 
+// isSysctlOverride returns name of a host-level sysctl that overrides TuneD-level sysctl,
+// or an empty string.
+func overridenSysctl(data string) string {
+	// Example log line to parse:
+	// 2023-02-10 12:57:13,201 INFO     tuned.plugins.plugin_sysctl: Overriding sysctl parameter 'fs.inotify.max_user_instances' from '4096' to '8192'
+	var (
+		overridenSysctl = ""
+	)
+	const (
+		key = "tuned.plugins.plugin_sysctl: Overriding sysctl parameter '"
+	)
+	i := strings.Index(data, key)
+	if i == -1 {
+		return ""
+	}
+	i += len(key)
+	slice := strings.Split(data[i:], "'")
+	if slice[2] != slice[4] {
+		overridenSysctl = slice[0]
+	}
+
+	return overridenSysctl
+}
+
 func (c *Controller) tunedCreateCmd() *exec.Cmd {
 	args := []string{"--no-dbus"}
 	if c.daemon.debug {
@@ -556,6 +581,12 @@ func (c *Controller) tunedRun() {
 			if strIndex >= 0 {
 				c.daemon.status |= scError
 				c.daemon.stderr = l[strIndex:] // trim timestamp from log
+			}
+
+			sysctl := overridenSysctl(l)
+			if sysctl != "" {
+				c.daemon.status |= scSysctlOverride
+				c.daemon.stderr = sysctl
 			}
 
 			if c.daemon.reloading {
@@ -912,8 +943,10 @@ func (c *Controller) updateTunedProfile() (err error) {
 	}
 
 	statusConditions := computeStatusConditions(c.daemon.status, c.daemon.stderr, profile.Status.Conditions)
+	annotationsChanged := profile.ObjectMeta.Annotations == nil ||
+		profile.ObjectMeta.Annotations[tunedv1.GeneratedByOperandVersionAnnotationKey] != os.Getenv("RELEASE_VERSION")
 
-	if profile.Status.Bootcmdline == bootcmdline &&
+	if profile.Status.Bootcmdline == bootcmdline && !annotationsChanged &&
 		profile.Status.TunedProfile == activeProfile && conditionsEqual(profile.Status.Conditions, statusConditions) {
 		// Do not update node Profile unnecessarily (e.g. bootcmdline did not change).
 		// This will save operator CPU cycles trying to reconcile objects that do not
