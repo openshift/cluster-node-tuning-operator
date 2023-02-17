@@ -68,6 +68,11 @@ rules:
 - apiGroups: ["config.openshift.io"]
   resources: ["clusteroperators/status","clusteroperators/finalizers"]
   verbs: ["update"]
+# Needed to support upgrades for SingleNode from 4.12 -> 4.13 for CPUPartitioning
+# TODO: Re-evaluate need after 4.13 when SingleNode clusters will be updated to the new CPUPartitioning method.
+- apiGroups: ["config.openshift.io"]
+  resources: ["infrastructures/status"]
+  verbs: ["update"]
 # Needed by the core operator functionality.
 - apiGroups: ["machineconfiguration.openshift.io"]
   resources: ["kubeletconfigs", "machineconfigs"]

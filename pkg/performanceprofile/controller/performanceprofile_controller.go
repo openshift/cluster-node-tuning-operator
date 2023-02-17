@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"time"
 
+	apiconfigv1 "github.com/openshift/api/config/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
@@ -200,6 +201,19 @@ func (r *PerformanceProfileReconciler) tunedProfileToPerformanceProfile(tunedPro
 	return requests
 }
 
+func (r *PerformanceProfileReconciler) getInfraPartitioningMode() (pinning apiconfigv1.CPUPartitioningMode, err error) {
+	key := types.NamespacedName{
+		Name: "cluster",
+	}
+	infra := &apiconfigv1.Infrastructure{}
+
+	if err = r.Client.Get(context.Background(), key, infra); err != nil {
+		return
+	}
+
+	return infra.Status.CPUPartitioning, nil
+}
+
 func validateUpdateEvent(e *event.UpdateEvent) bool {
 	if e.ObjectOld == nil {
 		klog.Error("Update event has no old runtime object to update")
@@ -308,8 +322,12 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
+	pinningMode, err := r.getInfraPartitioningMode()
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 	// apply components
-	result, err := r.applyComponents(instance, profileMCP)
+	result, err := r.applyComponents(instance, profileMCP, &pinningMode)
 	if err != nil {
 		klog.Errorf("failed to deploy performance profile %q components: %v", instance.Name, err)
 		r.Recorder.Eventf(instance, corev1.EventTypeWarning, "Creation failed", "Failed to create all components: %v", err)
@@ -380,13 +398,13 @@ func (r *PerformanceProfileReconciler) updateDegradedCondition(instance *perform
 	return reconcile.Result{}, conditionError
 }
 
-func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.PerformanceProfile, profileMCP *mcov1.MachineConfigPool) (*reconcile.Result, error) {
+func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.PerformanceProfile, profileMCP *mcov1.MachineConfigPool, pinningMode *apiconfigv1.CPUPartitioningMode) (*reconcile.Result, error) {
 	if profileutil.IsPaused(profile) {
 		klog.Infof("Ignoring reconcile loop for pause performance profile %s", profile.Name)
 		return nil, nil
 	}
 
-	components, err := manifestset.GetNewComponents(profile, profileMCP)
+	components, err := manifestset.GetNewComponents(profile, profileMCP, pinningMode)
 	if err != nil {
 		return nil, err
 	}

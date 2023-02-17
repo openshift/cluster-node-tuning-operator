@@ -27,6 +27,7 @@ import (
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,10 +41,15 @@ import (
 	"k8s.io/klog"
 )
 
+const (
+	clusterConfigResourceName = "cluster"
+)
+
 var (
-	manifestScheme = runtime.NewScheme()
-	codecFactory   serializer.CodecFactory
-	runtimeDecoder runtime.Decoder
+	manifestScheme  = runtime.NewScheme()
+	codecFactory    serializer.CodecFactory
+	runtimeDecoder  runtime.Decoder
+	defaultMCPNames = []string{"master", "worker"}
 )
 
 func init() {
@@ -79,7 +85,8 @@ func render(inputDir, outputDir string) error {
 
 	var (
 		perfProfiles []*performancev2.PerformanceProfile
-		pools        []*mcfgv1.MachineConfigPool
+		mcPools      []*mcfgv1.MachineConfigPool
+		infra        *apicfgv1.Infrastructure
 	)
 	// Iterate through the file paths and read in desired files
 	for _, path := range filePaths {
@@ -109,7 +116,11 @@ func render(inputDir, outputDir string) error {
 			case *performancev2.PerformanceProfile:
 				perfProfiles = append(perfProfiles, obj)
 			case *mcfgv1.MachineConfigPool:
-				pools = append(pools, obj)
+				mcPools = append(mcPools, obj)
+			case *apicfgv1.Infrastructure:
+				if obj.Name == clusterConfigResourceName {
+					infra = obj
+				}
 			default:
 				klog.Infof("skipping %q [%d] manifest because of unhandled %T", file.Name(), idx+1, obji)
 			}
@@ -119,13 +130,30 @@ func render(inputDir, outputDir string) error {
 	if len(perfProfiles) == 0 {
 		klog.Warning("zero performance profiles were found")
 	}
+
+	var pinnedMode *apicfgv1.CPUPartitioningMode
+	if infra != nil {
+		pinnedMode = &infra.Status.CPUPartitioning
+	}
+
+	if err := genBootstrapWorkloadPinningManifests(pinnedMode, outputDir, defaultMCPNames...); err != nil {
+		return err
+	}
+
+	// If the user supplies extra machine pools, we ingest them here
+	for _, pool := range mcPools {
+		if err := genBootstrapWorkloadPinningManifests(pinnedMode, outputDir, pool.Name); err != nil {
+			return err
+		}
+	}
+
 	for _, pp := range perfProfiles {
-		mcp, err := selectMachineConfigPool(pools, pp.Spec.NodeSelector)
+		mcp, err := selectMachineConfigPool(mcPools, pp.Spec.NodeSelector)
 		if err != nil {
 			return err
 		}
 
-		components, err := manifestset.GetNewComponents(pp, mcp)
+		components, err := manifestset.GetNewComponents(pp, mcp, pinnedMode)
 		if err != nil {
 			return err
 		}
@@ -162,7 +190,45 @@ func render(inputDir, outputDir string) error {
 			if err != nil {
 				return err
 			}
+			klog.Info(fileName)
 		}
+	}
+
+	return nil
+}
+
+// genBootstrapWorkloadPinningManifests is used to generate the appropriate bootstrap workload pinning manifests
+// based on the cluster CPU Partitioning Mode and the given MachineConfigPool names. The created manifests are the
+// default state configs for the node which make no assumption for which CPU's are used for workload pinning.
+//
+// The generated manifests will not be owned by a PerformanceProfile and serve as the default state when a PerformanceProfile
+// does not exist on a CPU partitioned cluster. The manifests will have a name of 01-<mcp role>-cpu-partitioning, meaning they will
+// be in lower lexical order. This is done with the intention that when a PerformanceProfile is created those values will take higher
+// priority and override the values in this file. This file is intended to always be present in a CPU Partitioned cluster.
+// Since we currently do not support a user reverting a CPU partitioned cluster to a regular cluster, in the event that a
+// PerformanceProfile does not exist, these manifests will be the fallback.
+func genBootstrapWorkloadPinningManifests(partitioningMode *apicfgv1.CPUPartitioningMode, outputDir string, mcpNames ...string) error {
+	if partitioningMode == nil || *partitioningMode != apicfgv1.CPUPartitioningAllNodes {
+		return nil
+	}
+
+	for _, name := range mcpNames {
+		mc, err := machineconfig.BootstrapWorkloadPinningMC(name, partitioningMode)
+		if err != nil {
+			return err
+		}
+
+		b, err := yaml.Marshal(mc)
+		if err != nil {
+			return err
+		}
+
+		fileName := fmt.Sprintf("01_%s_workload_pinning_%s.yaml", mc.Name, strings.ToLower(mc.Kind))
+		err = os.WriteFile(filepath.Join(outputDir, fileName), b, 0644)
+		if err != nil {
+			return err
+		}
+		klog.Info(fileName)
 	}
 
 	return nil

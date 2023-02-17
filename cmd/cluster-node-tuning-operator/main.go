@@ -12,16 +12,19 @@ import (
 	performancev1alpha1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v1alpha1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	paocontroller "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	olmoperators "github.com/operator-framework/api/pkg/operators/install"
 	olmv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -135,6 +138,10 @@ func operatorRun() {
 		if err := removePerformanceOLMOperator(restConfig); err != nil {
 			klog.Fatalf("unable to remove Performance addons OLM operator: %v", err)
 		}
+	}
+
+	if err := migratePinnedSingleNodeInfraStatus(restConfig, scheme); err != nil {
+		klog.Fatalf("unable to migrate pinned single node infra status: %v", err)
 	}
 
 	controller, err := operator.NewController()
@@ -255,6 +262,64 @@ func removePerformanceOLMOperator(cfg *rest.Config) error {
 			}
 		}
 	}
+	return nil
+}
+
+// During upgrade from 4.12 -> 4.13, this logic will update the authoritative flag in the new
+// Infrastructures.Status.CPUPartitioning to migrate Single Node clusters to the new method.
+// TODO: Revisit after 4.13 to remove logic when no longer needed.
+func migratePinnedSingleNodeInfraStatus(cfg *rest.Config, scheme *apiruntime.Scheme) error {
+	k8sclient, err := client.New(cfg, client.Options{Scheme: scheme})
+	if err != nil {
+		return err
+	}
+
+	key := types.NamespacedName{
+		Name: "cluster",
+	}
+	infra := &apiconfigv1.Infrastructure{}
+	if err := k8sclient.Get(context.Background(), key, infra); err != nil {
+		return err
+	}
+
+	// If partitioning is on, we don't need to do anymore checks
+	if infra.Status.CPUPartitioning != apiconfigv1.CPUPartitioningNone {
+		return nil
+	}
+
+	// If we are in single node we need to do another check for upgrades from 4.12
+	// this should only be triggered during the first upgrade
+	if infra.Status.ControlPlaneTopology == apiconfigv1.SingleReplicaTopologyMode {
+		nodes := &corev1.NodeList{}
+		if err := k8sclient.List(context.Background(), nodes); err != nil {
+			return err
+		}
+		foundPinningCapacity := false
+		for _, node := range nodes.Items {
+			// Since we're in single node mode, we break early.
+			if _, ok := node.Status.Allocatable[corev1.ResourceName("management.workload.openshift.io/cores")]; ok {
+				foundPinningCapacity = true
+				break
+			}
+		}
+		if foundPinningCapacity {
+			ctx := context.Background()
+			pinning := apiconfigv1.CPUPartitioningAllNodes
+			infraCopy := infra.DeepCopy()
+			infraCopy.Status.CPUPartitioning = pinning
+			mc, err := machineconfig.BootstrapWorkloadPinningMC("master", &pinning)
+			if err != nil {
+				return err
+			}
+			// If the bootstrap MC already exists or the error is nil,
+			// we continue with updating the infra status
+			err = k8sclient.Create(ctx, mc)
+			if errors.IsAlreadyExists(err) || err == nil {
+				return k8sclient.Status().Update(ctx, infraCopy)
+			}
+		}
+	}
+
 	return nil
 }
 

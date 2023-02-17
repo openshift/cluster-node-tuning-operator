@@ -1,0 +1,10 @@
+{{- /* 
+File Location On Host: /etc/kubernetes/openshift-workload-pinning 
+*/}}
+{{- if . }}
+{
+  "{{ .Workload }}": {
+    "cpuset": "{{ .ReservedCpus}}"
+  }
+}
+{{- end}}

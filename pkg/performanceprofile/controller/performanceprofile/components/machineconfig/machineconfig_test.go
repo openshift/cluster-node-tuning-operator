@@ -1,17 +1,23 @@
 package machineconfig
 
 import (
+	"errors"
 	"fmt"
+	"regexp"
 
 	"k8s.io/utils/pointer"
 
 	"github.com/ghodss/yaml"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/types"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	testutils "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/utils/testing"
 )
+
+var spaceRegex = regexp.MustCompile(`\s*`)
 
 const hugepagesAllocationService = `
       - contents: |
@@ -79,7 +85,7 @@ var _ = Describe("Machine Config", func() {
 			profile := testutils.NewPerformanceProfile("test")
 			profile.Spec.HugePages.Pages[0].Node = pointer.Int32Ptr(0)
 
-			_, err := New(profile)
+			_, err := New(profile, nil)
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
@@ -92,7 +98,7 @@ var _ = Describe("Machine Config", func() {
 			profile.Spec.HugePages.Pages[0].Node = pointer.Int32Ptr(0)
 
 			labelKey, labelValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigLabel)
-			mc, err := New(profile)
+			mc, err := New(profile, nil)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(mc.Spec.KernelType).To(Equal(MCKernelRT))
 
@@ -150,3 +156,79 @@ WantedBy=multi-user.target
 		})
 	})
 })
+
+var _ = Describe("Pinning Config", func() {
+	type test struct {
+		desc        string
+		src         string
+		cpuSet      *performancev2.CPU
+		expected    string
+		expectedErr types.GomegaMatcher
+	}
+
+	var testCases []test
+	testCases = append(testCases, test{
+		desc: "pinned workloads infrastructure, should render pinned crio config",
+		src:  crioPartitioningConfig,
+		cpuSet: &performancev2.CPU{
+			Reserved: cpuSetRef("0-1"),
+			Isolated: cpuSetRef("2-3"),
+		},
+		expected: `
+			[crio.runtime.workloads.management]
+			activation_annotation = "target.workload.openshift.io/management"
+			annotation_prefix = "resources.workload.openshift.io"
+			resources = { "cpushares" = 0, "cpuset" = "0-1" }
+			`,
+	})
+	testCases = append(testCases, test{
+		desc: "pinned workloads infrastructure, should render openshift pinning config",
+		src:  ocpPartitioningConfig,
+		cpuSet: &performancev2.CPU{
+			Reserved: cpuSetRef("0-1"),
+			Isolated: cpuSetRef("2-3"),
+		},
+		expected: `
+			{
+				"management": {
+					"cpuset": "0-1"
+				}
+			}
+			`,
+	})
+	testCases = append(testCases, test{
+		desc:        "should fail when CPUSet is nil",
+		src:         ocpPartitioningConfig,
+		cpuSet:      nil,
+		expectedErr: Equal(errors.New("cpu value is required, skipping generating file")),
+	})
+
+	Describe("Pinning Config", func() {
+		for _, t := range testCases {
+			tc := t
+			When(tc.desc, func() {
+				It("should match expected", func() {
+					f, err := renderManagementCPUPinningConfig(tc.cpuSet, tc.src)
+					if tc.expectedErr == nil {
+						tc.expectedErr = BeNil()
+					}
+					Expect(err).Should(tc.expectedErr)
+
+					result := removeAllWhiteSpace(string(f))
+					expected := removeAllWhiteSpace(tc.expected)
+
+					Expect(result).To(Equal(expected))
+				})
+			})
+		}
+	})
+})
+
+func removeAllWhiteSpace(str string) string {
+	return spaceRegex.ReplaceAllString(str, "")
+}
+
+func cpuSetRef(set string) *performancev2.CPUSet {
+	re := performancev2.CPUSet(set)
+	return &re
+}

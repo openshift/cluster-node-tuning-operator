@@ -332,7 +332,7 @@ var _ = Describe("Controller", func() {
 			BeforeEach(func() {
 				var err error
 
-				mc, err = machineconfig.New(profile)
+				mc, err = machineconfig.New(profile, nil)
 				Expect(err).ToNot(HaveOccurred())
 
 				mcpSelectorKey, mcpSelectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
@@ -780,7 +780,7 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should remove all components and remove the finalizer on first reconcile loop", func() {
-			mc, err := machineconfig.New(profile)
+			mc, err := machineconfig.New(profile, nil)
 			Expect(err).ToNot(HaveOccurred())
 
 			mcpSelectorKey, mcpSelectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)

@@ -1,6 +1,7 @@
 package manifestset
 
 import (
+	apiconfigv1 "github.com/openshift/api/config/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/kubeletconfig"
@@ -49,10 +50,10 @@ func (ms *ManifestResultSet) ToManifestTable() ManifestTable {
 }
 
 // GetNewComponents return a list of all component's instances that should be created according to profile
-func GetNewComponents(profile *performancev2.PerformanceProfile, profileMCP *mcov1.MachineConfigPool) (*ManifestResultSet, error) {
+func GetNewComponents(profile *performancev2.PerformanceProfile, profileMCP *mcov1.MachineConfigPool, pinningMode *apiconfigv1.CPUPartitioningMode) (*ManifestResultSet, error) {
 	machineConfigPoolSelector := profilecomponent.GetMachineConfigPoolSelector(profile, profileMCP)
 
-	mc, err := machineconfig.New(profile)
+	mc, err := machineconfig.New(profile, pinningMode)
 	if err != nil {
 		return nil, err
 	}
