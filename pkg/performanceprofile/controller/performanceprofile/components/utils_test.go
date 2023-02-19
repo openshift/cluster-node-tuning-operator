@@ -32,7 +32,7 @@ func intersectHelper(cpuListA, cpuListB string) ([]int, error) {
 
 var _ = Describe("Components utils", func() {
 	Context("Convert CPU list to CPU mask", func() {
-		It("should generate a valid CPU mask from CPU list ", func() {
+		It("should generate a valid CPU mask from CPU list", func() {
 			for _, cpuEntry := range cpuListToMask {
 				cpuMask, err := CPUListToMaskList(cpuEntry.cpuList)
 				Expect(err).ToNot(HaveOccurred())
@@ -42,7 +42,7 @@ var _ = Describe("Components utils", func() {
 	})
 
 	Context("Convert CPU mask to CPU list", func() {
-		It("should generate a valid CPU list from CPU mask ", func() {
+		It("should generate a valid CPU list from CPU mask", func() {
 			for _, cpuEntry := range cpuListToMask {
 				cpuSetFromList, err := cpuset.Parse(cpuEntry.cpuList)
 				Expect(err).ToNot(HaveOccurred())
