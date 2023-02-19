@@ -92,7 +92,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", func() {
 	})
 
 	Context("Updating performance profile for netqueues", func() {
-		It("[test_id:40308][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Network device queues Should be set to the profile's reserved CPUs count ", func() {
+		It("[test_id:40308][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Network device queues Should be set to the profile's reserved CPUs count", func() {
 			nodesDevices := make(map[string]map[string]int)
 			if profile.Spec.Net != nil {
 				if profile.Spec.Net.UserLevelNetworking != nil && *profile.Spec.Net.UserLevelNetworking && len(profile.Spec.Net.Devices) == 0 {
