@@ -1299,7 +1299,7 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Functions getCPUsSplitA
 			Expect(err).ToNot(HaveOccurred())
 			Expect(isolatedCPUSet.String()).To(Equal("10-39,50-79"))
 		})
-		It("Ensure reserved and isolated CPUs populated are correctly by getCPUsSplitAcrossNUMAwhen when splitReservedCPUsAcrossNUMA is enabled and htEnabled is disabled ", func() {
+		It("Ensure reserved and isolated CPUs populated are correctly by getCPUsSplitAcrossNUMAwhen when splitReservedCPUsAcrossNUMA is enabled and htEnabled is disabled", func() {
 			reservedCPUCount = 20 // random number, no special meaning
 			offlinedCPUs := cpuset.CPUSet{}
 			htEnabled = false
