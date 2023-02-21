@@ -192,7 +192,7 @@ class commands:
 						data += "\n"
 					data += "%s=\"%s\"\n" % (o, v)
 			else:
-				data = re.sub(r"\b(" + o + r"\s*=).*$", r"\1" + "\"" + v + "\"", data, flags = re.MULTILINE)
+				data = re.sub(r"\b(" + o + r"\s*=).*$", r"\1" + "\"" + self.escape(v) + "\"", data, flags = re.MULTILINE)
 
 		return self.write_to_file(f, data)
 
@@ -295,14 +295,18 @@ class commands:
 	# to be separated by ",,", e.g.: 0-3, 0xf,, 6. It also supports negation
 	# cpus by specifying "^" or "!", e.g.: 0-5, ^3, will output the list as
 	# "0,1,2,4,5" (excluding 3). Note: negation supports only cpu numbers.
-	def cpulist_unpack(self, l):
+	# If "strip_chars" is not None and l is not list, we try strip characters.
+	# It should be string with list of chars that is send to string.strip method
+	# Default is english single and double quotes ("') rhbz#1891036
+	def cpulist_unpack(self, l, strip_chars='\'"'):
 		rl = []
 		if l is None:
 			return l
-		if type(l) is list:
-			ll = l
-		else:
-			ll = str(l).split(",")
+		ll = l
+		if type(ll) is not list:
+			if strip_chars is not None:
+				ll = str(ll).strip(strip_chars)
+			ll = str(ll).split(",")
 		ll2 = []
 		negation_list = []
 		hexmask = False
@@ -410,8 +414,20 @@ class commands:
 			m |= pow(2, v)
 		return m
 
-	def cpulist2string(self, l):
-		return ",".join(str(v) for v in l)
+	def cpulist2string(self, l, prefix = ""):
+		return ",".join((prefix + str(v)) for v in l)
+
+	# Converts string s consisting of "dev1,dev2,dev3,..." to list ["dev1", "dev2, "dev3", ...],
+	# whitespaces are ignored, cpu lists are supported with the prefix "cpulist:", e.g.
+	# "cpulist:0-2,4" is converted to ["cpu0", "cpu1", "cpu2", "cpu4"]. If device name starts
+	# with "cpulist:" write it as "cpulist:cpulist:". Escape commas in name with the "\,".
+	def devstr2devs(self, s):
+		if s[0:8].lower() == "cpulist:":
+			s = s[8:]
+			if s[0:8].lower() != "cpulist:":
+				return [("cpu" + str(v)) for v in self.cpulist_unpack(s)]
+		l = re.split(r"\s*(?<!\\),\s*", s)
+		return [str(v).replace("\,", ",") for v in l]
 
 	# Do not make balancing on patched Python 2 interpreter (rhbz#1028122).
 	# It means less CPU usage on patchet interpreter. On non-patched interpreter

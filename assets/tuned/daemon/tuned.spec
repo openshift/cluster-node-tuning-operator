@@ -44,7 +44,7 @@
 
 Summary: A dynamic adaptive system tuning daemon
 Name: tuned
-Version: 2.18.0
+Version: 2.20.0
 Release: 1%{?prerel1}%{?with_snapshot:.%{git_suffix}}%{?dist}
 License: GPLv2+
 Source0: https://github.com/redhat-performance/%{name}/archive/v%{version}%{?prerel2}/%{name}-%{version}%{?prerel2}.tar.gz
@@ -89,10 +89,11 @@ Requires: virt-what, ethtool, gawk
 Requires: util-linux, dbus, polkit
 %if 0%{?fedora} > 22 || 0%{?rhel} > 7
 Recommends: dmidecode
-Recommends: hdparm
+# i686 excluded
 Recommends: kernel-tools
-Recommends: kmod
-Recommends: iproute
+Requires: hdparm
+Requires: kmod
+Requires: iproute
 %endif
 # syspurpose
 %if 0%{?rhel} > 8
@@ -213,7 +214,6 @@ Summary: Additional tuned profile(s) targeted to Network Function Virtualization
 Requires: %{name} = %{version}
 Requires: %{name}-profiles-realtime = %{version}
 Requires: tuna
-Requires: nmap-ncat
 
 %description profiles-nfv-host
 Additional tuned profile(s) targeted to Network Function Virtualization (NFV) host.
@@ -405,6 +405,7 @@ fi
 %exclude %{_sysconfdir}/tuned/realtime-virtual-guest-variables.conf
 %exclude %{_sysconfdir}/tuned/realtime-virtual-host-variables.conf
 %exclude %{_sysconfdir}/tuned/cpu-partitioning-variables.conf
+%exclude %{_sysconfdir}/tuned/cpu-partitioning-powersave-variables.conf
 %exclude %{_prefix}/lib/tuned/default
 %exclude %{_prefix}/lib/tuned/desktop-powersave
 %exclude %{_prefix}/lib/tuned/laptop-ac-powersave
@@ -422,6 +423,7 @@ fi
 %exclude %{_prefix}/lib/tuned/realtime-virtual-guest
 %exclude %{_prefix}/lib/tuned/realtime-virtual-host
 %exclude %{_prefix}/lib/tuned/cpu-partitioning
+%exclude %{_prefix}/lib/tuned/cpu-partitioning-powersave
 %exclude %{_prefix}/lib/tuned/spectrumscale-ece
 %exclude %{_prefix}/lib/tuned/postgresql
 %exclude %{_prefix}/lib/tuned/openshift
@@ -523,7 +525,9 @@ fi
 
 %files profiles-cpu-partitioning
 %config(noreplace) %{_sysconfdir}/tuned/cpu-partitioning-variables.conf
+%config(noreplace) %{_sysconfdir}/tuned/cpu-partitioning-powersave-variables.conf
 %{_prefix}/lib/tuned/cpu-partitioning
+%{_prefix}/lib/tuned/cpu-partitioning-powersave
 %{_mandir}/man7/tuned-profiles-cpu-partitioning.7*
 
 %files profiles-spectrumscale
@@ -551,6 +555,66 @@ fi
 %{_mandir}/man7/tuned-profiles-openshift.7*
 
 %changelog
+* Fri Feb 17 2023 Jaroslav Škarvada <jskarvad@redhat.com> - 2.20.0-1
+- new release
+  - rebased tuned to latest upstream
+    related: rhbz#2133815
+  - fixed possible traceback on SIGHUP
+    resolves: rhbz#2169712
+  - updated manual pages to be consistent
+  - tuned-adm: better error message for unauthorized switch_profile
+  - plugin_sysctl: report reapplied sysctls only on different values
+
+* Wed Feb  8 2023 Jaroslav Škarvada <jskarvad@redhat.com> - 2.20.0-0.1.rc1
+- new release
+  - rebased tuned to latest upstream
+    resolves: rhbz#2133815
+  - systemd: relax polkit requirement
+    resolves: rhbz#2065591
+  - sysvinit: fixed path
+    resolves: rhbz#2118301
+  - plugin_cpu: added support for pm_qos_resume_latency_us
+    resolves: rhbz#2118786
+  - do not exit on duplicate config lines
+    resolves: rhbz#2071418
+  - profiles: new cpu-partitioning-powersave profile
+  - profiles: new profile for AWS EC2
+    resolves: rhbz#1935848
+  - API: add support for moving devices between instances
+    resolves: rhbz#2113925
+  - D-Bus: send tracebacks through D-Bus only in debug mode
+    resolves: rhbz#2159680
+  - Makefile: added fix for python-3.12
+    resolves: rhbz#2154801
+  - throughput-performance: set net.core.somaxconn to at least 2048
+    resolves: rhbz#1998310
+  - plugin_scheduler: do not leak FDs from the perf
+    resolves: rhbz#2080227
+  - plugin_cpu: added support for intel_pstate scaling driver
+    resolves: rhbz#2095829
+  - added support for the API access through the Unix Domain Socket
+    resolves: rhbz#2113900
+
+* Fri Aug 19 2022 Jaroslav Škarvada <jskarvad@redhat.com> - 2.19.0-1
+- new release
+  - rebased tuned to latest upstream
+    related: rhbz#2057609
+
+* Tue Aug  9 2022 Jaroslav Škarvada <jskarvad@redhat.com> - 2.19.0-0.1.rc1
+- new release
+  - rebased tuned to latest upstream
+    resolves: rhbz#2057609
+  - fixed parsing of inline comments
+    resolves: rhbz#2060138
+  - added support for quotes in isolated_cores specification
+    resolves: rhbz#1891036
+  - spec: reduced weak dependencies
+    resolves: rhbz#2093841
+  - recommend: do not ignore syspurpose_role if there is no syspurpose
+    resolves: rhbz#2030580
+  - added support for initial autosetup of isolated_cores
+    resolves: rhbz#2093847
+
 * Wed Feb  9 2022 Jaroslav Škarvada <jskarvad@redhat.com> - 2.18.0-1
 - new release
   - rebased tuned to latest upstream

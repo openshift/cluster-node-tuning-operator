@@ -19,7 +19,7 @@ class GlobalConfig():
 	def get_global_config_spec():
 		"""
 		Easy validation mimicking configobj
-		Returns two dicts, firts with default values (default None)
+		Returns two dicts, first with default values (default None)
 		global_default[consts.CFG_SOMETHING] = consts.CFG_DEF_SOMETHING or None
 		second with configobj function for value type (default "get" for string, others eg getboolean, getint)
 		global_function[consts.CFG_SOMETHING] = consts.CFG_FUNC_SOMETHING or get
@@ -39,7 +39,7 @@ class GlobalConfig():
 		"""
 		log.debug("reading and parsing global configuration file '%s'" % file_name)
 		try:
-			config_parser = ConfigParser(delimiters=('='), inline_comment_prefixes=('#'))
+			config_parser = ConfigParser(delimiters=('='), inline_comment_prefixes=('#'), strict=False)
 			config_parser.optionxform = str
 			with open(file_name) as f:
 				config_parser.read_string("[" + consts.MAGIC_HEADER_NAME + "]\n" + f.read(), file_name)
@@ -67,6 +67,15 @@ class GlobalConfig():
 		if self._cmd.get_bool(self.get(key, default)) == "1":
 			return True
 		return False
+
+	def get_int(self, key, default = 0):
+		i = self._cfg.get(key, default)
+		if i:
+			if isinstance(i, int):
+				return i
+			else:
+				return int(i, 0)
+		return default
 
 	def set(self, key, value):
 		self._cfg[key] = value
