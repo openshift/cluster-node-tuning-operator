@@ -30,11 +30,11 @@ on the machine (X11, physical tty, but no SSH).
 
 To see the current active profile, run:
 
-$ tuned-adm active
+# tuned-adm active
 
 To list all available profiles, run:
 
-$ tuned-adm list
+# tuned-adm list
 
 To switch to a different profile, run:
 
@@ -45,6 +45,18 @@ choice is used when the daemon is restarted (e.g. with the machine reboot).
 
 To disable all tunings, run:
 # tuned-adm off
+
+To show information/description of given profile or current profile if no profile is specified, run:
+# tuned-adm profile_info
+
+To verify current profile against system settings, run:
+# tuned-adm verify
+
+To enable automatic profile selection mode, switch to the recommended profile, run:
+# tuned-adm auto_profile
+
+To show current profile selection mode, run:
+# tuned-adm profile_mode
 
 # tuned-adm recommend
 Recommend profile suitable for your system. Currently only static detection is
@@ -58,7 +70,7 @@ profiles targeted to the best performance or the balanced profile if unsure.
 Available tunings
 -----------------
 
-We are currenlty working on many new tuning features. Some are described in
+We are currently working on many new tuning features. Some are described in
 the manual pages, some are yet undocumented.
 
 

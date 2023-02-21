@@ -22,6 +22,7 @@ class Application(object):
 		# like e.g. '5.15.13-100.fc34.x86_64'
 		log.info("TuneD: %s, kernel: %s" % (tuned.version.TUNED_VERSION_STR, os.uname()[2]))
 		self._dbus_exporter = None
+		self._unix_socket_exporter = None
 
 		storage_provider = storage.PickleProvider()
 		storage_factory = storage.Factory(storage_provider)
@@ -76,6 +77,19 @@ class Application(object):
 
 		self._dbus_exporter = exports.dbus.DBusExporter(bus_name, interface_name, object_name)
 		exports.register_exporter(self._dbus_exporter)
+
+	def attach_to_unix_socket(self):
+		if self._unix_socket_exporter is not None:
+			raise TunedException("Unix socket interface is already initialized.")
+
+		self._unix_socket_exporter = exports.unix_socket.UnixSocketExporter(self.config.get(consts.CFG_UNIX_SOCKET_PATH),
+																			self.config.get(consts.CFG_UNIX_SOCKET_SIGNAL_PATHS),
+																			self.config.get(consts.CFG_UNIX_SOCKET_OWNERSHIP),
+																			self.config.get_int(consts.CFG_UNIX_SOCKET_PERMISIONS),
+																			self.config.get_int(consts.CFG_UNIX_SOCKET_CONNECTIONS_BACKLOG))
+		exports.register_exporter(self._unix_socket_exporter)
+
+	def register_controller(self):
 		exports.register_object(self._controller)
 
 	def _daemonize_parent(self, parent_in_fd, child_out_fd):
@@ -197,7 +211,7 @@ class Application(object):
 		if daemon:
 			self.config.set(consts.CFG_DAEMON, True)
 		if not self.config.get_bool(consts.CFG_DAEMON, consts.CFG_DEF_DAEMON):
-			log.warn("Using one shot no deamon mode, most of the functionality will be not available, it can be changed in global config")
+			log.warn("Using one shot no daemon mode, most of the functionality will be not available, it can be changed in global config")
 		result = self._controller.run()
 		if self.config.get_bool(consts.CFG_DAEMON, consts.CFG_DEF_DAEMON):
 			exports.stop()

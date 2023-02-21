@@ -35,7 +35,7 @@ class Admin(object):
 		if self._dbus:
 			self._controller = tuned.admin.DBusController(consts.DBUS_BUS, consts.DBUS_INTERFACE, consts.DBUS_OBJECT, debug)
 			try:
-				self._controller.set_signal_handler(consts.DBUS_SIGNAL_PROFILE_CHANGED, self._signal_profile_changed_cb)
+				self._controller.set_signal_handler(consts.SIGNAL_PROFILE_CHANGED, self._signal_profile_changed_cb)
 			except TunedAdminDBusException as e:
 				self._error(e)
 				self._dbus = False
@@ -249,7 +249,7 @@ class Admin(object):
 				self._error("Cannot enable the tuning.")
 				ret = False
 		else:
-			self._error(msg)
+			self._error("Unable to switch profile: %s" % msg)
 		return ret
 
 	def _action_dbus_wait_profile(self, profile_name):
