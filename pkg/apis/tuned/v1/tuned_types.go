@@ -22,6 +22,15 @@ const (
 	// Annotation on Profiles to denote the operand version responsible for calculating and reporting
 	// the Profile status.
 	GeneratedByOperandVersionAnnotationKey string = "tuned.openshift.io/generated-by-operand-version"
+
+	// Tuned 'TunedRenderedResourceName' CR's .metadata.generation.  This annotation is used on resources
+	// to note the Tuned 'TunedRenderedResourceName' generation based on which the resources with this
+	// annotation were created/updated.
+	RendredTunedGenerationAnnotationKey string = "tuned.openshift.io/rendered-tuned-generation"
+
+	// The value of this annotation is the TuneD profile based on which the resource with this annotation was
+	// created/updated.
+	TunedProfileAnnotationKey string = "tuned.openshift.io/tuned-profile"
 )
 
 /////////////////////////////////////////////////////////////////////////////////

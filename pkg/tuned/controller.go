@@ -147,6 +147,7 @@ type Controller struct {
 	tunedTicker  *time.Ticker    // ticker that fires if TuneD daemon fails to report "profile applied/reload failed" within tunedTimeout
 	tunedTimeout int             // timeout for TuneD daemon to report "profile applied/reload failed" [s]
 	tunedMainCfg *ini.File       // global TuneD configuration as defined in tuned-main.conf
+	tunedRendGen int64           // rendered Tuned generation as observed during the last successful sync of TuneD profiles to disk
 }
 
 type wqKey struct {
@@ -264,6 +265,7 @@ func (c *Controller) sync(key wqKey) error {
 		if err != nil {
 			return err
 		}
+		c.tunedRendGen = tuned.ObjectMeta.Generation
 		c.change.rendered = change
 		// Notify the event processor that the Tuned k8s object containing TuneD profiles changed.
 		c.wqTuneD.Add(wqKey{kind: wqKindDaemon})
@@ -944,10 +946,13 @@ func (c *Controller) updateTunedProfile() (err error) {
 
 	statusConditions := computeStatusConditions(c.daemon.status, c.daemon.stderr, profile.Status.Conditions)
 	annotationsChanged := profile.ObjectMeta.Annotations == nil ||
-		profile.ObjectMeta.Annotations[tunedv1.GeneratedByOperandVersionAnnotationKey] != os.Getenv("RELEASE_VERSION")
+		profile.ObjectMeta.Annotations[tunedv1.GeneratedByOperandVersionAnnotationKey] != os.Getenv("RELEASE_VERSION") ||
+		profile.ObjectMeta.Annotations[tunedv1.RendredTunedGenerationAnnotationKey] != fmt.Sprintf("%d", c.tunedRendGen)
 
-	if profile.Status.Bootcmdline == bootcmdline && !annotationsChanged &&
-		profile.Status.TunedProfile == activeProfile && conditionsEqual(profile.Status.Conditions, statusConditions) {
+	if profile.Status.Bootcmdline == bootcmdline &&
+		profile.Status.TunedProfile == activeProfile &&
+		conditionsEqual(profile.Status.Conditions, statusConditions) &&
+		!annotationsChanged {
 		// Do not update node Profile unnecessarily (e.g. bootcmdline did not change).
 		// This will save operator CPU cycles trying to reconcile objects that do not
 		// need reconciling.
@@ -964,6 +969,7 @@ func (c *Controller) updateTunedProfile() (err error) {
 		profile.ObjectMeta.Annotations = map[string]string{}
 	}
 	profile.ObjectMeta.Annotations[tunedv1.GeneratedByOperandVersionAnnotationKey] = os.Getenv("RELEASE_VERSION")
+	profile.ObjectMeta.Annotations[tunedv1.RendredTunedGenerationAnnotationKey] = fmt.Sprintf("%d", c.tunedRendGen)
 	_, err = c.clients.Tuned.TunedV1().Profiles(operandNamespace).Update(context.TODO(), profile, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update Profile %s status: %v", profile.Name, err)

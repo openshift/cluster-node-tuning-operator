@@ -78,6 +78,11 @@ type Controller struct {
 	}
 
 	pc *ProfileCalculator
+
+	// bootcmdlineConflict is the internal operator's cache of Profiles
+	// tracked as having kernel command-line conflict due to belonging
+	// to the same MCP.
+	bootcmdlineConflict map[string]bool
 }
 
 type wqKey struct {
@@ -102,6 +107,8 @@ func NewController() (*Controller, error) {
 		clients:    clients,
 		pc:         NewProfileCalculator(listers, clients),
 	}
+
+	controller.bootcmdlineConflict = map[string]bool{}
 
 	// Initial event to bootstrap CR if it doesn't exist.
 	controller.workqueue.AddRateLimited(wqKey{kind: wqKindTuned, name: tunedv1.TunedDefaultResourceName})
@@ -614,8 +621,10 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	profileMf.ObjectMeta.OwnerReferences = getDefaultTunedRefs(tuned)
 
 	profileMf.Name = nodeName
+	delete(c.bootcmdlineConflict, nodeName)
 	nodeLabels, err := c.pc.nodeLabelsGet(nodeName)
 	if err != nil {
+		// Remove Profiles for Nodes which no longer exist.
 		if errors.IsNotFound(err) {
 			err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Delete(context.TODO(), nodeName, metav1.DeleteOptions{})
 			if err != nil && errors.IsNotFound(err) {
@@ -784,7 +793,11 @@ func (c *Controller) syncMachineConfig(name string, labels map[string]string, pr
 	bootcmdline := profile.Status.Bootcmdline
 	kernelArguments = util.SplitKernelArguments(bootcmdline)
 
-	annotations := map[string]string{GeneratedByControllerVersionAnnotationKey: version.Version}
+	annotations := map[string]string{
+		GeneratedByControllerVersionAnnotationKey:   version.Version,
+		tunedv1.RendredTunedGenerationAnnotationKey: profile.ObjectMeta.Annotations[tunedv1.RendredTunedGenerationAnnotationKey],
+		tunedv1.TunedProfileAnnotationKey:           profile.Status.TunedProfile,
+	}
 
 	mc, err := c.listers.MachineConfigs.Get(name)
 	if err != nil {
@@ -813,6 +826,12 @@ func (c *Controller) syncMachineConfig(name string, labels map[string]string, pr
 	if kernelArgsEq {
 		// No update needed
 		klog.V(2).Infof("syncMachineConfig(): MachineConfig %s doesn't need updating", mc.ObjectMeta.Name)
+		return nil
+	} else if mcAnnotationsMatch(mc.ObjectMeta.Annotations, annotations) {
+		// Kernel arguments differ and they were generated based on the same TuneD profile and Tuned/rendered CR.
+		klog.Warningf("refusing to update MachineConfig for %s due to kernel arguments change with unchanged input configuration (%s/%s). Node(s) with different (CPU) topology in the same MCP?",
+			profile.Name, annotations[tunedv1.RendredTunedGenerationAnnotationKey], annotations[tunedv1.TunedProfileAnnotationKey])
+		c.bootcmdlineConflict[profile.Name] = true
 		return nil
 	}
 	mc = mc.DeepCopy() // never update the objects from cache
@@ -849,7 +868,11 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 	bootcmdline := profile.Status.Bootcmdline
 	kernelArguments = util.SplitKernelArguments(bootcmdline)
 
-	annotations := map[string]string{GeneratedByControllerVersionAnnotationKey: version.Version}
+	annotations := map[string]string{
+		GeneratedByControllerVersionAnnotationKey:   version.Version,
+		tunedv1.RendredTunedGenerationAnnotationKey: profile.ObjectMeta.Annotations[tunedv1.RendredTunedGenerationAnnotationKey],
+		tunedv1.TunedProfileAnnotationKey:           profile.Status.TunedProfile,
+	}
 
 	mcConfigMap, err := c.clients.ManagementKube.CoreV1().ConfigMaps(ntoconfig.OperatorNamespace()).Get(context.TODO(), configMapName, metav1.GetOptions{})
 	if err != nil {
@@ -903,6 +926,12 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 	if kernelArgsEq && cmLabelsAndAnnotationsCorrect {
 		// No update needed
 		klog.V(2).Infof("syncMachineConfig(): MachineConfig %s doesn't need updating", mc.ObjectMeta.Name)
+		return nil
+	} else if mcAnnotationsMatch(mc.ObjectMeta.Annotations, annotations) {
+		// Kernel arguments differ and they were generated based on the same TuneD profile and Tuned/rendered CR.
+		klog.Warningf("refusing to update MachineConfig for %s due to kernel arguments change with unchanged input configuration (%s/%s). Node(s) with different (CPU) topology in the same MCP?",
+			profile.Name, annotations[tunedv1.RendredTunedGenerationAnnotationKey], annotations[tunedv1.TunedProfileAnnotationKey])
+		c.bootcmdlineConflict[profile.Name] = true
 		return nil
 	}
 
@@ -1067,6 +1096,15 @@ func (c *Controller) getConfigMapNamesForTuned() (map[string]bool, error) {
 	}
 
 	return cmNames, nil
+}
+
+func (c *Controller) getTunedRendered() (*tunedv1.Tuned, error) {
+	cr, err := c.listers.TunedResources.Get(tunedv1.TunedRenderedResourceName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
+	}
+
+	return cr, nil
 }
 
 func getDefaultTunedRefs(tuned *tunedv1.Tuned) []metav1.OwnerReference {
@@ -1369,6 +1407,16 @@ func (c *Controller) Start(ctx context.Context) error {
 }
 
 func (c *Controller) NeedLeaderElection() bool {
+	return true
+}
+
+func mcAnnotationsMatch(old, new map[string]string) bool {
+	for _, key := range []string{tunedv1.RendredTunedGenerationAnnotationKey, tunedv1.TunedProfileAnnotationKey} {
+		if old[key] != new[key] {
+			return false
+		}
+	}
+
 	return true
 }
 
