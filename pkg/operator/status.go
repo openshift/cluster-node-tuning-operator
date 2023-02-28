@@ -132,6 +132,21 @@ func numProfilesProgressingDegraded(profileList []*tunedv1.Profile) (int, int) {
 	return numProgressing, numDegraded
 }
 
+// numProfilesWithBootcmdlineConflict returns the total number
+// of Profiles in the internal operator's cache (bootcmdlineConflict)
+// tracked as having kernel command-line conflict due to belonging to
+// the same MCP.
+func (c *Controller) numProfilesWithBootcmdlineConflict(profileList []*tunedv1.Profile) int {
+	numConflict := 0
+	for _, profile := range profileList {
+		if c.bootcmdlineConflict[profile.Name] {
+			numConflict++
+		}
+	}
+
+	return numConflict
+}
+
 // computeStatusConditions computes the operator's current state.
 func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []configv1.ClusterOperatorStatusCondition) ([]configv1.ClusterOperatorStatusCondition, error) {
 	const (
@@ -265,6 +280,14 @@ func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []
 			klog.Infof(fmt.Sprintf("%v/%v Profiles failed to be applied", numDegradedProfiles, len(profileList)))
 			availableCondition.Reason = "ProfileDegraded"
 			availableCondition.Message = fmt.Sprintf("%v/%v Profiles failed to be applied", numDegradedProfiles, len(profileList))
+		}
+
+		numConflict := c.numProfilesWithBootcmdlineConflict(profileList)
+		if numConflict > 0 {
+			klog.Infof(fmt.Sprintf("%v/%v Profiles with bootcmdline conflict", numConflict, len(profileList)))
+			degradedCondition.Status = configv1.ConditionTrue
+			degradedCondition.Reason = "ProfileConflict"
+			degradedCondition.Message = fmt.Sprintf("%v/%v Profiles with bootcmdline conflict", numConflict, len(profileList))
 		}
 
 		// If the operator is not available for an extensive period of time, set the Degraded operator status.
