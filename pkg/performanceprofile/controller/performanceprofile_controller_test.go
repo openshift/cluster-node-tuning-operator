@@ -12,6 +12,7 @@ import (
 	. "github.com/onsi/gomega/gstruct"
 
 	igntypes "github.com/coreos/ignition/config/v2_2/types"
+	apiconfigv1 "github.com/openshift/api/config/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
@@ -41,10 +42,12 @@ var _ = Describe("Controller", func() {
 	var request reconcile.Request
 	var profile *performancev2.PerformanceProfile
 	var profileMCP *mcov1.MachineConfigPool
+	var infra *apiconfigv1.Infrastructure
 
 	BeforeEach(func() {
 		profileMCP = testutils.NewProfileMCP()
 		profile = testutils.NewPerformanceProfile("test")
+		infra = testutils.NewInfraResource(false)
 		request = reconcile.Request{
 			NamespacedName: types.NamespacedName{
 				Namespace: metav1.NamespaceNone,
@@ -54,7 +57,7 @@ var _ = Describe("Controller", func() {
 	})
 
 	It("should add finalizer to the performance profile", func() {
-		r := newFakeReconciler(profile, profileMCP)
+		r := newFakeReconciler(profile, profileMCP, infra)
 
 		Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -73,7 +76,7 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should create all resources on first reconcile loop", func() {
-			r := newFakeReconciler(profile, profileMCP)
+			r := newFakeReconciler(profile, profileMCP, infra)
 
 			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -111,7 +114,7 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should create event on the second reconcile loop", func() {
-			r := newFakeReconciler(profile, profileMCP)
+			r := newFakeReconciler(profile, profileMCP, infra)
 
 			Expect(reconcileTimes(r, request, 2)).To(Equal(reconcile.Result{}))
 
@@ -123,7 +126,7 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should update the profile status", func() {
-			r := newFakeReconciler(profile, profileMCP)
+			r := newFakeReconciler(profile, profileMCP, infra)
 
 			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -147,7 +150,7 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should promote kubelet config failure condition", func() {
-			r := newFakeReconciler(profile, profileMCP)
+			r := newFakeReconciler(profile, profileMCP, infra)
 			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
 			name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
@@ -195,7 +198,7 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should not promote old failure condition", func() {
-			r := newFakeReconciler(profile, profileMCP)
+			r := newFakeReconciler(profile, profileMCP, infra)
 			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
 			name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
@@ -253,7 +256,7 @@ var _ = Describe("Controller", func() {
 			tunedOutdatedB.OwnerReferences = []metav1.OwnerReference{
 				{Name: profile.Name},
 			}
-			r := newFakeReconciler(profile, tunedOutdatedA, tunedOutdatedB, profileMCP)
+			r := newFakeReconciler(profile, tunedOutdatedA, tunedOutdatedB, profileMCP, infra)
 
 			keyA := types.NamespacedName{
 				Name:      tunedOutdatedA.Name,
@@ -285,7 +288,7 @@ var _ = Describe("Controller", func() {
 
 		It("should create nothing when pause annotation is set", func() {
 			profile.Annotations = map[string]string{performancev2.PerformanceProfilePauseAnnotation: "true"}
-			r := newFakeReconciler(profile, profileMCP)
+			r := newFakeReconciler(profile, profileMCP, infra)
 
 			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -332,7 +335,7 @@ var _ = Describe("Controller", func() {
 			BeforeEach(func() {
 				var err error
 
-				mc, err = machineconfig.New(profile)
+				mc, err = machineconfig.New(profile, &infra.Status.CPUPartitioning)
 				Expect(err).ToNot(HaveOccurred())
 
 				mcpSelectorKey, mcpSelectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
@@ -346,7 +349,7 @@ var _ = Describe("Controller", func() {
 			})
 
 			It("should not record new create event", func() {
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, runtimeClass, profileMCP)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, runtimeClass, profileMCP, infra)
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -363,7 +366,7 @@ var _ = Describe("Controller", func() {
 
 			It("should update MC when RT kernel gets disabled", func() {
 				profile.Spec.RealTimeKernel.Enabled = pointer.BoolPtr(false)
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra)
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -388,7 +391,7 @@ var _ = Describe("Controller", func() {
 					Isolated: &isolated,
 				}
 
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra)
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -423,7 +426,7 @@ var _ = Describe("Controller", func() {
 					BalanceIsolated: pointer.BoolPtr(true),
 				}
 
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra)
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -447,7 +450,7 @@ var _ = Describe("Controller", func() {
 					BalanceIsolated: pointer.BoolPtr(false),
 				}
 
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra)
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -474,7 +477,7 @@ var _ = Describe("Controller", func() {
 					},
 				}
 
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra)
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -503,7 +506,7 @@ var _ = Describe("Controller", func() {
 					},
 				}
 
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra)
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -543,7 +546,7 @@ var _ = Describe("Controller", func() {
 			})
 
 			It("should update status with generated tuned", func() {
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra)
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 				key := types.NamespacedName{
 					Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
@@ -564,7 +567,7 @@ var _ = Describe("Controller", func() {
 			})
 
 			It("should update status with generated runtime class", func() {
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, runtimeClass, profileMCP)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, runtimeClass, profileMCP, infra)
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
 				key := types.NamespacedName{
@@ -626,7 +629,7 @@ var _ = Describe("Controller", func() {
 					},
 				}
 
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, mcp)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, mcp, infra)
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -692,7 +695,7 @@ var _ = Describe("Controller", func() {
 					},
 				}
 
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, tuned, nodes, profileMCP)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, tuned, nodes, profileMCP, infra)
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -720,7 +723,7 @@ var _ = Describe("Controller", func() {
 				profileMCP.Spec.MachineConfigSelector = &metav1.LabelSelector{
 					MatchLabels: map[string]string{"wrongKey": "bad"},
 				}
-				r := newFakeReconciler(profile, profileMCP)
+				r := newFakeReconciler(profile, profileMCP, infra)
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
 				updatedProfile := &performancev2.PerformanceProfile{}
@@ -748,7 +751,7 @@ var _ = Describe("Controller", func() {
 					MatchLabels: map[string]string{"wrongKey": "bad"},
 				}
 				profile.Spec.MachineConfigLabel = nil
-				r := newFakeReconciler(profile, profileMCP)
+				r := newFakeReconciler(profile, profileMCP, infra)
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
 				updatedProfile := &performancev2.PerformanceProfile{}
@@ -780,7 +783,7 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should remove all components and remove the finalizer on first reconcile loop", func() {
-			mc, err := machineconfig.New(profile)
+			mc, err := machineconfig.New(profile, nil)
 			Expect(err).ToNot(HaveOccurred())
 
 			mcpSelectorKey, mcpSelectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
@@ -792,7 +795,7 @@ var _ = Describe("Controller", func() {
 
 			runtimeClass := runtimeclass.New(profile, machineconfig.HighPerformanceRuntime)
 
-			r := newFakeReconciler(profile, mc, kc, tunedPerformance, runtimeClass, profileMCP)
+			r := newFakeReconciler(profile, mc, kc, tunedPerformance, runtimeClass, profileMCP, infra)
 			result, err := r.Reconcile(context.TODO(), request)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result).To(Equal(reconcile.Result{}))
@@ -828,6 +831,67 @@ var _ = Describe("Controller", func() {
 			updatedProfile := &performancev2.PerformanceProfile{}
 			err = r.Get(context.TODO(), key, updatedProfile)
 			Expect(errors.IsNotFound(err)).To(Equal(true))
+		})
+	})
+
+	Context("with infrastructure cpuPartitioning", func() {
+		BeforeEach(func() {
+			infra = testutils.NewInfraResource(true)
+		})
+
+		It("should contain cpu partitioning files in machine config", func() {
+			mc, err := machineconfig.New(profile, &infra.Status.CPUPartitioning)
+			Expect(err).ToNot(HaveOccurred())
+			r := newFakeReconciler(profile, profileMCP, mc, infra)
+
+			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
+
+			By("Verifying MC update")
+			key := types.NamespacedName{
+				Name:      machineconfig.GetMachineConfigName(profile),
+				Namespace: metav1.NamespaceNone,
+			}
+			mc = &mcov1.MachineConfig{}
+			err = r.Get(context.TODO(), key, mc)
+			Expect(err).ToNot(HaveOccurred())
+
+			config := &igntypes.Config{}
+			err = json.Unmarshal(mc.Spec.Config.Raw, config)
+			Expect(err).ToNot(HaveOccurred())
+
+			var mode = 420
+			var containFiles = []igntypes.File{
+				{
+					Node: igntypes.Node{
+						Path:  "/etc/kubernetes/openshift-workload-pinning",
+						Group: &igntypes.NodeGroup{},
+						User:  &igntypes.NodeUser{},
+					},
+					FileEmbedded1: igntypes.FileEmbedded1{
+						Contents: igntypes.FileContents{
+							Verification: igntypes.Verification{},
+							Source:       "data:text/plain;charset=utf-8;base64,CnsKICAibWFuYWdlbWVudCI6IHsKICAgICJjcHVzZXQiOiAiMC0zIgogIH0KfQo=",
+						},
+						Mode: &mode,
+					},
+				},
+				{
+					Node: igntypes.Node{
+						Path:  "/etc/crio/crio.conf.d/99-workload-pinning.conf",
+						Group: &igntypes.NodeGroup{},
+						User:  &igntypes.NodeUser{},
+					},
+					FileEmbedded1: igntypes.FileEmbedded1{
+						Contents: igntypes.FileContents{
+							Verification: igntypes.Verification{},
+							Source:       "data:text/plain;charset=utf-8;base64,CltjcmlvLnJ1bnRpbWUud29ya2xvYWRzLm1hbmFnZW1lbnRdCmFjdGl2YXRpb25fYW5ub3RhdGlvbiA9ICJ0YXJnZXQud29ya2xvYWQub3BlbnNoaWZ0LmlvL21hbmFnZW1lbnQiCmFubm90YXRpb25fcHJlZml4ID0gInJlc291cmNlcy53b3JrbG9hZC5vcGVuc2hpZnQuaW8iCnJlc291cmNlcyA9IHsgImNwdXNoYXJlcyIgPSAwLCAiY3B1c2V0IiA9ICIwLTMiIH0K",
+						},
+						Mode: &mode,
+					},
+				},
+			}
+
+			Expect(config.Storage.Files).To(ContainElements(containFiles))
 		})
 	})
 
