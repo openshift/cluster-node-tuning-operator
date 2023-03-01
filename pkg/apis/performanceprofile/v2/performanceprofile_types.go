@@ -176,16 +176,16 @@ type RealTimeKernel struct {
 // WorkloadHints defines the set of upper level flags for different type of workloads.
 type WorkloadHints struct {
 	// HighPowerConsumption defines if the node should be configured in high power consumption mode.
-	// The flag will affect the power consumption but will improve the CPUs latency.
+	// The flag will affect the power consumption but will improve the CPUs latency. Defaults to false.
 	// +optional
 	HighPowerConsumption *bool `json:"highPowerConsumption,omitempty"`
-	// RealTime defines if the node should be configured for the real time workload.
+	// RealTime defines if the node should be configured for the real time workload. Defaults to true.
 	// +default=true
 	// +optional
 	RealTime *bool `json:"realTime,omitempty"`
 	// +optional
 	// PerPodPowerManagement defines if the node should be configured in per pod power management.
-	// PerPodPowerManagement and HighPowerConsumption hints can not be enabled together.
+	// PerPodPowerManagement and HighPowerConsumption hints can not be enabled together. Defaults to false.
 	PerPodPowerManagement *bool `json:"perPodPowerManagement,omitempty"`
 }
 
