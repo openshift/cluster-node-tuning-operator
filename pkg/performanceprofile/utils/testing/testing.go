@@ -1,6 +1,7 @@
 package testing
 
 import (
+	apiconfigv1 "github.com/openshift/api/config/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
@@ -108,6 +109,21 @@ func NewProfileMCP() *mcov1.MachineConfigPool {
 			MachineConfigSelector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{MachineConfigLabelKey: MachineConfigLabelValue},
 			},
+		},
+	}
+}
+
+func NewInfraResource(pin bool) *apiconfigv1.Infrastructure {
+	var pinningMode = apiconfigv1.CPUPartitioningNone
+	if pin {
+		pinningMode = apiconfigv1.CPUPartitioningAllNodes
+	}
+	return &apiconfigv1.Infrastructure{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "cluster",
+		},
+		Status: apiconfigv1.InfrastructureStatus{
+			CPUPartitioning: pinningMode,
 		},
 	}
 }
