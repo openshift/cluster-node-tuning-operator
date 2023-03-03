@@ -468,13 +468,13 @@ spec:
                   type: object
                   properties:
                     highPowerConsumption:
-                      description: HighPowerConsumption defines if the node should be configured in high power consumption mode. The flag will affect the power consumption but will improve the CPUs latency.
+                      description: HighPowerConsumption defines if the node should be configured in high power consumption mode. The flag will affect the power consumption but will improve the CPUs latency. Defaults to false.
                       type: boolean
                     perPodPowerManagement:
-                      description: PerPodPowerManagement defines if the node should be configured in per pod power management. PerPodPowerManagement and HighPowerConsumption hints can not be enabled together.
+                      description: PerPodPowerManagement defines if the node should be configured in per pod power management. PerPodPowerManagement and HighPowerConsumption hints can not be enabled together. Defaults to false.
                       type: boolean
                     realTime:
-                      description: RealTime defines if the node should be configured for the real time workload.
+                      description: RealTime defines if the node should be configured for the real time workload. Defaults to true.
                       type: boolean
             status:
               description: PerformanceProfileStatus defines the observed state of PerformanceProfile.
