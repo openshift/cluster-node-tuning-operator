@@ -138,10 +138,10 @@ func operatorRun() {
 		if err := removePerformanceOLMOperator(restConfig); err != nil {
 			klog.Fatalf("unable to remove Performance addons OLM operator: %v", err)
 		}
-	}
 
-	if err := migratePinnedSingleNodeInfraStatus(restConfig, scheme); err != nil {
-		klog.Fatalf("unable to migrate pinned single node infra status: %v", err)
+		if err := migratePinnedSingleNodeInfraStatus(restConfig, scheme); err != nil {
+			klog.Fatalf("unable to migrate pinned single node infra status: %v", err)
+		}
 	}
 
 	controller, err := operator.NewController()
