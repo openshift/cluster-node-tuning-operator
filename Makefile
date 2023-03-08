@@ -22,6 +22,8 @@ API_TYPES_DIR:=pkg/apis
 API_TYPES:=$(shell find $(API_TYPES_DIR) -name \*_types.go)
 API_ZZ_GENERATED:=zz_generated.deepcopy
 API_GO_HEADER_FILE:=$(API_TYPES_DIR)/header.go.txt
+# Pin the older controller-gen version. v0.7.0+ require separate CRD directory as they choke on manifests with "apiVersion: v1".
+CONTROLLER_GEN_VERSION :=v0.6.0
 
 # Container image-related variables
 IMAGE_BUILD_CMD=podman build --no-cache
@@ -104,7 +106,7 @@ test-e2e-local: $(BINDATA) performance-profile-creator-tests
 	  $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.no-color -ginkgo.fail-fast || exit; \
 	done
 
-update-manifests: update-codegen-crds update-profile-manifests
+update-manifests: ensure-controller-gen ensure-yq ensure-yaml-patch update-codegen-crds update-profile-manifests
 
 verify:	verify-gofmt
 
@@ -140,9 +142,8 @@ local-image-push:
 # $1 - target name
 # $2 - apis
 # $3 - manifests
-# $4 - output
-$(call add-crd-gen,tuned,./$(API_TYPES_DIR)/tuned/v1,./manifests,./manifests)
-$(call add-crd-gen,performanceprofile,$(PAO_CRD_APIS),./manifests,./manifests)
+$(call add-crd-gen,tuned,./$(API_TYPES_DIR)/tuned/v1,./manifests)
+$(call add-crd-gen,performanceprofile,$(PAO_CRD_APIS),./manifests)
 
 # This will include additional actions on the update and verify targets to ensure that profile patches are applied.
 # To update the manifests, run "make update-profile-manifests".
