@@ -284,13 +284,8 @@ func (c *Controller) sync(key wqKey) error {
 		change, err := c.pc.nodeChangeHandler(key.name)
 		if err != nil {
 			if errors.IsNotFound(err) {
-				// Do not leave any leftover profiles after node deletions
-				klog.V(2).Infof("sync(): deleting Profile %s", key.name)
-				err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.WatchNamespace()).Delete(context.TODO(), key.name, metav1.DeleteOptions{})
-				if err != nil && !errors.IsNotFound(err) {
-					return fmt.Errorf("failed to delete Profile %s: %v", key.name, err)
-				}
-				klog.Infof("deleted Profile %s", key.name)
+				// Trigger Profile update/deletion for this node; syncProfile() will handle the deletion and also update internal data structures
+				c.workqueue.AddRateLimited(wqKey{kind: wqKindProfile, namespace: ntoconfig.WatchNamespace(), name: key.name})
 				return nil
 			}
 			return fmt.Errorf("failed to process Node %s change: %v", key.name, err)
@@ -626,6 +621,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	if err != nil {
 		// Remove Profiles for Nodes which no longer exist.
 		if errors.IsNotFound(err) {
+			klog.V(2).Infof("syncProfile(): deleting Profile %s", nodeName)
 			err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Delete(context.TODO(), nodeName, metav1.DeleteOptions{})
 			if err != nil && errors.IsNotFound(err) {
 				err = nil
@@ -829,10 +825,15 @@ func (c *Controller) syncMachineConfig(name string, labels map[string]string, pr
 		return nil
 	} else if mcAnnotationsMatch(mc.ObjectMeta.Annotations, annotations) {
 		// Kernel arguments differ and they were generated based on the same TuneD profile and Tuned/rendered CR.
-		klog.Warningf("refusing to update MachineConfig for %s due to kernel arguments change with unchanged input configuration (%s/%s). Node(s) with different (CPU) topology in the same MCP?",
-			profile.Name, annotations[tunedv1.RendredTunedGenerationAnnotationKey], annotations[tunedv1.TunedProfileAnnotationKey])
-		c.bootcmdlineConflict[profile.Name] = true
-		return nil
+		machineCount, err := c.pc.getMachineCountForMachineConfigPool(mc.Name[len(MachineConfigPrefix)+1:])
+		if err != nil {
+			return err
+		} else if machineCount > 1 {
+			klog.Warningf("refusing to update MachineConfig %s for %s due to kernel arguments change with unchanged input configuration (%s/%s). Node(s) with different (CPU) topology in the same MCP?",
+				mc.Name, profile.Name, annotations[tunedv1.RendredTunedGenerationAnnotationKey], annotations[tunedv1.TunedProfileAnnotationKey])
+			c.bootcmdlineConflict[profile.Name] = true
+			return nil
+		}
 	}
 	mc = mc.DeepCopy() // never update the objects from cache
 	mc.ObjectMeta.Annotations = mcNew.ObjectMeta.Annotations
@@ -929,10 +930,15 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 		return nil
 	} else if mcAnnotationsMatch(mc.ObjectMeta.Annotations, annotations) {
 		// Kernel arguments differ and they were generated based on the same TuneD profile and Tuned/rendered CR.
-		klog.Warningf("refusing to update MachineConfig for %s due to kernel arguments change with unchanged input configuration (%s/%s). Node(s) with different (CPU) topology in the same MCP?",
-			profile.Name, annotations[tunedv1.RendredTunedGenerationAnnotationKey], annotations[tunedv1.TunedProfileAnnotationKey])
-		c.bootcmdlineConflict[profile.Name] = true
-		return nil
+		machineCount, err := c.pc.getMachineCountForMachineConfigPool(mc.Name[len(MachineConfigPrefix)+1:])
+		if err != nil {
+			return err
+		} else if machineCount > 1 {
+			klog.Warningf("refusing to update MachineConfig %s for %s due to kernel arguments change with unchanged input configuration (%s/%s). Node(s) with different (CPU) topology in the same MCP?",
+				mc.Name, profile.Name, annotations[tunedv1.RendredTunedGenerationAnnotationKey], annotations[tunedv1.TunedProfileAnnotationKey])
+			c.bootcmdlineConflict[profile.Name] = true
+			return nil
+		}
 	}
 
 	// If mcfgs are not equivalent do update
