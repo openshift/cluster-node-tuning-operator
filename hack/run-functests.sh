@@ -2,6 +2,7 @@
 
 GINKGO_SUITS=${GINKGO_SUITS:-"test/e2e/performanceprofile/functests"}
 LATENCY_TEST_RUN=${LATENCY_TEST_RUN:-"false"}
+OC_TOOL="${OC_TOOL:-oc}"
 
 which ginkgo
 if [ $? -ne 0 ]; then
@@ -21,6 +22,12 @@ if [ -n "${IMAGE_FORMAT}" ]; then
   LATENCY_TEST_RUN="true"
 fi
 
+if [[ -z "${CNF_TESTS_IMAGE}" ]]; then
+
+    echo "autodetected cluster version: ${ocp_version}"
+    ocp_version=$(${OC_TOOL} get clusterversion -o jsonpath='{.items[].status.desired.version}{"\n"}' | awk -F "." '{print $1"."$2}')
+    export CNF_TESTS_IMAGE=cnf-tests:${ocp_version}
+fi
 
 echo "Running Functional Tests: ${GINKGO_SUITS}"
 # -v: print out the text and location for each spec before running it and flush output to stdout in realtime
