@@ -72,8 +72,13 @@ type ControllerConfigSpec struct {
 	// images is map of images that are used by the controller to render templates under ./templates/
 	Images map[string]string `json:"images"`
 
-	// osImageURL is the location of the container image that contains the OS update payload.
-	// Its value is taken from the data.osImageURL field on the machine-config-osimageurl ConfigMap.
+	// BaseOSContainerImage is the new-format container image for operating system updates.
+	BaseOSContainerImage string `json:"baseOSContainerImage"`
+
+	// BaseOSExtensionsContainerImage is the matching extensions container for the new-format container
+	BaseOSExtensionsContainerImage string `json:"baseOSExtensionsContainerImage"`
+
+	// OSImageURL is the old-format container image that contains the OS update payload.
 	OSImageURL string `json:"osImageURL"`
 
 	// releaseImage is the image used when installing the cluster
@@ -110,9 +115,10 @@ type ControllerConfigSpec struct {
 type IPFamiliesType string
 
 const (
-	IPFamiliesIPv4      IPFamiliesType = "IPv4"
-	IPFamiliesIPv6      IPFamiliesType = "IPv6"
-	IPFamiliesDualStack IPFamiliesType = "DualStack"
+	IPFamiliesIPv4                 IPFamiliesType = "IPv4"
+	IPFamiliesIPv6                 IPFamiliesType = "IPv6"
+	IPFamiliesDualStack            IPFamiliesType = "DualStack"
+	IPFamiliesDualStackIPv6Primary IPFamiliesType = "DualStackIPv6Primary"
 )
 
 // Network contains network related configuration
@@ -195,6 +201,11 @@ type MachineConfigSpec struct {
 	// OSImageURL specifies the remote location that will be used to
 	// fetch the OS.
 	OSImageURL string `json:"osImageURL"`
+
+	// BaseOSExtensionsContainerImage specifies the remote location that will be used
+	// to fetch the extensions container matching a new-format OS image
+	BaseOSExtensionsContainerImage string `json:"baseOSExtensionsContainerImage"`
+
 	// Config is a Ignition Config object.
 	Config runtime.RawExtension `json:"config"`
 
@@ -476,7 +487,19 @@ type ContainerRuntimeConfiguration struct {
 	// overlaySize specifies the maximum size of a container image.
 	// This flag can be used to set quota on the size of container images.
 	OverlaySize resource.Quantity `json:"overlaySize,omitempty"`
+
+	// defaultRuntime is the name of the OCI runtime to be used as the default.
+	DefaultRuntime ContainerRuntimeDefaultRuntime `json:"defaultRuntime,omitempty"`
 }
+
+type ContainerRuntimeDefaultRuntime string
+
+const (
+	ContainerRuntimeDefaultRuntimeEmpty   = ""
+	ContainerRuntimeDefaultRuntimeRunc    = "runc"
+	ContainerRuntimeDefaultRuntimeCrun    = "crun"
+	ContainerRuntimeDefaultRuntimeDefault = ContainerRuntimeDefaultRuntimeRunc
+)
 
 // ContainerRuntimeConfigStatus defines the observed state of a ContainerRuntimeConfig
 type ContainerRuntimeConfigStatus struct {
