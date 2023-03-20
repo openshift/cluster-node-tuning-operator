@@ -118,6 +118,28 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		},
 	}
 
+	ctrcfgPredicates := predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			ctrcfg := e.Object.(*mcov1.ContainerRuntimeConfig)
+			return ctrcfg.Spec.ContainerRuntimeConfig.DefaultRuntime != ""
+		},
+
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if !validateUpdateEvent(&e) {
+				return false
+			}
+
+			ctrcfgOld := e.ObjectOld.(*mcov1.ContainerRuntimeConfig)
+			ctrcfgNew := e.ObjectNew.(*mcov1.ContainerRuntimeConfig)
+			return !reflect.DeepEqual(ctrcfgOld.Status.Conditions, ctrcfgNew.Status.Conditions)
+		},
+
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			ctrcfg := e.Object.(*mcov1.ContainerRuntimeConfig)
+			return ctrcfg.Spec.ContainerRuntimeConfig.DefaultRuntime != ""
+		},
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&performancev2.PerformanceProfile{}).
 		Owns(&mcov1.MachineConfig{}, builder.WithPredicates(p)).
@@ -133,6 +155,10 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 			handler.EnqueueRequestsFromMapFunc(r.tunedProfileToPerformanceProfile),
 			builder.WithPredicates(tunedProfilePredicates),
 		).
+		Watches(
+			&source.Kind{Type: &mcov1.ContainerRuntimeConfig{}},
+			handler.EnqueueRequestsFromMapFunc(r.ctrRuntimeConfToPerformanceProfile),
+			builder.WithPredicates(ctrcfgPredicates)).
 		Complete(r)
 }
 
@@ -201,6 +227,40 @@ func (r *PerformanceProfileReconciler) tunedProfileToPerformanceProfile(tunedPro
 	return requests
 }
 
+func (r *PerformanceProfileReconciler) ctrRuntimeConfToPerformanceProfile(ctrRuntimeConfObj client.Object) []reconcile.Request {
+	ctrcfg := &mcov1.ContainerRuntimeConfig{}
+
+	err := r.Get(context.TODO(), client.ObjectKeyFromObject(ctrRuntimeConfObj), ctrcfg)
+	if err != nil {
+		klog.Errorf("failed to get container runtime config; name=%q err=%v", ctrRuntimeConfObj.GetName(), err)
+		return nil
+	}
+
+	selector, err := metav1.LabelSelectorAsSelector(ctrcfg.Spec.MachineConfigPoolSelector)
+	if err != nil {
+		klog.Errorf("failed to parse the selector %v for container runtime config; name=%q err=%v", ctrcfg.Spec.MachineConfigPoolSelector, ctrRuntimeConfObj.GetName(), err)
+		return nil
+	}
+
+	mcps := &mcov1.MachineConfigPoolList{}
+	opts := &client.ListOptions{
+		LabelSelector: selector,
+	}
+
+	err = r.List(context.TODO(), mcps, opts)
+	if err != nil {
+		klog.Errorf("failed to list machine config pools; err=%v", err)
+		return nil
+	}
+
+	var allRequests []reconcile.Request
+	for i := 0; i < len(mcps.Items); i++ {
+		requests := r.mcpToPerformanceProfile(&mcps.Items[i])
+		allRequests = append(allRequests, requests...)
+	}
+	return allRequests
+}
+
 func (r *PerformanceProfileReconciler) getInfraPartitioningMode() (pinning apiconfigv1.CPUPartitioningMode, err error) {
 	key := types.NamespacedName{
 		Name: "cluster",
@@ -212,6 +272,50 @@ func (r *PerformanceProfileReconciler) getInfraPartitioningMode() (pinning apico
 	}
 
 	return infra.Status.CPUPartitioning, nil
+}
+
+func (r *PerformanceProfileReconciler) getContainerRuntimeName(profile *performancev2.PerformanceProfile) (mcov1.ContainerRuntimeDefaultRuntime, error) {
+	ctrcfgList := &mcov1.ContainerRuntimeConfigList{}
+	if err := r.List(context.Background(), ctrcfgList); err != nil {
+		return "", err
+	}
+
+	if len(ctrcfgList.Items) == 0 {
+		return mcov1.ContainerRuntimeDefaultRuntimeRunc, nil
+	}
+
+	mcp, err := r.getMachineConfigPoolByProfile(profile)
+	if err != nil {
+		return "", err
+	}
+
+	var ctrcfgs []*mcov1.ContainerRuntimeConfig
+	mcpLabels := labels.Set(mcp.Labels)
+	for i := 0; i < len(ctrcfgList.Items); i++ {
+		ctrcfg := &ctrcfgList.Items[i]
+		ctrcfgSelector, err := metav1.LabelSelectorAsSelector(ctrcfg.Spec.MachineConfigPoolSelector)
+		if err != nil {
+			return "", err
+		}
+		if ctrcfgSelector.Matches(mcpLabels) {
+			ctrcfgs = append(ctrcfgs, ctrcfg)
+		}
+	}
+
+	if len(ctrcfgs) == 0 {
+		klog.Infof("no ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q; using default container runtime", mcpLabels.String(), profile.Name)
+		return mcov1.ContainerRuntimeDefaultRuntimeRunc, nil
+	}
+
+	if len(ctrcfgs) > 1 {
+		return "", fmt.Errorf("more than one ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q", mcpLabels.String(), profile.Name)
+	}
+
+	condition := getLatestContainerRuntimeConfigCondition(ctrcfgs[0].Status.Conditions)
+	if condition.Type != mcov1.ContainerRuntimeConfigSuccess || condition.Status != corev1.ConditionTrue {
+		return "", fmt.Errorf("ContainerRuntimeConfig: %q failed to be applied: message=%q", ctrcfgs[0].Name, condition.Message)
+	}
+	return ctrcfgs[0].Spec.ContainerRuntimeConfig.DefaultRuntime, nil
 }
 
 func validateUpdateEvent(e *event.UpdateEvent) bool {
@@ -230,7 +334,7 @@ func validateUpdateEvent(e *event.UpdateEvent) bool {
 // +kubebuilder:rbac:groups="",resources=events,verbs=*
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=performance.openshift.io,resources=performanceprofiles;performanceprofiles/status;performanceprofiles/finalizers,verbs=*
-// +kubebuilder:rbac:groups=machineconfiguration.openshift.io,resources=machineconfigs;machineconfigpools;kubeletconfigs,verbs=*
+// +kubebuilder:rbac:groups=machineconfiguration.openshift.io,resources=machineconfigs;machineconfigpools;kubeletconfigs;containerruntimeconfigs,verbs=*
 // +kubebuilder:rbac:groups=tuned.openshift.io,resources=tuneds;profiles,verbs=*
 // +kubebuilder:rbac:groups=node.k8s.io,resources=runtimeclasses,verbs=*
 // +kubebuilder:rbac:groups=config.openshift.io,resources=infrastructures,verbs=get;list;watch
@@ -326,8 +430,15 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+
+	ctrRuntime, err := r.getContainerRuntimeName(instance)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("could not determine high-performance runtime class container-runtime for profile %q; %w", instance.Name, err)
+	}
+	klog.Infof("using %q as high-performance runtime class container-runtime for profile %q", ctrRuntime, instance.Name)
+
 	// apply components
-	result, err := r.applyComponents(instance, profileMCP, &pinningMode)
+	result, err := r.applyComponents(instance, profileMCP, &pinningMode, ctrRuntime)
 	if err != nil {
 		klog.Errorf("failed to deploy performance profile %q components: %v", instance.Name, err)
 		r.Recorder.Eventf(instance, corev1.EventTypeWarning, "Creation failed", "Failed to create all components: %v", err)
@@ -398,13 +509,13 @@ func (r *PerformanceProfileReconciler) updateDegradedCondition(instance *perform
 	return reconcile.Result{}, conditionError
 }
 
-func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.PerformanceProfile, profileMCP *mcov1.MachineConfigPool, pinningMode *apiconfigv1.CPUPartitioningMode) (*reconcile.Result, error) {
+func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.PerformanceProfile, profileMCP *mcov1.MachineConfigPool, pinningMode *apiconfigv1.CPUPartitioningMode, defaultRuntime mcov1.ContainerRuntimeDefaultRuntime) (*reconcile.Result, error) {
 	if profileutil.IsPaused(profile) {
 		klog.Infof("Ignoring reconcile loop for pause performance profile %s", profile.Name)
 		return nil, nil
 	}
 
-	components, err := manifestset.GetNewComponents(profile, profileMCP, pinningMode)
+	components, err := manifestset.GetNewComponents(profile, profileMCP, pinningMode, defaultRuntime)
 	if err != nil {
 		return nil, err
 	}
