@@ -43,6 +43,7 @@ var _ = Describe("Controller", func() {
 	var profile *performancev2.PerformanceProfile
 	var profileMCP *mcov1.MachineConfigPool
 	var infra *apiconfigv1.Infrastructure
+	var ctrcfg *mcov1.ContainerRuntimeConfig
 
 	BeforeEach(func() {
 		profileMCP = testutils.NewProfileMCP()
@@ -335,7 +336,7 @@ var _ = Describe("Controller", func() {
 			BeforeEach(func() {
 				var err error
 
-				mc, err = machineconfig.New(profile, &infra.Status.CPUPartitioning)
+				mc, err = machineconfig.New(profile, &infra.Status.CPUPartitioning, "")
 				Expect(err).ToNot(HaveOccurred())
 
 				mcpSelectorKey, mcpSelectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
@@ -783,7 +784,7 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should remove all components and remove the finalizer on first reconcile loop", func() {
-			mc, err := machineconfig.New(profile, nil)
+			mc, err := machineconfig.New(profile, nil, "")
 			Expect(err).ToNot(HaveOccurred())
 
 			mcpSelectorKey, mcpSelectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
@@ -840,7 +841,7 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should contain cpu partitioning files in machine config", func() {
-			mc, err := machineconfig.New(profile, &infra.Status.CPUPartitioning)
+			mc, err := machineconfig.New(profile, &infra.Status.CPUPartitioning, "")
 			Expect(err).ToNot(HaveOccurred())
 			r := newFakeReconciler(profile, profileMCP, mc, infra)
 
@@ -924,6 +925,54 @@ var _ = Describe("Controller", func() {
 		Expect(requests).NotTo(BeEmpty())
 		Expect(requests[0].Name).To(Equal(profile.Name))
 	})
+
+	Context("with ContainerRuntimeConfig enabling crun", func() {
+		BeforeEach(func() {
+			ctrcfg = testutils.NewContainerRuntimeConfig(mcov1.ContainerRuntimeDefaultRuntimeCrun, profile.Spec.MachineConfigPoolSelector)
+		})
+
+		It("should run high-performance runtimes class with crun as container-runtime", func() {
+			mc, err := machineconfig.New(profile, &infra.Status.CPUPartitioning, "")
+			Expect(err).ToNot(HaveOccurred())
+
+			r := newFakeReconciler(profile, profileMCP, mc, infra, ctrcfg)
+			Expect(reconcileTimes(r, request, 2)).To(Equal(reconcile.Result{}))
+
+			By("Verifying MC update")
+			key := types.NamespacedName{
+				Name:      machineconfig.GetMachineConfigName(profile),
+				Namespace: metav1.NamespaceNone,
+			}
+			mc = &mcov1.MachineConfig{}
+			err = r.Get(context.TODO(), key, mc)
+			Expect(err).ToNot(HaveOccurred())
+
+			config := &igntypes.Config{}
+			err = json.Unmarshal(mc.Spec.Config.Raw, config)
+			Expect(err).ToNot(HaveOccurred())
+
+			var mode = 420
+			var containFiles = []igntypes.File{
+				{
+					Node: igntypes.Node{
+						Path:  "/etc/crio/crio.conf.d/99-runtimes.conf",
+						Group: &igntypes.NodeGroup{},
+						User:  &igntypes.NodeUser{},
+					},
+					FileEmbedded1: igntypes.FileEmbedded1{
+						Contents: igntypes.FileContents{
+							Verification: igntypes.Verification{},
+							Source:       "data:text/plain;charset=utf-8;base64,CltjcmlvLnJ1bnRpbWVdCmluZnJhX2N0cl9jcHVzZXQgPSAiMC0zIgoKCiMgV2Ugc2hvdWxkIGNvcHkgcGFzdGUgdGhlIGRlZmF1bHQgcnVudGltZSBiZWNhdXNlIHRoaXMgc25pcHBldCB3aWxsIG92ZXJyaWRlIHRoZSB3aG9sZSBydW50aW1lcyBzZWN0aW9uCltjcmlvLnJ1bnRpbWUucnVudGltZXMucnVuY10KcnVudGltZV9wYXRoID0gIiIKcnVudGltZV90eXBlID0gIm9jaSIKcnVudGltZV9yb290ID0gIi9ydW4vcnVuYyIKCiMgVGhlIENSSS1PIHdpbGwgY2hlY2sgdGhlIGFsbG93ZWRfYW5ub3RhdGlvbnMgdW5kZXIgdGhlIHJ1bnRpbWUgaGFuZGxlciBhbmQgYXBwbHkgaGlnaC1wZXJmb3JtYW5jZSBob29rcyB3aGVuIG9uZSBvZgojIGhpZ2gtcGVyZm9ybWFuY2UgYW5ub3RhdGlvbnMgcHJlc2VudHMgdW5kZXIgaXQuCiMgV2Ugc2hvdWxkIHByb3ZpZGUgdGhlIHJ1bnRpbWVfcGF0aCBiZWNhdXNlIHdlIG5lZWQgdG8gaW5mb3JtIHRoYXQgd2Ugd2FudCB0byByZS11c2UgcnVuYyBiaW5hcnkgYW5kIHdlCiMgZG8gbm90IGhhdmUgaGlnaC1wZXJmb3JtYW5jZSBiaW5hcnkgdW5kZXIgdGhlICRQQVRIIHRoYXQgd2lsbCBwb2ludCB0byBpdC4KW2NyaW8ucnVudGltZS5ydW50aW1lcy5oaWdoLXBlcmZvcm1hbmNlXQpydW50aW1lX3BhdGggPSAiL3Vzci9iaW4vY3J1biIKcnVudGltZV90eXBlID0gIm9jaSIKcnVudGltZV9yb290ID0gIi9ydW4vY3J1biIKYWxsb3dlZF9hbm5vdGF0aW9ucyA9IFsiY3B1LWxvYWQtYmFsYW5jaW5nLmNyaW8uaW8iLCAiY3B1LXF1b3RhLmNyaW8uaW8iLCAiaXJxLWxvYWQtYmFsYW5jaW5nLmNyaW8uaW8iLCAiY3B1LWMtc3RhdGVzLmNyaW8uaW8iLCAiY3B1LWZyZXEtZ292ZXJub3IuY3Jpby5pbyJdCg==",
+						},
+						Mode: &mode,
+					},
+				},
+			}
+			Expect(config.Storage.Files).To(ContainElements(containFiles))
+		})
+
+	})
+
 })
 
 func reconcileTimes(reconciler *PerformanceProfileReconciler, request reconcile.Request, times int) reconcile.Result {
