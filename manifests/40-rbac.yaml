@@ -79,7 +79,7 @@ rules:
   verbs: ["create","get","delete","list","update","watch"]
 # Needed by the core operator functionality.
 - apiGroups: ["machineconfiguration.openshift.io"]
-  resources: ["machineconfigpools"]
+  resources: ["machineconfigpools", "containerruntimeconfigs"]
   verbs: ["get","list","watch"]
 # Needed by the leases mechanism.
 - apiGroups: ["coordination.k8s.io"]
