@@ -50,10 +50,10 @@ func (ms *ManifestResultSet) ToManifestTable() ManifestTable {
 }
 
 // GetNewComponents return a list of all component's instances that should be created according to profile
-func GetNewComponents(profile *performancev2.PerformanceProfile, profileMCP *mcov1.MachineConfigPool, pinningMode *apiconfigv1.CPUPartitioningMode) (*ManifestResultSet, error) {
+func GetNewComponents(profile *performancev2.PerformanceProfile, profileMCP *mcov1.MachineConfigPool, pinningMode *apiconfigv1.CPUPartitioningMode, defaultRuntime mcov1.ContainerRuntimeDefaultRuntime) (*ManifestResultSet, error) {
 	machineConfigPoolSelector := profilecomponent.GetMachineConfigPoolSelector(profile, profileMCP)
 
-	mc, err := machineconfig.New(profile, pinningMode)
+	mc, err := machineconfig.New(profile, pinningMode, defaultRuntime)
 	if err != nil {
 		return nil, err
 	}
