@@ -93,6 +93,8 @@ const (
 const (
 	templateReservedCpus = "ReservedCpus"
 	templateWorkload     = "Workload"
+	templateRuntimePath  = "RuntimePath"
+	templateRuntimeRoot  = "RuntimeRoot"
 )
 
 // New returns new machine configuration object for performance sensitive workloads
@@ -446,8 +448,11 @@ func addContent(ignitionConfig *igntypes.Config, content []byte, dst string, mod
 	})
 }
 
-func renderCrioConfigSnippet(profile *performancev2.PerformanceProfile, src string) ([]byte, error) {
-	templateArgs := make(map[string]string)
+	templateArgs := map[string]string{
+		templateRuntimePath: "/bin/runc",
+		templateRuntimeRoot: "/run/runc",
+	}
+
 	if profile.Spec.CPU.Reserved != nil {
 		templateArgs[templateReservedCpus] = string(*profile.Spec.CPU.Reserved)
 	}
