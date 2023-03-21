@@ -2,6 +2,7 @@ package mcps
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	. "github.com/onsi/gomega"
@@ -195,6 +196,57 @@ func WaitForCondition(mcpName string, conditionType machineconfigv1.MachineConfi
 	EventuallyWithOffset(1, func() corev1.ConditionStatus {
 		return GetConditionStatus(mcpName, conditionType)
 	}, cluster.ComputeTestTimeout(timeout, runningOnSingleNode), 30*time.Second).Should(Equal(conditionStatus), "Failed to find condition status by MCP %q", mcpName)
+}
+
+// WaitForCondition waits for the MCP with given name having a condition of given type with given status using the given helper function
+func WaitForConditionFunc(mcpName string, conditionType machineconfigv1.MachineConfigPoolConditionType, conditionStatus corev1.ConditionStatus, mcpCondGetter func(mcpName string, conditionType machineconfigv1.MachineConfigPoolConditionType) corev1.ConditionStatus) {
+
+	var cnfNodes []corev1.Node
+	runningOnSingleNode, err := cluster.IsSingleNode()
+	ExpectWithOffset(1, err).ToNot(HaveOccurred())
+	// checking in eventually as in case of single node cluster the only node may
+	// be rebooting
+	EventuallyWithOffset(1, func() error {
+		mcp, err := GetByName(mcpName)
+		if err != nil {
+			return errors.Wrap(err, "Failed getting MCP by name")
+		}
+
+		nodeLabels := mcp.Spec.NodeSelector.MatchLabels
+		key, _ := components.GetFirstKeyAndValue(nodeLabels)
+		req, err := labels.NewRequirement(key, selection.Exists, []string{})
+		if err != nil {
+			return errors.Wrap(err, "Failed creating node selector")
+		}
+
+		selector := labels.NewSelector()
+		selector = selector.Add(*req)
+		cnfNodes, err = nodes.GetBySelector(selector)
+		if err != nil {
+			return errors.Wrap(err, "Failed getting nodes by selector")
+		}
+
+		testlog.Infof("MCP %q is targeting %v node(s): %s", mcp.Name, len(cnfNodes), strings.Join(nodeNames(cnfNodes), ","))
+		return nil
+	}, cluster.ComputeTestTimeout(10*time.Minute, runningOnSingleNode), 5*time.Second).ShouldNot(HaveOccurred(), "Failed to find CNF nodes by MCP %q", mcpName)
+
+	// timeout should be based on the number of worker-cnf nodes
+	timeout := time.Duration(len(cnfNodes)*mcpUpdateTimeoutPerNode) * time.Minute
+	if len(cnfNodes) == 0 {
+		timeout = 2 * time.Minute
+	}
+
+	EventuallyWithOffset(1, func() corev1.ConditionStatus {
+		return mcpCondGetter(mcpName, conditionType)
+	}, cluster.ComputeTestTimeout(timeout, runningOnSingleNode), 30*time.Second).Should(Equal(conditionStatus), "Failed to find condition status by MCP %q", mcpName)
+}
+
+func nodeNames(nodes []corev1.Node) []string {
+	names := []string{}
+	for idx := range nodes {
+		names = append(names, nodes[idx].Name)
+	}
+	return names
 }
 
 // WaitForProfilePickedUp waits for the MCP with given name containing the MC created for the PerformanceProfile with the given name
