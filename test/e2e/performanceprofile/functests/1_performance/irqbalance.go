@@ -157,6 +157,9 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 	Context("Verify irqbalance configuration handling", func() {
 
 		It("Should not overwrite the banned CPU set on tuned restart", func() {
+
+			Skip("Skiping test until https://issues.redhat.com/browse/OCPNODE-1538 is resolved")
+
 			if profile.Status.RuntimeClass == nil {
 				Skip("runtime class not generated")
 			}
@@ -261,6 +264,9 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 		})
 
 		It("Should store empty cpu mask in the backup file", func() {
+
+			Skip("Skiping test until https://issues.redhat.com/browse/OCPNODE-1538 is resolved")
+
 			// crio stores the irqbalance CPU ban list in the backup file once, at startup, if the file doesn't exist.
 			// This _likely_ means the first time the provisioned node boots, and in this case is _likely_ the node
 			// has not any IRQ pinning, thus the saved CPU ban list is the empty list. But we don't control nor declare this state.

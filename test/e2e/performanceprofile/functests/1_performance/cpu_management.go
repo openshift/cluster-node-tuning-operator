@@ -300,6 +300,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		})
 
 		It("[test_id:32646] should disable CPU load balancing for CPU's used by the pod", func() {
+			Skip("Skiping test until https://issues.redhat.com/browse/OCPNODE-1538 is resolved")
 			var err error
 			By("Starting the pod")
 			err = testclient.Client.Create(context.TODO(), testpod)
