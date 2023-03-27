@@ -8,6 +8,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -127,6 +128,9 @@ var _ = Describe("[performance][config] Performance configuration", Ordered, fun
 		By("Waiting for MCP being updated")
 		mcps.WaitForCondition(performanceMCP.Name, mcv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 
+		Expect(testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(performanceProfile), performanceProfile))
+		By("Printing the updated profile")
+		format.Object(performanceProfile, 2)
 	})
 
 })
