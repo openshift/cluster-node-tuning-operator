@@ -143,7 +143,7 @@ func externalPerformanceProfile(performanceManifest string) (*performancev2.Perf
 	if err != nil {
 		return nil, fmt.Errorf("Failed to read %s file", performanceManifest)
 	}
-	obj, _, err := decode([]byte(manifest), nil, nil)
+	obj, _, err := decode(manifest, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to read the manifest file %s", performanceManifest)
 	}

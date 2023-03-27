@@ -147,7 +147,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				re := regexp.MustCompile(`tuned.non_isolcpus=\S+`)
 				nonIsolcpusFullArgument := re.FindString(string(cmdline))
 				Expect(nonIsolcpusFullArgument).To(ContainSubstring("tuned.non_isolcpus="), "tuned.non_isolcpus parameter not found in %q", cmdline)
-				nonIsolcpusMask := strings.Split(string(nonIsolcpusFullArgument), "=")[1]
+				nonIsolcpusMask := strings.Split(nonIsolcpusFullArgument, "=")[1]
 				nonIsolcpusMaskNoDelimiters := strings.Replace(nonIsolcpusMask, ",", "", -1)
 
 				getTrimmedMaskFromData := func(maskType string, data []byte) string {
