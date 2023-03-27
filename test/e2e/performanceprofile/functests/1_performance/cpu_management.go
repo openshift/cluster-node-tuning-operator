@@ -321,7 +321,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				containerCgroup, err = nodes.ExecCommandOnNode(cmd, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				return containerCgroup
-			}, (cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode)), 5*time.Second).ShouldNot(BeEmpty(),
+			}, cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode), 5*time.Second).ShouldNot(BeEmpty(),
 				fmt.Sprintf("cannot find cgroup for container %q", containerID))
 
 			By("Checking what CPU the pod is using")
@@ -436,7 +436,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 					}
 				}
 				return true
-			}, (cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode)), 5*time.Second).Should(BeTrue(),
+			}, cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode), 5*time.Second).Should(BeTrue(),
 				fmt.Sprintf("IRQ still active on CPU%s", psr))
 
 			By("Checking that after removing POD default smp affinity is returned back to all active CPUs")

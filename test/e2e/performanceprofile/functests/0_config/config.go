@@ -56,7 +56,7 @@ var _ = Describe("[performance][config] Performance configuration", Ordered, fun
 			deploymentSpecs := csv.Spec.InstallStrategy.StrategySpec.DeploymentSpecs
 			if deploymentSpecs != nil {
 				for _, deployment := range deploymentSpecs {
-					Expect((deployment.Name)).ToNot(Equal("performance-operator"), fmt.Sprintf("CSV %s for performance-operator should have been removed", csv.Name))
+					Expect(deployment.Name).ToNot(Equal("performance-operator"), fmt.Sprintf("CSV %s for performance-operator should have been removed", csv.Name))
 				}
 			}
 		}

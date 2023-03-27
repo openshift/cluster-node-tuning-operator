@@ -864,7 +864,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			totalCpus := fmt.Sprintf("%s,%s", reservedCpus, isolatedCpus)
 			totalCpuSlice := strings.Split(totalCpus, ",")
 			// get partial cpus from the combined cpus
-			partialCpulist := (totalCpuSlice[:len(totalCpuSlice)/2])
+			partialCpulist := totalCpuSlice[:len(totalCpuSlice)/2]
 			offlineCpus := strings.Join(partialCpulist, ",")
 			// Create new performance with offlined
 			reservedSet := performancev2.CPUSet(reservedCpus)
