@@ -133,7 +133,10 @@ var _ = Describe("[performance][config] Performance configuration", Ordered, fun
 
 func externalPerformanceProfile(performanceManifest string) (*performancev2.PerformanceProfile, error) {
 	performanceScheme := runtime.NewScheme()
-	performancev2.AddToScheme(performanceScheme)
+	err := performancev2.AddToScheme(performanceScheme)
+	if err != nil {
+		return nil, err
+	}
 
 	decode := serializer.NewCodecFactory(performanceScheme).UniversalDeserializer().Decode
 	manifest, err := os.ReadFile(performanceManifest)

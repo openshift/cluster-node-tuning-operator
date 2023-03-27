@@ -68,7 +68,9 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 
-		By(fmt.Sprintf("Checking the profile %s with cpus %s", profile.Name, cpuSpecToString(profile.Spec.CPU)))
+		cpus, err := cpuSpecToString(profile.Spec.CPU)
+		Expect(err).ToNot(HaveOccurred(), "failed to parse cpu %v spec to string", cpus)
+		By(fmt.Sprintf("Checking the profile %s with cpus %s", profile.Name, cpus))
 		balanceIsolated = true
 		if profile.Spec.CPU.BalanceIsolated != nil {
 			balanceIsolated = *profile.Spec.CPU.BalanceIsolated
@@ -832,21 +834,30 @@ func deleteTestPod(testpod *corev1.Pod) {
 	Expect(err).ToNot(HaveOccurred())
 }
 
-func cpuSpecToString(cpus *performancev2.CPU) string {
+func cpuSpecToString(cpus *performancev2.CPU) (string, error) {
 	if cpus == nil {
-		return "<nil>"
+		return "", fmt.Errorf("performance CPU field is nil")
 	}
 	sb := strings.Builder{}
 	if cpus.Reserved != nil {
-		fmt.Fprintf(&sb, "reserved=[%s]", *cpus.Reserved)
+		_, err := fmt.Fprintf(&sb, "reserved=[%s]", *cpus.Reserved)
+		if err != nil {
+			return "", err
+		}
 	}
 	if cpus.Isolated != nil {
-		fmt.Fprintf(&sb, " isolated=[%s]", *cpus.Isolated)
+		_, err := fmt.Fprintf(&sb, " isolated=[%s]", *cpus.Isolated)
+		if err != nil {
+			return "", err
+		}
 	}
 	if cpus.BalanceIsolated != nil {
-		fmt.Fprintf(&sb, " balanceIsolated=%t", *cpus.BalanceIsolated)
+		_, err := fmt.Fprintf(&sb, " balanceIsolated=%t", *cpus.BalanceIsolated)
+		if err != nil {
+			return "", err
+		}
 	}
-	return sb.String()
+	return sb.String(), nil
 }
 
 func logEventsForPod(testPod *corev1.Pod) {
