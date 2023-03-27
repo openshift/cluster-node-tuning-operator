@@ -141,15 +141,15 @@ func externalPerformanceProfile(performanceManifest string) (*performancev2.Perf
 	decode := serializer.NewCodecFactory(performanceScheme).UniversalDeserializer().Decode
 	manifest, err := os.ReadFile(performanceManifest)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to read %s file", performanceManifest)
+		return nil, fmt.Errorf("failed to read %s file", performanceManifest)
 	}
 	obj, _, err := decode(manifest, nil, nil)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to read the manifest file %s", performanceManifest)
+		return nil, fmt.Errorf("failed to read the manifest file %s", performanceManifest)
 	}
 	profile, ok := obj.(*performancev2.PerformanceProfile)
 	if !ok {
-		return nil, fmt.Errorf("Failed to convert manifest file to profile")
+		return nil, fmt.Errorf("failed to convert manifest file to profile")
 	}
 	return profile, nil
 }
