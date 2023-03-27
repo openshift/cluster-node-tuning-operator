@@ -3,7 +3,6 @@ package __performance_config
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"time"
 
@@ -137,7 +136,7 @@ func externalPerformanceProfile(performanceManifest string) (*performancev2.Perf
 	performancev2.AddToScheme(performanceScheme)
 
 	decode := serializer.NewCodecFactory(performanceScheme).UniversalDeserializer().Decode
-	manifest, err := ioutil.ReadFile(performanceManifest)
+	manifest, err := os.ReadFile(performanceManifest)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to read %s file", performanceManifest)
 	}
@@ -176,7 +175,7 @@ func testProfile() *performancev2.PerformanceProfile {
 					{
 						Size:  "1G",
 						Count: 1,
-						Node:  pointer.Int32Ptr(0),
+						Node:  pointer.Int32(0),
 					},
 					{
 						Size:  "2M",
@@ -186,18 +185,18 @@ func testProfile() *performancev2.PerformanceProfile {
 			},
 			NodeSelector: testutils.NodeSelectorLabels,
 			RealTimeKernel: &performancev2.RealTimeKernel{
-				Enabled: pointer.BoolPtr(true),
+				Enabled: pointer.Bool(true),
 			},
 			NUMA: &performancev2.NUMA{
-				TopologyPolicy: pointer.StringPtr("single-numa-node"),
+				TopologyPolicy: pointer.String("single-numa-node"),
 			},
 			Net: &performancev2.Net{
-				UserLevelNetworking: pointer.BoolPtr(true),
+				UserLevelNetworking: pointer.Bool(true),
 			},
 			WorkloadHints: &performancev2.WorkloadHints{
-				RealTime:              pointer.BoolPtr(true),
-				HighPowerConsumption:  pointer.BoolPtr(false),
-				PerPodPowerManagement: pointer.BoolPtr(false),
+				RealTime:              pointer.Bool(true),
+				HighPowerConsumption:  pointer.Bool(false),
+				PerPodPowerManagement: pointer.Bool(false),
 			},
 		},
 	}

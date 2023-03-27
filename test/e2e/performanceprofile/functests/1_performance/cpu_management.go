@@ -453,7 +453,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			testpod = pods.GetTestPod()
 			testpod.Namespace = testutils.NamespaceTesting
 			testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
-			testpod.Spec.ShareProcessNamespace = pointer.BoolPtr(true)
+			testpod.Spec.ShareProcessNamespace = pointer.Bool(true)
 
 			err := testclient.Client.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
