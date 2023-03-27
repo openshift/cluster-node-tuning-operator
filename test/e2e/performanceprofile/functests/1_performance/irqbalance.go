@@ -352,21 +352,6 @@ func findIrqBalanceBannedCPUsVarFromConf(conf string) string {
 	return ""
 }
 
-func makeBackupForFile(node *corev1.Node, path string) func() {
-	fullPath := filepath.Join("/", "rootfs", path)
-	savePath := fullPath + ".save"
-
-	out, err := nodes.ExecCommandOnNode([]string{"/usr/bin/cp", "-v", fullPath, savePath}, node)
-	ExpectWithOffset(1, err).ToNot(HaveOccurred())
-	fmt.Fprintf(GinkgoWriter, "%s", out)
-
-	return func() {
-		out, err := nodes.ExecCommandOnNode([]string{"/usr/bin/mv", "-v", savePath, fullPath}, node)
-		Expect(err).ToNot(HaveOccurred())
-		fmt.Fprintf(GinkgoWriter, "%s", out)
-	}
-}
-
 func pickNodeIdx(nodes []corev1.Node) int {
 	name, ok := os.LookupEnv("E2E_PAO_TARGET_NODE")
 	if !ok {

@@ -37,10 +37,6 @@ import (
 var workerRTNode *corev1.Node
 var profile *performancev2.PerformanceProfile
 
-const (
-	sysDevicesOnlineCPUs = "/sys/devices/system/cpu/online"
-)
-
 var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 	var balanceIsolated bool
 	var reservedCPU, isolatedCPU string
@@ -599,7 +595,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				// any random existing cpu is fine
 				cpuID := onlineCPUSet.ToSliceNoSort()[0]
 				smtLevel := nodes.GetSMTLevel(cpuID, workerRTNode)
-				hasWP := checkForWorkloadPartitioning(workerRTNode)
+				hasWP := checkForWorkloadPartitioning()
 
 				// Following checks are required to map test_id scenario correctly to the type of node under test
 				if snoCluster && !RunningOnSingleNode {
@@ -644,7 +640,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 })
 
-func checkForWorkloadPartitioning(workerNode *corev1.Node) bool {
+func checkForWorkloadPartitioning() bool {
 	// Look for the correct Workload Partition annotation in
 	// a crio configuration file on the target node
 	By("Check for Workload Partitioning enabled")
