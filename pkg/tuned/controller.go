@@ -75,7 +75,6 @@ const (
 	openshiftTunedRunDir   = "/run/" + programName
 	openshiftTunedPidFile  = openshiftTunedRunDir + "/" + programName + ".pid"
 	openshiftTunedProvider = openshiftTunedHome + "/provider"
-	openshiftTunedSocket   = openshiftTunedHome + "/openshift-tuned.sock"
 	tunedInitialTimeout    = 60 // timeout in seconds
 	// With the less aggressive rate limiter, retries will happen at 100ms*2^(retry_n-1):
 	// 100ms, 200ms, 400ms, 800ms, 1.6s, 3.2s, 6.4s, 12.8s, 25.6s, 51.2s, 102.4s, 3.4m, 6.8m, 13.7m, 27.3m
@@ -1034,10 +1033,6 @@ func (c *Controller) informerEventHandler(workqueueKey wqKey) cache.ResourceEven
 // reentering this control loop should be made as it is an indication of an intentional
 // exit on request.
 func (c *Controller) changeWatcher() (err error) {
-	var (
-		lStop bool
-	)
-
 	c.tunedMainCfg, err = iniFileLoad(tunedProfilesDirCustom + "/" + tunedMainConfFile)
 	if err != nil {
 		return fmt.Errorf("failed to load global TuneD configuration file: %v", err)
@@ -1100,67 +1095,12 @@ func (c *Controller) changeWatcher() (err error) {
 		}
 	}
 
-	l, err := newUnixListener(openshiftTunedSocket)
-	if err != nil {
-		return fmt.Errorf("cannot create %q listener: %v", openshiftTunedSocket, err)
-	}
-	defer func() {
-		lStop = true
-		l.Close()
-	}()
-
-	sockConns := make(chan sockAccepted, 1)
-	go func() {
-		for {
-			conn, err := l.Accept()
-			if lStop {
-				// The listener was closed on the return from mainLoop(); exit the goroutine.
-				return
-			}
-			sockConns <- sockAccepted{conn, err}
-		}
-	}()
-
 	klog.Info("started controller")
 	for {
 		select {
 		case <-c.stopCh:
 			klog.Infof("termination signal received, stop")
 
-			return nil
-
-		case s := <-sockConns:
-			const socketCmdStop = "stop"
-			var rolledBack bool
-
-			if s.err != nil {
-				return fmt.Errorf("connection accept error: %v", err)
-			}
-
-			buf := make([]byte, len(socketCmdStop))
-			nr, _ := s.conn.Read(buf)
-			data := buf[0:nr]
-
-			if string(data) != socketCmdStop {
-				// We only support one command over the socket interface at this point.
-				klog.Warningf("ignoring unsupported command received over socket: %s", string(data))
-				continue
-			}
-
-			// At this point we know there was a request to exit, do not return any more errors,
-			// just log them.
-			if rolledBack, err = c.tunedStop(); err != nil {
-				klog.Errorf("%s", err.Error())
-			}
-			resp := make([]byte, 2)
-			if rolledBack {
-				// Indicate a successful settings rollback.
-				resp = append(resp, 'o', 'k')
-			}
-			_, err := s.conn.Write(resp)
-			if err != nil {
-				klog.Errorf("cannot write a response via %q: %v", openshiftTunedSocket, err)
-			}
 			return nil
 
 		case <-c.tunedExit:
