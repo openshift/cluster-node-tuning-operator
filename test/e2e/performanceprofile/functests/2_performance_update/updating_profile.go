@@ -378,8 +378,15 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				oldNodeSelector = profile.Spec.DeepCopy().NodeSelector
 			}
 			removeLabels = func(nodeSelector map[string]string, targetNode *corev1.Node) error {
+				patchNode := false
 				for l := range nodeSelector {
-					delete(targetNode.Labels, l)
+					if _, ok := targetNode.Labels[l]; ok {
+						patchNode = true
+						delete(targetNode.Labels, l)
+					}
+				}
+				if !patchNode {
+					return nil
 				}
 				label, err := json.Marshal(targetNode.Labels)
 				Expect(err).ToNot(HaveOccurred())
