@@ -37,6 +37,8 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	utilstuned "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 )
 
 type checkFunction func(*corev1.Node) (string, error)
@@ -596,7 +598,22 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1"}
-				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+
+				for i := 0; i < len(workerRTNodes); i++ {
+					node := &workerRTNodes[i]
+					By(fmt.Sprintf("Waiting for TuneD to start on %q", node.Name))
+					pod, err := utilstuned.GetPod(context.TODO(), node)
+					Expect(err).ToNot(HaveOccurred())
+					cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+					_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+					Expect(err).ToNot(HaveOccurred())
+
+					By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+					Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+					By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+					utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+				}
 			})
 		})
 
@@ -630,7 +647,22 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1"}
-				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+
+				for i := 0; i < len(workerRTNodes); i++ {
+					node := &workerRTNodes[i]
+					By(fmt.Sprintf("Waiting for TuneD to start on %q", node.Name))
+					pod, err := utilstuned.GetPod(context.TODO(), node)
+					Expect(err).ToNot(HaveOccurred())
+					cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+					_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+					Expect(err).ToNot(HaveOccurred())
+
+					By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+					Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+					By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+					utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+				}
 			})
 		})
 		When("HighPower Consumption workload enabled", func() {
@@ -662,7 +694,23 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters := []string{"processor.max_cstate=1", "intel_idle.max_cstate=0"}
-				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+
+				for i := 0; i < len(workerRTNodes); i++ {
+					node := &workerRTNodes[i]
+					By(fmt.Sprintf("Waiting for TuneD to start on %q", node.Name))
+					pod, err := utilstuned.GetPod(context.TODO(), node)
+					Expect(err).ToNot(HaveOccurred())
+					cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+					_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+					Expect(err).ToNot(HaveOccurred())
+
+					By(fmt.Sprintf("Waiting for stalld to NOT be running on %q", node.Name))
+					// waiting the interval is enough time for verifying that stalld isn't running
+					Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+					By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+					utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+				}
 			})
 		})
 
@@ -700,7 +748,22 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
 					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
-				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+
+				for i := 0; i < len(workerRTNodes); i++ {
+					node := &workerRTNodes[i]
+					By(fmt.Sprintf("Waiting for TuneD to start on %q", node.Name))
+					pod, err := utilstuned.GetPod(context.TODO(), node)
+					Expect(err).ToNot(HaveOccurred())
+					cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+					_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+					Expect(err).ToNot(HaveOccurred())
+
+					By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+					Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+					By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+					utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+				}
 			})
 		})
 
@@ -791,10 +854,24 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-
 				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
 					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
-				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+
+				for i := 0; i < len(workerRTNodes); i++ {
+					node := &workerRTNodes[i]
+					By(fmt.Sprintf("Waiting for TuneD to start on %q", node.Name))
+					pod, err := utilstuned.GetPod(context.TODO(), node)
+					Expect(err).ToNot(HaveOccurred())
+					cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+					_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+					Expect(err).ToNot(HaveOccurred())
+
+					By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+					Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+					By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+					utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+				}
 
 				//Update the profile to disable HighPowerConsumption and enable PerPodPowerManagment
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
@@ -833,10 +910,23 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-
 				kernelParameters = []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1", "intel_pstate=passive"}
-				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
 
+				for i := 0; i < len(workerRTNodes); i++ {
+					node := &workerRTNodes[i]
+					By(fmt.Sprintf("Waiting for TuneD to start on %q", node.Name))
+					pod, err := utilstuned.GetPod(context.TODO(), node)
+					Expect(err).ToNot(HaveOccurred())
+					cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+					_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+					Expect(err).ToNot(HaveOccurred())
+
+					By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+					Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+					By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+					utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+				}
 			})
 
 			It("[test_id:54179]Verify System is tuned when reverting from PerPodPowerManagement to HighPowerConsumption", func() {
@@ -882,9 +972,23 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-
 				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1", "intel_pstate=passive"}
-				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+
+				for i := 0; i < len(workerRTNodes); i++ {
+					node := &workerRTNodes[i]
+					By(fmt.Sprintf("Waiting for TuneD to start on %q", node.Name))
+					pod, err := utilstuned.GetPod(context.TODO(), node)
+					Expect(err).ToNot(HaveOccurred())
+					cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+					_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+					Expect(err).ToNot(HaveOccurred())
+
+					By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+					Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+					By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+					utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+				}
 
 				//Update the profile to disable HighPowerConsumption and enable PerPodPowerManagment
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
@@ -923,10 +1027,24 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-
 				kernelParameters = []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
 					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
-				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+
+				for i := 0; i < len(workerRTNodes); i++ {
+					node := &workerRTNodes[i]
+					By(fmt.Sprintf("Waiting for TuneD to start on %q", node.Name))
+					pod, err := utilstuned.GetPod(context.TODO(), node)
+					Expect(err).ToNot(HaveOccurred())
+					cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+					_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+					Expect(err).ToNot(HaveOccurred())
+
+					By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+					Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+					By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+					utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+				}
 			})
 
 			It("[test_id:54184]Verify enabling both HighPowerConsumption and PerPodPowerManagment fails", func() {
@@ -1857,61 +1975,6 @@ func getUpdatedNodes() []corev1.Node {
 	Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("error looking for the optional selector: %v", err))
 	Expect(workerRTNodes).ToNot(BeEmpty(), "cannot find RT enabled worker nodes")
 	return workerRTNodes
-}
-
-// Check All tunables and kernel paramters for workloadHint
-func checkTunedParameters(workerRTNodes []corev1.Node, stalld bool, sysctlMap map[string]string, kernelParameters []string, rtkernel bool) {
-	for _, node := range workerRTNodes {
-		stalld_pid, err := nodes.ExecCommandOnNode([]string{"pidof", "stalld"}, &node)
-		if stalld {
-			Expect(err).ToNot(HaveOccurred())
-			Expect(stalld_pid).ToNot(BeEmpty())
-		} else {
-			Expect(err).To(HaveOccurred())
-			Expect(stalld_pid).To(BeEmpty())
-		}
-	}
-
-	key := types.NamespacedName{
-		Name:      components.GetComponentName(testutils.PerformanceProfileName, components.ProfileNamePerformance),
-		Namespace: components.NamespaceNodeTuningOperator,
-	}
-	tuned := &tunedv1.Tuned{}
-	err := testclient.Client.Get(context.TODO(), key, tuned)
-	Expect(err).ToNot(HaveOccurred(), "Cannot find the cluster Node Tuning Operator object "+key.String())
-	if stalld {
-		Expect(*tuned.Spec.Profile[0].Data).To(ContainSubstring("stalld"))
-	} else {
-		Expect(*tuned.Spec.Profile[0].Data).ToNot(ContainSubstring("stalld"))
-	}
-
-	for _, node := range workerRTNodes {
-		for param, expected := range sysctlMap {
-			By(fmt.Sprintf("Executing he command \"sysctl -n %s\"", param))
-			out, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"sysctl", "-n", param})
-			Expect(err).ToNot(HaveOccurred())
-			Expect(strings.TrimSpace(string(out))).Should(Equal(expected), "parameter %s value is not %s. ", param, expected)
-		}
-	}
-	for _, node := range workerRTNodes {
-		cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"cat", "/proc/cmdline"})
-		Expect(err).ToNot(HaveOccurred())
-		for _, paramter := range kernelParameters {
-			Expect(string(cmdline)).To(ContainSubstring(paramter))
-		}
-	}
-
-	if !rtkernel {
-		for _, node := range workerRTNodes {
-			cmd := []string{"uname", "-a"}
-			kernel, err := nodes.ExecCommandOnNode(cmd, &node)
-			Expect(err).ToNot(HaveOccurred(), "failed to execute uname")
-			Expect(kernel).To(ContainSubstring("Linux"), "Kernel should report itself as Linux")
-
-			err = nodes.HasPreemptRTKernel(&node)
-			Expect(err).To(HaveOccurred(), "Node should have non-RT kernel")
-		}
-	}
 }
 
 func getTunedStructuredData(profile *performancev2.PerformanceProfile) *ini.File {
