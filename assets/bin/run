@@ -1,6 +1,5 @@
 #!/bin/sh
 
-openshift_tuned_socket=/var/lib/tuned/openshift-tuned.sock
 export SYSTEMD_IGNORE_CHROOT=1
 
 start() {
@@ -11,19 +10,12 @@ start() {
   # - http://bugs.python.org/issue1663329
   ulimit -Sn 1024	# workaround for the issue above
 
-  openshift-tuned \
+  exec /usr/bin/openshift-tuned \
     -v=0
 }
 
 stop() {
-  local timeout=10	# wait $timeout [s] for a reply via the socket
-  local response=$(echo stop | nc -i$timeout -U $openshift_tuned_socket 2>/dev/null)
-
-  if [ "$response" != "ok" ]; then
-    # provide a failure message in the event log
-    echo "openshift-tuned stop response: $response" 1>&2
-    return 1
-  fi
+  :
 }
 
 $@
