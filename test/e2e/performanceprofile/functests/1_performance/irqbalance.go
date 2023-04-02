@@ -165,7 +165,6 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 				Skip("this test needs dynamic IRQ balancing")
 			}
 
-			testutils.KnownIssueBugzilla(2181546)
 			testutils.KnownIssueJira("OCPNODE-1538")
 
 			targetNodeIdx := pickNodeIdx(workerRTNodes)
@@ -269,7 +268,6 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			// has not any IRQ pinning, thus the saved CPU ban list is the empty list. But we don't control nor declare this state.
 			// It's all best effort.
 
-			testutils.KnownIssueBugzilla(2181546)
 			testutils.KnownIssueJira("OCPNODE-1538")
 
 			nodeIdx := pickNodeIdx(workerRTNodes)
