@@ -1358,20 +1358,22 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		BeforeEach(func() {
 			//Saving the old performance profile
 			initialProfile = profile.DeepCopy()
-		})
 
-		It("[disruptive] should set offline cpus after deploy PAO", func() {
 			for _, node := range workerRTNodes {
 				onlineCPUCount, err := nodes.ExecCommandOnNode([]string{"nproc", "--all"}, &node)
 				Expect(err).ToNot(HaveOccurred())
+
 				onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
 				Expect(err).ToNot(HaveOccurred())
+
 				Expect(onlineCPUInt).Should(BeNumerically(">=", 3))
 				if onlineCPUInt <= 8 {
-					Skip(fmt.Sprintf("This test needs more than 8 CPUs online to work correctly, current online CPUs are %s", onlineCPUCount))
+					Skip(fmt.Sprintf("Offlined CPU API tests need more than 8 CPUs online to work correctly, current online CPUs are %s", onlineCPUCount))
 				}
 			}
+		})
 
+		It("[disruptive] should set offline cpus after deploy PAO", func() {
 			// Create new performance with offlined
 			reserved := performancev2.CPUSet("0")
 			isolated := performancev2.CPUSet("1")
@@ -1410,16 +1412,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			var reserved, isolated, offline []string
 			// This map is of the form numaNode[core][cpu-siblings]
 			var numaCoreSiblings map[int]map[int][]int
-			var onlineCPUInt int
-			for _, node := range workerRTNodes {
-				onlineCPUCount, err := nodes.ExecCommandOnNode([]string{"nproc", "--all"}, &node)
-				Expect(err).ToNot(HaveOccurred())
-				onlineCPUInt, err = strconv.Atoi(onlineCPUCount)
-				Expect(err).ToNot(HaveOccurred())
-				if onlineCPUInt <= 8 {
-					Skip(fmt.Sprintf("This test needs more than 8 CPUs online to work correctly, current online CPUs are %s", onlineCPUCount))
-				}
-			}
+
 			// Get Per Numa Per core siblings
 			for _, node := range workerRTNodes {
 				numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
@@ -1492,16 +1485,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			var reserved, isolated, offline []string
 			// This map is of the form numaNode[core][cpu-siblings]
 			var numaCoreSiblings map[int]map[int][]int
-			var onlineCPUInt int
-			for _, node := range workerRTNodes {
-				onlineCPUCount, err := nodes.ExecCommandOnNode([]string{"nproc", "--all"}, &node)
-				Expect(err).ToNot(HaveOccurred())
-				onlineCPUInt, err = strconv.Atoi(onlineCPUCount)
-				Expect(err).ToNot(HaveOccurred())
-				if onlineCPUInt <= 8 {
-					Skip(fmt.Sprintf("This test needs more than 8 CPUs online to work correctly, current online CPUs are %s", onlineCPUCount))
-				}
-			}
+
 			for _, node := range workerRTNodes {
 				numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
 			}
@@ -1574,16 +1558,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(err).ToNot(HaveOccurred())
 				if len(numaInfo) < 2 {
 					Skip(fmt.Sprintf("This test need 2 NUMA nodes.The number of NUMA nodes on node %s < 2", node.Name))
-				}
-			}
-			for _, node := range workerRTNodes {
-				onlineCPUCount, err := nodes.ExecCommandOnNode([]string{"nproc", "--all"}, &node)
-				Expect(err).ToNot(HaveOccurred())
-				onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(onlineCPUInt).Should(BeNumerically(">=", 3))
-				if onlineCPUInt <= 8 {
-					Skip(fmt.Sprintf("This test needs more than 8 CPUs online to work correctly, current online CPUs are %s", onlineCPUCount))
 				}
 			}
 			for _, node := range workerRTNodes {
@@ -1669,18 +1643,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 			}
 			for _, node := range workerRTNodes {
-				onlineCPUCount, err := nodes.ExecCommandOnNode([]string{"nproc", "--all"}, &node)
-				Expect(err).ToNot(HaveOccurred())
-				onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(onlineCPUInt).Should(BeNumerically(">=", 3))
-				if onlineCPUInt <= 8 {
-					Skip(fmt.Sprintf("This test needs more than 8 CPUs online to work correctly, current online CPUs are %s", onlineCPUCount))
-				}
-
-			}
-
-			for _, node := range workerRTNodes {
 				numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
 			}
 			// Get reserved core siblings from 0, 1
@@ -1742,18 +1704,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					Skip(fmt.Sprintf("This test need 2 NUMA nodes.The number of NUMA nodes on node %s < 2", node.Name))
 				}
 			}
-			for _, node := range workerRTNodes {
-				onlineCPUCount, err := nodes.ExecCommandOnNode([]string{"nproc", "--all"}, &node)
-				Expect(err).ToNot(HaveOccurred())
-				onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(onlineCPUInt).Should(BeNumerically(">=", 3))
-				if onlineCPUInt <= 8 {
-					Skip(fmt.Sprintf("This test needs more than 8 CPUs online to work correctly, current online CPUs are %s", onlineCPUCount))
-				}
-
-			}
-
 			for _, node := range workerRTNodes {
 				numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
 			}
