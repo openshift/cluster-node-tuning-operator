@@ -1546,6 +1546,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile))
 			}
 		})
+
 		It("[test_id:50966]verify offlined parameter accepts multiple ranges of cpuid's", func() {
 			var reserved, isolated, offlined []string
 			//This map is of the form numaNode[core][cpu-siblings]
@@ -1824,7 +1825,17 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		AfterEach(func() {
-			//Revert the profile
+			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+
+			currentSpec, _ := json.Marshal(profile.Spec)
+			spec, _ := json.Marshal(initialProfile.Spec)
+			// revert only if the profile changes.
+			if bytes.Equal(currentSpec, spec) {
+				testlog.Infof("profile hasn't change, avoiding revert")
+				return
+			}
+			By("Reverting the Profile")
 			profiles.UpdateWithRetry(initialProfile)
 
 			By("Applying changes in performance profile and waiting until mcp will start updating")
