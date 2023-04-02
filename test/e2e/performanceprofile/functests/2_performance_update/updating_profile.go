@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -599,21 +600,29 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1"}
 
+				wg := sync.WaitGroup{}
+				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
-					By(fmt.Sprintf("Waiting for TuneD to start on %q", node.Name))
-					pod, err := utilstuned.GetPod(context.TODO(), node)
-					Expect(err).ToNot(HaveOccurred())
-					cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
-					_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
-					Expect(err).ToNot(HaveOccurred())
+					go func() {
+						defer GinkgoRecover()
+						wg.Add(1)
+						defer wg.Done()
 
-					By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-					Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						pod, err := utilstuned.GetPod(context.TODO(), node)
+						Expect(err).ToNot(HaveOccurred())
+						cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+						_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+						Expect(err).ToNot(HaveOccurred())
 
-					By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-					utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+					}()
 				}
+				wg.Wait()
 			})
 		})
 
@@ -648,21 +657,29 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1"}
 
+				wg := sync.WaitGroup{}
+				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
-					By(fmt.Sprintf("Waiting for TuneD to start on %q", node.Name))
-					pod, err := utilstuned.GetPod(context.TODO(), node)
-					Expect(err).ToNot(HaveOccurred())
-					cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
-					_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
-					Expect(err).ToNot(HaveOccurred())
+					go func() {
+						defer GinkgoRecover()
+						wg.Add(1)
+						defer wg.Done()
 
-					By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-					Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						pod, err := utilstuned.GetPod(context.TODO(), node)
+						Expect(err).ToNot(HaveOccurred())
+						cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+						_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+						Expect(err).ToNot(HaveOccurred())
 
-					By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-					utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+					}()
 				}
+				wg.Wait()
 			})
 		})
 		When("HighPower Consumption workload enabled", func() {
@@ -696,22 +713,29 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 				kernelParameters := []string{"processor.max_cstate=1", "intel_idle.max_cstate=0"}
 
+				wg := sync.WaitGroup{}
+				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
-					By(fmt.Sprintf("Waiting for TuneD to start on %q", node.Name))
-					pod, err := utilstuned.GetPod(context.TODO(), node)
-					Expect(err).ToNot(HaveOccurred())
-					cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
-					_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
-					Expect(err).ToNot(HaveOccurred())
+					go func() {
+						defer GinkgoRecover()
+						wg.Add(1)
+						defer wg.Done()
 
-					By(fmt.Sprintf("Waiting for stalld to NOT be running on %q", node.Name))
-					// waiting the interval is enough time for verifying that stalld isn't running
-					Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						pod, err := utilstuned.GetPod(context.TODO(), node)
+						Expect(err).ToNot(HaveOccurred())
+						cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+						_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+						Expect(err).ToNot(HaveOccurred())
 
-					By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-					utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+						By(fmt.Sprintf("Waiting for stalld to NOT be running on %q", node.Name))
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+					}()
 				}
+				wg.Wait()
 			})
 		})
 
@@ -750,21 +774,29 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
 					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
 
+				wg := sync.WaitGroup{}
+				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
-					By(fmt.Sprintf("Waiting for TuneD to start on %q", node.Name))
-					pod, err := utilstuned.GetPod(context.TODO(), node)
-					Expect(err).ToNot(HaveOccurred())
-					cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
-					_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
-					Expect(err).ToNot(HaveOccurred())
+					go func() {
+						defer GinkgoRecover()
+						wg.Add(1)
+						defer wg.Done()
 
-					By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-					Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						pod, err := utilstuned.GetPod(context.TODO(), node)
+						Expect(err).ToNot(HaveOccurred())
+						cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+						_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+						Expect(err).ToNot(HaveOccurred())
 
-					By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-					utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+					}()
 				}
+				wg.Wait()
 			})
 		})
 
@@ -858,21 +890,29 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
 					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
 
+				wg := sync.WaitGroup{}
+				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
-					By(fmt.Sprintf("Waiting for TuneD to start on %q", node.Name))
-					pod, err := utilstuned.GetPod(context.TODO(), node)
-					Expect(err).ToNot(HaveOccurred())
-					cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
-					_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
-					Expect(err).ToNot(HaveOccurred())
+					go func() {
+						defer GinkgoRecover()
+						wg.Add(1)
+						defer wg.Done()
 
-					By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-					Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						pod, err := utilstuned.GetPod(context.TODO(), node)
+						Expect(err).ToNot(HaveOccurred())
+						cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+						_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+						Expect(err).ToNot(HaveOccurred())
 
-					By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-					utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+					}()
 				}
+				wg.Wait()
 
 				//Update the profile to disable HighPowerConsumption and enable PerPodPowerManagment
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
@@ -913,21 +953,29 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 				kernelParameters = []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1", "intel_pstate=passive"}
 
+				wg = sync.WaitGroup{}
+				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
-					By(fmt.Sprintf("Waiting for TuneD to start on %q", node.Name))
-					pod, err := utilstuned.GetPod(context.TODO(), node)
-					Expect(err).ToNot(HaveOccurred())
-					cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
-					_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
-					Expect(err).ToNot(HaveOccurred())
+					go func() {
+						defer GinkgoRecover()
+						wg.Add(1)
+						defer wg.Done()
 
-					By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-					Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						pod, err := utilstuned.GetPod(context.TODO(), node)
+						Expect(err).ToNot(HaveOccurred())
+						cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+						_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+						Expect(err).ToNot(HaveOccurred())
 
-					By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-					utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+					}()
 				}
+				wg.Wait()
 			})
 
 			It("[test_id:54179]Verify System is tuned when reverting from PerPodPowerManagement to HighPowerConsumption", func() {
@@ -975,21 +1023,29 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1", "intel_pstate=passive"}
 
+				wg := sync.WaitGroup{}
+				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
-					By(fmt.Sprintf("Waiting for TuneD to start on %q", node.Name))
-					pod, err := utilstuned.GetPod(context.TODO(), node)
-					Expect(err).ToNot(HaveOccurred())
-					cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
-					_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
-					Expect(err).ToNot(HaveOccurred())
+					go func() {
+						defer GinkgoRecover()
+						wg.Add(1)
+						defer wg.Done()
 
-					By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-					Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						pod, err := utilstuned.GetPod(context.TODO(), node)
+						Expect(err).ToNot(HaveOccurred())
+						cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+						_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+						Expect(err).ToNot(HaveOccurred())
 
-					By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-					utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+					}()
 				}
+				wg.Wait()
 
 				//Update the profile to disable HighPowerConsumption and enable PerPodPowerManagment
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
@@ -1031,21 +1087,29 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				kernelParameters = []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
 					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
 
+				wg = sync.WaitGroup{}
+				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
-					By(fmt.Sprintf("Waiting for TuneD to start on %q", node.Name))
-					pod, err := utilstuned.GetPod(context.TODO(), node)
-					Expect(err).ToNot(HaveOccurred())
-					cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
-					_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
-					Expect(err).ToNot(HaveOccurred())
+					go func() {
+						defer GinkgoRecover()
+						wg.Add(1)
+						defer wg.Done()
 
-					By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-					Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						pod, err := utilstuned.GetPod(context.TODO(), node)
+						Expect(err).ToNot(HaveOccurred())
+						cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+						_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+						Expect(err).ToNot(HaveOccurred())
 
-					By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-					utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+					}()
 				}
+				wg.Wait()
 			})
 
 			It("[test_id:54184]Verify enabling both HighPowerConsumption and PerPodPowerManagment fails", func() {
