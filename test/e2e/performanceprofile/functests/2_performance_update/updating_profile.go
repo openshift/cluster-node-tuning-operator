@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -37,6 +38,8 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	utilstuned "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 )
 
 type checkFunction func(*corev1.Node) (string, error)
@@ -353,20 +356,30 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 	Context("Updating of nodeSelector parameter and node labels", func() {
 		var mcp *machineconfigv1.MachineConfigPool
 		var newCnfNode *corev1.Node
-
 		newRole := "worker-test"
 		newLabel := fmt.Sprintf("%s/%s", testutils.LabelRole, newRole)
-		var labelsDeletion = false
+		labelsDeletion := false
 		newNodeSelector := map[string]string{newLabel: ""}
 
-		//fetch the latest profile
-		profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-		//Expect(err).ToNot(HaveOccurred())
-		var oldMcpSelector, oldNodeSelector map[string]string
-		var removeLabels func(map[string]string, *corev1.Node) error
-
 		//fetch existing MCP Selector if exists in profile
+		var oldMcpSelector, oldNodeSelector map[string]string
+
 		BeforeEach(func() {
+			// initialize on every run
+			labelsDeletion = false
+			//fetch the latest profile
+			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+
+			nonPerformancesWorkers, err := nodes.GetNonPerformancesWorkers(profile.Spec.NodeSelector)
+			Expect(err).ToNot(HaveOccurred())
+			// we need at least 2 non-performance worker nodes to satisfy pod distribution budget
+			if len(nonPerformancesWorkers) > 1 {
+				newCnfNode = &nonPerformancesWorkers[0]
+			}
+			if newCnfNode == nil {
+				Skip("Skipping the test - cluster does not have another available worker node ")
+			}
 
 			//fetch existing MCP Selector if exists in profile
 			if profile.Spec.MachineConfigPoolSelector != nil {
@@ -377,42 +390,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			if profile.Spec.NodeSelector != nil {
 				oldNodeSelector = profile.Spec.DeepCopy().NodeSelector
 			}
-			removeLabels = func(nodeSelector map[string]string, targetNode *corev1.Node) error {
-				patchNode := false
-				for l := range nodeSelector {
-					if _, ok := targetNode.Labels[l]; ok {
-						patchNode = true
-						delete(targetNode.Labels, l)
-					}
-				}
-				if !patchNode {
-					return nil
-				}
-				label, err := json.Marshal(targetNode.Labels)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(testclient.Client.Patch(context.TODO(), targetNode,
-					client.RawPatch(
-						types.JSONPatchType,
-						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/metadata/labels", "value": %s }]`, label)),
-					),
-				)).ToNot(HaveOccurred())
-				mcps.WaitForCondition(testutils.RoleWorker, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-
-				By("Waiting when MCP Worker complete updates and verifying that node reverted back configuration")
-				mcps.WaitForCondition(testutils.RoleWorker, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
-				return nil
-			}
-
-			nonPerformancesWorkers, err := nodes.GetNonPerformancesWorkers(profile.Spec.NodeSelector)
-			Expect(err).ToNot(HaveOccurred())
-			// we need atleast 2 non performance worker nodes to satisfy pod distribution budget
-			if len(nonPerformancesWorkers) > 1 {
-				newCnfNode = &nonPerformancesWorkers[0]
-			}
-			if newCnfNode == nil {
-				Skip("Skipping the test - cluster does not have another available worker node ")
-			}
-
 			nodeLabel = newNodeSelector
 			newCnfNode.Labels[newLabel] = ""
 
@@ -463,8 +440,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		It("[test_id:27484]Verifies that node is reverted to plain worker when the extra labels are removed", func() {
 			By("Deleting cnf labels from the node")
-			err = removeLabels(profile.Spec.NodeSelector, newCnfNode)
-			Expect(err).ToNot(HaveOccurred())
+			removeLabels(profile.Spec.NodeSelector, newCnfNode)
 			labelsDeletion = true
 			// Check if node is Ready
 			for i := range newCnfNode.Status.Conditions {
@@ -496,8 +472,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		AfterEach(func() {
 
 			if labelsDeletion == false {
-				err = removeLabels(profile.Spec.NodeSelector, newCnfNode)
-				Expect(err).ToNot(HaveOccurred())
+				removeLabels(profile.Spec.NodeSelector, newCnfNode)
 			}
 
 			var selectorLabels []string
@@ -596,7 +571,30 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1"}
-				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+
+				wg := sync.WaitGroup{}
+				By("Waiting for TuneD to start on nodes")
+				for i := 0; i < len(workerRTNodes); i++ {
+					node := &workerRTNodes[i]
+					go func() {
+						defer GinkgoRecover()
+						wg.Add(1)
+						defer wg.Done()
+
+						pod, err := utilstuned.GetPod(context.TODO(), node)
+						Expect(err).ToNot(HaveOccurred())
+						cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+						_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+						Expect(err).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+					}()
+				}
+				wg.Wait()
 			})
 		})
 
@@ -630,7 +628,30 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1"}
-				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+
+				wg := sync.WaitGroup{}
+				By("Waiting for TuneD to start on nodes")
+				for i := 0; i < len(workerRTNodes); i++ {
+					node := &workerRTNodes[i]
+					go func() {
+						defer GinkgoRecover()
+						wg.Add(1)
+						defer wg.Done()
+
+						pod, err := utilstuned.GetPod(context.TODO(), node)
+						Expect(err).ToNot(HaveOccurred())
+						cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+						_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+						Expect(err).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+					}()
+				}
+				wg.Wait()
 			})
 		})
 		When("HighPower Consumption workload enabled", func() {
@@ -663,7 +684,30 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters := []string{"processor.max_cstate=1", "intel_idle.max_cstate=0"}
-				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+
+				wg := sync.WaitGroup{}
+				By("Waiting for TuneD to start on nodes")
+				for i := 0; i < len(workerRTNodes); i++ {
+					node := &workerRTNodes[i]
+					go func() {
+						defer GinkgoRecover()
+						wg.Add(1)
+						defer wg.Done()
+
+						pod, err := utilstuned.GetPod(context.TODO(), node)
+						Expect(err).ToNot(HaveOccurred())
+						cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+						_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+						Expect(err).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Waiting for stalld to NOT be running on %q", node.Name))
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+					}()
+				}
+				wg.Wait()
 			})
 		})
 
@@ -701,7 +745,30 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
 					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
-				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+
+				wg := sync.WaitGroup{}
+				By("Waiting for TuneD to start on nodes")
+				for i := 0; i < len(workerRTNodes); i++ {
+					node := &workerRTNodes[i]
+					go func() {
+						defer GinkgoRecover()
+						wg.Add(1)
+						defer wg.Done()
+
+						pod, err := utilstuned.GetPod(context.TODO(), node)
+						Expect(err).ToNot(HaveOccurred())
+						cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+						_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+						Expect(err).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+					}()
+				}
+				wg.Wait()
 			})
 		})
 
@@ -792,10 +859,32 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-
 				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
 					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
-				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+
+				wg := sync.WaitGroup{}
+				By("Waiting for TuneD to start on nodes")
+				for i := 0; i < len(workerRTNodes); i++ {
+					node := &workerRTNodes[i]
+					go func() {
+						defer GinkgoRecover()
+						wg.Add(1)
+						defer wg.Done()
+
+						pod, err := utilstuned.GetPod(context.TODO(), node)
+						Expect(err).ToNot(HaveOccurred())
+						cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+						_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+						Expect(err).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+					}()
+				}
+				wg.Wait()
 
 				//Update the profile to disable HighPowerConsumption and enable PerPodPowerManagment
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
@@ -834,10 +923,31 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-
 				kernelParameters = []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1", "intel_pstate=passive"}
-				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
 
+				wg = sync.WaitGroup{}
+				By("Waiting for TuneD to start on nodes")
+				for i := 0; i < len(workerRTNodes); i++ {
+					node := &workerRTNodes[i]
+					go func() {
+						defer GinkgoRecover()
+						wg.Add(1)
+						defer wg.Done()
+
+						pod, err := utilstuned.GetPod(context.TODO(), node)
+						Expect(err).ToNot(HaveOccurred())
+						cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+						_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+						Expect(err).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+					}()
+				}
+				wg.Wait()
 			})
 
 			It("[test_id:54179]Verify System is tuned when reverting from PerPodPowerManagement to HighPowerConsumption", func() {
@@ -883,9 +993,31 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-
 				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1", "intel_pstate=passive"}
-				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+
+				wg := sync.WaitGroup{}
+				By("Waiting for TuneD to start on nodes")
+				for i := 0; i < len(workerRTNodes); i++ {
+					node := &workerRTNodes[i]
+					go func() {
+						defer GinkgoRecover()
+						wg.Add(1)
+						defer wg.Done()
+
+						pod, err := utilstuned.GetPod(context.TODO(), node)
+						Expect(err).ToNot(HaveOccurred())
+						cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+						_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+						Expect(err).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+					}()
+				}
+				wg.Wait()
 
 				//Update the profile to disable HighPowerConsumption and enable PerPodPowerManagment
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
@@ -924,10 +1056,32 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-
 				kernelParameters = []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
 					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
-				checkTunedParameters(workerRTNodes, stalldEnabled, sysctlMap, kernelParameters, rtKernel)
+
+				wg = sync.WaitGroup{}
+				By("Waiting for TuneD to start on nodes")
+				for i := 0; i < len(workerRTNodes); i++ {
+					node := &workerRTNodes[i]
+					go func() {
+						defer GinkgoRecover()
+						wg.Add(1)
+						defer wg.Done()
+
+						pod, err := utilstuned.GetPod(context.TODO(), node)
+						Expect(err).ToNot(HaveOccurred())
+						cmd := []string{"test", "-e", "/run/tuned/tuned.pid"}
+						_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, cmd...)
+						Expect(err).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+
+						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+					}()
+				}
+				wg.Wait()
 			})
 
 			It("[test_id:54184]Verify enabling both HighPowerConsumption and PerPodPowerManagment fails", func() {
@@ -1173,20 +1327,22 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		BeforeEach(func() {
 			//Saving the old performance profile
 			initialProfile = profile.DeepCopy()
-		})
 
-		It("[disruptive] should set offline cpus after deploy PAO", func() {
 			for _, node := range workerRTNodes {
 				onlineCPUCount, err := nodes.ExecCommandOnNode([]string{"nproc", "--all"}, &node)
 				Expect(err).ToNot(HaveOccurred())
+
 				onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
 				Expect(err).ToNot(HaveOccurred())
+
 				Expect(onlineCPUInt).Should(BeNumerically(">=", 3))
 				if onlineCPUInt <= 8 {
-					Skip(fmt.Sprintf("This test needs more than 8 CPUs online to work correctly, current online CPUs are %s", onlineCPUCount))
+					Skip(fmt.Sprintf("Offlined CPU API tests need more than 8 CPUs online to work correctly, current online CPUs are %s", onlineCPUCount))
 				}
 			}
+		})
 
+		It("[disruptive] should set offline cpus after deploy PAO", func() {
 			// Create new performance with offlined
 			reserved := performancev2.CPUSet("0")
 			isolated := performancev2.CPUSet("1")
@@ -1225,16 +1381,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			var reserved, isolated, offline []string
 			// This map is of the form numaNode[core][cpu-siblings]
 			var numaCoreSiblings map[int]map[int][]int
-			var onlineCPUInt int
-			for _, node := range workerRTNodes {
-				onlineCPUCount, err := nodes.ExecCommandOnNode([]string{"nproc", "--all"}, &node)
-				Expect(err).ToNot(HaveOccurred())
-				onlineCPUInt, err = strconv.Atoi(onlineCPUCount)
-				Expect(err).ToNot(HaveOccurred())
-				if onlineCPUInt <= 8 {
-					Skip(fmt.Sprintf("This test needs more than 8 CPUs online to work correctly, current online CPUs are %s", onlineCPUCount))
-				}
-			}
+
 			// Get Per Numa Per core siblings
 			for _, node := range workerRTNodes {
 				numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
@@ -1307,16 +1454,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			var reserved, isolated, offline []string
 			// This map is of the form numaNode[core][cpu-siblings]
 			var numaCoreSiblings map[int]map[int][]int
-			var onlineCPUInt int
-			for _, node := range workerRTNodes {
-				onlineCPUCount, err := nodes.ExecCommandOnNode([]string{"nproc", "--all"}, &node)
-				Expect(err).ToNot(HaveOccurred())
-				onlineCPUInt, err = strconv.Atoi(onlineCPUCount)
-				Expect(err).ToNot(HaveOccurred())
-				if onlineCPUInt <= 8 {
-					Skip(fmt.Sprintf("This test needs more than 8 CPUs online to work correctly, current online CPUs are %s", onlineCPUCount))
-				}
-			}
+
 			for _, node := range workerRTNodes {
 				numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
 			}
@@ -1380,6 +1518,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile))
 			}
 		})
+
 		It("[test_id:50966]verify offlined parameter accepts multiple ranges of cpuid's", func() {
 			var reserved, isolated, offlined []string
 			//This map is of the form numaNode[core][cpu-siblings]
@@ -1389,16 +1528,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(err).ToNot(HaveOccurred())
 				if len(numaInfo) < 2 {
 					Skip(fmt.Sprintf("This test need 2 NUMA nodes.The number of NUMA nodes on node %s < 2", node.Name))
-				}
-			}
-			for _, node := range workerRTNodes {
-				onlineCPUCount, err := nodes.ExecCommandOnNode([]string{"nproc", "--all"}, &node)
-				Expect(err).ToNot(HaveOccurred())
-				onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(onlineCPUInt).Should(BeNumerically(">=", 3))
-				if onlineCPUInt <= 8 {
-					Skip(fmt.Sprintf("This test needs more than 8 CPUs online to work correctly, current online CPUs are %s", onlineCPUCount))
 				}
 			}
 			for _, node := range workerRTNodes {
@@ -1484,18 +1613,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 			}
 			for _, node := range workerRTNodes {
-				onlineCPUCount, err := nodes.ExecCommandOnNode([]string{"nproc", "--all"}, &node)
-				Expect(err).ToNot(HaveOccurred())
-				onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(onlineCPUInt).Should(BeNumerically(">=", 3))
-				if onlineCPUInt <= 8 {
-					Skip(fmt.Sprintf("This test needs more than 8 CPUs online to work correctly, current online CPUs are %s", onlineCPUCount))
-				}
-
-			}
-
-			for _, node := range workerRTNodes {
 				numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
 			}
 			// Get reserved core siblings from 0, 1
@@ -1557,18 +1674,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					Skip(fmt.Sprintf("This test need 2 NUMA nodes.The number of NUMA nodes on node %s < 2", node.Name))
 				}
 			}
-			for _, node := range workerRTNodes {
-				onlineCPUCount, err := nodes.ExecCommandOnNode([]string{"nproc", "--all"}, &node)
-				Expect(err).ToNot(HaveOccurred())
-				onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(onlineCPUInt).Should(BeNumerically(">=", 3))
-				if onlineCPUInt <= 8 {
-					Skip(fmt.Sprintf("This test needs more than 8 CPUs online to work correctly, current online CPUs are %s", onlineCPUCount))
-				}
-
-			}
-
 			for _, node := range workerRTNodes {
 				numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
 			}
@@ -1692,7 +1797,17 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		AfterEach(func() {
-			//Revert the profile
+			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+
+			currentSpec, _ := json.Marshal(profile.Spec)
+			spec, _ := json.Marshal(initialProfile.Spec)
+			// revert only if the profile changes.
+			if bytes.Equal(currentSpec, spec) {
+				testlog.Infof("profile hasn't change, avoiding revert")
+				return
+			}
+			By("Reverting the Profile")
 			profiles.UpdateWithRetry(initialProfile)
 
 			By("Applying changes in performance profile and waiting until mcp will start updating")
@@ -1860,61 +1975,6 @@ func getUpdatedNodes() []corev1.Node {
 	return workerRTNodes
 }
 
-// Check All tunables and kernel paramters for workloadHint
-func checkTunedParameters(workerRTNodes []corev1.Node, stalld bool, sysctlMap map[string]string, kernelParameters []string, rtkernel bool) {
-	for _, node := range workerRTNodes {
-		stalld_pid, err := nodes.ExecCommandOnNode([]string{"pidof", "stalld"}, &node)
-		if stalld {
-			Expect(err).ToNot(HaveOccurred())
-			Expect(stalld_pid).ToNot(BeEmpty())
-		} else {
-			Expect(err).To(HaveOccurred())
-			Expect(stalld_pid).To(BeEmpty())
-		}
-	}
-
-	key := types.NamespacedName{
-		Name:      components.GetComponentName(testutils.PerformanceProfileName, components.ProfileNamePerformance),
-		Namespace: components.NamespaceNodeTuningOperator,
-	}
-	tuned := &tunedv1.Tuned{}
-	err := testclient.Client.Get(context.TODO(), key, tuned)
-	Expect(err).ToNot(HaveOccurred(), "Cannot find the cluster Node Tuning Operator object "+key.String())
-	if stalld {
-		Expect(*tuned.Spec.Profile[0].Data).To(ContainSubstring("stalld"))
-	} else {
-		Expect(*tuned.Spec.Profile[0].Data).ToNot(ContainSubstring("stalld"))
-	}
-
-	for _, node := range workerRTNodes {
-		for param, expected := range sysctlMap {
-			By(fmt.Sprintf("Executing he command \"sysctl -n %s\"", param))
-			out, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"sysctl", "-n", param})
-			Expect(err).ToNot(HaveOccurred())
-			Expect(strings.TrimSpace(string(out))).Should(Equal(expected), "parameter %s value is not %s. ", param, expected)
-		}
-	}
-	for _, node := range workerRTNodes {
-		cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"cat", "/proc/cmdline"})
-		Expect(err).ToNot(HaveOccurred())
-		for _, paramter := range kernelParameters {
-			Expect(string(cmdline)).To(ContainSubstring(paramter))
-		}
-	}
-
-	if !rtkernel {
-		for _, node := range workerRTNodes {
-			cmd := []string{"uname", "-a"}
-			kernel, err := nodes.ExecCommandOnNode(cmd, &node)
-			Expect(err).ToNot(HaveOccurred(), "failed to execute uname")
-			Expect(kernel).To(ContainSubstring("Linux"), "Kernel should report itself as Linux")
-
-			err = nodes.HasPreemptRTKernel(&node)
-			Expect(err).To(HaveOccurred(), "Node should have non-RT kernel")
-		}
-	}
-}
-
 func getTunedStructuredData(profile *performancev2.PerformanceProfile) *ini.File {
 	tuned, err := tuned.NewNodePerformance(profile)
 	Expect(err).ToNot(HaveOccurred())
@@ -1976,4 +2036,33 @@ func checkHardwareCapability(workerRTNodes []corev1.Node) {
 			Skip(fmt.Sprintf("This test needs system with %d CPUs to work correctly, current CPUs are %s", totalCpus, onlineCPUCount))
 		}
 	}
+}
+
+func removeLabels(nodeSelector map[string]string, targetNode *corev1.Node) {
+	ExpectWithOffset(1, testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(targetNode), targetNode)).ToNot(HaveOccurred())
+	patchNode := false
+	for l := range nodeSelector {
+		if _, ok := targetNode.Labels[l]; ok {
+			patchNode = true
+			testlog.Infof("found key: %q in targetNode.Labels, deleting it", l)
+			delete(targetNode.Labels, l)
+		}
+	}
+	if !patchNode {
+		testlog.Warningf("node %q does not contain nodeSelector %v", targetNode.Name, nodeSelector)
+		return
+	}
+	label, err := json.Marshal(targetNode.Labels)
+	ExpectWithOffset(1, err).ToNot(HaveOccurred())
+	ExpectWithOffset(1, testclient.Client.Patch(context.TODO(), targetNode,
+		client.RawPatch(
+			types.JSONPatchType,
+			[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/metadata/labels", "value": %s }]`, label)),
+		),
+	)).ToNot(HaveOccurred())
+	By(fmt.Sprintf("Waiting for MCP %q to start updating", testutils.RoleWorker))
+	mcps.WaitForCondition(testutils.RoleWorker, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+	By(fmt.Sprintf("Waiting when MCP %q complete updates and verifying that node reverted back configuration", testutils.RoleWorker))
+	mcps.WaitForCondition(testutils.RoleWorker, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 }
