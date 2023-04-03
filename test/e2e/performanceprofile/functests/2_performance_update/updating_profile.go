@@ -356,20 +356,30 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 	Context("Updating of nodeSelector parameter and node labels", func() {
 		var mcp *machineconfigv1.MachineConfigPool
 		var newCnfNode *corev1.Node
-
 		newRole := "worker-test"
 		newLabel := fmt.Sprintf("%s/%s", testutils.LabelRole, newRole)
-		var labelsDeletion = false
+		labelsDeletion := false
 		newNodeSelector := map[string]string{newLabel: ""}
 
-		//fetch the latest profile
-		profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-		//Expect(err).ToNot(HaveOccurred())
-		var oldMcpSelector, oldNodeSelector map[string]string
-		var removeLabels func(map[string]string, *corev1.Node) error
-
 		//fetch existing MCP Selector if exists in profile
+		var oldMcpSelector, oldNodeSelector map[string]string
+
 		BeforeEach(func() {
+			// initialize on every run
+			labelsDeletion = false
+			//fetch the latest profile
+			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+
+			nonPerformancesWorkers, err := nodes.GetNonPerformancesWorkers(profile.Spec.NodeSelector)
+			Expect(err).ToNot(HaveOccurred())
+			// we need at least 2 non-performance worker nodes to satisfy pod distribution budget
+			if len(nonPerformancesWorkers) > 1 {
+				newCnfNode = &nonPerformancesWorkers[0]
+			}
+			if newCnfNode == nil {
+				Skip("Skipping the test - cluster does not have another available worker node ")
+			}
 
 			//fetch existing MCP Selector if exists in profile
 			if profile.Spec.MachineConfigPoolSelector != nil {
@@ -380,42 +390,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			if profile.Spec.NodeSelector != nil {
 				oldNodeSelector = profile.Spec.DeepCopy().NodeSelector
 			}
-			removeLabels = func(nodeSelector map[string]string, targetNode *corev1.Node) error {
-				patchNode := false
-				for l := range nodeSelector {
-					if _, ok := targetNode.Labels[l]; ok {
-						patchNode = true
-						delete(targetNode.Labels, l)
-					}
-				}
-				if !patchNode {
-					return nil
-				}
-				label, err := json.Marshal(targetNode.Labels)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(testclient.Client.Patch(context.TODO(), targetNode,
-					client.RawPatch(
-						types.JSONPatchType,
-						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/metadata/labels", "value": %s }]`, label)),
-					),
-				)).ToNot(HaveOccurred())
-				mcps.WaitForCondition(testutils.RoleWorker, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-
-				By("Waiting when MCP Worker complete updates and verifying that node reverted back configuration")
-				mcps.WaitForCondition(testutils.RoleWorker, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
-				return nil
-			}
-
-			nonPerformancesWorkers, err := nodes.GetNonPerformancesWorkers(profile.Spec.NodeSelector)
-			Expect(err).ToNot(HaveOccurred())
-			// we need atleast 2 non performance worker nodes to satisfy pod distribution budget
-			if len(nonPerformancesWorkers) > 1 {
-				newCnfNode = &nonPerformancesWorkers[0]
-			}
-			if newCnfNode == nil {
-				Skip("Skipping the test - cluster does not have another available worker node ")
-			}
-
 			nodeLabel = newNodeSelector
 			newCnfNode.Labels[newLabel] = ""
 
@@ -466,8 +440,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		It("[test_id:27484]Verifies that node is reverted to plain worker when the extra labels are removed", func() {
 			By("Deleting cnf labels from the node")
-			err = removeLabels(profile.Spec.NodeSelector, newCnfNode)
-			Expect(err).ToNot(HaveOccurred())
+			removeLabels(profile.Spec.NodeSelector, newCnfNode)
 			labelsDeletion = true
 			// Check if node is Ready
 			for i := range newCnfNode.Status.Conditions {
@@ -499,8 +472,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		AfterEach(func() {
 
 			if labelsDeletion == false {
-				err = removeLabels(profile.Spec.NodeSelector, newCnfNode)
-				Expect(err).ToNot(HaveOccurred())
+				removeLabels(profile.Spec.NodeSelector, newCnfNode)
 			}
 
 			var selectorLabels []string
@@ -2063,4 +2035,33 @@ func checkHardwareCapability(workerRTNodes []corev1.Node) {
 			Skip(fmt.Sprintf("This test needs system with %d CPUs to work correctly, current CPUs are %s", totalCpus, onlineCPUCount))
 		}
 	}
+}
+
+func removeLabels(nodeSelector map[string]string, targetNode *corev1.Node) {
+	ExpectWithOffset(1, testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(targetNode), targetNode)).ToNot(HaveOccurred())
+	patchNode := false
+	for l := range nodeSelector {
+		if _, ok := targetNode.Labels[l]; ok {
+			patchNode = true
+			testlog.Infof("found key: %q in targetNode.Labels, deleting it", l)
+			delete(targetNode.Labels, l)
+		}
+	}
+	if !patchNode {
+		testlog.Warningf("node %q does not contain nodeSelector %v", targetNode.Name, nodeSelector)
+		return
+	}
+	label, err := json.Marshal(targetNode.Labels)
+	ExpectWithOffset(1, err).ToNot(HaveOccurred())
+	ExpectWithOffset(1, testclient.Client.Patch(context.TODO(), targetNode,
+		client.RawPatch(
+			types.JSONPatchType,
+			[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/metadata/labels", "value": %s }]`, label)),
+		),
+	)).ToNot(HaveOccurred())
+	By(fmt.Sprintf("Waiting for MCP %q to start updating", testutils.RoleWorker))
+	mcps.WaitForCondition(testutils.RoleWorker, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+	By(fmt.Sprintf("Waiting when MCP %q complete updates and verifying that node reverted back configuration", testutils.RoleWorker))
+	mcps.WaitForCondition(testutils.RoleWorker, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 }
