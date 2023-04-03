@@ -165,8 +165,6 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 				Skip("this test needs dynamic IRQ balancing")
 			}
 
-			testutils.KnownIssueJira("OCPNODE-1538")
-
 			targetNodeIdx := pickNodeIdx(workerRTNodes)
 			targetNode = &workerRTNodes[targetNodeIdx]
 			Expect(targetNode).ToNot(BeNil(), "missing target node")
@@ -267,8 +265,6 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			// This _likely_ means the first time the provisioned node boots, and in this case is _likely_ the node
 			// has not any IRQ pinning, thus the saved CPU ban list is the empty list. But we don't control nor declare this state.
 			// It's all best effort.
-
-			testutils.KnownIssueJira("OCPNODE-1538")
 
 			nodeIdx := pickNodeIdx(workerRTNodes)
 			node := &workerRTNodes[nodeIdx]
