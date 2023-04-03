@@ -3,16 +3,25 @@ package tuned
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
-	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 )
 
 func WaitForAppliedCondition(tunedProfileNames []string, conditionStatus corev1.ConditionStatus, timeout time.Duration) error {
@@ -52,4 +61,108 @@ func GetConditionByType(conditions []tunedv1.ProfileStatusCondition, conditionTy
 		}
 	}
 	return nil, fmt.Errorf("failed to found applied condition under conditions %v", conditions)
+}
+
+func GetPod(ctx context.Context, node *corev1.Node) (*corev1.Pod, error) {
+	podList := &corev1.PodList{}
+	opts := &client.ListOptions{
+		FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": node.Name}),
+		LabelSelector: labels.SelectorFromSet(labels.Set{"openshift-app": "tuned"}),
+	}
+
+	if err := testclient.Client.List(ctx, podList, opts); err != nil {
+		return nil, fmt.Errorf("couldn't get a list of TuneD Pods; %w", err)
+	}
+
+	if len(podList.Items) != 1 {
+		if len(podList.Items) == 0 {
+			return nil, fmt.Errorf("failed to find a TuneD Pod for node %s", node.Name)
+		}
+		return nil, fmt.Errorf("too many (%d) TuneD Pods for node %s", len(podList.Items), node.Name)
+	}
+	return &podList.Items[0], nil
+}
+
+func WaitForStalldTo(run bool, interval, timeout time.Duration, node *corev1.Node) error {
+	return wait.Poll(interval, timeout, func() (bool, error) {
+		cmd := []string{"/bin/bash", "-c", "pidof stalld || true"}
+		stalldPid, err := nodes.ExecCommandOnNode(cmd, node)
+		if err != nil {
+			return false, fmt.Errorf("failed to execute command %q on node: %q; %w", cmd, node.Name, err)
+		}
+
+		_, err = strconv.Atoi(stalldPid)
+		if !run { // we don't want stalld to run
+			if err == nil {
+				return false, fmt.Errorf("node=%q stalld_pid=%q stalld is running when it shouldn't", node.Name, stalldPid)
+			}
+		}
+		// we want stalld to run
+		if err != nil {
+			klog.Warningf("node=%q stalld_pid=%q is not a valid pid number: %v", node.Name, stalldPid, err)
+			return false, nil
+		}
+		return true, nil
+	})
+}
+
+func CheckParameters(node *corev1.Node, sysctlMap map[string]string, kernelParameters []string, stalld, rtkernel bool) {
+	cmd := []string{"/bin/bash", "-c", "pidof stalld || true"}
+	By(fmt.Sprintf("Executing %q", cmd))
+	stalldPid, err := nodes.ExecCommandOnNode(cmd, node)
+	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to execute command %q on node: %q; %w", cmd, node.Name, err)
+
+	_, err = strconv.Atoi(stalldPid)
+	if stalld {
+		ExpectWithOffset(1, err).ToNot(HaveOccurred(),
+			"node=%q stalld_pid=%q is not a valid pid number: %w", node.Name, stalldPid, err)
+	} else {
+		ExpectWithOffset(1, err).To(HaveOccurred(),
+			"node=%q stalld_pid=%q stalld is running when it shouldn't", node.Name, stalldPid)
+	}
+
+	key := types.NamespacedName{
+		Name:      components.GetComponentName(testutils.PerformanceProfileName, components.ProfileNamePerformance),
+		Namespace: components.NamespaceNodeTuningOperator,
+	}
+
+	tuned := &tunedv1.Tuned{}
+	ExpectWithOffset(1, testclient.Client.Get(context.TODO(), key, tuned)).ToNot(HaveOccurred(),
+		"cannot find the cluster Node Tuning Operator object "+key.String())
+
+	if stalld {
+		ExpectWithOffset(1, *tuned.Spec.Profile[0].Data).To(ContainSubstring("stalld"),
+			"node=%q cannot find substring stalld in tuned profile data", node.Name)
+	} else {
+		ExpectWithOffset(1, *tuned.Spec.Profile[0].Data).ToNot(ContainSubstring("stalld"),
+			"node=%q found substring stalld in tuned profile data when it shouldn't", node.Name)
+	}
+
+	for param, expected := range sysctlMap {
+		cmd = []string{"sysctl", "-n", param}
+		By(fmt.Sprintf("Executing %q", cmd))
+		out, err := nodes.ExecCommandOnNode(cmd, node)
+		ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to execute command %q on node: %q", cmd, node.Name)
+		ExpectWithOffset(1, out).Should(Equal(expected), "parameter %s value is not %s", param, expected)
+	}
+
+	cmd = []string{"cat", "/proc/cmdline"}
+	By(fmt.Sprintf("Executing %q", cmd))
+	cmdline, err := nodes.ExecCommandOnNode(cmd, node)
+	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to execute command %q on node: %q", cmd, node.Name)
+
+	for _, param := range kernelParameters {
+		ExpectWithOffset(1, cmdline).To(ContainSubstring(param))
+	}
+
+	if !rtkernel {
+		cmd = []string{"uname", "-a"}
+		By(fmt.Sprintf("Executing %q", cmd))
+		kernel, err := nodes.ExecCommandOnNode(cmd, node)
+		ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to execute command %q on node: %q", cmd, node.Name)
+		ExpectWithOffset(1, kernel).To(ContainSubstring("Linux"), "kernel should be Linux")
+
+		err = nodes.HasPreemptRTKernel(node)
+		ExpectWithOffset(1, err).To(HaveOccurred(), "node should have non-RT kernel")
+	}
 }
