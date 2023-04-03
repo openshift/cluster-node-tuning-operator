@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
-	kubeletv1beta1 "k8s.io/kubernetes/pkg/kubelet/apis/config/v1beta1"
+	"k8s.io/kubernetes/pkg/kubelet/eviction"
 	"k8s.io/utils/pointer"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
@@ -164,10 +164,10 @@ var _ = Describe("Kubelet Config", func() {
 
 			manifest := string(y)
 
-			memoryAvaialable := "memory.available: " + string(kubeletv1beta1.DefaultEvictionHard[evictionHardMemoryAvailable])
-			nodefsAvailable := "nodefs.available: " + string(kubeletv1beta1.DefaultEvictionHard[evictionHardNodefsAvaialble])
-			imagefsAvailable := "imagefs.available: " + string(kubeletv1beta1.DefaultEvictionHard[evictionHardImagefsAvailable])
-			nodefsInodesFree := "nodefs.inodesFree: " + string(kubeletv1beta1.DefaultEvictionHard[evictionHardNodefsInodesFree])
+			memoryAvaialable := "memory.available: " + string(eviction.DefaultEvictionHard[evictionHardMemoryAvailable])
+			nodefsAvailable := "nodefs.available: " + string(eviction.DefaultEvictionHard[evictionHardNodefsAvaialble])
+			imagefsAvailable := "imagefs.available: " + string(eviction.DefaultEvictionHard[evictionHardImagefsAvailable])
+			nodefsInodesFree := "nodefs.inodesFree: " + string(eviction.DefaultEvictionHard[evictionHardNodefsInodesFree])
 
 			Expect(manifest).To(ContainSubstring(memoryAvaialable))
 			Expect(manifest).To(ContainSubstring(nodefsAvailable))
