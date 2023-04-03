@@ -121,7 +121,7 @@ func operatorRun() {
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		NewCache:                cache.MultiNamespacedCacheBuilder(namespaces),
 		Scheme:                  scheme,
-		LeaderElection:          true,
+		LeaderElection:          enableLeaderElection,
 		LeaderElectionID:        config.OperatorLockName,
 		LeaderElectionNamespace: ntoNamespace,
 		LeaseDuration:           &le.LeaseDuration.Duration,
