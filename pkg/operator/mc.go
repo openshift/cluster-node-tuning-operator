@@ -150,6 +150,15 @@ func getMachineConfigNameForPools(pools []*mcfgv1.MachineConfigPool) string {
 	return sb.String()
 }
 
+func (pc *ProfileCalculator) getMachineCountForMachineConfigPool(mcpName string) (int32, error) {
+	mcp, err := pc.listers.MachineConfigPools.Get(mcpName)
+	if err != nil {
+		return 0, err
+	}
+
+	return mcp.Status.MachineCount, nil
+}
+
 // getPoolsForMachineConfigLabels chooses the MachineConfigPools that use MachineConfigs with labels 'mcLabels'.
 // Errors are only returned in cases that warrant event reques (e.g. a failure to list k8s objects).
 func (pc *ProfileCalculator) getPoolsForMachineConfigLabels(mcLabels map[string]string) ([]*mcfgv1.MachineConfigPool, error) {
