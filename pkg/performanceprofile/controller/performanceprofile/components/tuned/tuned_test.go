@@ -119,8 +119,9 @@ var _ = Describe("Tuned", func() {
 			It("should not contain realtime related parameters", func() {
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{RealTime: pointer.BoolPtr(false)}
 				tunedData := getTunedStructuredData(profile)
-				_, err := tunedData.GetSection("service")
-				Expect(err).To(HaveOccurred(), "expected the validation error")
+				service, err := tunedData.GetSection("service")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(service.Key("service.stalld").String()).To(Equal("stop,disable"))
 
 				schedulerSection, err := tunedData.GetSection("scheduler")
 				Expect(err).ToNot(HaveOccurred())
