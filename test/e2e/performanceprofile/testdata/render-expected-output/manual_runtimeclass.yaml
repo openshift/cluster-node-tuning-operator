@@ -5,7 +5,7 @@ metadata:
   creationTimestamp: null
   name: performance-manual
   ownerReferences:
-  - apiVersion: "performance.openshift.io/v2"
+  - apiVersion: performance.openshift.io/v2
     kind: PerformanceProfile
     name: manual
     uid: ""

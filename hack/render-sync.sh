@@ -9,4 +9,8 @@ _output/cluster-node-tuning-operator render \
 --asset-output-dir "${ARTIFACT_DIR}"
 
 cp "${ARTIFACT_DIR}"/*  "${WORKDIR}"/test/e2e/performanceprofile/testdata/render-expected-output
+for f in  "${WORKDIR}"/test/e2e/performanceprofile/testdata/render-expected-output/*
+do
+  sed -i "s/uid:.*/uid: \"\"/" "${f}"
+done
 rm -r "${ARTIFACT_DIR}"
