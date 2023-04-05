@@ -396,13 +396,16 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 	Context("Network latency parameters adjusted by the Node Tuning Operator", func() {
 		It("[test_id:28467][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Should contain configuration injected through the openshift-node-performance profile", func() {
 			sysctlMap := map[string]string{
-				"net.ipv4.tcp_fastopen":           "3",
-				"kernel.sched_min_granularity_ns": "10000000",
-				"vm.dirty_ratio":                  "10",
-				"vm.dirty_background_ratio":       "3",
-				"vm.swappiness":                   "10",
-				"kernel.sched_migration_cost_ns":  "5000000",
+				"net.ipv4.tcp_fastopen":     "3",
+				"vm.dirty_ratio":            "10",
+				"vm.dirty_background_ratio": "3",
+				"vm.swappiness":             "10",
 			}
+			schedulerKnobs := map[string]string{
+				"min_granularity_ns": "10000000",
+				"migration_cost_ns":  "5000000",
+			}
+
 			key := types.NamespacedName{
 				Name:      components.GetComponentName(testutils.PerformanceProfileName, components.ProfileNamePerformance),
 				Namespace: components.NamespaceNodeTuningOperator,
@@ -412,6 +415,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred(), "cannot find the Cluster Node Tuning Operator object "+components.ProfileNamePerformance)
 			validateTunedActiveProfile(workerRTNodes)
 			execSysctlOnWorkers(workerRTNodes, sysctlMap)
+			checkSchedKnobs(workerRTNodes, schedulerKnobs)
 		})
 	})
 
@@ -1381,5 +1385,20 @@ func validateTunedActiveProfile(wrknodes []corev1.Node) {
 			return strings.TrimSpace(string(out))
 		}, cluster.ComputeTestTimeout(testTimeout*time.Second, RunningOnSingleNode), testPollInterval*time.Second).Should(Equal(activeProfileName),
 			fmt.Sprintf("active_profile is not set to %s. %v", activeProfileName, err))
+	}
+}
+
+// check scheduler settings. on RHCOS9.2 all scheduler settings are moved to /sys/kernel/debug/sched/
+func checkSchedKnobs(workerNodes []corev1.Node, schedKnobs map[string]string) {
+	var err error
+	var out []byte
+	for _, node := range workerNodes {
+		for param, expected := range schedKnobs {
+			By(fmt.Sprintf("Checking scheduler knob %s", param))
+			knob := fmt.Sprintf("/rootfs/sys/kernel/debug/sched/%s", param)
+			out, err = nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"cat", knob})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(strings.TrimSpace(string(out))).Should(Equal(expected), "parameter %s value is not %s.", param, expected)
+		}
 	}
 }
