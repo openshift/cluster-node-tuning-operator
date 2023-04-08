@@ -515,6 +515,16 @@ var _ = Describe("Tuned", func() {
 					Expect(channelsRegex.MatchString(manifest)).To(BeTrue())
 				})
 			})
+
+			Context("with user level networking nil pointer", func() {
+				It("should create a manifest", func() {
+					profile.Spec.Net = &performancev2.Net{
+						UserLevelNetworking: nil,
+					}
+					manifest := getTunedManifest(profile)
+					Expect(len(manifest)).ToNot(Equal(0))
+				})
+			})
 		})
 	})
 })
