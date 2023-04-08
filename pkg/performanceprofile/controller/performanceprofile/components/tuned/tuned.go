@@ -116,7 +116,8 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 
 	//set default [net] field first, override if needed.
 	templateArgs[templateNetDevices] = fmt.Sprintf("[net]\n%s", nfConntrackHashsize)
-	if profile.Spec.Net != nil && *profile.Spec.Net.UserLevelNetworking && profile.Spec.CPU.Reserved != nil {
+	if profile.Spec.Net != nil && profile.Spec.Net.UserLevelNetworking != nil &&
+		*profile.Spec.Net.UserLevelNetworking && profile.Spec.CPU.Reserved != nil {
 
 		reservedSet, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
 		if err != nil {
