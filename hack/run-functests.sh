@@ -6,7 +6,7 @@ LATENCY_TEST_RUN=${LATENCY_TEST_RUN:-"false"}
 which ginkgo
 if [ $? -ne 0 ]; then
 	echo "Downloading ginkgo tool"
-    go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo@v2.5.1
+    go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo@v2.6.1
     ginkgo version
 fi
 
