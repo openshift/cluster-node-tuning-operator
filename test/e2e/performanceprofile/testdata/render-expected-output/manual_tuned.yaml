@@ -5,7 +5,7 @@ metadata:
   name: openshift-node-performance-manual
   namespace: openshift-cluster-node-tuning-operator
   ownerReferences:
-  - apiVersion: "performance.openshift.io/v2"
+  - apiVersion: performance.openshift.io/v2
     kind: PerformanceProfile
     name: manual
     uid: ""
@@ -27,13 +27,10 @@ spec:
       It can be racy if TuneD restarts for whatever reason.\n#> cpu-partitioning\nenabled=false\n\n\n[scheduler]\nruntime=0\ngroup.ksoftirqd=0:f:11:*:ksoftirqd.*\ngroup.rcuc=0:f:11:*:rcuc.*\ngroup.ktimers=0:f:11:*:ktimers.*\nsched_min_granularity_ns=10000000\nsched_migration_cost_ns=5000000\nnuma_balancing=0\n\nsched_rt_runtime_us=-1\n\n\ndefault_irq_smp_affinity
       = ignore\n\n\n[sysctl]\n\n#> cpu-partitioning #RealTimeHint\nkernel.hung_task_timeout_secs=600\n#>
       cpu-partitioning #RealTimeHint\nkernel.nmi_watchdog=0\n#> RealTimeHint\nkernel.sched_rt_runtime_us=-1\n#>
-      cpu-partitioning  #RealTimeHint\nvm.stat_interval=10\n\n# cpu-partitioning and RealTimeHint
-      for RHEL disable it (= 0)\n# OCP is too dynamic when partitioning and needs
-      to evacuate\n#> scheduled timers when starting a guaranteed workload (= 1)\nkernel.timer_migration=1\n#>
-      network-latency\nkernel.numa_balancing=0\nnet.core.busy_read=50\nnet.core.busy_poll=50\nnet.ipv4.tcp_fastopen=3\n\n#
-      ktune sysctl settings for rhel6 servers, maximizing i/o throughput\n#\n# Minimal
-      preemption granularity for CPU-bound tasks:\n# (default: 1 msec#  (1 + ilog(ncpus)),
-      units: nanoseconds)\n#> latency-performance\nkernel.sched_min_granularity_ns=10000000\n\n#
+      cpu-partitioning  #RealTimeHint\nvm.stat_interval=10\n\n# cpu-partitioning and
+      RealTimeHint for RHEL disable it (= 0)\n# OCP is too dynamic when partitioning
+      and needs to evacuate\n#> scheduled timers when starting a guaranteed workload
+      (= 1)\nkernel.timer_migration=1\n#> network-latency\nkernel.numa_balancing=0\nnet.core.busy_read=50\nnet.core.busy_poll=50\nnet.ipv4.tcp_fastopen=3\n\n\n\n#
       If a workload mostly uses anonymous memory and it hits this limit, the entire\n#
       working set is buffered for I/O, and any more write buffering would require\n#
       swapping, so it's time to throttle writes until I/O can catch up.  Workloads\n#
@@ -45,10 +42,7 @@ spec:
       out of physical memory and onto the swap disk.\n# 0 tells the kernel to avoid
       swapping processes out of physical memory\n# for as long as possible\n# 100
       tells the kernel to aggressively swap processes out of physical memory\n# and
-      move them to swap cache\n#> latency-performance\nvm.swappiness=10\n\n# The total
-      time the scheduler will consider a migrated process\n# \"cache hot\" and thus
-      less likely to be re-migrated\n# (system default is 500000, i.e. 0.5 ms)\n#>
-      latency-performance\nkernel.sched_migration_cost_ns=5000000\n\n[selinux]\n#>
+      move them to swap cache\n#> latency-performance\nvm.swappiness=10\n\n\n\n[selinux]\n#>
       Custom (atomic host)\navc_cache_threshold=8192\n\n\n[net]\nnf_conntrack_hashsize=131072\n\n\n[bootloader]\n#
       set empty values to disable RHEL initrd setting in cpu-partitioning\ninitrd_remove_dir=\ninitrd_dst_img=\ninitrd_add_dir=\n\n#
       overrides cpu-partitioning cmdline\ncmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores}
