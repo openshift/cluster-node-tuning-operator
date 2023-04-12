@@ -204,10 +204,8 @@ func testProfile() *performancev2.PerformanceProfile {
 	// If the machineConfigPool is master, the automatic selector from PAO won't work
 	// since the machineconfiguration.openshift.io/role label is not applied to the
 	// master pool, hence we put an explicit selector here.
-	if utils.RoleWorkerCNF == "master" {
-		profile.Spec.MachineConfigPoolSelector = map[string]string{
-			"pools.operator.machineconfiguration.openshift.io/master": "",
-		}
+	profile.Spec.MachineConfigPoolSelector = map[string]string{
+		"pools.operator.machineconfiguration.openshift.io/" + utils.RoleWorkerCNF: "",
 	}
 	return profile
 }
