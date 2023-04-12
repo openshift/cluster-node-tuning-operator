@@ -635,6 +635,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 		When("HighPower Consumption workload enabled", func() {
 			It("[test_id:50992][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
+				testutils.KnownIssueJira("OCPBUGS-10635")
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption: pointer.Bool(true),

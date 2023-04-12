@@ -395,6 +395,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 
 	Context("Network latency parameters adjusted by the Node Tuning Operator", func() {
 		It("[test_id:28467][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Should contain configuration injected through the openshift-node-performance profile", func() {
+			testutils.KnownIssueJira("OCPBUGS-9959")
 			sysctlMap := map[string]string{
 				"net.ipv4.tcp_fastopen":     "3",
 				"vm.dirty_ratio":            "10",

@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/bugzilla"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/jira"
 	"os/exec"
+	"strings"
 	"time"
 
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
@@ -56,4 +59,43 @@ func ExecAndLogCommandWithStderr(name string, arg ...string) ([]byte, []byte, er
 		testlog.Infof("run command '%s %v' (err=%v):\n  stderr=%s", name, arg, err, string(errData))
 	}
 	return outData, errData, err
+}
+
+func knownIssueIsFixedByStatus(status string) bool {
+	lowStatus := strings.ToLower(status)
+	return lowStatus == "verified" || lowStatus == "done" || lowStatus == "closed"
+}
+
+// Check status of an issue in Jira and skip the test when the issue
+// is not yet resolved (Verified or Closed)
+func KnownIssueJira(key string) {
+	response, err := jira.RetrieveJiraStatus(key)
+	if err != nil {
+		testlog.Warningf("failed to retrieve status of Jira issue %s: %v", key, err)
+		return
+	}
+
+	if response.Fields.Status.Name == "" {
+		testlog.Infof(fmt.Sprintf("Test is linked to an unknown Jira issue %s", key))
+	} else if !knownIssueIsFixedByStatus(response.Fields.Status.Name) {
+		Skip(fmt.Sprintf("Test skipped as it is linked to a known Jira issue %s - %s", response.Key, response.Fields.Summary))
+	} else {
+		testlog.Infof(fmt.Sprintf("Test is linked to a closed Jira issue %s - %s", response.Key, response.Fields.Summary))
+	}
+}
+
+// Check status of an issue in Bugzilla and skip the test when the issue
+// is not yet resolved (Verified or Closed)
+func KnownIssueBugzilla(bugId int) {
+	bug, err := bugzilla.RetrieveBug(bugId)
+	if err != nil {
+		testlog.Warningf("failed to retrieve status of rhbz#%d: %v", bugId, err)
+		return
+	}
+
+	if !knownIssueIsFixedByStatus(bug.Status) {
+		Skip(fmt.Sprintf("Test skipped as it is linked to a known Bugzilla bug rhbz#%d - %s", bug.Id, bug.Summary))
+	} else {
+		testlog.Infof(fmt.Sprintf("Test is linked to a closed Bugzilla bug rhbz#%d - %s", bug.Id, bug.Summary))
+	}
 }
