@@ -104,8 +104,13 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		}
 	})
 
-	Context("Verify hugepages count split on two NUMA nodes", func() {
+	Context("Verify hugepages count split on two NUMA nodes", Ordered, func() {
 		hpSize2M := performancev2.HugePageSize("2M")
+
+		testutils.CustomBeforeAll(func() {
+			By("Modifying profile")
+			initialProfile = profile.DeepCopy()
+		})
 
 		DescribeTable("Verify that profile parameters were updated", func(hpCntOnNuma0 int32, hpCntOnNuma1 int32) {
 			By("Verifying cluster configuration matches the requirement")
@@ -186,6 +191,19 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			Entry("[test_id:45024] verify even split between 2 numa nodes", int32(1), int32(1)),
 		)
 
+		AfterAll(func() {
+			// return initial configuration
+			spec, err := json.Marshal(initialProfile.Spec)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(testclient.Client.Patch(context.TODO(), profile,
+				client.RawPatch(
+					types.JSONPatchType,
+					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
+				),
+			)).ToNot(HaveOccurred())
+			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+		})
 	})
 
 	Context("Verify that all performance profile parameters can be updated", Ordered, func() {
