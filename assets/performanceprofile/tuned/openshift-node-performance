@@ -56,10 +56,6 @@ group.rcuc=0:f:11:*:rcuc.*
 group.ktimers=0:f:11:*:ktimers.*
 sched_min_granularity_ns=10000000
 sched_migration_cost_ns=5000000
-numa_balancing=0
-{{if .RealTimeHint}}
-sched_rt_runtime_us=-1
-{{end}}
 {{if not .GloballyDisableIrqLoadBalancing}}
 default_irq_smp_affinity = ignore
 {{end}}
@@ -80,6 +76,7 @@ vm.stat_interval=10
 #> scheduled timers when starting a guaranteed workload (= 1)
 kernel.timer_migration=1
 #> network-latency
+# TODO once rhbz#2120328 is solved: kernel.numa_balancing, net.core.busy_read and net.core.busy_poll do not exist on RT kernels
 kernel.numa_balancing=0
 net.core.busy_read=50
 net.core.busy_poll=50
