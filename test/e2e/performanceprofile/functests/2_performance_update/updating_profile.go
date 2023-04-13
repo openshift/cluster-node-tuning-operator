@@ -98,8 +98,10 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		workerRTNodes = getUpdatedNodes()
 		profile, err = profiles.GetByNodeLabels(nodeLabel)
 		Expect(err).ToNot(HaveOccurred())
+		klog.Infof("using profile: %q", profile.Name)
 		performanceMCP, err = mcps.GetByProfile(profile)
 		Expect(err).ToNot(HaveOccurred())
+		klog.Infof("using performanceMCP: %q", performanceMCP)
 
 		// Verify that worker and performance MCP have updated state equals to true
 		for _, mcpName := range []string{testutils.RoleWorker, performanceMCP} {
@@ -220,7 +222,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		// Modify profile and verify that MCO successfully updated the node
 		testutils.CustomBeforeAll(func() {
-			By("Modifying profile")
+			By(fmt.Sprintf("Modifying profile to nodes=%#v MCPs=%#v", profile.Spec.NodeSelector, profile.Spec.MachineConfigPoolSelector))
 			initialProfile = profile.DeepCopy()
 
 			profile.Spec.HugePages = &performancev2.HugePages{
@@ -2067,10 +2069,20 @@ func countHugepagesOnNode(node *corev1.Node, sizeInMb int) (int, error) {
 func getUpdatedNodes() []corev1.Node {
 	workerRTNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
 	Expect(err).ToNot(HaveOccurred())
+	klog.Infof("updated nodes from %#v: %v", testutils.NodeSelectorLabels, getNodeNames(workerRTNodes))
 	workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes)
+	klog.Infof("updated nodes matching optional selector: %v", getNodeNames(workerRTNodes))
 	Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("error looking for the optional selector: %v", err))
 	Expect(workerRTNodes).ToNot(BeEmpty(), "cannot find RT enabled worker nodes")
 	return workerRTNodes
+}
+
+func getNodeNames(nodes []corev1.Node) []string {
+	names := []string{}
+	for _, node := range nodes {
+		names = append(names, node.Name)
+	}
+	return names
 }
 
 func getTunedStructuredData(profile *performancev2.PerformanceProfile) *ini.File {
