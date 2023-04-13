@@ -5,7 +5,7 @@ GINKGO_SUITS=${GINKGO_SUITS:-"./test/e2e/performanceprofile/functests/0_config .
 which ginkgo
 if [ $? -ne 0 ]; then
 	echo "Downloading ginkgo tool"
-    go install github.com/onsi/ginkgo/v2/ginkgo@v2.5.1
+    go install github.com/onsi/ginkgo/v2/ginkgo@v2.6.1
     ginkgo version
 fi
 

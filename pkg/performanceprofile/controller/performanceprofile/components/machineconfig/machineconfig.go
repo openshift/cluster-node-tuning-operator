@@ -93,10 +93,12 @@ const (
 const (
 	templateReservedCpus = "ReservedCpus"
 	templateWorkload     = "Workload"
+	templateRuntimePath  = "RuntimePath"
+	templateRuntimeRoot  = "RuntimeRoot"
 )
 
 // New returns new machine configuration object for performance sensitive workloads
-func New(profile *performancev2.PerformanceProfile, pinningMode *apiconfigv1.CPUPartitioningMode) (*machineconfigv1.MachineConfig, error) {
+func New(profile *performancev2.PerformanceProfile, pinningMode *apiconfigv1.CPUPartitioningMode, defaultRuntime machineconfigv1.ContainerRuntimeDefaultRuntime) (*machineconfigv1.MachineConfig, error) {
 	name := GetMachineConfigName(profile)
 	mc := &machineconfigv1.MachineConfig{
 		TypeMeta: metav1.TypeMeta{
@@ -110,7 +112,7 @@ func New(profile *performancev2.PerformanceProfile, pinningMode *apiconfigv1.CPU
 		Spec: machineconfigv1.MachineConfigSpec{},
 	}
 
-	ignitionConfig, err := getIgnitionConfig(profile, pinningMode)
+	ignitionConfig, err := getIgnitionConfig(profile, pinningMode, defaultRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +142,7 @@ func GetMachineConfigName(profile *performancev2.PerformanceProfile) string {
 	return fmt.Sprintf("50-%s", name)
 }
 
-func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *apiconfigv1.CPUPartitioningMode) (*igntypes.Config, error) {
+func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *apiconfigv1.CPUPartitioningMode, defaultRuntime machineconfigv1.ContainerRuntimeDefaultRuntime) (*igntypes.Config, error) {
 	var scripts []string
 	ignitionConfig := &igntypes.Config{
 		Ignition: igntypes.Ignition{
@@ -171,7 +173,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 
 	// add crio config snippet under the node /etc/crio/crio.conf.d/ directory
 	crioConfdRuntimesMode := 0644
-	crioConfigSnippetContent, err := renderCrioConfigSnippet(profile, filepath.Join("configs", crioRuntimesConfig))
+	crioConfigSnippetContent, err := renderCrioConfigSnippet(profile, defaultRuntime, filepath.Join("configs", crioRuntimesConfig))
 	if err != nil {
 		return nil, err
 	}
@@ -446,10 +448,19 @@ func addContent(ignitionConfig *igntypes.Config, content []byte, dst string, mod
 	})
 }
 
-func renderCrioConfigSnippet(profile *performancev2.PerformanceProfile, src string) ([]byte, error) {
-	templateArgs := make(map[string]string)
+func renderCrioConfigSnippet(profile *performancev2.PerformanceProfile, defaultRuntime machineconfigv1.ContainerRuntimeDefaultRuntime, src string) ([]byte, error) {
+	templateArgs := map[string]string{
+		templateRuntimePath: "/bin/runc",
+		templateRuntimeRoot: "/run/runc",
+	}
+
 	if profile.Spec.CPU.Reserved != nil {
 		templateArgs[templateReservedCpus] = string(*profile.Spec.CPU.Reserved)
+	}
+
+	if defaultRuntime == machineconfigv1.ContainerRuntimeDefaultRuntimeCrun {
+		templateArgs[templateRuntimePath] = "/usr/bin/crun"
+		templateArgs[templateRuntimeRoot] = "/run/crun"
 	}
 
 	profileTemplate, err := template.ParseFS(assets.Configs, src)

@@ -4,7 +4,7 @@ import (
 	apiconfigv1 "github.com/openshift/api/config/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
-
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/pointer"
@@ -124,6 +124,28 @@ func NewInfraResource(pin bool) *apiconfigv1.Infrastructure {
 		},
 		Status: apiconfigv1.InfrastructureStatus{
 			CPUPartitioning: pinningMode,
+		},
+	}
+}
+
+func NewContainerRuntimeConfig(runtime mcov1.ContainerRuntimeDefaultRuntime, mcpSelector map[string]string) *mcov1.ContainerRuntimeConfig {
+	return &mcov1.ContainerRuntimeConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "enable-crun",
+		},
+		Spec: mcov1.ContainerRuntimeConfigSpec{
+			MachineConfigPoolSelector: metav1.SetAsLabelSelector(mcpSelector),
+			ContainerRuntimeConfig: &mcov1.ContainerRuntimeConfiguration{
+				DefaultRuntime: runtime,
+			},
+		},
+		Status: mcov1.ContainerRuntimeConfigStatus{
+			Conditions: []mcov1.ContainerRuntimeConfigCondition{
+				{
+					Type:   mcov1.ContainerRuntimeConfigSuccess,
+					Status: corev1.ConditionTrue,
+				},
+			},
 		},
 	}
 }
