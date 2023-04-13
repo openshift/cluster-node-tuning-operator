@@ -84,7 +84,6 @@ var _ = Describe("Tuned", func() {
 
 			schedulerSection, err := tunedData.GetSection("scheduler")
 			Expect(err).ToNot(HaveOccurred())
-			Expect(schedulerSection.Key("sched_rt_runtime_us").String()).To(Equal("-1"))
 			Expect(schedulerSection.Key("group.ksoftirqd").String()).To(Equal("0:f:11:*:ksoftirqd.*"))
 			Expect(schedulerSection.Key("group.rcuc").String()).To(Equal("0:f:11:*:rcuc.*"))
 			Expect(schedulerSection.Key("group.ktimers").String()).To(Equal("0:f:11:*:ktimers.*"))
@@ -144,9 +143,6 @@ var _ = Describe("Tuned", func() {
 				service, err := tunedData.GetSection("service")
 				Expect(err).ToNot(HaveOccurred())
 				Expect(service.Key("service.stalld").String()).To(Equal("start,enable"))
-				scheduler, err := tunedData.GetSection("scheduler")
-				Expect(err).ToNot(HaveOccurred())
-				Expect(scheduler.Key("sched_rt_runtime_us").String()).To(Equal("-1"))
 				sysctl, err := tunedData.GetSection("sysctl")
 				Expect(err).ToNot(HaveOccurred())
 				Expect(sysctl.Key("kernel.hung_task_timeout_secs").String()).To(Equal("600"))
