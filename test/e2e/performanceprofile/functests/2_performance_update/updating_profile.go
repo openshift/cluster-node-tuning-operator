@@ -29,6 +29,7 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	profilecomponent "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/tuned"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
@@ -1990,7 +1991,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 				Expect(ctrcfg).To(BeNil(), "unexpected ContainerRuntimeConfig: %#v", ctrcfg)
 				testlog.Infof("ContainerRuntimeConfig not exist")
-				ctrcfg = newContainerRuntimeConfig(ContainerRuntimeConfigName, profile)
+				ctrcfg = newContainerRuntimeConfig(ContainerRuntimeConfigName, profile, mcp)
 				By(fmt.Sprintf("creating ContainerRuntimeConfig %q", ctrcfg.Name))
 				Expect(testclient.Client.Create(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to create ctrcfg %#v", ctrcfg)
 
@@ -2164,13 +2165,15 @@ func removeLabels(nodeSelector map[string]string, targetNode *corev1.Node) {
 	mcps.WaitForCondition(testutils.RoleWorker, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 }
 
-func newContainerRuntimeConfig(name string, profile *performancev2.PerformanceProfile) *machineconfigv1.ContainerRuntimeConfig {
+func newContainerRuntimeConfig(name string, profile *performancev2.PerformanceProfile, profileMCP *machineconfigv1.MachineConfigPool) *machineconfigv1.ContainerRuntimeConfig {
 	return &machineconfigv1.ContainerRuntimeConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
 		Spec: machineconfigv1.ContainerRuntimeConfigSpec{
-			MachineConfigPoolSelector: metav1.SetAsLabelSelector(profile.Spec.MachineConfigPoolSelector),
+			MachineConfigPoolSelector: &metav1.LabelSelector{
+				MatchLabels: profilecomponent.GetMachineConfigPoolSelector(profile, profileMCP),
+			},
 			ContainerRuntimeConfig: &machineconfigv1.ContainerRuntimeConfiguration{
 				DefaultRuntime: machineconfigv1.ContainerRuntimeDefaultRuntimeCrun,
 			},
