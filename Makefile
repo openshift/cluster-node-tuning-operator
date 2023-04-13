@@ -22,6 +22,8 @@ API_TYPES_DIR:=pkg/apis
 API_TYPES:=$(shell find $(API_TYPES_DIR) -name \*_types.go)
 API_ZZ_GENERATED:=zz_generated.deepcopy
 API_GO_HEADER_FILE:=$(API_TYPES_DIR)/header.go.txt
+# Pin the older controller-gen version. v0.7.0+ require separate CRD directory as they choke on manifests with "apiVersion: v1".
+CONTROLLER_GEN_VERSION :=v0.6.0
 
 # Container image-related variables
 IMAGE_BUILD_CMD=podman build --no-cache
