@@ -87,6 +87,7 @@ func render(inputDir, outputDir string) error {
 		perfProfiles []*performancev2.PerformanceProfile
 		mcPools      []*mcfgv1.MachineConfigPool
 		infra        *apicfgv1.Infrastructure
+		ctrcfgs      []*mcfgv1.ContainerRuntimeConfig
 	)
 	// Iterate through the file paths and read in desired files
 	for _, path := range filePaths {
@@ -121,6 +122,8 @@ func render(inputDir, outputDir string) error {
 				if obj.Name == clusterConfigResourceName {
 					infra = obj
 				}
+			case *mcfgv1.ContainerRuntimeConfig:
+				ctrcfgs = append(ctrcfgs, obj)
 			default:
 				klog.Infof("skipping %q [%d] manifest because of unhandled %T", file.Name(), idx+1, obji)
 			}
@@ -153,7 +156,12 @@ func render(inputDir, outputDir string) error {
 			return err
 		}
 
-		components, err := manifestset.GetNewComponents(pp, mcp, pinnedMode)
+		defaultRuntime, err := getContainerRuntimeName(pp, mcp, ctrcfgs)
+		if err != nil {
+			return fmt.Errorf("render: could not determine high-performance runtime class container-runtime for profile %q; %w", pp.Name, err)
+		}
+
+		components, err := manifestset.GetNewComponents(pp, mcp, pinnedMode, defaultRuntime)
 		if err != nil {
 			return err
 		}
@@ -262,4 +270,28 @@ func selectMachineConfigPool(pools []*mcfgv1.MachineConfigPool, selectors map[st
 	}
 
 	return mcp, nil
+}
+
+func getContainerRuntimeName(profile *performancev2.PerformanceProfile, mcp *mcfgv1.MachineConfigPool, ctrcfgs []*mcfgv1.ContainerRuntimeConfig) (mcfgv1.ContainerRuntimeDefaultRuntime, error) {
+	mcpLabels := labels.Set(mcp.Labels)
+	for _, ctrcfg := range ctrcfgs {
+		ctrcfgSelector, err := v1.LabelSelectorAsSelector(ctrcfg.Spec.MachineConfigPoolSelector)
+		if err != nil {
+			return "", err
+		}
+		if ctrcfgSelector.Matches(mcpLabels) {
+			ctrcfgs = append(ctrcfgs, ctrcfg)
+		}
+	}
+
+	if len(ctrcfgs) == 0 {
+		klog.Infof("no ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q; using default container runtime", mcpLabels.String(), profile.Name)
+		return mcfgv1.ContainerRuntimeDefaultRuntimeRunc, nil
+	}
+
+	if len(ctrcfgs) > 1 {
+		return "", fmt.Errorf("more than one ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q", mcpLabels.String(), profile.Name)
+	}
+
+	return ctrcfgs[0].Spec.ContainerRuntimeConfig.DefaultRuntime, nil
 }

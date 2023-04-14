@@ -13,11 +13,12 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	"gopkg.in/ini.v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
@@ -27,6 +28,7 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	profilecomponent "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/tuned"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
@@ -37,6 +39,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
 
 type checkFunction func(*corev1.Node) (string, error)
@@ -1824,7 +1827,84 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			}
 		})
 	})
+
+	Context("ContainerRuntimeConfig", func() {
+		When("is not given", func() {
+			It("should run high-performance runtimes class with runc as container-runtime", func() {
+				cmd := []string{"cat", "/rootfs/etc/crio/crio.conf.d/99-runtimes.conf"}
+				for i := 0; i < len(workerRTNodes); i++ {
+					out, err := nodes.ExecCommandOnNode(cmd, &workerRTNodes[i])
+					Expect(err).ToNot(HaveOccurred(), "cannot get 99-runtimes.conf from %q", workerRTNodes[i].Name)
+					By(fmt.Sprintf("checking node: %q", workerRTNodes[i].Name))
+					Expect(out).To(ContainSubstring("/bin/runc"))
+					Expect(out).To(ContainSubstring("/run/runc"))
+				}
+			})
+		})
+
+		When("updates the default runtime to crun", func() {
+			It("should run high-performance runtimes class with crun as container-runtime", func() {
+				const ContainerRuntimeConfigName = "ctrcfg-test"
+
+				key := types.NamespacedName{
+					Name: performanceMCP,
+				}
+				mcp := &machineconfigv1.MachineConfigPool{}
+				Expect(testclient.Client.Get(context.TODO(), key, mcp)).ToNot(HaveOccurred(), "cannot get MCP %q", performanceMCP)
+
+				By("checking if ContainerRuntimeConfig object already exists")
+				ctrcfg, err := getContainerRuntimeConfigFrom(context.TODO(), profile, mcp)
+				Expect(err).ToNot(HaveOccurred(), "failed to get ContainerRuntimeConfig from profile %q mcp %q", profile.Name, mcp.Name)
+
+				Expect(ctrcfg).To(BeNil(), "unexpected ContainerRuntimeConfig: %#v", ctrcfg)
+				testlog.Infof("ContainerRuntimeConfig not exist")
+				ctrcfg = newContainerRuntimeConfig(ContainerRuntimeConfigName, profile, mcp)
+				By(fmt.Sprintf("creating ContainerRuntimeConfig %q", ctrcfg.Name))
+				Expect(testclient.Client.Create(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to create ctrcfg %#v", ctrcfg)
+
+				DeferCleanup(func() {
+					Expect(testclient.Client.Delete(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to delete ctfcfg %#v", ctrcfg)
+					By(fmt.Sprintf("waiting for mcp %q transition to UPDATING state", performanceMCP))
+					mcps.WaitForConditionFunc(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue, getMCPConditionStatus)
+					By(fmt.Sprintf("waiting for mcp %q transition to UPDATED state", performanceMCP))
+					mcps.WaitForConditionFunc(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue, getMCPConditionStatus)
+				})
+
+				By(fmt.Sprintf("waiting for mcp %q transition to UPDATING state", performanceMCP))
+				mcps.WaitForConditionFunc(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue, getMCPConditionStatus)
+				By(fmt.Sprintf("waiting for mcp %q transition to UPDATED state", performanceMCP))
+				mcps.WaitForConditionFunc(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue, getMCPConditionStatus)
+
+				cmd := []string{"cat", "/rootfs/etc/crio/crio.conf.d/99-runtimes.conf"}
+				for i := 0; i < len(workerRTNodes); i++ {
+					out, err := nodes.ExecCommandOnNode(cmd, &workerRTNodes[i])
+					Expect(err).ToNot(HaveOccurred(), "cannot get 99-runtimes.conf from %q", workerRTNodes[i].Name)
+					By(fmt.Sprintf("checking node: %q", workerRTNodes[i].Name))
+					Expect(out).To(ContainSubstring("/usr/bin/crun"))
+					Expect(out).To(ContainSubstring("/run/crun"))
+				}
+			})
+		})
+	})
 })
+
+func getMCPConditionStatus(mcpName string, conditionType machineconfigv1.MachineConfigPoolConditionType) corev1.ConditionStatus {
+	mcp, err := mcps.GetByNameNoRetry(mcpName)
+	if err != nil {
+		// In case of any error we just retry, as in case of single node cluster
+		// the only node may be rebooting
+		testlog.Infof("MCP %q not found -> unknown", mcpName)
+		return corev1.ConditionUnknown
+	}
+	for _, condition := range mcp.Status.Conditions {
+		if condition.Type == conditionType {
+			testlog.Infof("MCP %q condition %q -> %q", mcpName, conditionType, condition.Status)
+			return condition.Status
+		}
+	}
+	testlog.Infof("MCP %q condition %q not found -> unknown", mcpName, conditionType)
+	return corev1.ConditionUnknown
+}
 
 func hugepagesPathForNode(nodeID, sizeINMb int) string {
 	return fmt.Sprintf("/sys/devices/system/node/node%d/hugepages/hugepages-%dkB/nr_hugepages", nodeID, sizeINMb*1024)
@@ -1976,4 +2056,55 @@ func checkHardwareCapability(workerRTNodes []corev1.Node) {
 			Skip(fmt.Sprintf("This test needs system with %d CPUs to work correctly, current CPUs are %s", totalCpus, onlineCPUCount))
 		}
 	}
+}
+
+func newContainerRuntimeConfig(name string, profile *performancev2.PerformanceProfile, profileMCP *machineconfigv1.MachineConfigPool) *machineconfigv1.ContainerRuntimeConfig {
+	return &machineconfigv1.ContainerRuntimeConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: machineconfigv1.ContainerRuntimeConfigSpec{
+			MachineConfigPoolSelector: &metav1.LabelSelector{
+				MatchLabels: profilecomponent.GetMachineConfigPoolSelector(profile, profileMCP),
+			},
+			ContainerRuntimeConfig: &machineconfigv1.ContainerRuntimeConfiguration{
+				DefaultRuntime: machineconfigv1.ContainerRuntimeDefaultRuntimeCrun,
+			},
+		},
+	}
+}
+
+func getContainerRuntimeConfigFrom(ctx context.Context, profile *performancev2.PerformanceProfile, mcp *machineconfigv1.MachineConfigPool) (*machineconfigv1.ContainerRuntimeConfig, error) {
+	ctrcfgList := &machineconfigv1.ContainerRuntimeConfigList{}
+	if err := testclient.Client.List(ctx, ctrcfgList); err != nil {
+		return nil, err
+	}
+
+	if len(ctrcfgList.Items) == 0 {
+		testlog.Infof("no ContainerRuntimeConfig object found on the cluster")
+		return nil, nil
+	}
+
+	var ctrcfgs []*machineconfigv1.ContainerRuntimeConfig
+	mcpLabels := labels.Set(mcp.Labels)
+	for i := 0; i < len(ctrcfgList.Items); i++ {
+		ctrcfg := &ctrcfgList.Items[i]
+		ctrcfgSelector, err := metav1.LabelSelectorAsSelector(ctrcfg.Spec.MachineConfigPoolSelector)
+		if err != nil {
+			return nil, err
+		}
+		if ctrcfgSelector.Matches(mcpLabels) {
+			ctrcfgs = append(ctrcfgs, ctrcfg)
+		}
+	}
+
+	if len(ctrcfgs) == 0 {
+		testlog.Infof("no ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q", mcpLabels.String(), profile.Name)
+		return nil, nil
+	}
+
+	if len(ctrcfgs) > 1 {
+		return nil, fmt.Errorf("more than one ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q", mcpLabels.String(), profile.Name)
+	}
+	return ctrcfgs[0], nil
 }
