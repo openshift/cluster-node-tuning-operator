@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/bugzilla"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/jira"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 )
 
 const defaultExecTimeout = 2 * time.Minute
+const SkipBzChecksEnvVar = "NO_BZ_CHECKS"
 
 func CustomBeforeAll(fn func()) {
 	first := true
@@ -69,6 +71,12 @@ func knownIssueIsFixedByStatus(status string) bool {
 // Check status of an issue in Jira and skip the test when the issue
 // is not yet resolved (Verified or Closed)
 func KnownIssueJira(key string) {
+	val := os.Getenv(SkipBzChecksEnvVar)
+	if val != "" {
+		testlog.Infof(fmt.Sprintf("Skipping Jira issue %s status check", key))
+		return
+	}
+
 	response, err := jira.RetrieveJiraStatus(key)
 	if err != nil {
 		testlog.Warningf("failed to retrieve status of Jira issue %s: %v", key, err)
@@ -87,6 +95,12 @@ func KnownIssueJira(key string) {
 // Check status of an issue in Bugzilla and skip the test when the issue
 // is not yet resolved (Verified or Closed)
 func KnownIssueBugzilla(bugId int) {
+	val := os.Getenv(SkipBzChecksEnvVar)
+	if val != "" {
+		testlog.Infof(fmt.Sprintf("Skipping rhbz#%d status check", bugId))
+		return
+	}
+
 	bug, err := bugzilla.RetrieveBug(bugId)
 	if err != nil {
 		testlog.Warningf("failed to retrieve status of rhbz#%d: %v", bugId, err)
