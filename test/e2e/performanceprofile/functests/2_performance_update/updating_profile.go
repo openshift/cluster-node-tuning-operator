@@ -1963,7 +1963,7 @@ func checkTunedParameters(workerRTNodes []corev1.Node, stalld bool, sysctlMap ma
 	if stalld {
 		Expect(*tuned.Spec.Profile[0].Data).To(ContainSubstring("stalld"))
 	} else {
-		Expect(*tuned.Spec.Profile[0].Data).ToNot(ContainSubstring("stalld"))
+		Expect(*tuned.Spec.Profile[0].Data).To(ContainSubstring("stalld=stop,disable"), "stalld not disabled")
 	}
 
 	for _, node := range workerRTNodes {
