@@ -380,7 +380,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				}
 			}
 		})
-		It("Should not have RPS configuration set when realtime workload hint is explicitly set", func() {
+		It("[test_id:54190] Should not have RPS configuration set when realtime workload hint is explicitly set", func() {
 			if profile.Spec.WorkloadHints != nil && profile.Spec.WorkloadHints.RealTime != nil &&
 				!*profile.Spec.WorkloadHints.RealTime && !profileutil.IsRpsEnabled(profile) {
 				for _, node := range workerRTNodes {
