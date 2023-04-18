@@ -38,22 +38,17 @@ spec:
         - mountPath: /var/lib/tuned/profiles-data
           name: var-lib-tuned-profiles-data
         - mountPath: /etc/modprobe.d
-          name: etc
-          subPath: modprobe.d
+          name: etc-modprobe-d
         - mountPath: /etc/sysconfig
-          name: etc
-          subPath: sysconfig
+          name: etc-sysconfig
         - mountPath: /etc/sysctl.d
-          name: etc
-          subPath: sysctl.d
+          name: etc-sysctl-d
           readOnly: true
         - mountPath: /etc/sysctl.conf
-          name: etc
-          subPath: sysctl.conf
+          name: etc-sysctl-conf
           readOnly: true
         - mountPath: /etc/systemd
-          name: etc
-          subPath: systemd
+          name: etc-systemd
         - mountPath: /sys
           name: sys
         - mountPath: /var/run/dbus
@@ -84,9 +79,25 @@ spec:
             value: ""
       volumes:
       - hostPath:
-          path: /etc
+          path: /etc/modprobe.d
           type: Directory
-        name: etc
+        name: etc-modprobe-d
+      - hostPath:
+          path: /etc/sysconfig
+          type: Directory
+        name: etc-sysconfig
+      - hostPath:
+          path: /etc/sysctl.d
+          type: Directory
+        name: etc-sysctl-d
+      - hostPath:
+          path: /etc/sysctl.conf
+          type: File
+        name: etc-sysctl-conf
+      - hostPath:
+          path: /etc/systemd
+          type: Directory
+        name: etc-systemd
       - hostPath:
           path: /sys
           type: Directory
