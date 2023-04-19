@@ -111,21 +111,27 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 	Context("Verify hugepages count split on two NUMA nodes", Ordered, func() {
 		hpSize2M := performancev2.HugePageSize("2M")
+		skipTests := false
 
 		testutils.CustomBeforeAll(func() {
-			By("Modifying profile")
-			initialProfile = profile.DeepCopy()
-		})
-
-		DescribeTable("Verify that profile parameters were updated", func(hpCntOnNuma0 int32, hpCntOnNuma1 int32) {
-			By("Verifying cluster configuration matches the requirement")
 			for _, node := range workerRTNodes {
 				numaInfo, err := nodes.GetNumaNodes(&node)
 				Expect(err).ToNot(HaveOccurred())
 				if len(numaInfo) < 2 {
-					Skip(fmt.Sprintf("This test need 2 NUMA nodes.The number of NUMA nodes on node %s < 2", node.Name))
+					skipTests = true
+					klog.Infof(fmt.Sprintf("This test need 2 NUMA nodes.The number of NUMA nodes on node %s < 2", node.Name))
+					return
 				}
 			}
+			initialProfile = profile.DeepCopy()
+		})
+
+		DescribeTable("Verify that profile parameters were updated", func(hpCntOnNuma0 int32, hpCntOnNuma1 int32) {
+			if skipTests {
+				Skip("Insufficient NUMA nodes. This test needs 2 NUMA nodes for all CNF enabled test nodes.")
+			}
+
+			By("Verifying cluster configuration matches the requirement")
 			//have total of 4 cpus so VMs can handle running the configuration
 			numaInfo, _ := nodes.GetNumaNodes(&workerRTNodes[0])
 			cpuSlice := numaInfo[0][0:4]
@@ -197,6 +203,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		)
 
 		AfterAll(func() {
+			if skipTests {
+				return
+			}
 			// return initial configuration
 			spec, err := json.Marshal(initialProfile.Spec)
 			Expect(err).ToNot(HaveOccurred())
