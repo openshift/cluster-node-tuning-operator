@@ -60,6 +60,7 @@ const (
 	setCPUsOffline            = "set-cpus-offline"
 	setRPSMask                = "set-rps-mask"
 	clearIRQBalanceBannedCPUs = "clear-irqbalance-banned-cpus"
+	cpusetConfigure           = "cpuset-configure"
 )
 
 const (
@@ -76,11 +77,13 @@ const (
 )
 
 const (
-	systemdServiceIRQBalance  = "irqbalance.service"
-	systemdServiceKubelet     = "kubelet.service"
-	systemdServiceTypeOneshot = "oneshot"
-	systemdTargetMultiUser    = "multi-user.target"
-	systemdTrue               = "true"
+	systemdServiceIRQBalance   = "irqbalance.service"
+	systemdServiceKubelet      = "kubelet.service"
+	systemdServiceCrio         = "crio.service"
+	systemdServiceTypeOneshot  = "oneshot"
+	systemdTargetMultiUser     = "multi-user.target"
+	systemdTargetNetworkOnline = "network-online.target"
+	systemdTrue                = "true"
 )
 
 const (
@@ -261,6 +264,23 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 			}
 			ocpPartitionDst := filepath.Join(kubernetesConfDir, ocpPartitioningConfig)
 			addContent(ignitionConfig, ocpPartitionFileData, ocpPartitionDst, &crioConfdRuntimesMode)
+			cpusetConfigureService, err := getSystemdContent(getCpusetConfigureServiceOptions())
+			if err != nil {
+				return nil, err
+			}
+
+			ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
+				Contents: &cpusetConfigureService,
+				Enabled:  pointer.BoolPtr(true),
+				Name:     getSystemdService(cpusetConfigure),
+			})
+
+			dst := getBashScriptPath(cpusetConfigure)
+			content, err := assets.Scripts.ReadFile(fmt.Sprintf("scripts/%s.sh", cpusetConfigure))
+			if err != nil {
+				return nil, err
+			}
+			addContent(ignitionConfig, content, dst, &mode)
 		}
 	}
 
@@ -350,6 +370,23 @@ func GetHugepagesSizeKilobytes(hugepagesSize performancev2.HugePageSize) (string
 		return "2048", nil
 	default:
 		return "", fmt.Errorf("can not convert size %q to kilobytes", hugepagesSize)
+	}
+}
+
+func getCpusetConfigureServiceOptions() []*unit.UnitOption {
+	return []*unit.UnitOption{
+		// [Unit]
+		// Description
+		unit.NewUnitOption(systemdSectionUnit, systemdDescription, "Move services to reserved cpuset"),
+		// Before
+		unit.NewUnitOption(systemdSectionUnit, systemdBefore, systemdTargetNetworkOnline),
+		// Type
+		unit.NewUnitOption(systemdSectionService, systemdType, systemdServiceTypeOneshot),
+		// ExecStart
+		unit.NewUnitOption(systemdSectionService, systemdExecStart, getBashScriptPath(cpusetConfigure)),
+		// [Install]
+		// WantedBy
+		unit.NewUnitOption(systemdSectionInstall, systemdWantedBy, systemdTargetMultiUser+" "+systemdServiceCrio),
 	}
 }
 
