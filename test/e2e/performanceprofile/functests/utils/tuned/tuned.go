@@ -84,22 +84,19 @@ func GetPod(ctx context.Context, node *corev1.Node) (*corev1.Pod, error) {
 }
 
 func WaitForStalldTo(run bool, interval, timeout time.Duration, node *corev1.Node) error {
-	return wait.Poll(interval, timeout, func() (bool, error) {
-		cmd := []string{"/bin/bash", "-c", "pidof stalld || true"}
-		stalldPid, err := nodes.ExecCommandOnNode(cmd, node)
-		if err != nil {
-			return false, fmt.Errorf("failed to execute command %q on node: %q; %w", cmd, node.Name, err)
-		}
+	return wait.PollImmediate(interval, timeout, func() (bool, error) {
+		cmd := []string{"/bin/bash", "-c", "pidof stalld"}
+		stalldPid, _ := nodes.ExecCommandOnNode(cmd, node)
 
-		_, err = strconv.Atoi(stalldPid)
+		_, err := strconv.Atoi(stalldPid)
 		if !run { // we don't want stalld to run
 			if err == nil {
-				return false, fmt.Errorf("node=%q stalld_pid=%q stalld is running when it shouldn't", node.Name, stalldPid)
+				return false, nil
 			}
+			return true, nil
 		}
 		// we want stalld to run
 		if err != nil {
-			klog.Warningf("node=%q stalld_pid=%q is not a valid pid number: %v", node.Name, stalldPid, err)
 			return false, nil
 		}
 		return true, nil
@@ -107,15 +104,14 @@ func WaitForStalldTo(run bool, interval, timeout time.Duration, node *corev1.Nod
 }
 
 func CheckParameters(node *corev1.Node, sysctlMap map[string]string, kernelParameters []string, stalld, rtkernel bool) {
-	cmd := []string{"/bin/bash", "-c", "pidof stalld || true"}
+	cmd := []string{"/bin/bash", "-c", "pidof stalld"}
 	By(fmt.Sprintf("Executing %q", cmd))
-	stalldPid, err := nodes.ExecCommandOnNode(cmd, node)
-	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to execute command %q on node: %q; %w", cmd, node.Name, err)
+	stalldPid, _ := nodes.ExecCommandOnNode(cmd, node)
 
-	_, err = strconv.Atoi(stalldPid)
+	_, err := strconv.Atoi(stalldPid)
 	if stalld {
 		ExpectWithOffset(1, err).ToNot(HaveOccurred(),
-			"node=%q stalld_pid=%q is not a valid pid number: %w", node.Name, stalldPid, err)
+			"node=%q does not have a running stalld process", node.Name)
 	} else {
 		ExpectWithOffset(1, err).To(HaveOccurred(),
 			"node=%q stalld_pid=%q stalld is running when it shouldn't", node.Name, stalldPid)
