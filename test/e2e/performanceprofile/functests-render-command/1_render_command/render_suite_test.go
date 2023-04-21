@@ -6,11 +6,11 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/ghodss/yaml"
 	"github.com/google/go-cmp/cmp"
 	. "github.com/onsi/ginkgo/v2"
 	"github.com/onsi/ginkgo/v2/reporters"
 	. "github.com/onsi/gomega"
+	"sigs.k8s.io/yaml"
 
 	qe_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 )

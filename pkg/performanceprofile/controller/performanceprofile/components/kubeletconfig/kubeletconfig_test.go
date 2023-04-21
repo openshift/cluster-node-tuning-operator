@@ -3,12 +3,12 @@ package kubeletconfig
 import (
 	"fmt"
 
-	"github.com/ghodss/yaml"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/kubernetes/pkg/kubelet/eviction"
 	"k8s.io/utils/pointer"
+	"sigs.k8s.io/yaml"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	testutils "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/utils/testing"

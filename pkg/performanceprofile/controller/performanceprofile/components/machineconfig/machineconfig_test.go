@@ -7,11 +7,11 @@ import (
 
 	"k8s.io/utils/pointer"
 
-	"github.com/ghodss/yaml"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	"sigs.k8s.io/yaml"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	testutils "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/utils/testing"

@@ -5,13 +5,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ghodss/yaml"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	testutils "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/utils/testing"
 	"gopkg.in/ini.v1"
+	"sigs.k8s.io/yaml"
 
 	cpuset "k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"k8s.io/utils/pointer"

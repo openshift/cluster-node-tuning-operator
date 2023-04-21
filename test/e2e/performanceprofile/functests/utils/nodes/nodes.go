@@ -12,7 +12,7 @@ import (
 
 	. "github.com/onsi/gomega"
 
-	"github.com/ghodss/yaml"
+	"sigs.k8s.io/yaml"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"

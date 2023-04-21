@@ -11,7 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ghodss/yaml"
+	"sigs.k8s.io/yaml"
 
 	"github.com/openshift/cluster-node-tuning-operator/cmd/performance-profile-creator/cmd"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
