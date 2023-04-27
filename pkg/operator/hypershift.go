@@ -256,18 +256,17 @@ func newConfigMapForMachineConfig(configMapName string, nodePoolName string, mc 
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      configMapName,
-			Namespace: ntoconfig.OperatorNamespace(),
-			Labels:    generatedConfigMapLabels(nodePoolName),
-			Annotations: map[string]string{
-				GeneratedByControllerVersionAnnotationKey: version.Version,
-			},
+			Name:        configMapName,
+			Namespace:   ntoconfig.OperatorNamespace(),
+			Labels:      generatedConfigMapLabels(nodePoolName),
+			Annotations: generatedConfigMapAnnotations(nodePoolName),
 		},
 		Data: map[string]string{
 			mcConfigMapDataKey: string(mcManifest),
 		},
 	}
 
+	ret.Annotations[GeneratedByControllerVersionAnnotationKey] = version.Version
 	return ret, nil
 }
 

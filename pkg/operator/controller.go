@@ -928,17 +928,12 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 		// No update needed
 		klog.V(2).Infof("syncMachineConfig(): MachineConfig %s doesn't need updating", mc.ObjectMeta.Name)
 		return nil
-	} else if mcAnnotationsMatch(mc.ObjectMeta.Annotations, annotations) {
+	} else if !kernelArgsEq {
 		// Kernel arguments differ and they were generated based on the same TuneD profile and Tuned/rendered CR.
-		machineCount, err := c.pc.getMachineCountForMachineConfigPool(mc.Name[len(MachineConfigPrefix)+1:])
-		if err != nil {
-			return err
-		} else if machineCount > 1 {
-			klog.Warningf("refusing to update MachineConfig %s for %s due to kernel arguments change with unchanged input configuration (%s/%s). Node(s) with different (CPU) topology in the same MCP?",
-				mc.Name, profile.Name, annotations[tunedv1.RendredTunedGenerationAnnotationKey], annotations[tunedv1.TunedProfileAnnotationKey])
-			c.bootcmdlineConflict[profile.Name] = true
-			return nil
-		}
+		klog.Warningf("refusing to update MachineConfig %s for %s due to kernel arguments change with unchanged input configuration (%s/%s).",
+			mc.Name, profile.Name, annotations[tunedv1.RendredTunedGenerationAnnotationKey], annotations[tunedv1.TunedProfileAnnotationKey])
+		c.bootcmdlineConflict[profile.Name] = true
+		return nil
 	}
 
 	// If mcfgs are not equivalent do update
