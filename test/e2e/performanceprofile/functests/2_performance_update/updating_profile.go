@@ -397,6 +397,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		var oldMcpSelector, oldNodeSelector map[string]string
 
 		BeforeEach(func() {
+			testutils.KnownIssueJira("OCPBUGS-12836")
+
 			// initialize on every run
 			labelsDeletion = false
 			//fetch the latest profile
@@ -462,6 +464,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:28440]Verifies that nodeSelector can be updated in performance profile", func() {
+			testutils.KnownIssueJira("OCPBUGS-12836")
+
 			kubeletConfig, err := nodes.GetKubeletConfig(newCnfNode)
 			Expect(kubeletConfig.TopologyManagerPolicy).ToNot(BeEmpty())
 			cmdline, err := nodes.ExecCommandOnNode(chkCmdLine, newCnfNode)
@@ -471,6 +475,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:27484]Verifies that node is reverted to plain worker when the extra labels are removed", func() {
+			testutils.KnownIssueJira("OCPBUGS-12836")
+
 			By("Deleting cnf labels from the node")
 			removeLabels(profile.Spec.NodeSelector, newCnfNode)
 			labelsDeletion = true
@@ -502,6 +508,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		AfterEach(func() {
+			testutils.KnownIssueJira("OCPBUGS-12836")
 
 			if labelsDeletion == false {
 				removeLabels(profile.Spec.NodeSelector, newCnfNode)
