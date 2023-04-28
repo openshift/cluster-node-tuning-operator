@@ -37,7 +37,7 @@ import (
 
 var RunningOnSingleNode bool
 
-var _ = Describe("[performance][config] Performance configuration", Ordered, func() {
+var _ = Describe("[performance][config] Performance configuration", Serial, Ordered, func() {
 
 	testutils.CustomBeforeAll(func() {
 		isSNO, err := cluster.IsSingleNode()

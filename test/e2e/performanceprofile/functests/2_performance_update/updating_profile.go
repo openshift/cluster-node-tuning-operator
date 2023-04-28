@@ -109,7 +109,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		}
 	})
 
-	Context("Verify hugepages count split on two NUMA nodes", Ordered, func() {
+	Context("Verify hugepages count split on two NUMA nodes", Serial, Ordered, func() {
 		hpSize2M := performancev2.HugePageSize("2M")
 		skipTests := false
 
@@ -220,7 +220,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 	})
 
-	Context("Verify that all performance profile parameters can be updated", Ordered, func() {
+	Context("Verify that all performance profile parameters can be updated", Serial, Ordered, func() {
 		var removedKernelArgs string
 
 		hpSize2M := performancev2.HugePageSize("2M")
@@ -385,7 +385,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 	})
 
-	Context("Updating of nodeSelector parameter and node labels", func() {
+	Context("Updating of nodeSelector parameter and node labels", Serial, Ordered, func() {
 		var mcp *machineconfigv1.MachineConfigPool
 		var newCnfNode *corev1.Node
 		newRole := "worker-test"
