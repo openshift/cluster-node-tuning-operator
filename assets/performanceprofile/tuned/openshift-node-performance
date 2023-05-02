@@ -35,6 +35,9 @@ min_perf_pct=100
 {{if .RealTimeHint}}
 [service]
 service.stalld=start,enable
+{{else}}
+[service]
+service.stalld=stop,disable
 {{end}}
 
 [vm]
