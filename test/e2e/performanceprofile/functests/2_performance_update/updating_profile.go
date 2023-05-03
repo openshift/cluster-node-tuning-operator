@@ -579,9 +579,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -637,9 +637,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -694,9 +694,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -756,9 +756,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -873,9 +873,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -937,9 +937,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -1008,9 +1008,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -1073,9 +1073,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
