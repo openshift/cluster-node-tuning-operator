@@ -111,21 +111,27 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 	Context("Verify hugepages count split on two NUMA nodes", Ordered, func() {
 		hpSize2M := performancev2.HugePageSize("2M")
+		skipTests := false
 
 		testutils.CustomBeforeAll(func() {
-			By("Modifying profile")
-			initialProfile = profile.DeepCopy()
-		})
-
-		DescribeTable("Verify that profile parameters were updated", func(hpCntOnNuma0 int32, hpCntOnNuma1 int32) {
-			By("Verifying cluster configuration matches the requirement")
 			for _, node := range workerRTNodes {
 				numaInfo, err := nodes.GetNumaNodes(&node)
 				Expect(err).ToNot(HaveOccurred())
 				if len(numaInfo) < 2 {
-					Skip(fmt.Sprintf("This test need 2 NUMA nodes.The number of NUMA nodes on node %s < 2", node.Name))
+					skipTests = true
+					klog.Infof(fmt.Sprintf("This test need 2 NUMA nodes.The number of NUMA nodes on node %s < 2", node.Name))
+					return
 				}
 			}
+			initialProfile = profile.DeepCopy()
+		})
+
+		DescribeTable("Verify that profile parameters were updated", func(hpCntOnNuma0 int32, hpCntOnNuma1 int32) {
+			if skipTests {
+				Skip("Insufficient NUMA nodes. This test needs 2 NUMA nodes for all CNF enabled test nodes.")
+			}
+
+			By("Verifying cluster configuration matches the requirement")
 			//have total of 4 cpus so VMs can handle running the configuration
 			numaInfo, _ := nodes.GetNumaNodes(&workerRTNodes[0])
 			cpuSlice := numaInfo[0][0:4]
@@ -197,6 +203,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		)
 
 		AfterAll(func() {
+			if skipTests {
+				return
+			}
 			// return initial configuration
 			spec, err := json.Marshal(initialProfile.Spec)
 			Expect(err).ToNot(HaveOccurred())
@@ -388,6 +397,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		var oldMcpSelector, oldNodeSelector map[string]string
 
 		BeforeEach(func() {
+			testutils.KnownIssueJira("OCPBUGS-12836")
+
 			// initialize on every run
 			labelsDeletion = false
 			//fetch the latest profile
@@ -453,6 +464,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:28440]Verifies that nodeSelector can be updated in performance profile", func() {
+			testutils.KnownIssueJira("OCPBUGS-12836")
+
 			kubeletConfig, err := nodes.GetKubeletConfig(newCnfNode)
 			Expect(kubeletConfig.TopologyManagerPolicy).ToNot(BeEmpty())
 			cmdline, err := nodes.ExecCommandOnNode(chkCmdLine, newCnfNode)
@@ -462,6 +475,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:27484]Verifies that node is reverted to plain worker when the extra labels are removed", func() {
+			testutils.KnownIssueJira("OCPBUGS-12836")
+
 			By("Deleting cnf labels from the node")
 			removeLabels(profile.Spec.NodeSelector, newCnfNode)
 			labelsDeletion = true
@@ -493,6 +508,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		AfterEach(func() {
+			testutils.KnownIssueJira("OCPBUGS-12836")
 
 			if labelsDeletion == false {
 				removeLabels(profile.Spec.NodeSelector, newCnfNode)
@@ -599,9 +615,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -611,7 +627,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
 						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
@@ -656,9 +673,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -668,7 +685,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
 						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
@@ -712,9 +730,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -724,7 +742,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to NOT be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+							fmt.Sprintf("stalld should not running on node %q ", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
 						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
@@ -773,9 +792,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -785,7 +804,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
 						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
@@ -889,9 +909,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -901,7 +921,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
 						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
@@ -952,9 +973,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -964,7 +985,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
 						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
@@ -1022,9 +1044,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -1034,7 +1056,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
 						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
@@ -1086,9 +1109,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -1098,7 +1121,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
 						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
