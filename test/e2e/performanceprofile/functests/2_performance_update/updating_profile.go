@@ -107,7 +107,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		}
 	})
 
-	Context("Verify hugepages count split on two NUMA nodes", func() {
+	Context("Verify hugepages count split on two NUMA nodes", Ordered, func() {
 		hpSize2M := performancev2.HugePageSize("2M")
 		skipTests := false
 
