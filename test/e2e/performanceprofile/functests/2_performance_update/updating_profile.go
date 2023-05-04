@@ -385,7 +385,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 	})
 
-	Context("Updating of nodeSelector parameter and node labels", Serial, Ordered, func() {
+	FContext("Updating of nodeSelector parameter and node labels", Serial, Ordered, func() {
 		var mcp *machineconfigv1.MachineConfigPool
 		var newCnfNode *corev1.Node
 		newRole := "worker-test"
@@ -397,7 +397,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		var oldMcpSelector, oldNodeSelector map[string]string
 
 		BeforeEach(func() {
-			testutils.KnownIssueJira("OCPBUGS-12836")
+			//testutils.KnownIssueJira("OCPBUGS-12836")
 
 			// initialize on every run
 			labelsDeletion = false
@@ -463,7 +463,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			mcps.WaitForCondition(newRole, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 		})
 
-		It("[test_id:28440]Verifies that nodeSelector can be updated in performance profile", func() {
+		FIt("[test_id:28440]Verifies that nodeSelector can be updated in performance profile", func() {
 			//testutils.KnownIssueJira("OCPBUGS-12836")
 
 			kubeletConfig, err := nodes.GetKubeletConfig(newCnfNode)
@@ -509,7 +509,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		AfterEach(func() {
-			testutils.KnownIssueJira("OCPBUGS-12836")
+			//testutils.KnownIssueJira("OCPBUGS-12836")
 
 			if labelsDeletion == false {
 				removeLabels(profile.Spec.NodeSelector, newCnfNode)
