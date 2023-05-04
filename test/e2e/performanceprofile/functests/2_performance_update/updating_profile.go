@@ -464,9 +464,10 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:28440]Verifies that nodeSelector can be updated in performance profile", func() {
-			testutils.KnownIssueJira("OCPBUGS-12836")
+			//testutils.KnownIssueJira("OCPBUGS-12836")
 
 			kubeletConfig, err := nodes.GetKubeletConfig(newCnfNode)
+			Expect(err).ToNot(HaveOccurred(), "Unable to get KubeletConfig: %s", err.Error())
 			Expect(kubeletConfig.TopologyManagerPolicy).ToNot(BeEmpty())
 			cmdline, err := nodes.ExecCommandOnNode(chkCmdLine, newCnfNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to execute %s", chkCmdLine)
