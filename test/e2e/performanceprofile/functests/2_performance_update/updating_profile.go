@@ -47,7 +47,7 @@ import (
 
 type checkFunction func(*corev1.Node) (string, error)
 
-var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance profile",Serial, func() {
+var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance profile", func() {
 	var workerRTNodes []corev1.Node
 	var profile, initialProfile *performancev2.PerformanceProfile
 	var performanceMCP string
@@ -85,12 +85,14 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 	var RunningOnSingleNode bool
 
 	testutils.CustomBeforeAll(func() {
+		klog.Infof("[jlom](%d) CustomBeforeAll Describe:[rfe_id:28761][performance] Updating parameters in performance profile", GinkgoParallelProcess())
 		isSNO, err := cluster.IsSingleNode()
 		Expect(err).ToNot(HaveOccurred())
 		RunningOnSingleNode = isSNO
 	})
 
 	BeforeEach(func() {
+		klog.Infof("[jlom](%d) BeforeEach Describe:[rfe_id:28761][performance] Updating parameters in performance profile", GinkgoParallelProcess())
 		if discovery.Enabled() && testutils.ProfileNotFound {
 			Skip("Discovery mode enabled, performance profile not found")
 		}
@@ -114,6 +116,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		skipTests := false
 
 		testutils.CustomBeforeAll(func() {
+			klog.Infof("[jlom](%d) CustomBeforeAll Context: Verify hugepages count split on two NUMA nodes", GinkgoParallelProcess())
 			for _, node := range workerRTNodes {
 				numaInfo, err := nodes.GetNumaNodes(&node)
 				Expect(err).ToNot(HaveOccurred())
@@ -127,6 +130,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		DescribeTable("Verify that profile parameters were updated", func(hpCntOnNuma0 int32, hpCntOnNuma1 int32) {
+			klog.Infof("[jlom](%d) DescribeTable: Verify that profile parameters were updated %d, %d", GinkgoParallelProcess(), hpCntOnNuma0, hpCntOnNuma1)
 			if skipTests {
 				Skip("Insufficient NUMA nodes. This test needs 2 NUMA nodes for all CNF enabled test nodes.")
 			}
@@ -203,6 +207,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		)
 
 		AfterAll(func() {
+			klog.Infof("[jlom](%d) AfterAll Context: Verify hugepages count split on two NUMA nodes", GinkgoParallelProcess())
 			if skipTests {
 				return
 			}
@@ -231,6 +236,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		// Modify profile and verify that MCO successfully updated the node
 		testutils.CustomBeforeAll(func() {
+			klog.Infof("[jlom](%d) CustomBeforeAll Context: Verify that all performance profile parameters can be updated", GinkgoParallelProcess())
 			By(fmt.Sprintf("Modifying profile to nodes=%#v MCPs=%#v", profile.Spec.NodeSelector, profile.Spec.MachineConfigPoolSelector))
 			initialProfile = profile.DeepCopy()
 
@@ -287,6 +293,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		DescribeTable("Verify that profile parameters were updated", func(cmdFn checkFunction, parameter []string, shouldContain bool, useRegex bool) {
+			klog.Infof("[jlom](%d) DescribeTable Verify that profile parameters were updated", GinkgoParallelProcess())
 			for _, node := range workerRTNodes {
 				for _, param := range parameter {
 					result, err := cmdFn(&node)
@@ -317,6 +324,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		)
 
 		It("[test_id:27738] should succeed to disable the RT kernel", func() {
+			klog.Infof("[jlom](%d) It [test_id:27738] should succeed to disable the RT kernel", GinkgoParallelProcess())
 			for _, node := range workerRTNodes {
 				err := nodes.HasPreemptRTKernel(&node)
 				Expect(err).To(HaveOccurred())
@@ -324,6 +332,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:28612]Verify that Kernel arguments can me updated (added, removed) thru performance profile", func() {
+			klog.Infof("[jlom](%d) It [test_id:28612]Verify that Kernel arguments can me updated (added, removed) thru performance profile", GinkgoParallelProcess())
 			for _, node := range workerRTNodes {
 				cmdline, err := nodes.ExecCommandOnNode(chkCmdLine, &node)
 				Expect(err).ToNot(HaveOccurred(), "failed to execute %s", chkCmdLine)
@@ -339,6 +348,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:22764] verify that by default RT kernel is disabled", func() {
+			klog.Infof("[jlom](%d) It [test_id:22764] verify that by default RT kernel is disabled", GinkgoParallelProcess())
 			conditionUpdating := machineconfigv1.MachineConfigPoolUpdating
 
 			if profile.Spec.RealTimeKernel == nil || *profile.Spec.RealTimeKernel.Enabled == true {
@@ -371,6 +381,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		AfterAll(func() {
+			klog.Infof("[jlom](%d) AfterAll Context: Verify that all performance profile parameters can be updated", GinkgoParallelProcess())
 			// return initial configuration
 			spec, err := json.Marshal(initialProfile.Spec)
 			Expect(err).ToNot(HaveOccurred())
@@ -397,6 +408,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		var oldMcpSelector, oldNodeSelector map[string]string
 
 		BeforeEach(func() {
+			klog.Infof("[jlom](%d) BeforeEach Context: Updating of nodeSelector parameter and node labels", GinkgoParallelProcess())
 			//testutils.KnownIssueJira("OCPBUGS-12836")
 
 			// initialize on every run
@@ -464,6 +476,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:28440]Verifies that nodeSelector can be updated in performance profile", func() {
+			klog.Infof("[jlom](%d) It [test_id:28440]Verifies that nodeSelector can be updated in performance profile", GinkgoParallelProcess())
 			//testutils.KnownIssueJira("OCPBUGS-12836")
 
 			kubeletConfig, err := nodes.GetKubeletConfig(newCnfNode)
@@ -476,6 +489,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:27484]Verifies that node is reverted to plain worker when the extra labels are removed", func() {
+			klog.Infof("[jlom](%d) It [test_id:27484]Verifies that node is reverted to plain worker when the extra labels are removed", GinkgoParallelProcess())
 			testutils.KnownIssueJira("OCPBUGS-12836")
 
 			By("Deleting cnf labels from the node")
@@ -509,6 +523,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		AfterEach(func() {
+			klog.Infof("[jlom](%d) AfterEach Context: Updating of nodeSelector parameter and node labels", GinkgoParallelProcess())
 			//testutils.KnownIssueJira("OCPBUGS-12836")
 
 			if labelsDeletion == false {
@@ -581,11 +596,13 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 	Context("WorkloadHints", func() {
 		var testpod *corev1.Pod
 		BeforeEach(func() {
+			klog.Infof("[jlom](%d) BeforeEach Context: WorkloadHints", GinkgoParallelProcess())
 			By("Saving the old performance profile")
 			initialProfile = profile.DeepCopy()
 		})
 		When("workloadHint RealTime is disabled", func() {
 			It("should update kernel arguments and tuned accordingly to realTime Hint enabled by default", func() {
+				klog.Infof("[jlom](%d) It should update kernel arguments and tuned accordingly to realTime Hint enabled by default", GinkgoParallelProcess())
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = nil
 
@@ -641,6 +658,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		When("RealTime Workload with RealTime Kernel set to false", func() {
 			It("[test_id:50991][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
+				klog.Infof("[jlom](%d) It [test_id:50991][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", GinkgoParallelProcess())
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption: pointer.Bool(false),
@@ -698,6 +716,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 		When("HighPower Consumption workload enabled", func() {
 			It("[test_id:50992][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
+				klog.Infof("[jlom](%d) It [test_id:50992][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", GinkgoParallelProcess())
 				testutils.KnownIssueJira("OCPBUGS-10635")
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
@@ -756,6 +775,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		When("realtime and high power consumption enabled", func() {
 			It("[test_id:50993][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
+				klog.Infof("[jlom](%d) It [test_id:50993][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", GinkgoParallelProcess())
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption:  pointer.BoolPtr(true),
 					RealTime:              pointer.BoolPtr(true),
@@ -818,6 +838,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		When("perPodPowerManagent enabled", func() {
 			It("[test_id:54177]should update kernel arguments and tuned accordingly", func() {
+				klog.Infof("[jlom](%d) It [test_id:54177]should update kernel arguments and tuned accordingly", GinkgoParallelProcess())
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					PerPodPowerManagement: pointer.BoolPtr(true),
 					HighPowerConsumption:  pointer.BoolPtr(false),
@@ -861,7 +882,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			})
 
 			It("[test_id:54178]Verify System is tuned when updating from HighPowerConsumption to PerPodPowermanagment", func() {
-
+				klog.Infof("[jlom](%d) It [test_id:54178]Verify System is tuned when updating from HighPowerConsumption to PerPodPowermanagment", GinkgoParallelProcess())
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware.
 				checkHardwareCapability(workerRTNodes)
@@ -997,7 +1018,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			})
 
 			It("[test_id:54179]Verify System is tuned when reverting from PerPodPowerManagement to HighPowerConsumption", func() {
-
+				klog.Infof("[jlom](%d) It [test_id:54179]Verify System is tuned when reverting from PerPodPowerManagement to HighPowerConsumption", GinkgoParallelProcess())
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware.
 				checkHardwareCapability(workerRTNodes)
@@ -1133,7 +1154,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			})
 
 			It("[test_id:54184]Verify enabling both HighPowerConsumption and PerPodPowerManagment fails", func() {
-
+				klog.Infof("[jlom](%d) It [test_id:54184]Verify enabling both HighPowerConsumption and PerPodPowerManagment fails", GinkgoParallelProcess())
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					PerPodPowerManagement: pointer.BoolPtr(true),
 					HighPowerConsumption:  pointer.BoolPtr(true),
@@ -1150,7 +1171,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			})
 
 			It("[test_id:54185] Verify sysfs parameters of guaranteed pod with powersave annotations", func() {
-
+				klog.Infof("[jlom](%d) It [test_id:54185] Verify sysfs parameters of guaranteed pod with powersave annotations", GinkgoParallelProcess())
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware.
 				checkHardwareCapability(workerRTNodes)
@@ -1244,7 +1265,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			})
 
 			It("[test_id:54186] Verify sysfs paramters of guaranteed pod with performance annotiations", func() {
-
+				klog.Infof("[jlom](%d) It [test_id:54186] Verify sysfs paramters of guaranteed pod with performance annotiations", GinkgoParallelProcess())
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware
 				checkHardwareCapability(workerRTNodes)
@@ -1341,6 +1362,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		AfterEach(func() {
+			klog.Infof("[jlom](%d) AfterEach Context WorkloadHints", GinkgoParallelProcess())
 			currentProfile := &performancev2.PerformanceProfile{}
 			if err := testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(initialProfile), currentProfile); err != nil {
 				klog.Errorf("failed to get performance profile %q", initialProfile.Name)
@@ -1373,6 +1395,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 	Context("Offlined CPU API", func() {
 		BeforeEach(func() {
+			klog.Infof("[jlom](%d) BeforeEach Context Offlined CPU API", GinkgoParallelProcess())
 			//Saving the old performance profile
 			initialProfile = profile.DeepCopy()
 
@@ -1391,6 +1414,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[disruptive] should set offline cpus after deploy PAO", func() {
+			klog.Infof("[jlom](%d) It [disruptive] should set offline cpus after deploy PAO", GinkgoParallelProcess())
 			// Create new performance with offlined
 			reserved := performancev2.CPUSet("0")
 			isolated := performancev2.CPUSet("1")
@@ -1426,6 +1450,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:50964] Offline Higher CPUID's", func() {
+			klog.Infof("[jlom](%d) It [test_id:50964] Offline Higher CPUID's", GinkgoParallelProcess())
 			var reserved, isolated, offline []string
 			// This map is of the form numaNode[core][cpu-siblings]
 			var numaCoreSiblings map[int]map[int][]int
@@ -1499,6 +1524,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:50965]Offline Middle CPUID's", func() {
+			klog.Infof("[jlom](%d) It [test_id:50965]Offline Middle CPUID's", GinkgoParallelProcess())
 			var reserved, isolated, offline []string
 			// This map is of the form numaNode[core][cpu-siblings]
 			var numaCoreSiblings map[int]map[int][]int
@@ -1568,6 +1594,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:50966]verify offlined parameter accepts multiple ranges of cpuid's", func() {
+			klog.Infof("[jlom](%d) It [test_id:50966]verify offlined parameter accepts multiple ranges of cpuid's", GinkgoParallelProcess())
 			var reserved, isolated, offlined []string
 			//This map is of the form numaNode[core][cpu-siblings]
 			var numaCoreSiblings map[int]map[int][]int
@@ -1650,6 +1677,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:50968]verify cpus mentioned in reserved or isolated cannot be offline", func() {
+			klog.Infof("[jlom](%d) It [test_id:50968]verify cpus mentioned in reserved or isolated cannot be offline", GinkgoParallelProcess())
 			var reserved, isolated []string
 			//This map is of the form numaNode[core][cpu-siblings]
 			var numaCoreSiblings map[int]map[int][]int
@@ -1711,6 +1739,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:50970]Offline CPUID's from multiple numa nodes", func() {
+			klog.Infof("[jlom](%d) It [test_id:50970]Offline CPUID's from multiple numa nodes", GinkgoParallelProcess())
 			var reserved, isolated, offlined []string
 			//var offlineCPUs, reservedCpus, isolatedCpus string = "", "", ""
 			//This map is of the form numaNode[core][cpu-siblings]
@@ -1784,6 +1813,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		AfterEach(func() {
+			klog.Infof("[jlom](%d) AfterEach Context Offlined CPU API", GinkgoParallelProcess())
 			By("Reverting the Profile")
 			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
@@ -1836,6 +1866,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 	Context("[rfe_id:54374][rps_mask] Network Stack Pinning", func() {
 
 		BeforeEach(func() {
+			klog.Infof("[jlom](%d) BeforeEach Context [rfe_id:54374][rps_mask] Network Stack Pinning", GinkgoParallelProcess())
 			//Get Latest profile
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
@@ -1845,6 +1876,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		AfterEach(func() {
+			klog.Infof("[jlom](%d) AfterEach Context [rfe_id:54374][rps_mask] Network Stack Pinning", GinkgoParallelProcess())
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -1866,6 +1898,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:56006]Verify systemd unit file gets updated when the reserved cpus are modified", func() {
+			klog.Infof("[jlom](%d) It [test_id:56006]Verify systemd unit file gets updated when the reserved cpus are modified", GinkgoParallelProcess())
 			var reserved, isolated []string
 			var onlineCPUInt int
 			for _, node := range workerRTNodes {
@@ -1960,6 +1993,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:54191]Verify RPS Mask is not applied when RealtimeHint is disabled", func() {
+			klog.Infof("[jlom](%d) It [test_id:54191]Verify RPS Mask is not applied when RealtimeHint is disabled", GinkgoParallelProcess())
 			By("Modifying profile")
 			profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 				HighPowerConsumption:  pointer.BoolPtr(false),
@@ -1991,6 +2025,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 	Context("ContainerRuntimeConfig", func() {
 		When("is not given", func() {
 			It("should run high-performance runtimes class with runc as container-runtime", func() {
+				klog.Infof("[jlom](%d) It should run high-performance runtimes class with runc as container-runtime", GinkgoParallelProcess())
 				cmd := []string{"cat", "/rootfs/etc/crio/crio.conf.d/99-runtimes.conf"}
 				for i := 0; i < len(workerRTNodes); i++ {
 					out, err := nodes.ExecCommandOnNode(cmd, &workerRTNodes[i])
@@ -2004,6 +2039,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		When("updates the default runtime to crun", func() {
 			It("should run high-performance runtimes class with crun as container-runtime", func() {
+				klog.Infof("[jlom](%d) It should run high-performance runtimes class with crun as container-runtime", GinkgoParallelProcess())
 				const ContainerRuntimeConfigName = "ctrcfg-test"
 
 				key := types.NamespacedName{
