@@ -47,7 +47,7 @@ import (
 
 type checkFunction func(*corev1.Node) (string, error)
 
-var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance profile", func() {
+var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance profile",Serial, func() {
 	var workerRTNodes []corev1.Node
 	var profile, initialProfile *performancev2.PerformanceProfile
 	var performanceMCP string
@@ -385,7 +385,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 	})
 
-	FContext("Updating of nodeSelector parameter and node labels", func() {
+	Context("Updating of nodeSelector parameter and node labels", func() {
 		var mcp *machineconfigv1.MachineConfigPool
 		var newCnfNode *corev1.Node
 		newRole := "worker-test"
@@ -463,7 +463,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			mcps.WaitForCondition(newRole, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 		})
 
-		FIt("[test_id:28440]Verifies that nodeSelector can be updated in performance profile", func() {
+		It("[test_id:28440]Verifies that nodeSelector can be updated in performance profile", func() {
 			//testutils.KnownIssueJira("OCPBUGS-12836")
 
 			kubeletConfig, err := nodes.GetKubeletConfig(newCnfNode)
