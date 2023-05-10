@@ -53,10 +53,6 @@ const (
 	crioPartitioningConfig = "99-workload-pinning.conf"
 	ocpPartitioningConfig  = "openshift-workload-pinning"
 
-	// OCIHooksConfigDir is the default directory for the OCI hooks
-	OCIHooksConfigDir = "/etc/containers/oci/hooks.d"
-	// OCIHooksConfig file contains the low latency hooks configuration
-	ociTemplateRPSMask   = "RPSMask"
 	udevRulesDir         = "/etc/udev/rules.d"
 	udevPhysicalRpsRules = "99-netdev-physical-rps.rules"
 	// scripts
@@ -344,30 +340,6 @@ func getSystemdContent(options []*unit.UnitOption) (string, error) {
 		return "", err
 	}
 	return string(outBytes), nil
-}
-
-// GetOCIHooksConfigContent reads and returns the content of the OCI hook file
-func GetOCIHooksConfigContent(configFile string, profile *performancev2.PerformanceProfile) ([]byte, error) {
-	ociHookConfigTemplate, err := template.ParseFS(assets.Configs, filepath.Join("configs", configFile))
-	if err != nil {
-		return nil, err
-	}
-
-	rpsMask := "0" // RPS disabled
-	if profile.Spec.CPU != nil && profile.Spec.CPU.Reserved != nil {
-		rpsMask, err = components.CPUListToMaskList(string(*profile.Spec.CPU.Reserved))
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	outContent := &bytes.Buffer{}
-	templateArgs := map[string]string{ociTemplateRPSMask: rpsMask}
-	if err := ociHookConfigTemplate.Execute(outContent, templateArgs); err != nil {
-		return nil, err
-	}
-
-	return outContent.Bytes(), nil
 }
 
 // GetHugepagesSizeKilobytes retruns hugepages size in kilobytes
