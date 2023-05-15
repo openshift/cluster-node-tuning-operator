@@ -5,11 +5,14 @@ package __latency_test
 
 import (
 	"context"
+	"flag"
+	"path"
 	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	"github.com/onsi/ginkgo/v2/reporters"
+	"github.com/onsi/ginkgo/v2/types"
 	. "github.com/onsi/gomega"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
@@ -20,6 +23,12 @@ import (
 
 	qe_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 )
+
+var junitPath *string
+
+func init() {
+	junitPath = flag.String("junit", "", "the path for the junit format report")
+}
 
 var _ = BeforeSuite(func() {
 	Expect(testclient.ClientsEnabled).To(BeTrue())
@@ -47,5 +56,13 @@ func TestLatency(t *testing.T) {
 var _ = ReportAfterSuite("e2e serial suite", func(r Report) {
 	if qe_reporters.Polarion.Run {
 		reporters.ReportViaDeprecatedReporter(&qe_reporters.Polarion, r)
+	}
+	if *junitPath != "" {
+		junitFile := path.Join(*junitPath, "latency_junit.xml")
+		reporters.GenerateJUnitReportWithConfig(r, junitFile, reporters.JunitReportConfig{
+			OmitTimelinesForSpecState: types.SpecStatePassed | types.SpecStateSkipped,
+			OmitLeafNodeType:          true,
+			OmitSuiteSetupNodes:       true,
+		})
 	}
 })
