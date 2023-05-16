@@ -14,20 +14,29 @@ import (
 	"github.com/onsi/ginkgo/v2/reporters"
 	"github.com/onsi/ginkgo/v2/types"
 	. "github.com/onsi/gomega"
+	kniK8sReporter "github.com/openshift-kni/k8sreporter"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/k8sreporter"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/namespaces"
+	stringsutil "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/strings"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	qe_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 )
 
-var junitPath *string
+var (
+	reportPath *string
+	junitPath  *string
+	reporter   *kniK8sReporter.KubernetesReporter
+)
 
 func init() {
 	junitPath = flag.String("junit", "", "the path for the junit format report")
+	reportPath = flag.String("report", "", "the path of the report file containing details for failed tests")
 }
 
 var _ = BeforeSuite(func() {
@@ -49,6 +58,9 @@ var _ = AfterSuite(func() {
 
 func TestLatency(t *testing.T) {
 	RegisterFailHandler(Fail)
+	if *reportPath != "" {
+		reporter = k8sreporter.New("", *reportPath, namespaces.TestingNamespace.Name)
+	}
 
 	RunSpecs(t, "Performance Addon Operator latency e2e tests")
 }
@@ -64,5 +76,16 @@ var _ = ReportAfterSuite("e2e serial suite", func(r Report) {
 			OmitLeafNodeType:          true,
 			OmitSuiteSetupNodes:       true,
 		})
+	}
+})
+
+var _ = ReportAfterEach(func(specReport types.SpecReport) {
+	if specReport.Failed() == false {
+		return
+	}
+
+	if *reportPath != "" {
+		dumpSubPath := stringsutil.CleanDirName(specReport.LeafNodeText)
+		reporter.Dump(utils.LogsFetchDuration, dumpSubPath)
 	}
 })
