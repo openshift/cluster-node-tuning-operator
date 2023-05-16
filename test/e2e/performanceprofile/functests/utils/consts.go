@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 )
@@ -96,4 +97,9 @@ const (
 const (
 	// ContainerMachineConfigDaemon contains the name of the machine-config-daemon container
 	ContainerMachineConfigDaemon = "machine-config-daemon"
+)
+
+const (
+	// LogsFetchDuration represents how much in the past we need to go when fetching the pod logs
+	LogsFetchDuration = 10 * time.Minute
 )
