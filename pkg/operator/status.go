@@ -340,7 +340,6 @@ func getRelatedObjects() []configv1.ObjectReference {
 		{Group: "tuned.openshift.io", Resource: "profiles", Name: "", Namespace: tunedMf.Namespace},
 		{Group: "tuned.openshift.io", Resource: "tuneds", Name: "", Namespace: tunedMf.Namespace},
 		{Group: "apps", Resource: "daemonsets", Name: dsMf.Name, Namespace: dsMf.Namespace},
-		{Group: "performance.openshift.io", Resource: "performanceprofiles", Name: ""},
 	}
 }
 
