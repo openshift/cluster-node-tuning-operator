@@ -16,6 +16,7 @@ import (
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/clusteroperator"
+	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	ntomf "github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/metrics"
 )
@@ -333,14 +334,23 @@ func getRelatedObjects() []configv1.ObjectReference {
 	tunedMf := ntomf.TunedCustomResource()
 	dsMf := ntomf.TunedDaemonSet()
 
-	return []configv1.ObjectReference{
+	ret := []configv1.ObjectReference{
 		// The `resource` property of `relatedObjects` stanza should be the lowercase, plural value like `daemonsets`.
 		// See BZ1851214
 		{Group: "", Resource: "namespaces", Name: tunedMf.Namespace},
 		{Group: "tuned.openshift.io", Resource: "profiles", Name: "", Namespace: tunedMf.Namespace},
 		{Group: "tuned.openshift.io", Resource: "tuneds", Name: "", Namespace: tunedMf.Namespace},
 		{Group: "apps", Resource: "daemonsets", Name: dsMf.Name, Namespace: dsMf.Namespace},
+		{Group: "performance.openshift.io", Resource: "performanceprofiles", Name: ""},
 	}
+
+	if !ntoconfig.InHyperShift() {
+		ret = append(ret, configv1.ObjectReference{
+			Group: "performance.openshift.io", Resource: "performanceprofiles", Name: "",
+		})
+	}
+
+	return ret
 }
 
 func conditionTrue(conditions []configv1.ClusterOperatorStatusCondition, condType configv1.ClusterStatusConditionType) bool {
