@@ -249,6 +249,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 	}
 
 	if profile.Spec.CPU != nil && profile.Spec.CPU.Reserved != nil {
+		// Workload partitioning specific configuration
 		clusterIsPinned := pinningMode != nil && *pinningMode == apiconfigv1.CPUPartitioningAllNodes
 		if clusterIsPinned {
 			crioPartitionFileData, err := renderManagementCPUPinningConfig(profile.Spec.CPU, crioPartitioningConfig)
@@ -264,24 +265,26 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 			}
 			ocpPartitionDst := filepath.Join(kubernetesConfDir, ocpPartitioningConfig)
 			addContent(ignitionConfig, ocpPartitionFileData, ocpPartitionDst, &crioConfdRuntimesMode)
-			cpusetConfigureService, err := getSystemdContent(getCpusetConfigureServiceOptions())
-			if err != nil {
-				return nil, err
-			}
-
-			ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
-				Contents: &cpusetConfigureService,
-				Enabled:  pointer.BoolPtr(true),
-				Name:     getSystemdService(cpusetConfigure),
-			})
-
-			dst := getBashScriptPath(cpusetConfigure)
-			content, err := assets.Scripts.ReadFile(fmt.Sprintf("scripts/%s.sh", cpusetConfigure))
-			if err != nil {
-				return nil, err
-			}
-			addContent(ignitionConfig, content, dst, &mode)
 		}
+
+		// Support for cpu balancing configuration on RHEL 9 with cgroupv1
+		cpusetConfigureService, err := getSystemdContent(getCpusetConfigureServiceOptions())
+		if err != nil {
+			return nil, err
+		}
+
+		ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
+			Contents: &cpusetConfigureService,
+			Enabled:  pointer.BoolPtr(true),
+			Name:     getSystemdService(cpusetConfigure),
+		})
+
+		dst := getBashScriptPath(cpusetConfigure)
+		content, err := assets.Scripts.ReadFile(fmt.Sprintf("scripts/%s.sh", cpusetConfigure))
+		if err != nil {
+			return nil, err
+		}
+		addContent(ignitionConfig, content, dst, &mode)
 	}
 
 	if profile.Spec.CPU.Offlined != nil {
