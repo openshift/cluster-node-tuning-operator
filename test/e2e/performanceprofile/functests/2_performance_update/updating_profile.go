@@ -579,9 +579,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -591,7 +591,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
 						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
@@ -636,9 +637,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -648,7 +649,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
 						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
@@ -692,9 +694,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -704,7 +706,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to NOT be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+							fmt.Sprintf("stalld should not be running on node %q ", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
 						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
@@ -753,9 +756,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -765,7 +768,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
 						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
@@ -869,9 +873,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -881,7 +885,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
 						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
@@ -932,9 +937,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -944,7 +949,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
 						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
@@ -1002,9 +1008,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -1014,7 +1020,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
 						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
@@ -1066,9 +1073,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
 					node := &workerRTNodes[i]
+					wg.Add(1)
 					go func() {
 						defer GinkgoRecover()
-						wg.Add(1)
 						defer wg.Done()
 
 						pod, err := utilstuned.GetPod(context.TODO(), node)
@@ -1078,7 +1085,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred())
+						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
 						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
