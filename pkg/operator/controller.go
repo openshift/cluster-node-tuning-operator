@@ -622,7 +622,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		// Remove Profiles for Nodes which no longer exist.
 		if errors.IsNotFound(err) {
 			klog.V(2).Infof("syncProfile(): deleting Profile %s", nodeName)
-			err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.OperatorNamespace()).Delete(context.TODO(), nodeName, metav1.DeleteOptions{})
+			err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.WatchNamespace()).Delete(context.TODO(), nodeName, metav1.DeleteOptions{})
 			if err != nil && errors.IsNotFound(err) {
 				err = nil
 			}
