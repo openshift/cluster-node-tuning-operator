@@ -8,6 +8,8 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 )
 
+const defaultLatencyToolsPath = "../../../../../build/_output/bin/latency-e2e.test"
+
 // RoleWorkerCNF contains role name of cnf worker nodes
 var RoleWorkerCNF string
 
@@ -24,7 +26,16 @@ var NodesSelector string
 // ProfileNotFound is true when discovery mode is enabled and no valid profile was found
 var ProfileNotFound bool
 
+// Complete file name for the latency tools executable
+var LatencyToolsPath string
+
 func init() {
+
+	LatencyToolsPath = os.Getenv("LATENCY_TOOLS_PATH")
+	if LatencyToolsPath == "" {
+		LatencyToolsPath = defaultLatencyToolsPath
+	}
+
 	RoleWorkerCNF = os.Getenv("ROLE_WORKER_CNF")
 	if RoleWorkerCNF == "" {
 		RoleWorkerCNF = "worker-cnf"
