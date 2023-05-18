@@ -303,8 +303,9 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			count := 0
 			expectedRPSCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
 			Expect(err).ToNot(HaveOccurred())
-			var vethInterfaces = []string{}
+
 			for _, node := range workerRTNodes {
+				var vethInterfaces = []string{}
 				allInterfaces, err := nodes.GetNodeInterfaces(node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(allInterfaces).ToNot(BeNil())
