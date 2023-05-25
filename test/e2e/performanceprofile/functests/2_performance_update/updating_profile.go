@@ -1440,7 +1440,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				// Select the last core id
 				higherCoreIds := cores[len(cores)-1]
 				// Get cpu siblings from the selected cores and delete the selected cores  from the map
-				cpusiblings := nodes.GetCpuSiblings(numaCoreSiblings, higherCoreIds)
+				cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, higherCoreIds)
 				offline = append(offline, cpusiblings...)
 			}
 			offlineCpus := strings.Join(offline, ",")
@@ -1448,7 +1448,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			for reservedCores := 0; reservedCores < 2; reservedCores++ {
 				// Get the cpu siblings from the selected core and delete the siblings
 				// from the map. Selected siblings of cores are saved in reservedCpus
-				cpusiblings := nodes.GetCpuSiblings(numaCoreSiblings, reservedCores)
+				cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, reservedCores)
 				reserved = append(reserved, cpusiblings...)
 			}
 			reservedCpus := strings.Join(reserved, ",")
@@ -1456,7 +1456,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			// numaCoreSiblings map is used in isolatedCpus
 			for key := range numaCoreSiblings {
 				for k := range numaCoreSiblings[key] {
-					cpusiblings := nodes.GetCpuSiblings(numaCoreSiblings, k)
+					cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, k)
 					isolated = append(isolated, cpusiblings...)
 				}
 			}
@@ -1510,14 +1510,14 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 				sort.Ints(cores)
 				middleCoreIds := cores[len(cores)/2]
-				siblings := nodes.GetCpuSiblings(numaCoreSiblings, middleCoreIds)
+				siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, middleCoreIds)
 				offline = append(offline, siblings...)
 			}
 			offlineCpus := strings.Join(offline, ",")
 			for reservedCores := 0; reservedCores < 2; reservedCores++ {
 				// Get the cpu siblings from the selected core and delete the siblings
 				// from the map. Selected siblings of cores are saved in reservedCpus
-				siblings := nodes.GetCpuSiblings(numaCoreSiblings, reservedCores)
+				siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, reservedCores)
 				reserved = append(reserved, siblings...)
 			}
 			reservedCpus := strings.Join(reserved, ",")
@@ -1525,7 +1525,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			// numaCoreSiblings map is used in isolatedCpus
 			for key := range numaCoreSiblings {
 				for k := range numaCoreSiblings[key] {
-					siblings := nodes.GetCpuSiblings(numaCoreSiblings, k)
+					siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, k)
 					isolated = append(isolated, siblings...)
 				}
 			}
@@ -1585,7 +1585,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			for reservedCores := 0; reservedCores < 2; reservedCores++ {
 				// Get the cpu siblings from the selected core and delete the siblings
 				// from the map. Selected siblings of cores are saved in reservedCpus
-				siblings := nodes.GetCpuSiblings(numaCoreSiblings, reservedCores)
+				siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, reservedCores)
 				reserved = append(reserved, siblings...)
 			}
 			reservedCpus := strings.Join(reserved, ",")
@@ -1598,7 +1598,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 				sort.Ints(cores)
 				for i := 0; i < len(cores)/2; i++ {
-					siblings := nodes.GetCpuSiblings(numaCoreSiblings, cores[i])
+					siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, cores[i])
 					offlined = append(offlined, siblings...)
 				}
 			}
@@ -1607,7 +1607,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			// map is used in isolatedCpus
 			for key := range numaCoreSiblings {
 				for k := range numaCoreSiblings[key] {
-					siblings := nodes.GetCpuSiblings(numaCoreSiblings, k)
+					siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, k)
 					isolated = append(isolated, siblings...)
 				}
 			}
@@ -1664,7 +1664,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			for reservedCores := 0; reservedCores < 2; reservedCores++ {
 				// Get the cpu siblings from the selected core and delete the siblings
 				// from the map. Selected siblings of cores are saved in reservedCpus
-				siblings := nodes.GetCpuSiblings(numaCoreSiblings, reservedCores)
+				siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, reservedCores)
 				reserved = append(reserved, siblings...)
 			}
 			reservedCpus := strings.Join(reserved, ",")
@@ -1672,7 +1672,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			// numaCoreSiblings map is used in isolatedCpus
 			for key := range numaCoreSiblings {
 				for k := range numaCoreSiblings[key] {
-					siblings := nodes.GetCpuSiblings(numaCoreSiblings, k)
+					siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, k)
 					isolated = append(isolated, siblings...)
 				}
 			}
@@ -1727,20 +1727,20 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			for reservedCores := 0; reservedCores < 2; reservedCores++ {
 				// Get the cpu siblings from the selected core and delete the siblings
 				// from the map. Selected siblings of cores are saved in reservedCpus
-				siblings := nodes.GetCpuSiblings(numaCoreSiblings, reservedCores)
+				siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, reservedCores)
 				reserved = append(reserved, siblings...)
 			}
 			reservedCpus := strings.Join(reserved, ",")
 
 			discreteCores := []int{3, 13, 15, 24, 29}
 			for _, v := range discreteCores {
-				siblings := nodes.GetCpuSiblings(numaCoreSiblings, v)
+				siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, v)
 				offlined = append(offlined, siblings...)
 			}
 			offlineCpus := strings.Join(offlined, ",")
 			for key := range numaCoreSiblings {
 				for k := range numaCoreSiblings[key] {
-					cpusiblings := nodes.GetCpuSiblings(numaCoreSiblings, k)
+					cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, k)
 					isolated = append(isolated, cpusiblings...)
 				}
 			}
@@ -1888,13 +1888,13 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				sort.Ints(coreids)
 				Expect(len(coreids)).ToNot(Equal(0))
 				middleCoreIds := coreids[len(coreids)/2]
-				coresiblings := nodes.GetCpuSiblings(numaCoreSiblings, middleCoreIds)
+				coresiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, middleCoreIds)
 				reserved = append(reserved, coresiblings...)
 			}
 			reservedCpus := strings.Join(reserved, ",")
 			for numaNode := range numaCoreSiblings {
 				for coreids := range numaCoreSiblings[numaNode] {
-					coresiblings := nodes.GetCpuSiblings(numaCoreSiblings, coreids)
+					coresiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, coreids)
 					isolated = append(isolated, coresiblings...)
 				}
 			}
