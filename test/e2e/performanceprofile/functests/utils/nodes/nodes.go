@@ -92,7 +92,7 @@ func GetByName(nodeName string) (*corev1.Node, error) {
 		Name: nodeName,
 	}
 	if err := testclient.Client.Get(context.TODO(), key, node); err != nil {
-		return nil, fmt.Errorf("failed to get node for the node %q", node.Name)
+		return nil, fmt.Errorf("failed to get node for the node %q", nodeName)
 	}
 	return node, nil
 }
