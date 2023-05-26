@@ -155,7 +155,6 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 	})
 
 	Context("Verify irqbalance configuration handling", func() {
-
 		It("Should not overwrite the banned CPU set on tuned restart", func() {
 			if profile.Status.RuntimeClass == nil {
 				Skip("runtime class not generated")
@@ -195,7 +194,6 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			cpuRequest := 2 // minimum amount to be reasonably sure we're SMT-aligned
 			annotations := map[string]string{
 				"irq-load-balancing.crio.io": "disable",
-				"cpu-quota.crio.io":          "disable",
 			}
 			testpod := getTestPodWithProfileAndAnnotations(profile, annotations, cpuRequest)
 			testpod.Spec.NodeName = targetNode.Name
