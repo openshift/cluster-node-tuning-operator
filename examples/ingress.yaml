@@ -10,7 +10,8 @@ spec:
       summary=Custom OpenShift ingress profile
       include=openshift-control-plane
       [sysctl]
-      net.ipv4.ip_local_port_range="1024 65535"
+      # Comments start with '#' and run till the end of the line.
+      # net.ipv4.ip_local_port_range="1024 65535"
       net.ipv4.tcp_tw_reuse=1
     name: openshift-ingress
   recommend:
