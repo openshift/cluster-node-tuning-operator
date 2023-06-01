@@ -25,6 +25,7 @@ import (
 	apiconfigv1 "github.com/openshift/api/config/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	ntconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
@@ -65,6 +66,10 @@ type PerformanceProfileReconciler struct {
 // SetupWithManager creates a new PerformanceProfile Controller and adds it to the Manager.
 // The Manager will set fields on the Controller and Start it when the Manager is Started.
 func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error {
+
+	if ntconfig.InHyperShift() {
+		return r.hypershiftSetupWithManager(mgr)
+	}
 
 	// we want to initate reconcile loop only on change under labels or spec of the object
 	p := predicate.Funcs{
