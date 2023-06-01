@@ -377,6 +377,11 @@ func validateUpdateEvent(e *event.UpdateEvent) bool {
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	klog.Info("Reconciling PerformanceProfile")
+
+	if ntconfig.InHyperShift() {
+		return r.hypershiftReconcile(ctx, req)
+	}
+
 	// Fetch the PerformanceProfile instance
 	instance := &performancev2.PerformanceProfile{}
 	err := r.Get(ctx, req.NamespacedName, instance)

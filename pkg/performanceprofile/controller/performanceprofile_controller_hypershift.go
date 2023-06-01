@@ -17,20 +17,46 @@ limitations under the License.
 package controller
 
 import (
+	"bytes"
+	"context"
 	"fmt"
+	"hash/fnv"
+	"strings"
 
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/klog"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	serializer "k8s.io/apimachinery/pkg/runtime/serializer/json"
+	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/klog/v2"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-const controllerGeneratedMachineConfig = "hypershift.openshift.io/performanceprofile-config"
+// REVIEW - Most of these already are defined in 'pkg/operator/hypershift.go' maybe we should avoid duplication.
+//
+//	What about creating a file with all these constants and labels and reference them both here and in the
+//	NTO hypershift code?
+const (
+	hypershiftPerformanceProfileNameLabel = "hypershift.openshift.io/performanceProfileName"
+	hypershiftNodePoolNameLabel           = "hypershift.openshift.io/nodePoolName"
+	hypershiftNodePoolLabel               = "hypershift.openshift.io/nodePool"
+	controllerGeneratedMachineConfig      = "hypershift.openshift.io/performanceprofile-config"
+
+	tunedConfigMapLabel     = "hypershift.openshift.io/tuned-config"
+	tunedConfigMapConfigKey = "tuned"
+)
 
 func (r *PerformanceProfileReconciler) hypershiftSetupWithManager(mgr ctrl.Manager) error {
 
@@ -72,4 +98,182 @@ func (r *PerformanceProfileReconciler) hypershiftSetupWithManager(mgr ctrl.Manag
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).For(&corev1.ConfigMap{}, builder.WithPredicates(p)).Complete(r)
+}
+
+func (r *PerformanceProfileReconciler) hypershiftReconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+
+	if !ntconfig.InHyperShift() {
+		return reconcile.Result{}, fmt.Errorf("Using hypershift controller configuration while not in hypershift deployment")
+	}
+
+	instance := &corev1.ConfigMap{}
+
+	//REVIEW - Should be OperatorNamespace?
+	err := r.Get(ctx, req.NamespacedName, instance)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			//FIXME - In hypershift there is no "owned" objects. So how do we delete created objects? or do we even have to?
+			//jlom - as we create a configmap for each of the elements created from a PerformanceProfile and we reference
+			//       these configmaps in NodePool so they could be "transfered" to the managed cluster, maybe "delete" them is
+			//       as simple as derreference them in NodePool and delete the ConfigMaps.
+			//NOTE - Adding a label with PerformanceProfile name on it to the configmaps could make this look up easier.
+
+			// Request object not found, could have been deleted after reconcile request.
+			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
+			// Return and don't requeue
+			return reconcile.Result{}, nil
+		}
+		// Error reading the object - requeue the request.
+		return reconcile.Result{}, err
+	}
+
+	performanceProfileString, ok := instance.Data[tunedConfigMapConfigKey]
+	if !ok {
+		klog.Warning("ConfigMap %s has no data for field %s", instance.ObjectMeta.Name, tunedConfigMapConfigKey)
+
+		// Return and don't requeue
+		return reconcile.Result{}, nil
+	}
+
+	cmNodePoolNamespacedName, ok := instance.Annotations[hypershiftNodePoolLabel]
+	if !ok {
+		klog.Warningf("failed to parse PerformanceProfileManifests in ConfigMap %s, no label %s", instance.ObjectMeta.Name, hypershiftNodePoolLabel)
+		// Return and don't requeue
+		return reconcile.Result{}, nil
+	}
+	nodePoolName := parseNamespacedName(cmNodePoolNamespacedName)
+
+	performanceProfileFromConfigMap, err := parsePerformanceProfileManifest([]byte(performanceProfileString), nodePoolName)
+	if err != nil {
+		klog.Warningf("failed to parseTunedManifests in ConfigMap %s: %v", instance.ObjectMeta.Name, err)
+		// Return and don't requeue
+		return reconcile.Result{}, nil
+	}
+
+	pinningMode, err := r.getInfraPartitioningMode()
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	//REVIEW - jlom Not fully sure if `getContinerRuntimeName` gonna work in hypershift env
+	ctrRuntime, err := r.getContainerRuntimeName(ctx, &performanceProfileFromConfigMap)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("hypershift could not determine high-performance runtime class container-runtime for profile %q; %w", performanceProfileFromConfigMap.Name, err)
+	}
+	klog.Infof("hypershift using %q as high-performance runtime class container-runtime for profile %q", ctrRuntime, performanceProfileFromConfigMap.Name)
+
+	componentSet, err := manifestset.GetNewComponents(&performanceProfileFromConfigMap, nil, &pinningMode, ctrRuntime)
+	if err != nil {
+		klog.Errorf("failed to deploy performance profile from configMap %q components: %v", instance.Name, err)
+		//REVIEW - Should we record this events? and if so where? in the CM or the PP?
+		return reconcile.Result{}, err
+	}
+
+	//jlom - Now we have to create a ConfigMap for each of the elements in the componentSet and then handle them to
+	//       the different agents that would made them effective in the managed cluster.( where workers are)
+	scheme := runtime.NewScheme()
+	tunedv1.AddToScheme(scheme)
+	performancev2.AddToScheme(scheme)
+	yamlSerializer := serializer.NewSerializerWithOptions(
+		serializer.DefaultMetaFactory, scheme, scheme,
+		serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true},
+	)
+
+	buff := bytes.Buffer{}
+	if err := yamlSerializer.Encode(componentSet.Tuned, &buff); err != nil {
+		klog.Warningf("failed to Encode Tuned in ConfigMap %s: %v", instance.ObjectMeta.Name, err)
+		// Return and don't requeue
+		return reconcile.Result{}, nil
+	}
+
+	tunedConfigMap := TunedConfigMap(instance.Namespace, performanceProfileFromConfigMap.Name, cmNodePoolNamespacedName, buff.String())
+
+	tcm := &corev1.ConfigMap{}
+	err = r.Get(ctx, client.ObjectKeyFromObject(tunedConfigMap), tcm)
+	if err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to read tunedConfigMap %q from PerformanceProfile %q components: %v", tunedConfigMap.Name, performanceProfileFromConfigMap.Name, err)
+		// Return and don't requeue
+		return reconcile.Result{}, err
+	} else if k8serrors.IsNotFound(err) {
+		//create
+		if err := r.Create(ctx, tunedConfigMap); err != nil {
+			klog.Errorf("failed to create tunedConfigMap %q from PerformanceProfile %q components: %v", tunedConfigMap.Name, performanceProfileFromConfigMap.Name, err)
+			// Return and don't requeue
+			return reconcile.Result{}, err
+		}
+	} else {
+		// update
+		//REVIEW - Maybe here I should ensure the readed ConfifMap has the needed labels and annotations.
+		tcm.Data[tunedConfigMapConfigKey] = buff.String()
+		if err := r.Update(ctx, tcm); err != nil {
+			klog.Errorf("failed to update tunedConfigMap %q from PerformanceProfile %q components: %v", tunedConfigMap.Name, performanceProfileFromConfigMap.Name, err)
+			// Return and don't requeue
+			return reconcile.Result{}, err
+		}
+	}
+
+	return reconcile.Result{}, nil
+}
+
+func TunedConfigMap(namespace, performanceProfileName, nodePoolNamespacedName, tunedManifest string) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      fmt.Sprintf("tuned-%s", performanceProfileName),
+			Labels: map[string]string{
+				tunedConfigMapLabel:                   "true",
+				hypershiftPerformanceProfileNameLabel: performanceProfileName,
+			},
+			Annotations: map[string]string{
+				hypershiftNodePoolLabel: nodePoolNamespacedName,
+			},
+		},
+		Data: map[string]string{
+			tunedConfigMapConfigKey: tunedManifest,
+		},
+	}
+}
+
+// parseManifests parses a YAML or JSON document that may contain one or more
+// kubernetes resources.
+func parsePerformanceProfileManifest(data []byte, nodePoolName string) (performancev2.PerformanceProfile, error) {
+	r := bytes.NewReader(data)
+	d := yamlutil.NewYAMLOrJSONDecoder(r, 1024)
+
+	performanceProfile := performancev2.PerformanceProfile{}
+	if err := d.Decode(&performanceProfile); err != nil {
+		return performanceProfile, fmt.Errorf("error parsing Tuned manifests: %v", err)
+	}
+	//REVIEW - There should be only one PerformanceProfile per NodePool so I do not know if this is needed
+
+	// Make PerformanceProfile names unique if a PerformanceProfile is duplicated across NodePools
+	// for example, if one ConfigMap is referenced in multiple NodePools
+	performanceProfile.SetName(performanceProfile.ObjectMeta.Name + "-" + hashStruct(nodePoolName))
+	klog.V(2).Infof("parsePerformanceProfileManifest: name: %s", performanceProfile.GetName())
+
+	// Propagate NodePool name from ConfigMap down to PerformanceProfile object
+	if performanceProfile.Labels == nil {
+		performanceProfile.Labels = make(map[string]string)
+	}
+	performanceProfile.Labels[hypershiftNodePoolNameLabel] = nodePoolName
+
+	return performanceProfile, nil
+}
+
+func hashStruct(o interface{}) string {
+	hash := fnv.New32a()
+	hash.Write([]byte(fmt.Sprintf("%v", o)))
+	intHash := hash.Sum32()
+	return fmt.Sprintf("%08x", intHash)
+}
+
+// parseNamespacedName expects a string with the format "namespace/name"
+// and returns the name only.
+// If given a string in the format "name" returns "name".
+func parseNamespacedName(namespacedName string) string {
+	parts := strings.SplitN(namespacedName, "/", 2)
+	if len(parts) > 1 {
+		return parts[1]
+	}
+	return parts[0]
 }
