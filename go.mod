@@ -7,6 +7,7 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20190719114852-fd7a80b32e1f
 	github.com/coreos/ignition v0.35.0
 	github.com/coreos/ignition/v2 v2.15.0
+	github.com/go-logr/stdr v1.2.2
 	github.com/google/go-cmp v0.5.9
 	github.com/jaypipes/ghw v0.8.1-0.20210605191321-eb162add542b
 	github.com/kevinburke/go-bindata v3.16.0+incompatible
@@ -18,6 +19,7 @@ require (
 	github.com/openshift/build-machinery-go v0.0.0-20230306181456-d321ffa04533
 	github.com/openshift/client-go v0.0.0-20230807132528-be5346fb33cb
 	github.com/openshift/custom-resource-status v1.1.3-0.20220503160415-f2fdb4999d87
+	github.com/openshift/hypershift v0.1.9
 	github.com/openshift/library-go v0.0.0-20230803043003-e1dfb9bf12bb
 	github.com/openshift/machine-config-operator v0.0.1-0.20230807154212-886c5c3fc7a9
 	github.com/operator-framework/api v0.10.7
@@ -31,7 +33,7 @@ require (
 	k8s.io/api v0.28.2
 	k8s.io/apiextensions-apiserver v0.27.4
 	k8s.io/apimachinery v0.28.2
-	k8s.io/client-go v0.27.4
+	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/code-generator v0.27.4
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.100.1
@@ -77,7 +79,6 @@ require (
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/ghodss/yaml v1.0.1-0.20190212211648-25d852aebe32 // indirect
 	github.com/go-logr/logr v1.2.4 // indirect
-	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-logr/zapr v1.2.4 // indirect
 	github.com/go-ole/go-ole v1.2.5 // indirect
 	github.com/go-openapi/analysis v0.21.4 // indirect
@@ -188,7 +189,7 @@ require (
 	k8s.io/kms v0.27.4 // indirect
 	k8s.io/kube-aggregator v0.27.4 // indirect
 	k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9 // indirect
-	k8s.io/kube-scheduler v0.0.0 // indirect
+	k8s.io/kube-scheduler v0.23.1 // indirect
 	k8s.io/mount-utils v0.0.0 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.1.2 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect

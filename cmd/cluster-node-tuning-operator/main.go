@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -26,6 +27,7 @@ import (
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
@@ -39,10 +41,12 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/metrics"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/operator"
@@ -72,7 +76,10 @@ func init() {
 
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(tunedv1.AddToScheme(scheme))
-	utilruntime.Must(mcov1.AddToScheme(scheme))
+	if !config.InHyperShift() {
+		klog.Infof("Running in NOT hypershift")
+		utilruntime.Must(mcov1.AddToScheme(scheme))
+	}
 	utilruntime.Must(apiconfigv1.Install(scheme))
 	utilruntime.Must(performancev1alpha1.AddToScheme(scheme))
 	utilruntime.Must(performancev1.AddToScheme(scheme))
@@ -191,15 +198,46 @@ func operatorRun() {
 		}).SetupWithManager(mgr); err != nil {
 			klog.Exitf("unable to create PerformanceProfile controller: %v", err)
 		}
-
-		if err = (&performancev1.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
-			klog.Exitf("unable to create PerformanceProfile v1 webhook: %v", err)
+	} else {
+		// Hypershift configuration
+		restConfig, err := ntoclient.GetInClusterConfig()
+		if err != nil {
+			klog.Exitf("unable to create get InClusterConfiguration while creating PerformanceProfile controller: %v", err)
 		}
 
-		if err = (&performancev2.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
-			klog.Exitf("unable to create PerformanceProfile v2 webhook: %v", err)
+		fOps := func(opts *cluster.Options) {
+			opts.Cache.Namespaces = []string{config.OperatorNamespace()}
+			opts.Scheme = mgr.GetScheme()
+			opts.MapperProvider = func(c *rest.Config, httpClient *http.Client) (meta.RESTMapper, error) {
+				return mgr.GetRESTMapper(), nil
+			}
+		}
+		managementCluster, err := cluster.New(restConfig, fOps)
+		if err != nil {
+			klog.Exitf("unable to create ManagementCluster while creating PerformanceProfile controller : %v", err)
+		}
+
+		if err := mgr.Add(managementCluster); err != nil {
+			klog.Exitf("unable to add ManagementCluster to manger while creating PerformanceProfile controller : %v", err)
+		}
+		if err = (&paocontroller.PerformanceProfileReconciler{
+			Client:           mgr.GetClient(),
+			ManagementClient: managementCluster.GetClient(),
+			Scheme:           managementCluster.GetScheme(),
+			Recorder:         mgr.GetEventRecorderFor("performance-profile-controller"),
+		}).HypershiftSetupWithManager(mgr, managementCluster); err != nil {
+			klog.Exitf("unable to create PerformanceProfile controller: %v", err)
 		}
 	}
+
+	if err = (&performancev1.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
+		klog.Exitf("unable to create PerformanceProfile v1 webhook: %v", err)
+	}
+
+	if err = (&performancev2.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
+		klog.Exitf("unable to create PerformanceProfile v2 webhook: %v", err)
+	}
+
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		klog.Exitf("manager exited with non-zero code: %v", err)
 	}
