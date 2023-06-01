@@ -156,6 +156,12 @@ func (r *PerformanceProfileReconciler) hypershiftReconcile(ctx context.Context, 
 		return reconcile.Result{}, nil
 	}
 
+	if err := updatePerformanceProfile(performanceProfileFromConfigMap, ctx, r.Client, instance, nodePoolName); err != nil {
+		klog.Errorf("failed to update performance profile from configMap %q components: %v", instance.Name, err)
+		//REVIEW - Should we record this events? and if so where? in the CM or the PP?
+		return reconcile.Result{}, err
+	}
+
 	pinningMode, err := r.getInfraPartitioningMode()
 	if err != nil {
 		return ctrl.Result{}, err
@@ -223,6 +229,13 @@ func (r *PerformanceProfileReconciler) hypershiftReconcile(ctx context.Context, 
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func encodePerformanceProfile(performanceProfile *performancev2.PerformanceProfile) ([]byte, error) {
+	scheme := runtime.NewScheme()
+	performancev2.AddToScheme(scheme)
+	performanceProfileEncoded, err := encodeManifest(performanceProfile, scheme)
+	return performanceProfileEncoded, err
 }
 
 func encodeTuned(tuned *tunedv1.Tuned) ([]byte, error) {
@@ -419,19 +432,41 @@ func parsePerformanceProfileManifest(data []byte, nodePoolName string) (*perform
 	if !ok {
 		return nil, fmt.Errorf("error parsing PerformanceProfile manifests")
 	}
+	return performanceProfile, nil
+}
 
+// Update PerformanceProfile Manifest so:
+// - Name is unique and a function of the original PerformanceProfile and NodePoolName
+// - Add label: "hypershift.openshift.io/nodePoolName" : <nodePoolName> to reference the NodePool where this PerformanceProfile is referenced
+func updatePerformanceProfileManifest(performanceProfile *performancev2.PerformanceProfile, nodePoolName string) {
 	// Make PerformanceProfile names unique if a PerformanceProfile is duplicated across NodePools
 	// for example, if one ConfigMap is referenced in multiple NodePools
 	performanceProfile.SetName(performanceProfile.ObjectMeta.Name + "-" + hashStruct(nodePoolName))
-	klog.V(2).Infof("parsePerformanceProfileManifest: name: %s", performanceProfile.GetName())
+	klog.V(2).Infof("updatePerformanceProfile: name: %s", performanceProfile.GetName())
 
 	// Propagate NodePool name from ConfigMap down to PerformanceProfile object
 	if performanceProfile.Labels == nil {
 		performanceProfile.Labels = make(map[string]string)
 	}
 	performanceProfile.Labels[hypershiftNodePoolNameLabel] = nodePoolName
+}
 
-	return performanceProfile, nil
+// Ensure PerformanceProfile has the proper label and annotations and update it in the API server
+func updatePerformanceProfile(performanceProfile *performancev2.PerformanceProfile, ctx context.Context, cli client.Client, ppConfigMap *corev1.ConfigMap, nodePoolName string) error {
+	updatePerformanceProfileManifest(performanceProfile, nodePoolName)
+	ppEncoded, err := encodePerformanceProfile(performanceProfile)
+	if err != nil {
+		klog.Errorf("failed to update performance profile manifest from configMap %q: %v", ppConfigMap.Name, err)
+		return err
+	}
+
+	ppConfigMap.Data[tunedConfigMapConfigKey] = string(ppEncoded)
+	if err := cli.Update(ctx, ppConfigMap); err != nil {
+		klog.Errorf("failed to update performance profile from configMap %q: %v", ppConfigMap.Name, err)
+		return err
+	}
+
+	return nil
 }
 
 func hashStruct(o interface{}) string {
