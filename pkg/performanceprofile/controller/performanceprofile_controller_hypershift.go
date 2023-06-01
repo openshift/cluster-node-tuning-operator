@@ -47,6 +47,8 @@ import (
 //
 //	What about creating a file with all these constants and labels and reference them both here and in the
 //	NTO hypershift code?
+//
+// REVIEW - Reorder constants to read them better.
 const (
 	hypershiftPerformanceProfileNameLabel = "hypershift.openshift.io/performanceProfileName"
 	hypershiftNodePoolNameLabel           = "hypershift.openshift.io/nodePoolName"
@@ -55,6 +57,9 @@ const (
 
 	tunedConfigMapLabel     = "hypershift.openshift.io/tuned-config"
 	tunedConfigMapConfigKey = "tuned"
+
+	mcoConfigMapConfigKey          = "config"
+	ntoGeneratedMachineConfigLabel = "hypershift.openshift.io/nto-generated-machine-config"
 )
 
 func (r *PerformanceProfileReconciler) hypershiftSetupWithManager(mgr ctrl.Manager) error {
@@ -170,49 +175,71 @@ func (r *PerformanceProfileReconciler) hypershiftReconcile(ctx context.Context, 
 
 	//jlom - Now we have to create a ConfigMap for each of the elements in the componentSet and then handle them to
 	//       the different agents that would made them effective in the managed cluster.( where workers are)
+	tunedEncoded, err := encodeTuned(componentSet.Tuned)
+	if err != nil {
+		klog.Warningf("failed to Encode Tuned in ConfigMap %s: %v", instance.ObjectMeta.Name, err)
+		// Return and don't requeue
+		return reconcile.Result{}, nil
+	}
+
+	tunedConfigMap := TunedConfigMap(instance.Namespace, performanceProfileFromConfigMap.Name, cmNodePoolNamespacedName, string(tunedEncoded))
+
+	if err := createOrUpdateTunedConfigMap(tunedConfigMap, ctx, r.Client); err != nil {
+		klog.Error("failure on Tuned process: %w", err.Error())
+		// Return and don't requeue
+		return reconcile.Result{}, nil
+	}
+
+	return reconcile.Result{}, nil
+}
+
+func encodeTuned(tuned *tunedv1.Tuned) ([]byte, error) {
 	scheme := runtime.NewScheme()
 	tunedv1.AddToScheme(scheme)
-	performancev2.AddToScheme(scheme)
+	tunedEncoded, err := encodeManifest(tuned, scheme)
+	return tunedEncoded, err
+}
 
+func encodeManifest(obj runtime.Object, scheme *runtime.Scheme) ([]byte, error) {
 	yamlSerializer := serializer.NewSerializerWithOptions(
 		serializer.DefaultMetaFactory, scheme, scheme,
 		serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true},
 	)
 
 	buff := bytes.Buffer{}
-	if err := yamlSerializer.Encode(componentSet.Tuned, &buff); err != nil {
-		klog.Warningf("failed to Encode Tuned in ConfigMap %s: %v", instance.ObjectMeta.Name, err)
-		// Return and don't requeue
-		return reconcile.Result{}, nil
+	err := yamlSerializer.Encode(obj, &buff)
+	return buff.Bytes(), err
+}
+
+func createOrUpdateTunedConfigMap(cm *corev1.ConfigMap, ctx context.Context, cli client.Client) error {
+	tunedConfigMapUpdateFunc := func(orig, dst *corev1.ConfigMap) error {
+		//REVIEW - Maybe here I should ensure the readed ConfifMap has the needed labels and annotations.
+		dst.Data[tunedConfigMapConfigKey] = orig.Data[tunedConfigMapConfigKey]
+		return nil
 	}
+	return createOrUpdateConfigMap(ctx, cli, cm, tunedConfigMapUpdateFunc)
+}
 
-	tunedConfigMap := TunedConfigMap(instance.Namespace, performanceProfileFromConfigMap.Name, cmNodePoolNamespacedName, buff.String())
-
+func createOrUpdateConfigMap(ctx context.Context, cli client.Client, cm *corev1.ConfigMap, updateFunc func(origin, destination *corev1.ConfigMap) error) error {
 	tcm := &corev1.ConfigMap{}
-	err = r.Get(ctx, client.ObjectKeyFromObject(tunedConfigMap), tcm)
+	err := cli.Get(ctx, client.ObjectKeyFromObject(cm), tcm)
 	if err != nil && !k8serrors.IsNotFound(err) {
-		klog.Errorf("failed to read tunedConfigMap %q from PerformanceProfile %q components: %v", tunedConfigMap.Name, performanceProfileFromConfigMap.Name, err)
-		// Return and don't requeue
-		return reconcile.Result{}, err
+		return fmt.Errorf("failed to read configmap %q: %w", cm.Name, err)
 	} else if k8serrors.IsNotFound(err) {
 		//create
-		if err := r.Create(ctx, tunedConfigMap); err != nil {
-			klog.Errorf("failed to create tunedConfigMap %q from PerformanceProfile %q components: %v", tunedConfigMap.Name, performanceProfileFromConfigMap.Name, err)
-			// Return and don't requeue
-			return reconcile.Result{}, err
+		if err := cli.Create(ctx, cm); err != nil {
+			return fmt.Errorf("failed to create configmap %q: %w", cm.Name, err)
 		}
 	} else {
 		// update
-		//REVIEW - Maybe here I should ensure the readed ConfifMap has the needed labels and annotations.
-		tcm.Data[tunedConfigMapConfigKey] = buff.String()
-		if err := r.Update(ctx, tcm); err != nil {
-			klog.Errorf("failed to update tunedConfigMap %q from PerformanceProfile %q components: %v", tunedConfigMap.Name, performanceProfileFromConfigMap.Name, err)
-			// Return and don't requeue
-			return reconcile.Result{}, err
+		if err := updateFunc(cm, tcm); err != nil {
+			return fmt.Errorf("failed while updateing configmap content %q: %w", cm.Name, err)
+		}
+		if err := cli.Update(ctx, tcm); err != nil {
+			return fmt.Errorf("failed to update configmap %q: %w", cm.Name, err)
 		}
 	}
-
-	return reconcile.Result{}, nil
+	return nil
 }
 
 func TunedConfigMap(namespace, performanceProfileName, nodePoolNamespacedName, tunedManifest string) *corev1.ConfigMap {
@@ -223,6 +250,7 @@ func TunedConfigMap(namespace, performanceProfileName, nodePoolNamespacedName, t
 			Labels: map[string]string{
 				tunedConfigMapLabel:                   "true",
 				hypershiftPerformanceProfileNameLabel: performanceProfileName,
+				hypershiftNodePoolLabel:               parseNamespacedName(nodePoolNamespacedName),
 			},
 			Annotations: map[string]string{
 				hypershiftNodePoolLabel: nodePoolNamespacedName,
