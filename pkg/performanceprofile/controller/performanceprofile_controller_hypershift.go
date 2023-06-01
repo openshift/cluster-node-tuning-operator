@@ -27,6 +27,7 @@ import (
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/runtimeclass"
 	mcfgv1 "github.com/openshift/hypershift/thirdparty/machineconfigoperator/pkg/apis/machineconfiguration.openshift.io/v1"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
@@ -66,6 +67,8 @@ const (
 
 	mcoConfigMapConfigKey          = "config"
 	ntoGeneratedMachineConfigLabel = "hypershift.openshift.io/nto-generated-machine-config"
+
+	hypershiftFinalizer = "hypershift-foreground-deletion"
 )
 
 func (r *PerformanceProfileReconciler) hypershiftSetupWithManager(mgr ctrl.Manager) error {
@@ -118,16 +121,9 @@ func (r *PerformanceProfileReconciler) hypershiftReconcile(ctx context.Context, 
 
 	instance := &corev1.ConfigMap{}
 
-	//REVIEW - Should be OperatorNamespace?
 	err := r.ManagementClient.Get(ctx, req.NamespacedName, instance)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			//FIXME - In hypershift there is no "owned" objects. So how do we delete created objects? or do we even have to?
-			//jlom - as we create a configmap for each of the elements created from a PerformanceProfile and we reference
-			//       these configmaps in NodePool so they could be "transfered" to the managed cluster, maybe "delete" them is
-			//       as simple as derreference them in NodePool and delete the ConfigMaps.
-			//NOTE - Adding a label with PerformanceProfile name on it to the configmaps could make this look up easier.
-
 			// Request object not found, could have been deleted after reconcile request.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
@@ -135,6 +131,34 @@ func (r *PerformanceProfileReconciler) hypershiftReconcile(ctx context.Context, 
 		}
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
+	}
+
+	if instance.DeletionTimestamp != nil {
+		// ConfigMap is marked for deletion and waiting for finalizers to be empty
+		// so better to clean-up and delete the objects.
+
+		//REVIEW - Is it ok to use the ctx Context with the remote client???
+		if err := hypershiftDeleteComponents(r.Client, ctx, instance); err != nil {
+			klog.Errorf("failed to delete components: %v", err)
+			return reconcile.Result{}, err
+		}
+
+		// remove finalizer
+		if configMapHasFinalizer(instance, hypershiftFinalizer) {
+			cm := configMapRemoveFinalizer(instance, hypershiftFinalizer)
+			if err := r.ManagementClient.Update(ctx, cm); err != nil {
+				return reconcile.Result{}, err
+			}
+			return reconcile.Result{}, nil
+		}
+	}
+
+	//add finalizer
+	if !configMapHasFinalizer(instance, hypershiftFinalizer) {
+		instance.Finalizers = append(instance.Finalizers, hypershiftFinalizer)
+		if err := r.ManagementClient.Update(ctx, instance); err != nil {
+			return reconcile.Result{}, err
+		}
 	}
 
 	performanceProfileString, ok := instance.Data[tunedConfigMapConfigKey]
@@ -532,12 +556,71 @@ func updatePerformanceProfile(performanceProfile *performancev2.PerformanceProfi
 	}
 
 	ppConfigMap.Data[tunedConfigMapConfigKey] = string(ppEncoded)
+
+	//set label with performance profile name to ease the delete process
+	if ppConfigMap.Labels == nil {
+		ppConfigMap.Labels = make(map[string]string)
+	}
+	ppConfigMap.Labels[hypershiftPerformanceProfileNameLabel] = performanceProfile.Name
+
 	if err := cli.Update(ctx, ppConfigMap); err != nil {
 		klog.Errorf("failed to update performance profile from configMap %q: %v", ppConfigMap.Name, err)
 		return err
 	}
 
 	return nil
+}
+
+func hypershiftDeleteComponents(remoteClient client.Client, ctx context.Context, ppConfigMap *corev1.ConfigMap) error {
+	// ConfigMap is marked for deletion and waiting for finalizers to be empty
+	// so better to clean-up and delete the objects.
+
+	if ppConfigMap.Labels == nil {
+		return fmt.Errorf("ConfigMap %s has no Labels.Unable to finalize deletion procedure properly", ppConfigMap.Name)
+	}
+
+	performanceProfileName, ok := ppConfigMap.Labels[hypershiftPerformanceProfileNameLabel]
+	if !ok {
+		return fmt.Errorf("ConfigMap %s has no label %q. Unable to finalize deletion procedure properly", ppConfigMap.Name, hypershiftPerformanceProfileNameLabel)
+	}
+
+	// just delete RtClass, as right now all the other components created from this PP
+	// are embedded into ConfigMaps which has an OwnerReference with the PP configmap
+	// and will be deleted by k8s machinery trigerring the deletion procedure of the
+	// embedded elements.
+	rtName := runtimeclass.BuildRuntimeClassName(performanceProfileName)
+	rtClass, err := readRuntimeClass(remoteClient, ctx, rtName)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			// rtClass not found so nothing to delete, so delete process has finished
+			return nil
+		}
+		return fmt.Errorf("unable to read RuntimeClass %q, error: %w. Unable to finalize deletion procedure properly", rtName, err)
+	}
+
+	err = remoteClient.Delete(ctx, rtClass)
+	return err
+}
+
+func configMapHasFinalizer(cm *corev1.ConfigMap, finalizer string) bool {
+	for _, f := range cm.Finalizers {
+		if f == finalizer {
+			return true
+		}
+	}
+	return false
+}
+
+func configMapRemoveFinalizer(cm *corev1.ConfigMap, finalizer string) *corev1.ConfigMap {
+	var finalizers []string
+	for _, finalizer := range cm.Finalizers {
+		if finalizer != hypershiftFinalizer {
+			finalizers = append(finalizers, finalizer)
+		}
+	}
+	cm.Finalizers = finalizers
+
+	return cm
 }
 
 func hashStruct(o interface{}) string {
