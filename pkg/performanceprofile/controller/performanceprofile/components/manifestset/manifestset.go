@@ -72,7 +72,8 @@ func GetNewComponents(profile *performancev2.PerformanceProfile, opts *component
 		return nil, err
 	}
 
-	runtimeClass := runtimeclass.New(profile, machineconfig.HighPerformanceRuntime)
+	rtName := runtimeclass.BuildRuntimeClassName(profile.Name)
+	runtimeClass := runtimeclass.New(rtName, profile, machineconfig.HighPerformanceRuntime)
 
 	manifestResultSet := ManifestResultSet{
 		MachineConfig: mc,
