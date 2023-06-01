@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/metrics"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/operator"
@@ -166,22 +167,45 @@ func operatorRun() {
 		}).SetupWithManager(mgr); err != nil {
 			klog.Exitf("unable to create PerformanceProfile controller: %v", err)
 		}
-
-		// Configure webhook server.
-		webHookServer := mgr.GetWebhookServer()
-		webHookServer.Port = webhookPort
-		webHookServer.CertDir = webhookCertDir
-		webHookServer.CertName = webhookCertName
-		webHookServer.KeyName = webhookKeyName
-
-		if err = (&performancev1.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
-			klog.Exitf("unable to create PerformanceProfile v1 webhook: %v", err)
+	} else {
+		// Hypershift configuration
+		restConfig, err := ntoclient.GetInClusterConfig()
+		if err != nil {
+			klog.Exitf("unable to create get InClusterConfiguration to create PerformanceProfile : %v", err)
+		}
+		mngClient, err := client.New(restConfig, client.Options{
+			Scheme: mgr.GetScheme(),
+			Mapper: mgr.GetRESTMapper(),
+		})
+		if err != nil {
+			klog.Exitf("unable to create get new management client to create PerformanceProfile : %v", err)
 		}
 
-		if err = (&performancev2.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
-			klog.Exitf("unable to create PerformanceProfile v2 webhook: %v", err)
+		if err = (&paocontroller.PerformanceProfileReconciler{
+			Client:           mgr.GetClient(),
+			ManagementClient: mngClient,
+			Scheme:           mgr.GetScheme(),
+			Recorder:         mgr.GetEventRecorderFor("performance-profile-controller"),
+		}).SetupWithManager(mgr); err != nil {
+			klog.Exitf("unable to create PerformanceProfile controller: %v", err)
 		}
 	}
+
+	// Configure webhook server.
+	webHookServer := mgr.GetWebhookServer()
+	webHookServer.Port = webhookPort
+	webHookServer.CertDir = webhookCertDir
+	webHookServer.CertName = webhookCertName
+	webHookServer.KeyName = webhookKeyName
+
+	if err = (&performancev1.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
+		klog.Exitf("unable to create PerformanceProfile v1 webhook: %v", err)
+	}
+
+	if err = (&performancev2.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
+		klog.Exitf("unable to create PerformanceProfile v2 webhook: %v", err)
+	}
+
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		klog.Exitf("manager exited with non-zero code: %v", err)
 	}

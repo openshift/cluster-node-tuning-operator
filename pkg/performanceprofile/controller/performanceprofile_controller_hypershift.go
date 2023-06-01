@@ -116,7 +116,7 @@ func (r *PerformanceProfileReconciler) hypershiftReconcile(ctx context.Context, 
 	instance := &corev1.ConfigMap{}
 
 	//REVIEW - Should be OperatorNamespace?
-	err := r.Get(ctx, req.NamespacedName, instance)
+	err := r.ManagementClient.Get(ctx, req.NamespacedName, instance)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			//FIXME - In hypershift there is no "owned" objects. So how do we delete created objects? or do we even have to?
@@ -157,7 +157,7 @@ func (r *PerformanceProfileReconciler) hypershiftReconcile(ctx context.Context, 
 		return reconcile.Result{}, nil
 	}
 
-	if err := updatePerformanceProfile(performanceProfileFromConfigMap, ctx, r.Client, instance, nodePoolName); err != nil {
+	if err := updatePerformanceProfile(performanceProfileFromConfigMap, ctx, r.ManagementClient, instance, nodePoolName); err != nil {
 		klog.Errorf("failed to update performance profile from configMap %q components: %v", instance.Name, err)
 		//REVIEW - Should we record this events? and if so where? in the CM or the PP?
 		return reconcile.Result{}, err
@@ -193,7 +193,7 @@ func (r *PerformanceProfileReconciler) hypershiftReconcile(ctx context.Context, 
 
 	tunedConfigMap := TunedConfigMap(instance, performanceProfileFromConfigMap.Name, cmNodePoolNamespacedName, string(tunedEncoded))
 
-	if err := createOrUpdateTunedConfigMap(tunedConfigMap, ctx, r.Client); err != nil {
+	if err := createOrUpdateTunedConfigMap(tunedConfigMap, ctx, r.ManagementClient); err != nil {
 		klog.Error("failure on Tuned process: %w", err.Error())
 		// Return and don't requeue
 		return reconcile.Result{}, nil
@@ -208,7 +208,7 @@ func (r *PerformanceProfileReconciler) hypershiftReconcile(ctx context.Context, 
 
 	machineconfigConfigMap := MachineConfigConfigMap(instance, performanceProfileFromConfigMap.Name, cmNodePoolNamespacedName, string(machineconfigEncoded))
 
-	if err := createOrUpdateMachineConfigConfigMap(machineconfigConfigMap, ctx, r.Client); err != nil {
+	if err := createOrUpdateMachineConfigConfigMap(machineconfigConfigMap, ctx, r.ManagementClient); err != nil {
 		klog.Error("failure on MachineConfig process: %w", err.Error())
 		// Return and don't requeue
 		return reconcile.Result{}, nil
@@ -223,7 +223,7 @@ func (r *PerformanceProfileReconciler) hypershiftReconcile(ctx context.Context, 
 
 	kubeletconfigConfigMap := KubeletConfigConfigMap(instance, performanceProfileFromConfigMap.Name, cmNodePoolNamespacedName, string(kubeletconfigEncoded))
 
-	if err := createOrUpdateKubeletConfigConfigConfigMap(kubeletconfigConfigMap, ctx, r.Client); err != nil {
+	if err := createOrUpdateKubeletConfigConfigConfigMap(kubeletconfigConfigMap, ctx, r.ManagementClient); err != nil {
 		klog.Error("failure on KubeletConfig process: %w", err.Error())
 		// Return and don't requeue
 		return reconcile.Result{}, nil

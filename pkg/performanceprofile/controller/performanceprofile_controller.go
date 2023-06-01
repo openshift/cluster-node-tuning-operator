@@ -59,8 +59,9 @@ const finalizer = "foreground-deletion"
 // PerformanceProfileReconciler reconciles a PerformanceProfile object
 type PerformanceProfileReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	ManagementClient client.Client
+	Scheme           *runtime.Scheme
+	Recorder         record.EventRecorder
 }
 
 // SetupWithManager creates a new PerformanceProfile Controller and adds it to the Manager.
