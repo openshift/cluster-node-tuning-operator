@@ -27,6 +27,8 @@ import (
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
+	mcfgv1 "github.com/openshift/hypershift/thirdparty/machineconfigoperator/pkg/apis/machineconfiguration.openshift.io/v1"
+	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -190,6 +192,21 @@ func (r *PerformanceProfileReconciler) hypershiftReconcile(ctx context.Context, 
 		return reconcile.Result{}, nil
 	}
 
+	machineconfigEncoded, err := encodeMachineConfig(convertMachineConfig(componentSet.MachineConfig))
+	if err != nil {
+		klog.Warningf("failed to Encode MachineConfig in ConfigMap %s: %v", instance.ObjectMeta.Name, err)
+		// Return and don't requeue
+		return reconcile.Result{}, nil
+	}
+
+	machineconfigConfigMap := MachineConfigConfigMap(instance.Namespace, performanceProfileFromConfigMap.Name, cmNodePoolNamespacedName, string(machineconfigEncoded))
+
+	if err := createOrUpdateMachineConfigConfigMap(machineconfigConfigMap, ctx, r.Client); err != nil {
+		klog.Error("failure on MachineConfig process: %w", err.Error())
+		// Return and don't requeue
+		return reconcile.Result{}, nil
+	}
+
 	return reconcile.Result{}, nil
 }
 
@@ -198,6 +215,13 @@ func encodeTuned(tuned *tunedv1.Tuned) ([]byte, error) {
 	tunedv1.AddToScheme(scheme)
 	tunedEncoded, err := encodeManifest(tuned, scheme)
 	return tunedEncoded, err
+}
+
+func encodeMachineConfig(machineConfig *mcfgv1.MachineConfig) ([]byte, error) {
+	scheme := runtime.NewScheme()
+	mcfgv1.AddToScheme(scheme)
+	mcEncoded, err := encodeManifest(machineConfig, scheme)
+	return mcEncoded, err
 }
 
 func encodeManifest(obj runtime.Object, scheme *runtime.Scheme) ([]byte, error) {
@@ -218,6 +242,15 @@ func createOrUpdateTunedConfigMap(cm *corev1.ConfigMap, ctx context.Context, cli
 		return nil
 	}
 	return createOrUpdateConfigMap(ctx, cli, cm, tunedConfigMapUpdateFunc)
+}
+
+func createOrUpdateMachineConfigConfigMap(cm *corev1.ConfigMap, ctx context.Context, cli client.Client) error {
+	machineconfigConfigMapUpdateFunc := func(orig, dst *corev1.ConfigMap) error {
+		//REVIEW - Maybe here I should ensure the readed ConfifMap has the needed labels and annotations.
+		dst.Data[mcoConfigMapConfigKey] = orig.Data[mcoConfigMapConfigKey]
+		return nil
+	}
+	return createOrUpdateConfigMap(ctx, cli, cm, machineconfigConfigMapUpdateFunc)
 }
 
 func createOrUpdateConfigMap(ctx context.Context, cli client.Client, cm *corev1.ConfigMap, updateFunc func(origin, destination *corev1.ConfigMap) error) error {
@@ -259,6 +292,42 @@ func TunedConfigMap(namespace, performanceProfileName, nodePoolNamespacedName, t
 		Data: map[string]string{
 			tunedConfigMapConfigKey: tunedManifest,
 		},
+	}
+}
+
+func MachineConfigConfigMap(namespace string, performanceProfileName string, nodePoolNamespacedName string, machineconfigManifest string) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      fmt.Sprintf("mc-%s", performanceProfileName),
+			Labels: map[string]string{
+				ntoGeneratedMachineConfigLabel:        "true",
+				hypershiftPerformanceProfileNameLabel: performanceProfileName,
+				hypershiftNodePoolLabel:               parseNamespacedName(nodePoolNamespacedName),
+			},
+			Annotations: map[string]string{
+				hypershiftNodePoolLabel: nodePoolNamespacedName,
+			},
+		},
+		Data: map[string]string{
+			mcoConfigMapConfigKey: machineconfigManifest,
+		},
+	}
+}
+
+func convertMachineConfig(origMC *mcov1.MachineConfig) *mcfgv1.MachineConfig {
+
+	return &mcfgv1.MachineConfig{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: mcfgv1.SchemeGroupVersion.String(),
+			Kind:       "MachineConfig",
+		},
+		ObjectMeta: origMC.ObjectMeta,
+		// althoug mco.MC.Spec and hypershift mco.MC.Spec are defined in
+		// different files they have the same structure, so the conversion is
+		// direct
+		//TODO - Is there any way to do this conversion in a type safe manner?
+		Spec: mcfgv1.MachineConfigSpec(origMC.Spec),
 	}
 }
 
