@@ -31,11 +31,14 @@ import (
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	corev1 "k8s.io/api/core/v1"
+	nodev1 "k8s.io/api/node/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer/json"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -229,7 +232,26 @@ func (r *PerformanceProfileReconciler) hypershiftReconcile(ctx context.Context, 
 		return reconcile.Result{}, nil
 	}
 
+	if err := createOrUpdateRuntimeClass(r.Client, ctx, componentSet.RuntimeClass); err != nil {
+		klog.Error("failure on RuntimeClass process: %w", err.Error())
+		// Return and don't requeue
+		return reconcile.Result{}, nil
+	}
+
 	return reconcile.Result{}, nil
+}
+
+func readRuntimeClass(cli client.Client, ctx context.Context, name string) (*nodev1.RuntimeClass, error) {
+	rtClass := &nodev1.RuntimeClass{}
+
+	key := types.NamespacedName{
+		Name: name,
+	}
+
+	if err := cli.Get(ctx, key, rtClass); err != nil {
+		return nil, err
+	}
+	return rtClass, nil
 }
 
 func encodePerformanceProfile(performanceProfile *performancev2.PerformanceProfile) ([]byte, error) {
@@ -318,6 +340,33 @@ func createOrUpdateConfigMap(ctx context.Context, cli client.Client, cm *corev1.
 		}
 	}
 	return nil
+}
+
+func createOrUpdateRuntimeClass(cli client.Client, ctx context.Context, rtClass *nodev1.RuntimeClass) error {
+	existing, err := readRuntimeClass(cli, ctx, rtClass.Name)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			err := cli.Create(ctx, rtClass)
+			return err
+		}
+	}
+
+	mutated := existing.DeepCopy()
+	mergeMaps(rtClass.Annotations, mutated.Annotations)
+	mergeMaps(rtClass.Labels, mutated.Labels)
+	mutated.Handler = rtClass.Handler
+	mutated.Scheduling = rtClass.Scheduling
+
+	// we do not need to update if it no change between mutated and existing object
+	if apiequality.Semantic.DeepEqual(existing.Handler, mutated.Handler) &&
+		apiequality.Semantic.DeepEqual(existing.Scheduling, mutated.Scheduling) &&
+		apiequality.Semantic.DeepEqual(existing.Labels, mutated.Labels) &&
+		apiequality.Semantic.DeepEqual(existing.Annotations, mutated.Annotations) {
+		return nil
+	}
+
+	err = cli.Update(ctx, mutated, &client.UpdateOptions{})
+	return err
 }
 
 func TunedConfigMap(owner *corev1.ConfigMap, performanceProfileName, nodePoolNamespacedName, tunedManifest string) *corev1.ConfigMap {
