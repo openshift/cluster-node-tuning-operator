@@ -34,6 +34,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/klog/v2"
 
@@ -190,7 +191,7 @@ func (r *PerformanceProfileReconciler) hypershiftReconcile(ctx context.Context, 
 		return reconcile.Result{}, nil
 	}
 
-	tunedConfigMap := TunedConfigMap(instance.Namespace, performanceProfileFromConfigMap.Name, cmNodePoolNamespacedName, string(tunedEncoded))
+	tunedConfigMap := TunedConfigMap(instance, performanceProfileFromConfigMap.Name, cmNodePoolNamespacedName, string(tunedEncoded))
 
 	if err := createOrUpdateTunedConfigMap(tunedConfigMap, ctx, r.Client); err != nil {
 		klog.Error("failure on Tuned process: %w", err.Error())
@@ -205,7 +206,7 @@ func (r *PerformanceProfileReconciler) hypershiftReconcile(ctx context.Context, 
 		return reconcile.Result{}, nil
 	}
 
-	machineconfigConfigMap := MachineConfigConfigMap(instance.Namespace, performanceProfileFromConfigMap.Name, cmNodePoolNamespacedName, string(machineconfigEncoded))
+	machineconfigConfigMap := MachineConfigConfigMap(instance, performanceProfileFromConfigMap.Name, cmNodePoolNamespacedName, string(machineconfigEncoded))
 
 	if err := createOrUpdateMachineConfigConfigMap(machineconfigConfigMap, ctx, r.Client); err != nil {
 		klog.Error("failure on MachineConfig process: %w", err.Error())
@@ -220,7 +221,7 @@ func (r *PerformanceProfileReconciler) hypershiftReconcile(ctx context.Context, 
 		return reconcile.Result{}, nil
 	}
 
-	kubeletconfigConfigMap := KubeletConfigConfigMap(instance.Namespace, performanceProfileFromConfigMap.Name, cmNodePoolNamespacedName, string(kubeletconfigEncoded))
+	kubeletconfigConfigMap := KubeletConfigConfigMap(instance, performanceProfileFromConfigMap.Name, cmNodePoolNamespacedName, string(kubeletconfigEncoded))
 
 	if err := createOrUpdateKubeletConfigConfigConfigMap(kubeletconfigConfigMap, ctx, r.Client); err != nil {
 		klog.Error("failure on KubeletConfig process: %w", err.Error())
@@ -319,10 +320,10 @@ func createOrUpdateConfigMap(ctx context.Context, cli client.Client, cm *corev1.
 	return nil
 }
 
-func TunedConfigMap(namespace, performanceProfileName, nodePoolNamespacedName, tunedManifest string) *corev1.ConfigMap {
+func TunedConfigMap(owner *corev1.ConfigMap, performanceProfileName, nodePoolNamespacedName, tunedManifest string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
+			Namespace: owner.GetNamespace(),
 			Name:      fmt.Sprintf("tuned-%s", performanceProfileName),
 			Labels: map[string]string{
 				tunedConfigMapLabel:                   "true",
@@ -332,6 +333,9 @@ func TunedConfigMap(namespace, performanceProfileName, nodePoolNamespacedName, t
 			Annotations: map[string]string{
 				hypershiftNodePoolLabel: nodePoolNamespacedName,
 			},
+			OwnerReferences: []metav1.OwnerReference{
+				newOwnerReference(owner, owner.GroupVersionKind()),
+			},
 		},
 		Data: map[string]string{
 			tunedConfigMapConfigKey: tunedManifest,
@@ -339,10 +343,10 @@ func TunedConfigMap(namespace, performanceProfileName, nodePoolNamespacedName, t
 	}
 }
 
-func MachineConfigConfigMap(namespace string, performanceProfileName string, nodePoolNamespacedName string, machineconfigManifest string) *corev1.ConfigMap {
+func MachineConfigConfigMap(owner *corev1.ConfigMap, performanceProfileName string, nodePoolNamespacedName string, machineconfigManifest string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
+			Namespace: owner.GetNamespace(),
 			Name:      fmt.Sprintf("mc-%s", performanceProfileName),
 			Labels: map[string]string{
 				ntoGeneratedMachineConfigLabel:        "true",
@@ -352,6 +356,9 @@ func MachineConfigConfigMap(namespace string, performanceProfileName string, nod
 			Annotations: map[string]string{
 				hypershiftNodePoolLabel: nodePoolNamespacedName,
 			},
+			OwnerReferences: []metav1.OwnerReference{
+				newOwnerReference(owner, owner.GroupVersionKind()),
+			},
 		},
 		Data: map[string]string{
 			mcoConfigMapConfigKey: machineconfigManifest,
@@ -359,10 +366,10 @@ func MachineConfigConfigMap(namespace string, performanceProfileName string, nod
 	}
 }
 
-func KubeletConfigConfigMap(namespace string, performanceProfileName string, nodePoolNamespacedName string, kubeletconfigManifest string) *corev1.ConfigMap {
+func KubeletConfigConfigMap(owner *corev1.ConfigMap, performanceProfileName string, nodePoolNamespacedName string, kubeletconfigManifest string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
+			Namespace: owner.GetNamespace(),
 			Name:      fmt.Sprintf("kc-%s", performanceProfileName),
 			Labels: map[string]string{
 				ntoGeneratedMachineConfigLabel:        "true",
@@ -372,6 +379,9 @@ func KubeletConfigConfigMap(namespace string, performanceProfileName string, nod
 			Annotations: map[string]string{
 				hypershiftNodePoolLabel: nodePoolNamespacedName,
 			},
+			OwnerReferences: []metav1.OwnerReference{
+				newOwnerReference(owner, owner.GroupVersionKind()),
+			},
 		},
 		Data: map[string]string{
 			mcoConfigMapConfigKey: kubeletconfigManifest,
@@ -379,6 +389,18 @@ func KubeletConfigConfigMap(namespace string, performanceProfileName string, nod
 	}
 }
 
+func newOwnerReference(owner metav1.Object, gvk schema.GroupVersionKind) metav1.OwnerReference {
+	blockOwnerDeletion := false
+	isController := false
+	return metav1.OwnerReference{
+		APIVersion:         gvk.GroupVersion().String(),
+		Kind:               gvk.Kind,
+		Name:               owner.GetName(),
+		UID:                owner.GetUID(),
+		BlockOwnerDeletion: &blockOwnerDeletion,
+		Controller:         &isController,
+	}
+}
 func convertMachineConfig(origMC *mcov1.MachineConfig) *mcfgv1.MachineConfig {
 
 	return &mcfgv1.MachineConfig{
