@@ -58,7 +58,7 @@ const (
 	controllerGeneratedMachineConfig      = "hypershift.openshift.io/performanceprofile-config"
 
 	tunedConfigMapLabel     = "hypershift.openshift.io/tuned-config"
-	tunedConfigMapConfigKey = "tuned"
+	tunedConfigMapConfigKey = "tuning"
 
 	mcoConfigMapConfigKey          = "config"
 	ntoGeneratedMachineConfigLabel = "hypershift.openshift.io/nto-generated-machine-config"
