@@ -33,7 +33,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer/json"
-	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/klog/v2"
 
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -156,13 +155,13 @@ func (r *PerformanceProfileReconciler) hypershiftReconcile(ctx context.Context, 
 	}
 
 	//REVIEW - jlom Not fully sure if `getContinerRuntimeName` gonna work in hypershift env
-	ctrRuntime, err := r.getContainerRuntimeName(ctx, &performanceProfileFromConfigMap)
+	ctrRuntime, err := r.getContainerRuntimeName(ctx, performanceProfileFromConfigMap)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("hypershift could not determine high-performance runtime class container-runtime for profile %q; %w", performanceProfileFromConfigMap.Name, err)
 	}
 	klog.Infof("hypershift using %q as high-performance runtime class container-runtime for profile %q", ctrRuntime, performanceProfileFromConfigMap.Name)
 
-	componentSet, err := manifestset.GetNewComponents(&performanceProfileFromConfigMap, nil, &pinningMode, ctrRuntime)
+	componentSet, err := manifestset.GetNewComponents(performanceProfileFromConfigMap, nil, &pinningMode, ctrRuntime)
 	if err != nil {
 		klog.Errorf("failed to deploy performance profile from configMap %q components: %v", instance.Name, err)
 		//REVIEW - Should we record this events? and if so where? in the CM or the PP?
@@ -174,6 +173,7 @@ func (r *PerformanceProfileReconciler) hypershiftReconcile(ctx context.Context, 
 	scheme := runtime.NewScheme()
 	tunedv1.AddToScheme(scheme)
 	performancev2.AddToScheme(scheme)
+
 	yamlSerializer := serializer.NewSerializerWithOptions(
 		serializer.DefaultMetaFactory, scheme, scheme,
 		serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true},
@@ -236,15 +236,24 @@ func TunedConfigMap(namespace, performanceProfileName, nodePoolNamespacedName, t
 
 // parseManifests parses a YAML or JSON document that may contain one or more
 // kubernetes resources.
-func parsePerformanceProfileManifest(data []byte, nodePoolName string) (performancev2.PerformanceProfile, error) {
-	r := bytes.NewReader(data)
-	d := yamlutil.NewYAMLOrJSONDecoder(r, 1024)
+func parsePerformanceProfileManifest(data []byte, nodePoolName string) (*performancev2.PerformanceProfile, error) {
+	scheme := runtime.NewScheme()
+	performancev2.AddToScheme(scheme)
 
-	performanceProfile := performancev2.PerformanceProfile{}
-	if err := d.Decode(&performanceProfile); err != nil {
-		return performanceProfile, fmt.Errorf("error parsing Tuned manifests: %v", err)
+	//REVIEW - As serializer is used many times it could be worthy to create it just one time and keep it somewhere
+	yamlSerializer := serializer.NewSerializerWithOptions(
+		serializer.DefaultMetaFactory, scheme, scheme,
+		serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true},
+	)
+
+	cr, _, err := yamlSerializer.Decode(data, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error decoding PerformanceProfile manifests: %v", err)
 	}
-	//REVIEW - There should be only one PerformanceProfile per NodePool so I do not know if this is needed
+	performanceProfile, ok := cr.(*performancev2.PerformanceProfile)
+	if !ok {
+		return nil, fmt.Errorf("error parsing PerformanceProfile manifests")
+	}
 
 	// Make PerformanceProfile names unique if a PerformanceProfile is duplicated across NodePools
 	// for example, if one ConfigMap is referenced in multiple NodePools
