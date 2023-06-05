@@ -88,8 +88,9 @@ var _ = AfterSuite(func() {
 	err := testclient.Client.Delete(context.TODO(), prePullNamespace)
 	if err != nil {
 		testlog.Errorf("namespace %q could not be deleted err=%v", prePullNamespace.Name, err)
+	} else {
+		namespaces.WaitForDeletion(prePullNamespaceName, 5*time.Minute)
 	}
-	namespaces.WaitForDeletion(prePullNamespaceName, 5*time.Minute)
 
 	currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 	Expect(err).ToNot(HaveOccurred())
