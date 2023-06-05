@@ -92,6 +92,14 @@ var _ = AfterSuite(func() {
 		namespaces.WaitForDeletion(prePullNamespaceName, 5*time.Minute)
 	}
 
+	// check if profile variable has been populated.
+	// otherwise there is no need to try to restore it
+	// and it would panic
+	if profile == nil {
+		testlog.Error("could not restore the initial profile because it has not been read")
+		return
+	}
+
 	currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 	Expect(err).ToNot(HaveOccurred())
 	if reflect.DeepEqual(currentProfile.Spec, profile.Spec) != true {
