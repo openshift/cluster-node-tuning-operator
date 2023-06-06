@@ -32,7 +32,7 @@ done
 # Finally, a the `machine.slice` cgroup must be preconfigured. Podman will create containers and move them into the `machine.slice`, but there's
 # no way to tell podman to update machine.slice to not have the full set of cpus. Instead of disabling load balancing in it, we can pre-create it.
 # with the reserved CPUs set ahead of time, so when isolated processes begin, the cgroup does not have an overlapping cpuset between machine.slice and isolated containers.
-mkdir -p "$machine" || true
+mkdir -p "$machine"
 
 # It's unlikely, but possible, that this cpuset already existed. Iterate just in case.
 for file in $(find "$machine" -name cpuset.cpus | sort -r); do echo "$reserved_set" > "$file"; done
