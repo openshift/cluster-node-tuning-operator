@@ -49,7 +49,7 @@ type checkFunction func(*corev1.Node) (string, error)
 
 var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance profile", func() {
 	var workerRTNodes []corev1.Node
-	var profile, initialProfile *performancev2.PerformanceProfile
+	var profile *performancev2.PerformanceProfile
 	var performanceMCP string
 	var err error
 
@@ -112,6 +112,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 	Context("Verify hugepages count split on two NUMA nodes", Ordered, func() {
 		hpSize2M := performancev2.HugePageSize("2M")
 		skipTests := false
+		var initialProfile *performancev2.PerformanceProfile
 
 		testutils.CustomBeforeAll(func() {
 			for _, node := range workerRTNodes {
@@ -222,6 +223,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 	Context("Verify that all performance profile parameters can be updated", Ordered, func() {
 		var removedKernelArgs string
+		var initialProfile *performancev2.PerformanceProfile
 
 		hpSize2M := performancev2.HugePageSize("2M")
 		hpSize1G := performancev2.HugePageSize("1G")
@@ -579,6 +581,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 	Context("WorkloadHints", func() {
 		var testpod *corev1.Pod
+		var initialProfile *performancev2.PerformanceProfile
+
 		BeforeEach(func() {
 			By("Saving the old performance profile")
 			initialProfile = profile.DeepCopy()
@@ -1371,6 +1375,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 	})
 
 	Context("Offlined CPU API", func() {
+		var initialProfile *performancev2.PerformanceProfile
+
 		BeforeEach(func() {
 			//Saving the old performance profile
 			initialProfile = profile.DeepCopy()
@@ -1833,6 +1839,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 	})
 
 	Context("[rfe_id:54374][rps_mask] Network Stack Pinning", func() {
+		var initialProfile *performancev2.PerformanceProfile
 
 		BeforeEach(func() {
 			//Get Latest profile
