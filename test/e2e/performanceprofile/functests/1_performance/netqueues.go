@@ -79,6 +79,11 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 	})
 
 	AfterEach(func() {
+		By("Checking the Profile")
+		if initialProfile == nil {
+			testlog.Error("unable to revert profile. Readed profile is nil")
+			return
+		}
 		By("Reverting the Profile")
 		spec, err := json.Marshal(initialProfile.Spec)
 		Expect(err).ToNot(HaveOccurred())
