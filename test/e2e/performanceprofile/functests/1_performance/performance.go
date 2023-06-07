@@ -762,6 +762,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			var globallyDisableIrqLoadBalancing bool
 
 			JustBeforeEach(func() {
+				//REVIEW - This is overwritting the "profile" var, is that ok?
 				key := types.NamespacedName{
 					Name:      profile.Name,
 					Namespace: profile.Namespace,
@@ -873,6 +874,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			}
 		})
 
+		// REVIEW - validateObject could be creating new objects that are never deleted.
 		validateObject := func(obj client.Object, message string) {
 			err := testclient.Client.Create(context.TODO(), obj)
 			Expect(err).To(HaveOccurred(), "expected the validation error")
