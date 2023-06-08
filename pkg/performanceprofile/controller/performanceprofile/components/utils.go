@@ -51,7 +51,7 @@ func CPUListToHexMask(cpulist string) (hexMask string, err error) {
 }
 
 // CPUListToMaskList converts a list of cpus into a cpu mask represented
-// in a list of hexadecimal mask devided by a delimiter ","
+// in a list of hexadecimal mask divided by a delimiter ","
 func CPUListToMaskList(cpulist string) (hexMask string, err error) {
 	maskStr, err := CPUListToHexMask(cpulist)
 	if err != nil {
@@ -100,7 +100,7 @@ func (c *CPULists) GetOfflined() cpuset.CPUSet {
 	return c.offlined
 }
 
-// NewCPULists parse text representations of reserved and isolated cpusets definiton and returns a CPULists object
+// NewCPULists parse text representations of reserved and isolated cpusets definition and returns a CPULists object
 func NewCPULists(reservedList, isolatedList, offlinedList string) (*CPULists, error) {
 	var err error
 	reserved, err := cpuset.Parse(reservedList)

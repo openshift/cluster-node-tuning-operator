@@ -69,7 +69,6 @@ func init() {
 // Render will traverse the input directory and generate the proper performance profile files
 // in to the output dir based on PerformanceProfile manifests contained in the input directory.
 func render(inputDir, outputDir string) error {
-
 	klog.Info("Rendering files into: ", outputDir)
 
 	// Read asset directory fileInfo

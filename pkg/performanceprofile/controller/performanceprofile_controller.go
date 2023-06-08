@@ -70,7 +70,6 @@ type PerformanceProfileReconciler struct {
 // SetupWithManager creates a new PerformanceProfile Controller and adds it to the Manager.
 // The Manager will set fields on the Controller and Start it when the Manager is Started.
 func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error {
-
 	// we want to initate reconcile loop only on change under labels or spec of the object
 	p := predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
@@ -667,7 +666,6 @@ func (r *PerformanceProfileReconciler) deleteComponents(profile *performancev2.P
 	}
 
 	return nil
-
 }
 
 func (r *PerformanceProfileReconciler) isComponentsExist(profile *performancev2.PerformanceProfile) bool {

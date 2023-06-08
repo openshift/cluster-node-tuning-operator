@@ -54,7 +54,7 @@ type PerformanceProfileSpec struct {
 	NodeSelector map[string]string `json:"nodeSelector"`
 	// RealTimeKernel defines a set of real time kernel related parameters. RT kernel won't be installed when not set.
 	RealTimeKernel *RealTimeKernel `json:"realTimeKernel,omitempty"`
-	// Addional kernel arguments.
+	// Additional kernel arguments.
 	// +optional
 	AdditionalKernelArgs []string `json:"additionalKernelArgs,omitempty"`
 	// NUMA defines options related to topology aware affinities

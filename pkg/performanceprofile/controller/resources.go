@@ -222,7 +222,6 @@ func (r *PerformanceProfileReconciler) getMutatedTuned(tuned *tunedv1.Tuned) (*t
 }
 
 func (r *PerformanceProfileReconciler) createOrUpdateTuned(tuned *tunedv1.Tuned, profileName string) error {
-
 	if err := r.removeOutdatedTuned(tuned, profileName); err != nil {
 		return err
 	}

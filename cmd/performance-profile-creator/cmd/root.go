@@ -114,8 +114,8 @@ func init() {
 // NewRootCommand returns entrypoint command to interact with all other commands
 func NewRootCommand() *cobra.Command {
 	pcArgs := &ProfileCreatorArgs{
-		UserLevelNetworking:   pointer.BoolPtr(false),
-		PerPodPowerManagement: pointer.BoolPtr(false),
+		UserLevelNetworking:   pointer.Bool(false),
+		PerPodPowerManagement: pointer.Bool(false),
 	}
 
 	var requiredFlags = []string{
@@ -464,7 +464,7 @@ func getProfileData(args ProfileCreatorArgs, cluster ClusterData) (*ProfileData,
 	for _, nodeHandler := range cluster[mcp] {
 		matchedNodeNames = append(matchedNodeNames, nodeHandler.Node.GetName())
 	}
-	log.Infof("Nodes targetted by %s MCP are: %v", args.MCPName, matchedNodeNames)
+	log.Infof("Nodes targeted by %s MCP are: %v", args.MCPName, matchedNodeNames)
 	err = profilecreator.EnsureNodesHaveTheSameHardware(cluster[mcp])
 	if err != nil {
 		return nil, fmt.Errorf("targeted nodes differ: %v", err)
@@ -511,16 +511,15 @@ func getProfileData(args ProfileCreatorArgs, cluster ClusterData) (*ProfileData,
 			)
 		}
 	case lowLatency:
-		profileData.realtimeHint = pointer.BoolPtr(true)
+		profileData.realtimeHint = pointer.Bool(true)
 	case ultraLowLatency:
-		profileData.realtimeHint = pointer.BoolPtr(true)
-		profileData.highPowerConsumptionHint = pointer.BoolPtr(true)
+		profileData.realtimeHint = pointer.Bool(true)
+		profileData.highPowerConsumptionHint = pointer.Bool(true)
 		if profileData.perPodPowerManagementHint != nil && *profileData.perPodPowerManagementHint {
 			return nil, fmt.Errorf(
 				"please use one of %v power consumption modes together with the perPodPowerManagement",
 				validPowerConsumptionModes[:2],
 			)
-
 		}
 	}
 	return profileData, nil
@@ -600,9 +599,9 @@ func createProfile(profileData ProfileData) error {
 
 	// configuring workload hints
 	profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-		HighPowerConsumption:  pointer.BoolPtr(false),
-		RealTime:              pointer.BoolPtr(false),
-		PerPodPowerManagement: pointer.BoolPtr(false),
+		HighPowerConsumption:  pointer.Bool(false),
+		RealTime:              pointer.Bool(false),
+		PerPodPowerManagement: pointer.Bool(false),
 	}
 
 	if profileData.highPowerConsumptionHint != nil {

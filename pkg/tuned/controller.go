@@ -1,20 +1,19 @@
 package tuned
 
 import (
-	"bufio"     // scanner
-	"bytes"     // bytes.Buffer
-	"context"   // context.TODO()
-	"flag"      // command-line options parsing
-	"fmt"       // Printf()
-	"io/ioutil" // ioutil.ReadFile()
-	"math"      // math.Pow()
-	"net"       // net.Conn
-	"os"        // os.Exit(), os.Stderr, ...
-	"os/exec"   // os.Exec()
-	"strconv"   // strconv
-	"strings"   // strings.Join()
-	"syscall"   // syscall.SIGHUP, ...
-	"time"      // time.Second, ...
+	"bufio"   // scanner
+	"bytes"   // bytes.Buffer
+	"context" // context.TODO()
+	"flag"    // command-line options parsing
+	"fmt"     // Printf()
+	"math"    // math.Pow()
+	"net"     // net.Conn
+	"os"      // os.Exit(), os.Stderr, ...
+	"os/exec" // os.Exec()
+	"strconv" // strconv
+	"strings" // strings.Join()
+	"syscall" // syscall.SIGHUP, ...
+	"time"    // time.Second, ...
 
 	fsnotify "gopkg.in/fsnotify.v1"
 	"gopkg.in/ini.v1"
@@ -371,7 +370,7 @@ func disableSystemTuned() {
 }
 
 func profilesEqual(profileFile string, profileData string) bool {
-	content, err := ioutil.ReadFile(profileFile)
+	content, err := os.ReadFile(profileFile)
 	if err != nil {
 		content = []byte{}
 	}
@@ -912,7 +911,6 @@ func (c *Controller) eventProcessorTuneD() {
 			// Successful processing.
 			c.wqTuneD.Forget(obj)
 		}()
-
 	}
 }
 

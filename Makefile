@@ -10,6 +10,8 @@ ASSETS=$(shell find assets -name \*.yaml)
 GO=GOOS=linux GO111MODULE=on GOFLAGS=-mod=vendor go
 GO_BUILD_RECIPE=$(GO) build -o $(OUT_DIR)/$(PACKAGE_BIN) -ldflags '-X $(PACKAGE)/version.Version=$(REV)' $(PACKAGE_MAIN)
 GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
+GOLANGCI_LINT_VERSION=v1.52.2
+GOLANGCI_LINT_BIN=$(OUT_DIR)/golangci-lint
 REV=$(shell git describe --long --tags --match='v*' --always --dirty)
 
 # Upstream tuned daemon variables
@@ -124,6 +126,26 @@ else
 	@exit 1
 endif
 
+GOLANGCI_LINT := $(shell command -v golangci-lint 2> /dev/null)
+GOLANGCI_LINT_LOCAL_VERSION := $(shell command golangci-lint --version | awk '{print $$4}')
+golangci-lint:
+ifdef GOLANGCI_LINT
+	@echo "Found golangci-lint"
+ifeq ($(GOLANGCI_LINT_LOCAL_VERSION),$(GOLANGCI_LINT_VERSION))
+		@echo golangcilint using same version
+else
+		@echo "Mismatch version, installing golangci-lint $(GOLANGCI_LINT_VERSION)"
+		curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b $(OUT_DIR) $(GOLANGCI_LINT_VERSION)
+endif
+else
+	@echo "Installing golangci-lint"
+	@install_golang_ci_lint
+	curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b $(OUT_DIR) $(GOLANGCI_LINT_VERSION)
+	golangci-lint --version
+endif
+	$(GOLANGCI_LINT_BIN) run --verbose --print-resources-usage -c .golangci.yaml
+
+
 vet: $(BINDATA)
 	$(GO) vet ./...
 
@@ -234,7 +256,7 @@ cluster-clean-pao:
 
 # Performance Profile Creator (PPC)
 .PHONY: build-performance-profile-creator
-build-performance-profile-creator: 
+build-performance-profile-creator:
 	@echo "Building Performance Profile Creator (PPC)"
 	LDFLAGS="-s -w -X ${PACKAGE}/cmd/performance-profile-creator/version.Version=${REV} "; \
 	$(GO) build  -v $(LDFLAGS) -o $(OUT_DIR)/performance-profile-creator ./cmd/performance-profile-creator

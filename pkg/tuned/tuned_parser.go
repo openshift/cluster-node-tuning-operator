@@ -1,15 +1,14 @@
 package tuned
 
 import (
-	"errors"    // errors.Is()
-	"fmt"       // Printf()
-	"io"        // io.EOF
-	"io/ioutil" // ioutil.ReadFile()
-	"os"        // os.Stat()
-	"os/exec"   // os.Exec()
-	"strings"   // strings.Split()
-	"syscall"   // syscall.SIGHUP, ...
-	"time"      // time.Second, ...
+	"errors"  // errors.Is()
+	"fmt"     // Printf()
+	"io"      // io.EOF
+	"os"      // os.Stat()
+	"os/exec" // os.Exec()
+	"strings" // strings.Split()
+	"syscall" // syscall.SIGHUP, ...
+	"time"    // time.Second, ...
 
 	"gopkg.in/ini.v1"
 	"k8s.io/klog/v2"
@@ -22,7 +21,7 @@ func iniFileLoad(iniFile string) (*ini.File, error) {
 		err error
 	)
 
-	content, err := ioutil.ReadFile(iniFile)
+	content, err := os.ReadFile(iniFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file %s: %v", iniFile, err)
 	}
@@ -113,7 +112,7 @@ func getIniFileSectionSlice(data *string, section, key, separator string) []stri
 func profileIncludesRaw(profileName string, tunedProfilesDir string) []string {
 	profileFile := fmt.Sprintf("%s/%s/%s", tunedProfilesDir, profileName, tunedConfFile)
 
-	content, err := ioutil.ReadFile(profileFile)
+	content, err := os.ReadFile(profileFile)
 	if err != nil {
 		content = []byte{}
 	}

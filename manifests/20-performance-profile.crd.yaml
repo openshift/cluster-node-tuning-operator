@@ -54,7 +54,7 @@ spec:
             description: PerformanceProfileSpec defines the desired state of PerformanceProfile.
             properties:
               additionalKernelArgs:
-                description: Addional kernel arguments.
+                description: Additional kernel arguments.
                 items:
                   type: string
                 type: array
@@ -314,7 +314,7 @@ spec:
             description: PerformanceProfileSpec defines the desired state of PerformanceProfile.
             properties:
               additionalKernelArgs:
-                description: Addional kernel arguments.
+                description: Additional kernel arguments.
                 items:
                   type: string
                 type: array
@@ -496,7 +496,7 @@ spec:
             description: PerformanceProfileSpec defines the desired state of PerformanceProfile.
             properties:
               additionalKernelArgs:
-                description: Addional kernel arguments.
+                description: Additional kernel arguments.
                 items:
                   type: string
                 type: array

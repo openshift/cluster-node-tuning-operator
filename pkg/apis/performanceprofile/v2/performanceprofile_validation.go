@@ -285,7 +285,7 @@ func (r *PerformanceProfile) validateNet() field.ErrorList {
 	}
 
 	if r.Spec.Net.UserLevelNetworking != nil && *r.Spec.Net.UserLevelNetworking && r.Spec.CPU.Reserved == nil {
-		allErrs = append(allErrs, field.Invalid(field.NewPath("spec.net"), r.Spec.Net, "can not set network devices queues count without specifiying spec.cpu.reserved"))
+		allErrs = append(allErrs, field.Invalid(field.NewPath("spec.net"), r.Spec.Net, "can not set network devices queues count without specifying spec.cpu.reserved"))
 	}
 
 	for _, device := range r.Spec.Net.Devices {

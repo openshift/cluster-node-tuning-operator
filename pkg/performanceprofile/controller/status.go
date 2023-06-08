@@ -53,7 +53,6 @@ func (r *PerformanceProfileReconciler) updateStatus(profile *performancev2.Perfo
 		if oldCondition.Status != newCondition.Status ||
 			oldCondition.Reason != newCondition.Reason ||
 			oldCondition.Message != newCondition.Message {
-
 			modified = true
 			break
 		}
@@ -233,7 +232,7 @@ func (r *PerformanceProfileReconciler) getTunedConditionsByProfile(profile *perf
 		return nil, err
 	}
 
-	// remove Tuned profiles that are not associate with this perfomance profile
+	// remove Tuned profiles that are not associate with this performance profile
 	// Tuned profile's name and node's name should be equal
 	filtered := removeUnMatchedTunedProfiles(nodes.Items, tunedProfileList.Items)
 	message := bytes.Buffer{}

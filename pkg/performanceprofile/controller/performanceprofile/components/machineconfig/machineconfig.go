@@ -5,8 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
-	"io/ioutil"
 	"path/filepath"
 	"text/template"
 
@@ -195,7 +195,6 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 	// do not add RPS handling when realtime is explicitly disabled by workload hint
 	if profileutil.IsRpsEnabled(profile) || profile.Spec.WorkloadHints == nil ||
 		profile.Spec.WorkloadHints.RealTime == nil || *profile.Spec.WorkloadHints.RealTime {
-
 		// configure default rps mask applied to all network devices
 		sysctlConfContent, err := renderSysctlConf(profile, filepath.Join("configs", defaultRPSMaskConfig))
 		if err != nil {
@@ -253,7 +252,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 
 			ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
 				Contents: &hugepagesService,
-				Enabled:  pointer.BoolPtr(true),
+				Enabled:  pointer.Bool(true),
 				Name:     getSystemdService(fmt.Sprintf("%s-%skB-NUMA%d", hugepagesAllocation, hugepagesSize, *page.Node)),
 			})
 		}
@@ -286,7 +285,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 
 		ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
 			Contents: &cpusetConfigureService,
-			Enabled:  pointer.BoolPtr(true),
+			Enabled:  pointer.Bool(true),
 			Name:     getSystemdService(cpusetConfigure),
 		})
 
@@ -311,7 +310,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 
 		ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
 			Contents: &offlineCPUsService,
-			Enabled:  pointer.BoolPtr(true),
+			Enabled:  pointer.Bool(true),
 			Name:     getSystemdService(setCPUsOffline),
 		})
 	}
@@ -323,7 +322,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 
 	ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
 		Contents: &clearIRQBalanceBannedCPUsService,
-		Enabled:  pointer.BoolPtr(true),
+		Enabled:  pointer.Bool(true),
 		Name:     getSystemdService(clearIRQBalanceBannedCPUs),
 	})
 
@@ -386,7 +385,7 @@ func getSystemdService(serviceName string) string {
 
 func getSystemdContent(options []*unit.UnitOption) (string, error) {
 	outReader := unit.Serialize(options)
-	outBytes, err := ioutil.ReadAll(outReader)
+	outBytes, err := io.ReadAll(outReader)
 	if err != nil {
 		return "", err
 	}
@@ -535,7 +534,7 @@ func addContent(ignitionConfig *igntypes.Config, content []byte, dst string, mod
 		},
 		FileEmbedded1: igntypes.FileEmbedded1{
 			Contents: igntypes.Resource{
-				Source: pointer.StringPtr(fmt.Sprintf("%s,%s", defaultIgnitionContentSource, contentBase64)),
+				Source: pointer.String(fmt.Sprintf("%s,%s", defaultIgnitionContentSource, contentBase64)),
 			},
 			Mode: mode,
 		},
