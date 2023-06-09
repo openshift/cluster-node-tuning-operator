@@ -61,6 +61,7 @@ spec:
                     name:
                       description: Name of the Tuned profile to be used in the recommend
                         section.
+                      minLength: 1
                       type: string
                   required:
                   - data
@@ -139,6 +140,7 @@ spec:
                       type: integer
                     profile:
                       description: Name of the Tuned profile to recommend.
+                      minLength: 1
                       type: string
                   required:
                   - priority
