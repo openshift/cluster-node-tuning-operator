@@ -43,17 +43,17 @@ const (
 	crioConfd          = "/etc/crio/crio.conf.d"
 	crioRuntimesConfig = "99-runtimes.conf"
 
+	// sysctl config
+	defaultRPSMaskConfig  = "99-default-rps-mask.conf"
+	sysctlConfigDir       = "/etc/sysctl.d/"
+	sysctlTemplateRPSMask = "RPSMask"
+
 	// Workload partitioning configs
 	kubernetesConfDir      = "/etc/kubernetes"
 	crioPartitioningConfig = "99-workload-pinning.conf"
 	ocpPartitioningConfig  = "openshift-workload-pinning"
 
-	// OCIHooksConfigDir is the default directory for the OCI hooks
-	OCIHooksConfigDir = "/etc/containers/oci/hooks.d"
-	// OCIHooksConfig file contains the low latency hooks configuration
-	ociTemplateRPSMask   = "RPSMask"
 	udevRulesDir         = "/etc/udev/rules.d"
-	udevRpsRules         = "99-netdev-rps.rules"
 	udevPhysicalRpsRules = "99-netdev-physical-rps.rules"
 	// scripts
 	hugepagesAllocation       = "hugepages-allocation"
@@ -187,27 +187,29 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 	if profileutil.IsRpsEnabled(profile) || profile.Spec.WorkloadHints == nil ||
 		profile.Spec.WorkloadHints.RealTime == nil || *profile.Spec.WorkloadHints.RealTime {
 
-		// add rps udev rule
-		rpsRulesMode := 0644
-		var rpsRulesContent []byte
-		if profileutil.IsPhysicalRpsEnabled(profile) {
-			rpsRulesContent, err = assets.Configs.ReadFile(filepath.Join("configs", udevPhysicalRpsRules))
-		} else {
-			rpsRulesContent, err = assets.Configs.ReadFile(filepath.Join("configs", udevRpsRules))
-		}
+		// configure default rps mask applied to all network devices
+		sysctlConfContent, err := renderSysctlConf(profile, filepath.Join("configs", defaultRPSMaskConfig))
 		if err != nil {
 			return nil, err
 		}
-		rpsRulesDst := filepath.Join(udevRulesDir, udevRpsRules)
-		addContent(ignitionConfig, rpsRulesContent, rpsRulesDst, &rpsRulesMode)
+		sysctlConfFileMode := 0644
+		sysctlConfDst := filepath.Join(sysctlConfigDir, defaultRPSMaskConfig)
+		addContent(ignitionConfig, sysctlConfContent, sysctlConfDst, &sysctlConfFileMode)
 
-		if profile.Spec.CPU != nil && profile.Spec.CPU.Reserved != nil {
-			rpsMask, err := components.CPUListToMaskList(string(*profile.Spec.CPU.Reserved))
+		// if RPS disabled for physical devices revert the default RPS mask to 0
+		if !profileutil.IsPhysicalRpsEnabled(profile) {
+			// add rps udev rule
+			rpsRulesMode := 0644
+			var rpsRulesContent []byte
+			rpsRulesContent, err = assets.Configs.ReadFile(filepath.Join("configs", udevPhysicalRpsRules))
+
 			if err != nil {
 				return nil, err
 			}
+			rpsRulesDst := filepath.Join(udevRulesDir, udevPhysicalRpsRules)
+			addContent(ignitionConfig, rpsRulesContent, rpsRulesDst, &rpsRulesMode)
 
-			rpsService, err := getSystemdContent(getRPSUnitOptions(rpsMask))
+			rpsService, err := getSystemdContent(getRPSUnitOptions("0"))
 			if err != nil {
 				return nil, err
 			}
@@ -338,30 +340,6 @@ func getSystemdContent(options []*unit.UnitOption) (string, error) {
 		return "", err
 	}
 	return string(outBytes), nil
-}
-
-// GetOCIHooksConfigContent reads and returns the content of the OCI hook file
-func GetOCIHooksConfigContent(configFile string, profile *performancev2.PerformanceProfile) ([]byte, error) {
-	ociHookConfigTemplate, err := template.ParseFS(assets.Configs, filepath.Join("configs", configFile))
-	if err != nil {
-		return nil, err
-	}
-
-	rpsMask := "0" // RPS disabled
-	if profile.Spec.CPU != nil && profile.Spec.CPU.Reserved != nil {
-		rpsMask, err = components.CPUListToMaskList(string(*profile.Spec.CPU.Reserved))
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	outContent := &bytes.Buffer{}
-	templateArgs := map[string]string{ociTemplateRPSMask: rpsMask}
-	if err := ociHookConfigTemplate.Execute(outContent, templateArgs); err != nil {
-		return nil, err
-	}
-
-	return outContent.Bytes(), nil
 }
 
 // GetHugepagesSizeKilobytes retruns hugepages size in kilobytes
@@ -603,4 +581,31 @@ func BootstrapWorkloadPinningMC(role string, pinningMode *apiconfigv1.CPUPartiti
 	}
 	mc.Spec.Config = runtime.RawExtension{Raw: rawIgnition}
 	return mc, nil
+}
+
+func renderSysctlConf(profile *performancev2.PerformanceProfile, src string) ([]byte, error) {
+	if profile.Spec.CPU == nil || profile.Spec.CPU.Reserved == nil {
+		return nil, nil
+	}
+
+	rpsMask, err := components.CPUListToMaskList(string(*profile.Spec.CPU.Reserved))
+	if err != nil {
+		return nil, err
+	}
+
+	templateArgs := map[string]string{
+		sysctlTemplateRPSMask: rpsMask,
+	}
+
+	sysctlConfigTemplate, err := template.ParseFS(assets.Configs, src)
+	if err != nil {
+		return nil, err
+	}
+
+	sysctlConfig := &bytes.Buffer{}
+	if err = sysctlConfigTemplate.Execute(sysctlConfig, templateArgs); err != nil {
+		return nil, err
+	}
+
+	return sysctlConfig.Bytes(), nil
 }

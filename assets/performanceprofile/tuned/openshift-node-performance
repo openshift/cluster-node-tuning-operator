@@ -109,6 +109,11 @@ vm.dirty_background_ratio=3
 #> latency-performance
 vm.swappiness=10
 
+# also configured via a sysctl.d file
+# placed here for better reflection of the change
+#> rps configuration
+net.core.rps_default_mask=${not_isolated_cpumask}
+
 
 [selinux]
 #> Custom (atomic host)
