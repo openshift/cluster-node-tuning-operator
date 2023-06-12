@@ -199,7 +199,7 @@ pao-functests: cluster-label-worker-cnf pao-functests-only
 pao-functests-only:
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
-	hack/run-functests.sh
+	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/1_performance test/e2e/performanceprofile/functests/6_mustgather_testing" -p "--v -r --fail-fast  --flake-attempts=2" -m "Running Functional Tests" -r "--junit-report=report.xml"
 
 .PHONY: pao-functests-updating-profile
 pao-functests-updating-profile: cluster-label-worker-cnf pao-functests-update-only
@@ -208,13 +208,22 @@ pao-functests-updating-profile: cluster-label-worker-cnf pao-functests-update-on
 pao-functests-update-only:
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
-	hack/run-update-testing.sh
+	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/2_performance_update test/e2e/performanceprofile/functests/3_performance_status test/e2e/performanceprofile/functests/7_performance_kubelet_node test/e2e/performanceprofile/functests/8_reboot" -p "-v -r -timeout=5h --fail-fast --flake-attempts=2" -m "Running Functional Tests" -r "--junit-report=report.xml"
+
+.PHONY: pao-functests-performance-workloadhints
+pao-functests-performance-workloadhints: cluster-label-worker-cnf pao-functests-performance-workloadhints-only
+
+.PHONY: pao-functests-performance-workloadhints-only
+pao-functests-performance-workloadhints-only:
+	@echo "Cluster Version"
+	hack/show-cluster-version.sh
+	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/8_performance_workloadhints" -p "-v -r -timeout=5h --fail-fast --flake-attempts=2" -m "Running Functional WorkloadHints Tests" -r "--junit-report=report.xml"
 
 .PHONY: pao-functests-latency-testing
 pao-functests-latency-testing: dist-latency-tests
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
-	hack/run-latency-testing.sh
+	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/5_latency_testing" -p "--v -r --fail-fast --flake-attempts=2" -m "Running Functional Tests" -r "--junit-report=/tmp/artifacts"
 
 .PHONY: cluster-clean-pao
 cluster-clean-pao:
@@ -231,7 +240,7 @@ build-performance-profile-creator:
 .PHONY: performance-profile-creator-tests
 performance-profile-creator-tests: build-performance-profile-creator
 	@echo "Running Performance Profile Creator Tests"
-	hack/run-perf-profile-creator-functests.sh
+	hack/run-test.sh -t "test/e2e/performanceprofile/functests-performance-profile-creator" -p "--v -r --fail-fast --flake-attempts=2" -m "Running Functional Tests" -r "--junit-report=/tmp/artifacts"
 
 .PHONY: render-sync
 render-sync: build
