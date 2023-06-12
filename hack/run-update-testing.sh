@@ -1,17 +1,17 @@
 #!/bin/bash
 
-GINKGO_SUITS=${GINKGO_SUITS:-"test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/2_performance_update"}
+GINKGO_SUITS=${GINKGO_SUITS:-"test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/2_performance_update test/e2e/performanceprofile/functests/3_performance_status test/e2e/performanceprofile/functests/7_performance_kubelet_node test/e2e/performanceprofile/functests/8_reboot"}
 LATENCY_TEST_RUN=${LATENCY_TEST_RUN:-"false"}
 
 which ginkgo
 if [ $? -ne 0 ]; then
-	echo "Downloading ginkgo tool"
-    go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo@v2.6.1
-    ginkgo version
+  echo "Downloading ginkgo tool"
+  go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo@v2.6.1
+  ginkgo version
 fi
 
 NO_COLOR=""
-if ! which tput &> /dev/null 2>&1 || [[ $(tput -T$TERM colors) -lt 8 ]]; then
+if ! which tput &>/dev/null 2>&1 || [[ $(tput -T$TERM colors) -lt 8 ]]; then
   echo "Terminal does not seem to support colored output, disabling it"
   NO_COLOR="-noColor"
 fi
@@ -20,7 +20,6 @@ fi
 if [ -n "${IMAGE_FORMAT}" ]; then
   LATENCY_TEST_RUN="true"
 fi
-
 
 echo "Running Functional Tests: ${GINKGO_SUITS}"
 # -v: print out the text and location for each spec before running it and flush output to stdout in realtime
