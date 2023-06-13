@@ -3,6 +3,7 @@ package __performance_config
 import (
 	"context"
 	"fmt"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"io/ioutil"
 	"os"
 	"time"
@@ -43,6 +44,20 @@ var _ = Describe("[performance][config] Performance configuration", func() {
 		isSNO, err := cluster.IsSingleNode()
 		Expect(err).ToNot(HaveOccurred())
 		RunningOnSingleNode = isSNO
+	})
+
+	It("[test_id:8777] RT Kernel install and uninstall", func() {
+		workerRTNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
+		Expect(err).ToNot(HaveOccurred())
+		workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes)
+		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("error looking for the optional selector: %v", err))
+		Expect(workerRTNodes).ToNot(BeEmpty(), "No Worker node with rt-kernel found!")
+
+		//HasPreemptRTKernel returns no error if the node booted with PREEMPT RT kernel
+		// Execute command:cmd := []string{"chroot", "/rootfs", "rpm", "-q", "kernel-rt-core"}
+		err = nodes.HasPreemptRTKernel(&workerRTNodes[0])
+		Expect(err).ToNot(HaveOccurred())
+
 	})
 
 	It("should remove OLM artifacts for performance-addon-operator", func() {
