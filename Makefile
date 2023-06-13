@@ -208,7 +208,7 @@ pao-functests-updating-profile: cluster-label-worker-cnf pao-functests-update-on
 pao-functests-update-only:
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
-	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/2_performance_update test/e2e/performanceprofile/functests/3_performance_status test/e2e/performanceprofile/functests/7_performance_kubelet_node test/e2e/performanceprofile/functests/8_reboot" -p "--v -r --fail-fast --flake-attempts=2 --timeout=5h --junit-report=report.xml" -m "Running Functional Tests"
+	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/2_performance_update test/e2e/performanceprofile/functests/3_performance_status test/e2e/performanceprofile/functests/7_performance_kubelet_node test/e2e/performanceprofile/functests/8_reboot" -p "-v -r --fail-fast --flake-attempts=2 --timeout=5h --junit-report=report.xml" -m "Running Functional Tests"
 
 .PHONY: pao-functests-performance-workloadhints
 pao-functests-performance-workloadhints: cluster-label-worker-cnf pao-functests-performance-workloadhints-only
@@ -217,13 +217,13 @@ pao-functests-performance-workloadhints: cluster-label-worker-cnf pao-functests-
 pao-functests-performance-workloadhints-only:
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
-	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/8_performance_workloadhints" -p "--v -r --fail-fast --flake-attempts=2 --timeout=5h --junit-report=report.xml" -m "Running Functional WorkloadHints Tests"
+	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/8_performance_workloadhints" -p "-v -r --fail-fast --flake-attempts=2 --timeout=5h --junit-report=report.xml" -m "Running Functional WorkloadHints Tests"
 
 .PHONY: pao-functests-latency-testing
 pao-functests-latency-testing: dist-latency-tests
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
-	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/5_latency_testing" -p "--v -r --fail-fast --flake-attempts=2 --junit-report=report.xml" -m "Running Functional Tests"
+	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/5_latency_testing" -p "-v -r --fail-fast --flake-attempts=2 --junit-report=report.xml" -m "Running Functional Tests"
 
 .PHONY: cluster-clean-pao
 cluster-clean-pao:
