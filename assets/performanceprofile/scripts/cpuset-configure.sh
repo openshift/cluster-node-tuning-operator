@@ -16,7 +16,7 @@ echo 0 > "$root"/cpuset.sched_load_balance
 # However, this would present a problem for system daemons, which should have load balancing enabled.
 # As such, a second cpuset must be created, here dubbed `system`, which will take all system daemons.
 # Since systemd starts its children with the cpuset it is in, moving systemd will ensure all processes systemd begins will be in the correct cgroup.
-mkdir "$system"
+mkdir -p "$system"
 # cpuset.mems must be initialized or processes will fail to be moved into it.
 cat "$root/cpuset.mems" > "$system"/cpuset.mems
 # Retrieve the cpuset of systemd, and write it to cpuset.cpus of the system cgroup.
@@ -32,7 +32,7 @@ done
 # Finally, a the `machine.slice` cgroup must be preconfigured. Podman will create containers and move them into the `machine.slice`, but there's
 # no way to tell podman to update machine.slice to not have the full set of cpus. Instead of disabling load balancing in it, we can pre-create it.
 # with the reserved CPUs set ahead of time, so when isolated processes begin, the cgroup does not have an overlapping cpuset between machine.slice and isolated containers.
-mkdir "$machine" || true
+mkdir -p "$machine"
 
 # It's unlikely, but possible, that this cpuset already existed. Iterate just in case.
 for file in $(find "$machine" -name cpuset.cpus | sort -r); do echo "$reserved_set" > "$file"; done
