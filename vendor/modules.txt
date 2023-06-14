@@ -7,9 +7,10 @@ cloud.google.com/go/compute/metadata
 # github.com/JeffAshton/win_pdh v0.0.0-20161109143554-76bb4ee9f0ab
 ## explicit
 github.com/JeffAshton/win_pdh
-# github.com/Microsoft/go-winio v0.5.0
-## explicit; go 1.12
+# github.com/Microsoft/go-winio v0.6.0
+## explicit; go 1.17
 github.com/Microsoft/go-winio
+github.com/Microsoft/go-winio/internal/socket
 github.com/Microsoft/go-winio/pkg/guid
 # github.com/NYTimes/gziphandler v1.1.1
 ## explicit; go 1.11
@@ -53,9 +54,19 @@ github.com/cilium/ebpf/link
 # github.com/containerd/console v1.0.3
 ## explicit; go 1.13
 github.com/containerd/console
-# github.com/containerd/ttrpc v1.1.0
+# github.com/containerd/nri v0.2.0
+## explicit; go 1.18
+github.com/containerd/nri/pkg/api
+github.com/containerd/nri/pkg/log
+github.com/containerd/nri/pkg/net
+github.com/containerd/nri/pkg/net/multiplex
+github.com/containerd/nri/pkg/stub
+# github.com/containerd/ttrpc v1.1.1-0.20220420014843-944ef4a40df3
 ## explicit; go 1.13
 github.com/containerd/ttrpc
+# github.com/containers/podman/v4 v4.4.2
+## explicit; go 1.18
+github.com/containers/podman/v4/pkg/env
 # github.com/coreos/go-json v0.0.0-20230131223807-18775e0fb4fb
 ## explicit; go 1.18
 github.com/coreos/go-json
@@ -190,7 +201,7 @@ github.com/go-task/slim-sprig
 # github.com/gobuffalo/flect v0.3.0
 ## explicit; go 1.16
 github.com/gobuffalo/flect
-# github.com/godbus/dbus/v5 v5.0.6
+# github.com/godbus/dbus/v5 v5.1.1-0.20221029134443-4b691ce883d5
 ## explicit; go 1.12
 github.com/godbus/dbus/v5
 # github.com/gogo/protobuf v1.3.2
@@ -200,6 +211,9 @@ github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/protoc-gen-gogo/descriptor
 github.com/gogo/protobuf/sortkeys
 github.com/gogo/protobuf/types
+# github.com/golang/glog v1.0.0
+## explicit; go 1.11
+github.com/golang/glog
 # github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 ## explicit
 github.com/golang/groupcache/lru
@@ -357,6 +371,9 @@ github.com/karrick/godirwalk
 ## explicit
 github.com/kevinburke/go-bindata
 github.com/kevinburke/go-bindata/go-bindata
+# github.com/kubevirt/device-plugin-manager v1.19.4
+## explicit; go 1.14
+github.com/kubevirt/device-plugin-manager/pkg/dpm
 # github.com/mailru/easyjson v0.7.7
 ## explicit; go 1.12
 github.com/mailru/easyjson/buffer
@@ -471,7 +488,7 @@ github.com/opencontainers/runc/types
 # github.com/opencontainers/runtime-spec v1.0.3-0.20220909204839-494a5a6aca78
 ## explicit
 github.com/opencontainers/runtime-spec/specs-go
-# github.com/opencontainers/selinux v1.10.0
+# github.com/opencontainers/selinux v1.10.2
 ## explicit; go 1.13
 github.com/opencontainers/selinux/go-selinux
 github.com/opencontainers/selinux/go-selinux/label
@@ -487,7 +504,12 @@ github.com/openshift-kni/debug-tools/pkg/knit/cmd
 github.com/openshift-kni/debug-tools/pkg/knit/cmd/k8s
 github.com/openshift-kni/debug-tools/pkg/machineinformer
 github.com/openshift-kni/debug-tools/pkg/procs
-# github.com/openshift/api v0.0.0-20230807132801-600991d550ac
+# github.com/openshift-kni/mixed-cpu-node-plugin v0.0.0-20230804071114-20042f01ea0b => github.com/openshift-kni/mixed-cpu-node-plugin v0.0.0-20230627102600-08645e025f34
+## explicit; go 1.20
+github.com/openshift-kni/mixed-cpu-node-plugin/pkg/cgroups
+github.com/openshift-kni/mixed-cpu-node-plugin/pkg/deviceplugin
+github.com/openshift-kni/mixed-cpu-node-plugin/pkg/nriplugin
+# github.com/openshift/api v3.9.0+incompatible => github.com/openshift/api v0.0.0-20230807132801-600991d550ac
 ## explicit; go 1.20
 github.com/openshift/api/config/v1
 github.com/openshift/api/config/v1alpha1
@@ -569,7 +591,7 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/seccomp/libseccomp-golang v0.9.2-0.20220502022130-f33da4d89646
+# github.com/seccomp/libseccomp-golang v0.10.0
 ## explicit; go 1.14
 github.com/seccomp/libseccomp-golang
 # github.com/sirupsen/logrus v1.9.3
@@ -590,7 +612,7 @@ github.com/syndtr/gocapability/capability
 # github.com/vincent-petithory/dataurl v1.0.0
 ## explicit
 github.com/vincent-petithory/dataurl
-# github.com/vishvananda/netlink v1.1.0
+# github.com/vishvananda/netlink v1.2.1-beta.2
 ## explicit; go 1.12
 github.com/vishvananda/netlink
 github.com/vishvananda/netlink/nl
@@ -779,6 +801,7 @@ golang.org/x/text/width
 golang.org/x/time/rate
 # golang.org/x/tools v0.9.3
 ## explicit; go 1.18
+golang.org/x/tools/cmd/stringer
 golang.org/x/tools/go/ast/astutil
 golang.org/x/tools/go/ast/inspector
 golang.org/x/tools/go/gcexportdata
@@ -1196,7 +1219,7 @@ k8s.io/apiserver/plugin/pkg/audit/truncate
 k8s.io/apiserver/plugin/pkg/audit/webhook
 k8s.io/apiserver/plugin/pkg/authenticator/token/webhook
 k8s.io/apiserver/plugin/pkg/authorizer/webhook
-# k8s.io/client-go v0.27.4 => k8s.io/client-go v0.27.4
+# k8s.io/client-go v1.5.2 => k8s.io/client-go v0.27.4
 ## explicit; go 1.20
 k8s.io/client-go/applyconfigurations/admissionregistration/v1
 k8s.io/client-go/applyconfigurations/admissionregistration/v1alpha1
@@ -1603,7 +1626,7 @@ k8s.io/controller-manager/pkg/features
 k8s.io/controller-manager/pkg/features/register
 k8s.io/controller-manager/pkg/leadermigration/config
 k8s.io/controller-manager/pkg/leadermigration/options
-# k8s.io/cri-api v0.0.0 => k8s.io/cri-api v0.27.4
+# k8s.io/cri-api v0.25.3 => k8s.io/cri-api v0.27.4
 ## explicit; go 1.20
 k8s.io/cri-api/pkg/apis
 k8s.io/cri-api/pkg/apis/runtime/v1
@@ -1685,7 +1708,7 @@ k8s.io/kubelet/pkg/apis/pluginregistration/v1
 k8s.io/kubelet/pkg/apis/podresources/v1
 k8s.io/kubelet/pkg/apis/podresources/v1alpha1
 k8s.io/kubelet/pkg/apis/stats/v1alpha1
-# k8s.io/kubernetes v0.0.0-00010101000000-000000000000 => k8s.io/kubernetes v1.27.4
+# k8s.io/kubernetes v1.25.4 => k8s.io/kubernetes v1.27.4
 ## explicit; go 1.20
 k8s.io/kubernetes/pkg/api/legacyscheme
 k8s.io/kubernetes/pkg/api/service
@@ -1955,5 +1978,7 @@ sigs.k8s.io/yaml
 # github.com/Azure/go-autorest => github.com/Azure/go-autorest v14.2.0+incompatible
 # github.com/coreos/prometheus-operator => github.com/coreos/prometheus-operator v0.40.0
 # github.com/mtrmac/gpgme => github.com/mtrmac/gpgme v0.1.1
+# github.com/openshift-kni/mixed-cpu-node-plugin => github.com/openshift-kni/mixed-cpu-node-plugin v0.0.0-20230627102600-08645e025f34
+# github.com/openshift/api => github.com/openshift/api v0.0.0-20230807132801-600991d550ac
 # github.com/openshift/machine-config-operator => github.com/openshift/machine-config-operator v0.0.1-0.20230807154212-886c5c3fc7a9
 # vbom.ml/util => github.com/fvbommel/util v0.0.0-20180919145318-efcd4e0f9787

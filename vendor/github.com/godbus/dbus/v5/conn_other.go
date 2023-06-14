@@ -1,3 +1,4 @@
+//go:build !darwin
 // +build !darwin
 
 package dbus
@@ -19,7 +20,6 @@ var execCommand = exec.Command
 func getSessionBusPlatformAddress() (string, error) {
 	cmd := execCommand("dbus-launch")
 	b, err := cmd.CombinedOutput()
-
 	if err != nil {
 		return "", err
 	}
@@ -54,7 +54,7 @@ func tryDiscoverDbusSessionBusAddress() string {
 		if runUserBusFile := path.Join(runtimeDirectory, "bus"); fileExists(runUserBusFile) {
 			// if /run/user/<uid>/bus exists, that file itself
 			// *is* the unix socket, so return its path
-			return fmt.Sprintf("unix:path=%s", runUserBusFile)
+			return fmt.Sprintf("unix:path=%s", EscapeBusAddressValue(runUserBusFile))
 		}
 		if runUserSessionDbusFile := path.Join(runtimeDirectory, "dbus-session"); fileExists(runUserSessionDbusFile) {
 			// if /run/user/<uid>/dbus-session exists, it's a
@@ -85,9 +85,6 @@ func getRuntimeDirectory() (string, error) {
 }
 
 func fileExists(filename string) bool {
-	if _, err := os.Stat(filename); !os.IsNotExist(err) {
-		return true
-	} else {
-		return false
-	}
+	_, err := os.Stat(filename)
+	return !os.IsNotExist(err)
 }

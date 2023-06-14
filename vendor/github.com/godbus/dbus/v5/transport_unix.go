@@ -1,4 +1,5 @@
-//+build !windows,!solaris
+//go:build !windows && !solaris
+// +build !windows,!solaris
 
 package dbus
 
@@ -101,8 +102,12 @@ func (t *unixTransport) ReadMessage() (*Message, error) {
 	}
 	// csheader[4:8] -> length of message body, csheader[12:16] -> length of
 	// header fields (without alignment)
-	binary.Read(bytes.NewBuffer(csheader[4:8]), order, &blen)
-	binary.Read(bytes.NewBuffer(csheader[12:]), order, &hlen)
+	if err := binary.Read(bytes.NewBuffer(csheader[4:8]), order, &blen); err != nil {
+		return nil, err
+	}
+	if err := binary.Read(bytes.NewBuffer(csheader[12:]), order, &hlen); err != nil {
+		return nil, err
+	}
 	if hlen%8 != 0 {
 		hlen += 8 - (hlen % 8)
 	}
@@ -119,7 +124,10 @@ func (t *unixTransport) ReadMessage() (*Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	Store(vs, &headers)
+	err = Store(vs, &headers)
+	if err != nil {
+		return nil, err
+	}
 	for _, v := range headers {
 		if v.Field == byte(FieldUnixFDs) {
 			unixfds, _ = v.Variant.value.(uint32)
@@ -154,17 +162,15 @@ func (t *unixTransport) ReadMessage() (*Message, error) {
 		// substitute the values in the message body (which are indices for the
 		// array receiver via OOB) with the actual values
 		for i, v := range msg.Body {
-			switch v.(type) {
+			switch index := v.(type) {
 			case UnixFDIndex:
-				j := v.(UnixFDIndex)
-				if uint32(j) >= unixfds {
+				if uint32(index) >= unixfds {
 					return nil, InvalidMessageError("invalid index for unix fd")
 				}
-				msg.Body[i] = UnixFD(fds[j])
+				msg.Body[i] = UnixFD(fds[index])
 			case []UnixFDIndex:
-				idxArray := v.([]UnixFDIndex)
-				fdArray := make([]UnixFD, len(idxArray))
-				for k, j := range idxArray {
+				fdArray := make([]UnixFD, len(index))
+				for k, j := range index {
 					if uint32(j) >= unixfds {
 						return nil, InvalidMessageError("invalid index for unix fd")
 					}

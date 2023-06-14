@@ -22,7 +22,7 @@ type Handler interface {
 // of Interface lookup is up to the implementation of
 // the ServerObject. The ServerObject implementation may
 // choose to implement empty string as a valid interface
-// represeting all methods or not per the D-Bus specification.
+// representing all methods or not per the D-Bus specification.
 type ServerObject interface {
 	LookupInterface(name string) (Interface, bool)
 }
@@ -63,7 +63,7 @@ type Method interface {
 // any other decoding scheme.
 type ArgumentDecoder interface {
 	// To decode the arguments of a method the sender and message are
-	// provided incase the semantics of the implementer provides access
+	// provided in case the semantics of the implementer provides access
 	// to these as part of the method invocation.
 	DecodeArguments(conn *Conn, sender string, msg *Message, args []interface{}) ([]interface{}, error)
 }

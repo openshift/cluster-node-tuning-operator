@@ -7,13 +7,16 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20190719114852-fd7a80b32e1f
 	github.com/coreos/ignition v0.35.0
 	github.com/coreos/ignition/v2 v2.15.0
+	github.com/golang/glog v1.0.0
 	github.com/google/go-cmp v0.5.9
 	github.com/jaypipes/ghw v0.8.1-0.20210605191321-eb162add542b
 	github.com/kevinburke/go-bindata v3.16.0+incompatible
+	github.com/kubevirt/device-plugin-manager v1.19.4
 	github.com/onsi/ginkgo/v2 v2.9.5
 	github.com/onsi/gomega v1.27.7
 	github.com/openshift-kni/debug-tools v0.1.11
-	github.com/openshift/api v0.0.0-20230807132801-600991d550ac
+	github.com/openshift-kni/mixed-cpu-node-plugin v0.0.0-20230804071114-20042f01ea0b
+	github.com/openshift/api v3.9.0+incompatible
 	github.com/openshift/build-machinery-go v0.0.0-20230306181456-d321ffa04533
 	github.com/openshift/client-go v0.0.0-20230807132528-be5346fb33cb
 	github.com/openshift/custom-resource-status v1.1.3-0.20220503160415-f2fdb4999d87
@@ -30,12 +33,12 @@ require (
 	k8s.io/api v0.27.4
 	k8s.io/apiextensions-apiserver v0.27.4
 	k8s.io/apimachinery v0.27.4
-	k8s.io/client-go v0.27.4
+	k8s.io/client-go v1.5.2
 	k8s.io/code-generator v0.27.4
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.100.1
 	k8s.io/kubelet v0.27.4
-	k8s.io/kubernetes v0.0.0-00010101000000-000000000000
+	k8s.io/kubernetes v1.25.4
 	k8s.io/utils v0.0.0-20230505201702-9f6742963106
 	kubevirt.io/qe-tools v0.1.8
 	sigs.k8s.io/controller-runtime v0.14.5
@@ -47,7 +50,7 @@ require (
 	cloud.google.com/go/compute v1.18.0 // indirect
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
 	github.com/JeffAshton/win_pdh v0.0.0-20161109143554-76bb4ee9f0ab // indirect
-	github.com/Microsoft/go-winio v0.5.0 // indirect
+	github.com/Microsoft/go-winio v0.6.0 // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect
 	github.com/antlr/antlr4/runtime/Go/antlr v1.4.10 // indirect
@@ -59,7 +62,9 @@ require (
 	github.com/checkpoint-restore/go-criu/v5 v5.3.0 // indirect
 	github.com/cilium/ebpf v0.7.0 // indirect
 	github.com/containerd/console v1.0.3 // indirect
-	github.com/containerd/ttrpc v1.1.0 // indirect
+	github.com/containerd/nri v0.2.0 // indirect
+	github.com/containerd/ttrpc v1.1.1-0.20220420014843-944ef4a40df3 // indirect
+	github.com/containers/podman/v4 v4.4.2 // indirect
 	github.com/coreos/go-json v0.0.0-20230131223807-18775e0fb4fb // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
@@ -90,7 +95,7 @@ require (
 	github.com/go-openapi/validate v0.22.0 // indirect
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572 // indirect
 	github.com/gobuffalo/flect v0.3.0 // indirect
-	github.com/godbus/dbus/v5 v5.0.6 // indirect
+	github.com/godbus/dbus/v5 v5.1.1-0.20221029134443-4b691ce883d5 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
@@ -125,15 +130,15 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/runc v1.1.6 // indirect
 	github.com/opencontainers/runtime-spec v1.0.3-0.20220909204839-494a5a6aca78 // indirect
-	github.com/opencontainers/selinux v1.10.0 // indirect
+	github.com/opencontainers/selinux v1.10.2 // indirect
 	github.com/prometheus/client_model v0.4.0 // indirect
 	github.com/prometheus/common v0.42.0 // indirect
 	github.com/prometheus/procfs v0.9.0 // indirect
-	github.com/seccomp/libseccomp-golang v0.9.2-0.20220502022130-f33da4d89646 // indirect
+	github.com/seccomp/libseccomp-golang v0.10.0 // indirect
 	github.com/stoewer/go-strcase v1.2.0 // indirect
 	github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635 // indirect
 	github.com/vincent-petithory/dataurl v1.0.0 // indirect
-	github.com/vishvananda/netlink v1.1.0 // indirect
+	github.com/vishvananda/netlink v1.2.1-beta.2 // indirect
 	github.com/vishvananda/netns v0.0.2 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.7 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.7 // indirect
@@ -177,7 +182,7 @@ require (
 	k8s.io/component-base v0.27.4 // indirect
 	k8s.io/component-helpers v0.27.4 // indirect
 	k8s.io/controller-manager v0.27.4 // indirect
-	k8s.io/cri-api v0.0.0 // indirect
+	k8s.io/cri-api v0.25.3 // indirect
 	k8s.io/csi-translation-lib v0.0.0 // indirect
 	k8s.io/dynamic-resource-allocation v0.26.2 // indirect
 	k8s.io/gengo v0.0.0-20220902162205-c0856e24416d // indirect
@@ -228,6 +233,8 @@ replace (
 	github.com/Azure/go-autorest => github.com/Azure/go-autorest v14.2.0+incompatible
 	github.com/coreos/prometheus-operator => github.com/coreos/prometheus-operator v0.40.0
 	github.com/mtrmac/gpgme => github.com/mtrmac/gpgme v0.1.1
+	github.com/openshift-kni/mixed-cpu-node-plugin => github.com/openshift-kni/mixed-cpu-node-plugin v0.0.0-20230627102600-08645e025f34
+	github.com/openshift/api => github.com/openshift/api v0.0.0-20230807132801-600991d550ac
 	github.com/openshift/machine-config-operator => github.com/openshift/machine-config-operator v0.0.1-0.20230807154212-886c5c3fc7a9 // release-4.14
 )
 
