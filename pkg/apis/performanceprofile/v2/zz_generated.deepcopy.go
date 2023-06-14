@@ -33,6 +33,11 @@ func (in *CPU) DeepCopyInto(out *CPU) {
 		*out = new(CPUSet)
 		**out = **in
 	}
+	if in.Shared != nil {
+		in, out := &in.Shared, &out.Shared
+		*out = new(CPUSet)
+		**out = **in
+	}
 	return
 }
 
@@ -382,6 +387,11 @@ func (in *WorkloadHints) DeepCopyInto(out *WorkloadHints) {
 	}
 	if in.PerPodPowerManagement != nil {
 		in, out := &in.PerPodPowerManagement, &out.PerPodPowerManagement
+		*out = new(bool)
+		**out = **in
+	}
+	if in.MixedCpus != nil {
+		in, out := &in.MixedCpus, &out.MixedCpus
 		*out = new(bool)
 		**out = **in
 	}
