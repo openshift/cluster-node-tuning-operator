@@ -114,6 +114,11 @@ type CPU struct {
 	// Offline defines a set of CPUs that will be unused and set offline
 	// +optional
 	Offlined *CPUSet `json:"offlined,omitempty"`
+	// Shared defines a set of CPUs that will be shared among guaranteed workloads
+	// that needs additional cpus which are not exclusive,
+	// alongside the isolated, exclusive resources that are being used already by those workloads.
+	// +optional
+	Shared *CPUSet `json:"shared,omitempty"`
 }
 
 // HugePageSize defines size of huge pages, can be 2M or 1G.
@@ -191,6 +196,10 @@ type WorkloadHints struct {
 	// PerPodPowerManagement defines if the node should be configured in per pod power management.
 	// PerPodPowerManagement and HighPowerConsumption hints can not be enabled together. Defaults to false.
 	PerPodPowerManagement *bool `json:"perPodPowerManagement,omitempty"`
+	// +optional
+	// MixedCpus enables the mixed-cpu-node-plugin on the node.
+	// Defaults to false.
+	MixedCpus *bool `json:"mixedCpus,omitempty"`
 }
 
 // PerformanceProfileStatus defines the observed state of PerformanceProfile.
