@@ -965,6 +965,16 @@ func (c *Controller) informerEventHandler(workqueueKey wqKey) cache.ResourceEven
 				klog.Errorf("unable to get accessor for new object: %s", err)
 				return
 			}
+			oldAccessor, err := kmeta.Accessor(o)
+			if err != nil {
+				klog.Errorf("unable to get accessor for old object: %s", err)
+				return
+			}
+			if newAccessor.GetResourceVersion() == oldAccessor.GetResourceVersion() {
+				// Periodic resync will send update events for all known resources.
+				// Two different versions of the same resource will always have different RVs.
+				return
+			}
 			klog.V(2).Infof("add event to workqueue due to %s (update)", util.ObjectInfo(n))
 			c.wqKube.Add(wqKey{kind: workqueueKey.kind, name: newAccessor.GetName()})
 		},
