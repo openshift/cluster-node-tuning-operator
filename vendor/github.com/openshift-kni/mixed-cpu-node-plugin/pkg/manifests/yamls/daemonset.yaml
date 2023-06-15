@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: mixedcpus-plugin-ds
+spec:
+  selector:
+    matchLabels:
+      app: mixedcpus-plugin
+  template:
+    metadata:
+      labels:
+        app: mixedcpus-plugin
+    spec:
+      serviceAccountName: mixedcpus-plugin
+      containers:
+          - name: mixedcpus-plugin
+            image: quay.io/titzhak/mixedcpus
+            imagePullPolicy: Always
+            command:
+              - /bin/mixedcpus
+            args:
+              - --name=mixedcpus
+              - --idx=99
+              - --v=4
+              - --alsologtostderr
+            resources:
+              limits:
+                cpu: 500m
+                memory: '100M'
+            volumeMounts:
+              - name: nri-sock
+                mountPath: /var/run/nri/nri.sock
+              - name: deviceplugin-dir
+                mountPath: /var/lib/kubelet/device-plugins
+              - name: deviceplugin-sock
+                mountPath: /var/lib/kubelet/device-plugins/kubelet.sock
+            env:
+            - name: "NODE_NAME"
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+      volumes:
+        - name: nri-sock
+          hostPath:
+            path: /var/run/nri/nri.sock
+            type: Socket
+        - name: deviceplugin-dir
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+        - name: deviceplugin-sock
+          hostPath:
+            path: /var/lib/kubelet/device-plugins/kubelet.sock
+            type: Socket

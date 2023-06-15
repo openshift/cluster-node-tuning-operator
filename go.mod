@@ -233,7 +233,7 @@ replace (
 	github.com/Azure/go-autorest => github.com/Azure/go-autorest v14.2.0+incompatible
 	github.com/coreos/prometheus-operator => github.com/coreos/prometheus-operator v0.40.0
 	github.com/mtrmac/gpgme => github.com/mtrmac/gpgme v0.1.1
-	github.com/openshift-kni/mixed-cpu-node-plugin => github.com/openshift-kni/mixed-cpu-node-plugin v0.0.0-20230627102600-08645e025f34
+	github.com/openshift-kni/mixed-cpu-node-plugin => github.com/openshift-kni/mixed-cpu-node-plugin v0.0.0-20230702081448-7469c1234b04
 	github.com/openshift/api => github.com/openshift/api v0.0.0-20230807132801-600991d550ac
 	github.com/openshift/machine-config-operator => github.com/openshift/machine-config-operator v0.0.1-0.20230807154212-886c5c3fc7a9 // release-4.14
 )

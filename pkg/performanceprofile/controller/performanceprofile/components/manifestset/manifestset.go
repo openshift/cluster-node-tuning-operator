@@ -12,7 +12,7 @@ import (
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	nodev1 "k8s.io/api/node/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // ManifestResultSet contains all component's instances that should be created according to performance-profile
@@ -27,16 +27,15 @@ type ManifestResultSet struct {
 type ManifestTable map[string]interface{}
 
 // ToObjects return a list of all manifests converted to objects
-func (ms *ManifestResultSet) ToObjects() []metav1.Object {
-	objs := make([]metav1.Object, 0)
+func (ms *ManifestResultSet) ToObjects() []client.Object {
+	objs := make([]client.Object, 0)
 
-	objs = append(objs,
-		ms.MachineConfig.GetObjectMeta(),
-		ms.KubeletConfig.GetObjectMeta(),
-		ms.Tuned.GetObjectMeta(),
-		ms.RuntimeClass.GetObjectMeta(),
+	return append(objs,
+		ms.MachineConfig,
+		ms.KubeletConfig,
+		ms.Tuned,
+		ms.RuntimeClass,
 	)
-	return objs
 }
 
 // ToManifestTable return a map with Kind name as key and component's instance as value

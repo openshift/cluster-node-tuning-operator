@@ -3,18 +3,27 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	nodev1 "k8s.io/api/node/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/nodeplugin"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/nodeplugin/apply"
 )
 
 func mergeMaps(src map[string]string, dst map[string]string) {
@@ -328,4 +337,49 @@ func (r *PerformanceProfileReconciler) deleteRuntimeClass(name string) error {
 		return err
 	}
 	return r.Delete(context.TODO(), runtimeClass)
+}
+
+func (r *PerformanceProfileReconciler) applyNodePluginComponents(ctx context.Context, profile *performancev2.PerformanceProfile, nodePluginComponents *nodeplugin.Components) (bool, error) {
+	var mutated bool
+	uns, err := nodePluginComponents.ToUnstructured()
+	if err != nil {
+		return mutated, err
+	}
+
+	for _, updated := range uns {
+		if err := controllerutil.SetControllerReference(profile, updated, r.Scheme); err != nil {
+			return mutated, err
+		}
+
+		// get the existing object
+		gvk := updated.GetObjectKind().GroupVersionKind()
+		key := fmt.Sprintf("(%s) %s/%s", gvk, updated.GetNamespace(), updated.GetName())
+		current := &unstructured.Unstructured{}
+		current.SetGroupVersionKind(gvk)
+		if err := r.Get(ctx, client.ObjectKeyFromObject(updated), current); err != nil {
+			if errors.IsNotFound(err) {
+				klog.Infof("create %q", key)
+				if err = r.Create(ctx, updated); err != nil {
+					return mutated, fmt.Errorf("failed to Create %q; %w", key, err)
+				}
+				mutated = true
+			} else {
+				return mutated, fmt.Errorf("failed to Get %q; %w", key, err)
+			}
+		}
+
+		if err := apply.MergeObjectForUpdate(current, updated); err != nil {
+			return mutated, err
+		}
+
+		if !equality.Semantic.DeepDerivative(updated, current) {
+			if err := r.Update(ctx, updated); err != nil {
+				return mutated, fmt.Errorf("failed to Update %q; %w", key, err)
+			} else {
+				klog.Infof("Update %q successfully", key)
+				mutated = true
+			}
+		}
+	}
+	return mutated, nil
 }

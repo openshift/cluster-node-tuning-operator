@@ -29,6 +29,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/nodeplugin"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
@@ -563,6 +564,19 @@ func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.Pe
 	if err != nil {
 		return nil, err
 	}
+
+	var nodePluginMutated bool
+	if nodeplugin.Enabled(profile) {
+		nodePluginComponents, err := nodeplugin.Activate(profile, components.MachineConfig, components.KubeletConfig)
+		if err != nil {
+			return nil, err
+		}
+		nodePluginMutated, err = r.applyNodePluginComponents(context.TODO(), profile, nodePluginComponents)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	for _, componentObj := range components.ToObjects() {
 		if err := controllerutil.SetControllerReference(profile, componentObj, r.Scheme); err != nil {
 			return nil, err
@@ -596,9 +610,10 @@ func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.Pe
 	updated := mcMutated != nil ||
 		kcMutated != nil ||
 		performanceTunedMutated != nil ||
-		runtimeClassMutated != nil
+		runtimeClassMutated != nil ||
+		nodePluginMutated
 
-	// does not update any resources, if it no changes to relevant objects and just continue to the status update
+	// does not update any resources if it no changes to relevant objects and just continue to the status update
 	if !updated {
 		return nil, nil
 	}

@@ -1,0 +1,18 @@
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: mixedcpus-plugin
+allowHostDirVolumePlugin: true
+fsGroup:
+  type: RunAsAny
+readOnlyRootFilesystem: false
+runAsUser:
+  type: RunAsAny
+seLinuxContext:
+  type: RunAsAny
+allowPrivilegedContainer: true
+supplementalGroups:
+  type: RunAsAny
+users:
+volumes:
+  - '*'

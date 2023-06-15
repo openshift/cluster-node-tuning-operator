@@ -1,0 +1,12 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mixedcpus-plugin
+subjects:
+  - kind: ServiceAccount
+    name: mixedcpus-plugin
+    namespace: mixedcpus-plugin
+roleRef:
+  kind: Role
+  name: mixedcpus-plugin
+  apiGroup: rbac.authorization.k8s.io
