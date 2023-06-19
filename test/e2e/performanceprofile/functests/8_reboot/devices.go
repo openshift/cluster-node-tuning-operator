@@ -34,7 +34,7 @@ const (
 
 	// note NO DEFAULT for targetNode - intentionally
 	sriovDeviceResourceNameDefault = "openshift.io/dpdk_nic_1"
-	workloadContainerImageDefault  = "quay.io/fromani/devaccess:2023051001" // FIXME
+	workloadContainerImageDefault  = "quay.io/fromani/devaccess:2023060101" // FIXME
 
 	targetNodeEnvVar              = "DEVICE_RECOVERY_TARGET_NODE"
 	sriovDeviceResourceNameEnvVar = "DEVICE_RECOVERY_RESOURCE_NAME"
