@@ -1126,7 +1126,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				// Verify all host network devices have the correct RPS mask
 				cmd = []string{
 					"find", "/rootfs/sys/devices/virtual/net",
-					"-path", "/rootfs/devices/virtual/net/lo",
+					"-path", "/rootfs/sys/devices/virtual/net/lo",
 					"-prune", "-o",
 					"-type", "f",
 					"-name", "rps_cpus",
