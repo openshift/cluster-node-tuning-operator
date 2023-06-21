@@ -49,14 +49,10 @@ spec:
           readOnly: true
         - mountPath: /etc/systemd
           name: etc-systemd
+        - mountPath: /run
+          name: run
         - mountPath: /sys
           name: sys
-        - mountPath: /var/run/dbus
-          name: var-run-dbus
-          readOnly: true
-        - mountPath: /run/systemd/system
-          name: run-systemd-system
-          readOnly: true
         - mountPath: /lib/modules
           name: lib-modules
           readOnly: true
@@ -99,17 +95,13 @@ spec:
           type: Directory
         name: etc-systemd
       - hostPath:
+          path: /run
+          type: Directory
+        name: run
+      - hostPath:
           path: /sys
           type: Directory
         name: sys
-      - hostPath:
-          path: /var/run/dbus
-          type: Directory
-        name: var-run-dbus
-      - hostPath:
-          path: /run/systemd/system
-          type: Directory
-        name: run-systemd-system
       - hostPath:
           path: /lib/modules
           type: Directory

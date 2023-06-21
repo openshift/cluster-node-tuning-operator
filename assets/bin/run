@@ -2,6 +2,10 @@
 
 export SYSTEMD_IGNORE_CHROOT=1
 
+enable_tuned_unix_socket() {
+  sed -Ei 's|^#?\s*enable_unix_socket\s*=.*$|enable_unix_socket = 1|' /etc/tuned/tuned-main.conf
+}
+
 start() {
   # Tuned can take ~20s to reload/start when "ulimit -Sn == 1048576".
   # See:
@@ -9,6 +13,8 @@ start() {
   # - https://www.python.org/dev/peps/pep-0446/#closing-all-open-file-descriptors
   # - http://bugs.python.org/issue1663329
   ulimit -Sn 1024	# workaround for the issue above
+
+  enable_tuned_unix_socket
 
   exec /usr/bin/openshift-tuned \
     -v=0
