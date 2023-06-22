@@ -837,7 +837,7 @@ func GetMemoryNodes(testPod *corev1.Pod, targetNode *corev1.Node) (string, error
 
 // CreateHugePagesVolumeMounts create Huge pages volume mounts
 func (mm MMPod) CreateHugePagesVolumeMounts() *corev1.VolumeMount {
-	if mm.hpgSize == "2Mi" {
+	if (fmt.Sprintf("hugepages-%si", mm.hpgSize)) == "hugepages-2Mi" {
 		return &corev1.VolumeMount{
 			Name:      "hugepage-2mi",
 			MountPath: "/hugepages-2Mi",
