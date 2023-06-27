@@ -131,6 +131,32 @@ func Activate(profile *performancev2.PerformanceProfile, mc *machineconfigv1.Mac
 	return &Components{internal: mf}, nil
 }
 
+// Deactivate prepare all the components that are needed for node plugin deactivation
+// 1. it disables NRI in CRI-O config
+// 2. it updates Kubelet systemReservedCPUs to contain only reserved cpus
+// 4. it returns the mixed-cpu-node-plugin manifests names for deletion
+func Deactivate(profile *performancev2.PerformanceProfile, mc *machineconfigv1.MachineConfig, kc *machineconfigv1.KubeletConfig) (*Components, error) {
+	if err := configNRI(mc, false); err != nil {
+		return nil, err
+	}
+	// provide an empty cpu list, so it reverts
+	// the changes done to Kubelet systemReservedCPUs
+	emptySet := cpuset.New([]int{}...)
+	if err := configSharedCPUs(kc, &emptySet); err != nil {
+		return nil, err
+	}
+
+	mf, err := mixedcpusmf.Get(emptySet.String(), mixedcpusmf.WithNamespace(components.NamespaceNodeTuningOperator), mixedcpusmf.WithName(GetName(profile)))
+	if err != nil {
+		return nil, err
+	}
+	return &Components{internal: mf}, nil
+}
+
+func GetName(profile *performancev2.PerformanceProfile) string {
+	return fmt.Sprintf("%s-%s-%s", components.ComponentNamePrefix, profile.Name, pluginName)
+}
+
 func configNRI(mc *machineconfigv1.MachineConfig, enable bool) error {
 	ignitionConfig := &igntypes.Config{}
 	err := json.Unmarshal(mc.Spec.Config.Raw, ignitionConfig)

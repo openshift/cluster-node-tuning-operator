@@ -575,6 +575,14 @@ func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.Pe
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		nodePluginComponents, err := nodeplugin.Deactivate(profile, components.MachineConfig, components.KubeletConfig)
+		if err != nil {
+			return nil, err
+		}
+		if nodePluginMutated, err = r.deleteNodePluginComponents(context.TODO(), nodePluginComponents); err != nil {
+			return nil, err
+		}
 	}
 
 	for _, componentObj := range components.ToObjects() {

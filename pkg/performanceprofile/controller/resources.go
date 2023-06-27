@@ -383,3 +383,25 @@ func (r *PerformanceProfileReconciler) applyNodePluginComponents(ctx context.Con
 	}
 	return mutated, nil
 }
+
+func (r *PerformanceProfileReconciler) deleteNodePluginComponents(ctx context.Context, nodePluginComponents *nodeplugin.Components) (bool, error) {
+	objs, err := nodePluginComponents.ToUnstructured()
+	if err != nil {
+		return false, err
+	}
+	var mutated bool
+	for _, obj := range objs {
+		gvk := obj.GetObjectKind().GroupVersionKind()
+		key := fmt.Sprintf("(%s) %s/%s", gvk, obj.GetNamespace(), obj.GetName())
+		err := r.Delete(ctx, obj)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				continue
+			}
+			return false, fmt.Errorf("failed to Delete %q; %w", key, err)
+		}
+		klog.Infof("Delete %q successfully", key)
+		mutated = true
+	}
+	return mutated, nil
+}
