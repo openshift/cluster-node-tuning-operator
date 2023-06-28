@@ -183,7 +183,7 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 
 		// phase1: complete the node praparation: make sure we have enough devices. Short timeout, we should be idle now.
 		allocatableDevices := waitForNodeToReportResourcesOrFail("pre reboot", targetNode, sriovDeviceResourceName, 2*time.Minute, 2*time.Second)
-		Expect(allocatableDevices).To(BeNumerically(">=", minimumAllocatableDevices), "device %q has too low amount available - testing scenario unreliable", sriovDeviceResourceName, allocatableDevices)
+		Expect(allocatableDevices).To(BeNumerically(">=", minimumAllocatableDevices), "device %q has too low amount available (%d) - testing scenario unreliable", sriovDeviceResourceName, allocatableDevices)
 
 		// phase2: node is prepared, run the test workload and check it gets the device it expected
 		wlPod := makeWorkloadPod(namespace, "workload-restart-pre", workloadContainerImage, sriovDeviceResourceName)
