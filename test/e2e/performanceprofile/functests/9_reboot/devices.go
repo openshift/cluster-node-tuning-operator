@@ -30,7 +30,8 @@ import (
 // variable pointing to a node in the cluster, SNO or worker node.
 
 const (
-	rebootNodeCommandMCD = "chroot /rootfs systemctl reboot"
+	rebootNodeCommandMCD     = "chroot /rootfs systemctl reboot"
+	kubeletRestartCommandMCD = "chroot /rootfs systemctl restart kubelet"
 
 	// note NO DEFAULT for targetNode - intentionally
 	sriovDeviceResourceNameDefault = "openshift.io/dpdk_nic_1"
@@ -58,6 +59,7 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 	defer GinkgoRecover()
 
 	var (
+		// reused as restart cooldown, because restart is seen as lighter form of reboot
 		rebootCooldownTime = rebootCooldownDefault
 
 		targetNode              string
@@ -158,7 +160,7 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 		testlog.Infof("workload deployment %s/%s got %d admission errors (created %d pods to go running)", wlDp.Namespace, wlDp.Name, admissionFailed, len(pods))
 
 		// phase4: sanity check that a new workload works as expected
-		wlPod := makeWorkloadPod(namespace, workloadContainerImage, sriovDeviceResourceName)
+		wlPod := makeWorkloadPod(namespace, "workload-reboot-post", workloadContainerImage, sriovDeviceResourceName)
 
 		err = testclient.Client.Create(context.TODO(), wlPod)
 		Expect(err).ToNot(HaveOccurred(), "error creating workload pod post reboot")
@@ -170,6 +172,68 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 		})
 		Expect(err).ToNot(HaveOccurred(), "error checking the workload pod post reboot")
 		testlog.Infof("post reboot: newer workload pod %s/%s admitted: %s", updatedPod.Namespace, updatedPod.Name, extractPodStatus(updatedPod.Status))
+	})
+
+	It("Verify that pods requesting devices are not disrupted by a kubelet restart", func() {
+		namespace := testutils.NamespaceTesting
+
+		// refresh the targetNode object
+		node, err := testnodes.GetByName(targetNode)
+		Expect(err).ToNot(HaveOccurred(), "error getting the target node %q", targetNode)
+
+		// phase1: complete the node praparation: make sure we have enough devices. Short timeout, we should be idle now.
+		allocatableDevices := waitForNodeToReportResourcesOrFail("pre reboot", targetNode, sriovDeviceResourceName, 2*time.Minute, 2*time.Second)
+		Expect(allocatableDevices).To(BeNumerically(">=", minimumAllocatableDevices), "device %q has too low amount available (%d) - testing scenario unreliable", sriovDeviceResourceName, allocatableDevices)
+
+		// phase2: node is prepared, run the test workload and check it gets the device it expected
+		wlPod := makeWorkloadPod(namespace, "workload-restart-pre", workloadContainerImage, sriovDeviceResourceName)
+		err = testclient.Client.Create(context.TODO(), wlPod)
+		Expect(err).ToNot(HaveOccurred(), "error creating workload pod")
+
+		// short timeout: we are on idle cluster
+		updatedPod, err := testpods.WaitForPredicate(wlPod, 3*time.Minute, func(pod *corev1.Pod) (bool, error) {
+			return isPodReady(*pod), nil
+		})
+		Expect(err).ToNot(HaveOccurred(), "error waiting for the workload pod to be ready - pre restart")
+		podUID := updatedPod.UID // shortcut to the reference
+		testlog.Infof("pod %q %s/%s ready", podUID, updatedPod.Namespace, updatedPod.Name)
+
+		// phase3: the kubelet restart
+		runCommandOnNodeThroughMCD(node, "reboot", kubeletRestartCommandMCD)
+
+		waitForNodeReadyOrFail("post restart", targetNode, 20*time.Minute, 3*time.Second)
+
+		// are we really sure? we can't predict if we will have state flapping,
+		// we can't predict if pods go back to containercreating and ideally we
+		// should have no flapping.
+		// Tracking all the state will make the test complex *and fragile*.
+		// The best we can do right now is to let the SNO cool down and check again.
+		testlog.Infof("post restart: entering cooldown time: %v", rebootCooldownTime)
+		time.Sleep(rebootCooldownTime)
+		testlog.Infof("post restart: finished cooldown time: %v", rebootCooldownTime)
+
+		// longer timeout. We expect things to be still on flux
+		postRestartPod, err := testpods.WaitForPredicate(wlPod, 10*time.Minute, func(pod *corev1.Pod) (bool, error) {
+			return isPodReady(*pod), nil
+		})
+		Expect(err).ToNot(HaveOccurred(), "error waiting for the workload pod to be ready - post restart")
+		testlog.Infof("pod %q %s/%s ready", postRestartPod.UID, postRestartPod.Namespace, postRestartPod.Name)
+
+		Expect(postRestartPod.UID).To(Equal(podUID), "pod recreated post reboot: UID %q -> %q", podUID, postRestartPod.UID)
+
+		// phase4: sanity check that a new workload works as expected
+		wlPod2 := makeWorkloadPod(namespace, "workload-restart-post", workloadContainerImage, sriovDeviceResourceName)
+
+		err = testclient.Client.Create(context.TODO(), wlPod2)
+		Expect(err).ToNot(HaveOccurred(), "error creating workload pod post restart")
+
+		// things should be settled now so we can use again a short timeout
+		testlog.Infof("post restart: running a fresh pod %s/%s resource=%q", wlPod2.Namespace, wlPod2.Name, sriovDeviceResourceName)
+		updatedPod2, err := testpods.WaitForPredicate(wlPod2, 1*time.Minute, func(pod *corev1.Pod) (bool, error) {
+			return isPodReady(*pod), nil
+		})
+		Expect(err).ToNot(HaveOccurred(), "error checking the workload pod post restart")
+		testlog.Infof("post restart: newer workload pod %s/%s admitted: %s", updatedPod2.Namespace, updatedPod2.Name, extractPodStatus(updatedPod2.Status))
 	})
 })
 
@@ -209,10 +273,10 @@ func makeWorkloadPodSpec(imageName, resourceName string) corev1.PodSpec {
 	}
 }
 
-func makeWorkloadPod(namespace, imageName, resourceName string) *corev1.Pod {
+func makeWorkloadPod(namespace, name, imageName, resourceName string) *corev1.Pod {
 	podDef := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "devaccess-workload-pod",
+			Name:      name,
 			Namespace: namespace,
 			Labels:    workloadLabels,
 		},
