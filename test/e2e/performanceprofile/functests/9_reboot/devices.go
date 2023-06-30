@@ -200,7 +200,7 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 		testlog.Infof("pod %q %s/%s ready", podUID, updatedPod.Namespace, updatedPod.Name)
 
 		// phase3: the kubelet restart
-		runCommandOnNodeThroughMCD(node, "reboot", kubeletRestartCommandMCD)
+		runCommandOnNodeThroughMCD(node, "kubelet restart", kubeletRestartCommandMCD)
 
 		waitForNodeReadyOrFail("post restart", targetNode, 20*time.Minute, 3*time.Second)
 
@@ -220,20 +220,20 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 		Expect(err).ToNot(HaveOccurred(), "error waiting for the workload pod to be ready - post restart")
 		testlog.Infof("pod %q %s/%s ready", postRestartPod.UID, postRestartPod.Namespace, postRestartPod.Name)
 
-		Expect(postRestartPod.UID).To(Equal(podUID), "pod recreated post reboot: UID %q -> %q", podUID, postRestartPod.UID)
+		Expect(postRestartPod.UID).To(Equal(podUID), "pod recreated post kubelet restart: UID %q -> %q", podUID, postRestartPod.UID)
 
 		// phase4: sanity check that a new workload works as expected
 		wlPod2 := makeWorkloadPod(namespace, "workload-restart-post", workloadContainerImage, sriovDeviceResourceName)
 
 		err = testclient.Client.Create(context.TODO(), wlPod2)
-		Expect(err).ToNot(HaveOccurred(), "error creating workload pod post restart")
+		Expect(err).ToNot(HaveOccurred(), "error creating workload pod post kubelet restart")
 
 		// things should be settled now so we can use again a short timeout
 		testlog.Infof("post restart: running a fresh pod %s/%s resource=%q", wlPod2.Namespace, wlPod2.Name, sriovDeviceResourceName)
 		updatedPod2, err := testpods.WaitForPredicate(wlPod2, 1*time.Minute, func(pod *corev1.Pod) (bool, error) {
 			return isPodReady(*pod), nil
 		})
-		Expect(err).ToNot(HaveOccurred(), "error checking the workload pod post restart")
+		Expect(err).ToNot(HaveOccurred(), "error checking the workload pod post kubelet restart")
 		testlog.Infof("post restart: newer workload pod %s/%s admitted: %s", updatedPod2.Namespace, updatedPod2.Name, extractPodStatus(updatedPod2.Status))
 	})
 })
