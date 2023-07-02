@@ -232,12 +232,14 @@ var _ = Describe("Bootstrap Pinning Config", func() {
 
 	allNodes := configv1.CPUPartitioningAllNodes
 	none := configv1.CPUPartitioningNone
-	defaultEmptyCrio := []byte(`[crio.runtime.workloads.management]
+	defaultEmptyCrio := []byte(`
+[crio.runtime.workloads.management]
 activation_annotation = "target.workload.openshift.io/management"
 annotation_prefix = "resources.workload.openshift.io"
 resources = { "cpushares" = 0, "cpuset" = "" }
 `)
-	defaultEmptyKubelet := []byte(`{
+	defaultEmptyKubelet := []byte(`
+{
   "management": {
     "cpuset": ""
   }

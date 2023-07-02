@@ -546,24 +546,18 @@ func BootstrapWorkloadPinningMC(role string, pinningMode *apiconfigv1.CPUPartiti
 	}
 
 	mode := 420
-	/*
-		Contents for emptyKubeletConfig:
-		{
-			"management": {
-				"cpuset": ""
-			}
-		}
+	emptySet := performancev2.CPUSet("")
+	emptySetCPU := performancev2.CPU{Reserved: &emptySet}
 
-		Contents for emptyCrioConfig:
-		[crio.runtime.workloads.management]
-		activation_annotation = "target.workload.openshift.io/management"
-		annotation_prefix = "resources.workload.openshift.io"
-		resources = { "cpushares" = 0, "cpuset" = "" }
-	*/
-	emptyKubeletConfig := "ewogICJtYW5hZ2VtZW50IjogewogICAgImNwdXNldCI6ICIiCiAgfQp9Cg=="
-	emptyCrioConfig := "W2NyaW8ucnVudGltZS53b3JrbG9hZHMubWFuYWdlbWVudF0KYWN0aXZhdGlvbl9hbm5vdGF0aW9uID0gInRhcmdldC53b3JrbG9hZC5vcGVuc2hpZnQuaW8vbWFuYWdlbWVudCIKYW5ub3RhdGlvbl9wcmVmaXggPSAicmVzb3VyY2VzLndvcmtsb2FkLm9wZW5zaGlmdC5pbyIKcmVzb3VyY2VzID0geyAiY3B1c2hhcmVzIiA9IDAsICJjcHVzZXQiID0gIiIgfQo="
-	emptyKubeletSource := fmt.Sprintf("%s,%s", defaultIgnitionContentSource, emptyKubeletConfig)
-	emptyCrioSource := fmt.Sprintf("%s,%s", defaultIgnitionContentSource, emptyCrioConfig)
+	ocpPartitionEmptySetFileData, err := renderManagementCPUPinningConfig(&emptySetCPU, ocpPartitioningConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	crioPartitionEmptySetFileData, err := renderManagementCPUPinningConfig(&emptySetCPU, crioPartitioningConfig)
+	if err != nil {
+		return nil, err
+	}
 
 	// We add lower hierarchical config file name so as to not disturb any
 	// pre-existing files that users might have for workload pinning
@@ -587,33 +581,20 @@ func BootstrapWorkloadPinningMC(role string, pinningMode *apiconfigv1.CPUPartiti
 		Ignition: igntypes.Ignition{
 			Version: igntypes.MaxVersion.String(),
 		},
-		Storage: igntypes.Storage{
-			Files: []igntypes.File{
-				{
-					Node: igntypes.Node{
-						Path: filepath.Join(kubernetesConfDir, ocpPartitioningConfig),
-					},
-					FileEmbedded1: igntypes.FileEmbedded1{
-						Contents: igntypes.Resource{
-							Source: &emptyKubeletSource,
-						},
-						Mode: &mode,
-					},
-				},
-				{
-					Node: igntypes.Node{
-						Path: filepath.Join(crioConfd, crioDefaultPartitioningConfig),
-					},
-					FileEmbedded1: igntypes.FileEmbedded1{
-						Contents: igntypes.Resource{
-							Source: &emptyCrioSource,
-						},
-						Mode: &mode,
-					},
-				},
-			},
-		},
 	}
+
+	// Add empty set kubelet configuration file
+	addContent(
+		ignitionConfig,
+		ocpPartitionEmptySetFileData,
+		filepath.Join(kubernetesConfDir, ocpPartitioningConfig),
+		&mode)
+	// Add empty set crio configuration file
+	addContent(
+		ignitionConfig,
+		crioPartitionEmptySetFileData,
+		filepath.Join(crioConfd, crioDefaultPartitioningConfig),
+		&mode)
 
 	rawIgnition, err := json.Marshal(ignitionConfig)
 	if err != nil {
