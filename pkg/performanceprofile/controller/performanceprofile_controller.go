@@ -19,7 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/runtime/schema"
+
 	"reflect"
 	"time"
 
@@ -33,13 +33,16 @@ import (
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	k8serros "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
@@ -70,7 +73,7 @@ type PerformanceProfileReconciler struct {
 // The Manager will set fields on the Controller and Start it when the Manager is Started.
 func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
-	// we want to initate reconcile loop only on change under labels or spec of the object
+	// we want to initiate reconcile loop only on change under labels or spec of the object
 	p := predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			if !validateUpdateEvent(&e) {
@@ -144,12 +147,26 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		},
 	}
 
+	dsPredicates := predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if !validateUpdateEvent(&e) {
+				return false
+			}
+			dsOld := e.ObjectOld.(*appsv1.DaemonSet)
+			dsNew := e.ObjectNew.(*appsv1.DaemonSet)
+			return !reflect.DeepEqual(dsOld.Spec.Template.Spec, dsNew.Spec.Template.Spec)
+		}}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&performancev2.PerformanceProfile{}).
 		Owns(&mcov1.MachineConfig{}, builder.WithPredicates(p)).
 		Owns(&mcov1.KubeletConfig{}, builder.WithPredicates(kubeletPredicates)).
 		Owns(&tunedv1.Tuned{}, builder.WithPredicates(p)).
 		Owns(&nodev1.RuntimeClass{}, builder.WithPredicates(p)).
+		Owns(&appsv1.DaemonSet{}, builder.WithPredicates(dsPredicates)).
+		Owns(&corev1.ServiceAccount{}, builder.WithPredicates(p)).
+		Owns(&rbacv1.Role{}, builder.WithPredicates(p)).
+		Owns(&rbacv1.RoleBinding{}, builder.WithPredicates(p)).
 		Watches(&mcov1.MachineConfigPool{},
 			handler.EnqueueRequestsFromMapFunc(r.mcpToPerformanceProfile),
 			builder.WithPredicates(mcpPredicates)).
