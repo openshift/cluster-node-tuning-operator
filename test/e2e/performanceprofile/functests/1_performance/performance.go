@@ -339,8 +339,16 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				!*profile.Spec.WorkloadHints.RealTime && !profileutil.IsRpsEnabled(profile) {
 				Skip("realTime Workload Hints is not enabled")
 			}
+
 			expectedRPSCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
 			Expect(err).ToNot(HaveOccurred())
+
+			expectedPhysRPSCPUs := expectedRPSCPUs.Clone()
+			if !profileutil.IsPhysicalRpsEnabled(profile) {
+				// empty cpuset
+				expectedPhysRPSCPUs = cpuset.NewCPUSet()
+			}
+
 			for _, node := range workerRTNodes {
 				// Verify the systemd RPS service uses the correct RPS mask
 				cmd := []string{"sysctl", "-n", "net.core.rps_default_mask"}
@@ -370,10 +378,6 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				}
 
 				By("verify RPS mask on physical network devices")
-				if !profileutil.IsPhysicalRpsEnabled(profile) {
-					// empty cpuset
-					expectedRPSCPUs = cpuset.NewCPUSet([]int{}...)
-				}
 				cmd = []string{
 					"find", "/rootfs/sys/devices",
 					"-regex", "/rootfs/sys/devices/pci.*",
@@ -387,7 +391,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				for _, devRPS := range strings.Split(devsRPS, "\n") {
 					rpsCPUs, err = components.CPUMaskToCPUSet(devRPS)
 					Expect(err).ToNot(HaveOccurred())
-					Expect(rpsCPUs.Equals(expectedRPSCPUs)).To(BeTrue(), "a host device rps mask is different from the reserved CPUs; have %q want %q", rpsCPUs.String(), expectedRPSCPUs.String())
+					Expect(rpsCPUs.Equals(expectedPhysRPSCPUs)).To(BeTrue(), "a host device rps mask is different from the reserved CPUs; have %q want %q", rpsCPUs.String(), expectedPhysRPSCPUs.String())
 				}
 			}
 		})
