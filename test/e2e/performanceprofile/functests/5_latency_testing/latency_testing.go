@@ -71,7 +71,10 @@ const (
 	skipOddCpuNumber    = `Skip the test, the requested number of CPUs should be even to avoid noisy neighbor situation`
 
 	//used values parameters
-	guaranteedLatency = "20000"
+
+	// we do not care about the actual system latency because CI systems are not tuned well enough to be an example for
+	// latency measuring, besides this suite only cares about testing the test executable with different values of env vars.
+	guaranteedLatency = "900000"
 	negativeTesting   = false
 	positiveTesting   = true
 )
