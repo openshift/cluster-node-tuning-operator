@@ -530,6 +530,12 @@ func renderManagementCPUPinningConfig(cpuv2 *performancev2.CPU, src string) ([]b
 	return pinningConfigData.Bytes(), nil
 }
 
+// BootstrapWorkloadPinningMC creates an initial state MachineConfig resource that establishes an empty CPU set for both
+// CRIO config and Kubelet config. The purpose is provide empty state initialization for both CRIO and Kubelet so that the nodes
+// always start and join the cluster in a Workload Pinning configuration.
+//
+// When a performance profiles is created, they will override the config files in this MC with the desired CPU Set. If that performance
+// profile were to be deleted later on, this initial MC will be the fallback that MCO re-renders and maintain a workload pinning configuration.
 func BootstrapWorkloadPinningMC(role string, pinningMode *apiconfigv1.CPUPartitioningMode) (*machineconfigv1.MachineConfig, error) {
 	if pinningMode == nil {
 		return nil, fmt.Errorf("can not generate configs, CPUPartitioningMode is nil")
@@ -540,7 +546,22 @@ func BootstrapWorkloadPinningMC(role string, pinningMode *apiconfigv1.CPUPartiti
 	}
 
 	mode := 420
-	source := "data:text/plain;charset=utf-8;base64,ewogICJtYW5hZ2VtZW50IjogewogICAgImNwdXNldCI6ICIiCiAgfQp9Cg=="
+	emptySet := performancev2.CPUSet("")
+	emptySetCPU := performancev2.CPU{Reserved: &emptySet}
+
+	ocpPartitionEmptySetFileData, err := renderManagementCPUPinningConfig(&emptySetCPU, ocpPartitioningConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	crioPartitionEmptySetFileData, err := renderManagementCPUPinningConfig(&emptySetCPU, crioPartitioningConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	// We add lower hierarchical config file name so as to not disturb any
+	// pre-existing files that users might have for workload pinning
+	crioDefaultPartitioningConfig := "01-workload-pinning-default.conf"
 
 	mc := &machineconfigv1.MachineConfig{
 		TypeMeta: metav1.TypeMeta{
@@ -560,20 +581,20 @@ func BootstrapWorkloadPinningMC(role string, pinningMode *apiconfigv1.CPUPartiti
 		Ignition: igntypes.Ignition{
 			Version: igntypes.MaxVersion.String(),
 		},
-		Storage: igntypes.Storage{
-			Files: []igntypes.File{{
-				Node: igntypes.Node{
-					Path: "/etc/kubernetes/openshift-workload-pinning",
-				},
-				FileEmbedded1: igntypes.FileEmbedded1{
-					Contents: igntypes.Resource{
-						Source: &source,
-					},
-					Mode: &mode,
-				},
-			}},
-		},
 	}
+
+	// Add empty set kubelet configuration file
+	addContent(
+		ignitionConfig,
+		ocpPartitionEmptySetFileData,
+		filepath.Join(kubernetesConfDir, ocpPartitioningConfig),
+		&mode)
+	// Add empty set crio configuration file
+	addContent(
+		ignitionConfig,
+		crioPartitionEmptySetFileData,
+		filepath.Join(crioConfd, crioDefaultPartitioningConfig),
+		&mode)
 
 	rawIgnition, err := json.Marshal(ignitionConfig)
 	if err != nil {
