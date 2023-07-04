@@ -37,10 +37,6 @@ import (
 var workerRTNode *corev1.Node
 var profile *performancev2.PerformanceProfile
 
-const (
-	sysDevicesOnlineCPUs = "/sys/devices/system/cpu/online"
-)
-
 var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 	var balanceIsolated bool
 	var reservedCPU, isolatedCPU string
@@ -68,7 +64,9 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 
-		By(fmt.Sprintf("Checking the profile %s with cpus %s", profile.Name, cpuSpecToString(profile.Spec.CPU)))
+		cpus, err := cpuSpecToString(profile.Spec.CPU)
+		Expect(err).ToNot(HaveOccurred(), "failed to parse cpu %v spec to string", cpus)
+		By(fmt.Sprintf("Checking the profile %s with cpus %s", profile.Name, cpus))
 		balanceIsolated = true
 		if profile.Spec.CPU.BalanceIsolated != nil {
 			balanceIsolated = *profile.Spec.CPU.BalanceIsolated
@@ -319,7 +317,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				containerCgroup, err = nodes.ExecCommandOnNode(cmd, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				return containerCgroup
-			}, (cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode)), 5*time.Second).ShouldNot(BeEmpty(),
+			}).WithTimeout(cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode)).WithPolling(5*time.Second).ShouldNot(BeEmpty(),
 				fmt.Sprintf("cannot find cgroup for container %q", containerID))
 
 			By("Checking what CPU the pod is using")
@@ -434,7 +432,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 					}
 				}
 				return true
-			}, (cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode)), 5*time.Second).Should(BeTrue(),
+			}).WithTimeout(cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode)).WithPolling(5*time.Second).Should(BeTrue(),
 				fmt.Sprintf("IRQ still active on CPU%s", psr))
 
 			By("Checking that after removing POD default smp affinity is returned back to all active CPUs")
@@ -453,7 +451,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			testpod = pods.GetTestPod()
 			testpod.Namespace = testutils.NamespaceTesting
 			testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
-			testpod.Spec.ShareProcessNamespace = pointer.BoolPtr(true)
+			testpod.Spec.ShareProcessNamespace = pointer.Bool(true)
 
 			err := testclient.Client.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
@@ -597,7 +595,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				// any random existing cpu is fine
 				cpuID := onlineCPUSet.ToSliceNoSort()[0]
 				smtLevel := nodes.GetSMTLevel(cpuID, workerRTNode)
-				hasWP := checkForWorkloadPartitioning(workerRTNode)
+				hasWP := checkForWorkloadPartitioning()
 
 				// Following checks are required to map test_id scenario correctly to the type of node under test
 				if snoCluster && !RunningOnSingleNode {
@@ -642,7 +640,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 })
 
-func checkForWorkloadPartitioning(workerNode *corev1.Node) bool {
+func checkForWorkloadPartitioning() bool {
 	// Look for the correct Workload Partition annotation in
 	// a crio configuration file on the target node
 	By("Check for Workload Partitioning enabled")
@@ -832,21 +830,30 @@ func deleteTestPod(testpod *corev1.Pod) {
 	Expect(err).ToNot(HaveOccurred())
 }
 
-func cpuSpecToString(cpus *performancev2.CPU) string {
+func cpuSpecToString(cpus *performancev2.CPU) (string, error) {
 	if cpus == nil {
-		return "<nil>"
+		return "", fmt.Errorf("performance CPU field is nil")
 	}
 	sb := strings.Builder{}
 	if cpus.Reserved != nil {
-		fmt.Fprintf(&sb, "reserved=[%s]", *cpus.Reserved)
+		_, err := fmt.Fprintf(&sb, "reserved=[%s]", *cpus.Reserved)
+		if err != nil {
+			return "", err
+		}
 	}
 	if cpus.Isolated != nil {
-		fmt.Fprintf(&sb, " isolated=[%s]", *cpus.Isolated)
+		_, err := fmt.Fprintf(&sb, " isolated=[%s]", *cpus.Isolated)
+		if err != nil {
+			return "", err
+		}
 	}
 	if cpus.BalanceIsolated != nil {
-		fmt.Fprintf(&sb, " balanceIsolated=%t", *cpus.BalanceIsolated)
+		_, err := fmt.Fprintf(&sb, " balanceIsolated=%t", *cpus.BalanceIsolated)
+		if err != nil {
+			return "", err
+		}
 	}
-	return sb.String()
+	return sb.String(), nil
 }
 
 func logEventsForPod(testPod *corev1.Pod) {

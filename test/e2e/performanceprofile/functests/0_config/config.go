@@ -3,12 +3,12 @@ package __performance_config
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -57,7 +57,7 @@ var _ = Describe("[performance][config] Performance configuration", Ordered, fun
 			deploymentSpecs := csv.Spec.InstallStrategy.StrategySpec.DeploymentSpecs
 			if deploymentSpecs != nil {
 				for _, deployment := range deploymentSpecs {
-					Expect((deployment.Name)).ToNot(Equal("performance-operator"), fmt.Sprintf("CSV %s for performance-operator should have been removed", csv.Name))
+					Expect(deployment.Name).ToNot(Equal("performance-operator"), fmt.Sprintf("CSV %s for performance-operator should have been removed", csv.Name))
 				}
 			}
 		}
@@ -128,26 +128,32 @@ var _ = Describe("[performance][config] Performance configuration", Ordered, fun
 		By("Waiting for MCP being updated")
 		mcps.WaitForCondition(performanceMCP.Name, mcv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 
+		Expect(testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(performanceProfile), performanceProfile))
+		By("Printing the updated profile")
+		format.Object(performanceProfile, 2)
 	})
 
 })
 
 func externalPerformanceProfile(performanceManifest string) (*performancev2.PerformanceProfile, error) {
 	performanceScheme := runtime.NewScheme()
-	performancev2.AddToScheme(performanceScheme)
+	err := performancev2.AddToScheme(performanceScheme)
+	if err != nil {
+		return nil, err
+	}
 
 	decode := serializer.NewCodecFactory(performanceScheme).UniversalDeserializer().Decode
-	manifest, err := ioutil.ReadFile(performanceManifest)
+	manifest, err := os.ReadFile(performanceManifest)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to read %s file", performanceManifest)
+		return nil, fmt.Errorf("failed to read %s file", performanceManifest)
 	}
-	obj, _, err := decode([]byte(manifest), nil, nil)
+	obj, _, err := decode(manifest, nil, nil)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to read the manifest file %s", performanceManifest)
+		return nil, fmt.Errorf("failed to read the manifest file %s", performanceManifest)
 	}
 	profile, ok := obj.(*performancev2.PerformanceProfile)
 	if !ok {
-		return nil, fmt.Errorf("Failed to convert manifest file to profile")
+		return nil, fmt.Errorf("failed to convert manifest file to profile")
 	}
 	return profile, nil
 }
@@ -176,7 +182,7 @@ func testProfile() *performancev2.PerformanceProfile {
 					{
 						Size:  "1G",
 						Count: 1,
-						Node:  pointer.Int32Ptr(0),
+						Node:  pointer.Int32(0),
 					},
 					{
 						Size:  "2M",
@@ -186,18 +192,18 @@ func testProfile() *performancev2.PerformanceProfile {
 			},
 			NodeSelector: testutils.NodeSelectorLabels,
 			RealTimeKernel: &performancev2.RealTimeKernel{
-				Enabled: pointer.BoolPtr(true),
+				Enabled: pointer.Bool(true),
 			},
 			NUMA: &performancev2.NUMA{
-				TopologyPolicy: pointer.StringPtr("single-numa-node"),
+				TopologyPolicy: pointer.String("single-numa-node"),
 			},
 			Net: &performancev2.Net{
-				UserLevelNetworking: pointer.BoolPtr(true),
+				UserLevelNetworking: pointer.Bool(true),
 			},
 			WorkloadHints: &performancev2.WorkloadHints{
-				RealTime:              pointer.BoolPtr(true),
-				HighPowerConsumption:  pointer.BoolPtr(false),
-				PerPodPowerManagement: pointer.BoolPtr(false),
+				RealTime:              pointer.Bool(true),
+				HighPowerConsumption:  pointer.Bool(false),
+				PerPodPowerManagement: pointer.Bool(false),
 			},
 		},
 	}

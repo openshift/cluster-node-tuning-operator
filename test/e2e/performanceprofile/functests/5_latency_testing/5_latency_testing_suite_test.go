@@ -89,7 +89,7 @@ var _ = AfterSuite(func() {
 	if err != nil {
 		testlog.Errorf("namespace %q could not be deleted err=%v", prePullNamespace.Name, err)
 	}
-	namespaces.WaitForDeletion(prePullNamespaceName, 5*time.Minute)
+	Expect(namespaces.WaitForDeletion(prePullNamespaceName, 5*time.Minute), "hitting timeout while waiting namespace %q deletion", prePullNamespaceName)
 
 	currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 	Expect(err).ToNot(HaveOccurred())
