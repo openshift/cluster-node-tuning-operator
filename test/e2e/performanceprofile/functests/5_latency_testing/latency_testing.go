@@ -11,6 +11,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 )
 
@@ -91,6 +92,7 @@ type latencyTest struct {
 }
 
 var _ = DescribeTable("Test latency measurement tools tests", func(testGroup []latencyTest, isPositiveTest bool) {
+	format.MaxLength = 0
 	for _, test := range testGroup {
 		clearEnv()
 		testDescription := setEnvAndGetDescription(test)
