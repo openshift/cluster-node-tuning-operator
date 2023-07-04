@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -18,9 +19,13 @@ import (
 	olmv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
@@ -116,20 +121,29 @@ func operatorRun() {
 		ntoNamespace,
 		metav1.NamespaceNone,
 	}
-
+	namespaceSelector := cache.ByObject{
+		Field: fields.ParseSelectorOrDie(fmt.Sprintf("metadata.namespace=%s", ntoNamespace)),
+	}
 	restConfig := ctrl.GetConfigOrDie()
 	le := util.GetLeaderElectionConfig(restConfig, enableLeaderElection)
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		NewCache:                      cache.MultiNamespacedCacheBuilder(namespaces),
-		Scheme:                        scheme,
-		LeaderElection:                enableLeaderElection,
-		LeaderElectionID:              config.OperatorLockName,
-		LeaderElectionNamespace:       ntoNamespace,
+	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
+		Cache: cache.Options{
+			ByObject: map[client.Object]cache.ByObject{
+				&appsv1.DaemonSet{}:      namespaceSelector,
+				&corev1.ServiceAccount{}: namespaceSelector,
+				&rbacv1.Role{}:           namespaceSelector,
+				&rbacv1.RoleBinding{}:    namespaceSelector,
+			},
+			Namespaces: namespaces,
+		},
+		Scheme:                  scheme,
+		LeaderElection:          enableLeaderElection,
+		LeaderElectionID:        config.OperatorLockName,
+		LeaderElectionNamespace: ntoNamespace,
 		LeaderElectionReleaseOnCancel: true,
-		LeaseDuration:                 &le.LeaseDuration.Duration,
-		RetryPeriod:                   &le.RetryPeriod.Duration,
-		RenewDeadline:                 &le.RenewDeadline.Duration,
-		Namespace:                     ntoNamespace,
+		LeaseDuration:           &le.LeaseDuration.Duration,
+		RetryPeriod:             &le.RetryPeriod.Duration,
+		RenewDeadline:           &le.RenewDeadline.Duration,
 		WebhookServer: webhook.NewServer(webhook.Options{
 			Port:     webhookPort,
 			CertDir:  webhookCertDir,
