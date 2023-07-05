@@ -37,31 +37,41 @@ spec:
         volumeMounts:
         - mountPath: /var/lib/tuned/profiles-data
           name: var-lib-tuned-profiles-data
+          mountPropagation: HostToContainer
         - mountPath: /etc/modprobe.d
           name: etc-modprobe-d
+          mountPropagation: HostToContainer
         - mountPath: /etc/sysconfig
           name: etc-sysconfig
         - mountPath: /etc/sysctl.d
           name: etc-sysctl-d
+          mountPropagation: HostToContainer
           readOnly: true
         - mountPath: /etc/sysctl.conf
           name: etc-sysctl-conf
+          mountPropagation: HostToContainer
           readOnly: true
         - mountPath: /etc/systemd
           name: etc-systemd
+          mountPropagation: HostToContainer
         - mountPath: /sys
           name: sys
+          mountPropagation: HostToContainer
         - mountPath: /var/run/dbus
           name: var-run-dbus
+          mountPropagation: HostToContainer
           readOnly: true
         - mountPath: /run/systemd/system
           name: run-systemd-system
+          mountPropagation: HostToContainer
           readOnly: true
         - mountPath: /lib/modules
           name: lib-modules
+          mountPropagation: HostToContainer
           readOnly: true
-        - name: host
-          mountPath: /host
+        - mountPath: /host
+          name: host
+          mountPropagation: HostToContainer
         env:
           - name: WATCH_NAMESPACE
             valueFrom:
