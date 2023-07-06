@@ -12,6 +12,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	"github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 )
 
@@ -72,7 +73,10 @@ const (
 	skipOddCpuNumber    = `Skip the test, the requested number of CPUs should be even to avoid noisy neighbor situation`
 
 	//used values parameters
-	guaranteedLatency = "20000"
+
+	// we do not care about the actual system latency because CI systems are not tuned well enough to be an example for
+	// latency measuring, besides this suite only cares about testing the test executable with different values of env vars.
+	guaranteedLatency = "900000"
 	negativeTesting   = false
 	positiveTesting   = true
 )
@@ -92,6 +96,7 @@ type latencyTest struct {
 }
 
 var _ = table.DescribeTable("Test latency measurement tools tests", func(testGroup []latencyTest, isPositiveTest bool) {
+	format.MaxLength = 0
 	for _, test := range testGroup {
 		clearEnv()
 		testDescription := setEnvAndGetDescription(test)
