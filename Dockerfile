@@ -19,6 +19,7 @@ RUN INSTALL_PKGS=" \
 FROM quay.io/centos/centos:stream9
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/cluster-node-tuning-operator /usr/bin/
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/performance-profile-creator /usr/bin/
+COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/gather-sysinfo /usr/bin/
 COPY manifests/*.yaml manifests/image-references /manifests/
 ENV APP_ROOT=/var/lib/tuned
 ENV PATH=${APP_ROOT}/bin:${PATH}
@@ -28,7 +29,7 @@ COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_o
 COPY --from=tuned   /root/assets ${APP_ROOT}
 COPY --from=tuned   /root/rpmbuild/RPMS/noarch /root/rpms
 RUN INSTALL_PKGS=" \
-      nmap-ncat procps-ng \
+      nmap-ncat procps-ng pciutils \
       " && \
     mkdir -p /etc/grub.d/ /boot && \
     dnf install --setopt=tsflags=nodocs -y $INSTALL_PKGS && \

@@ -462,6 +462,16 @@ github.com/opencontainers/selinux/go-selinux
 github.com/opencontainers/selinux/go-selinux/label
 github.com/opencontainers/selinux/pkg/pwalk
 github.com/opencontainers/selinux/pkg/pwalkdir
+# github.com/openshift-kni/debug-tools v0.1.11
+## explicit; go 1.18
+github.com/openshift-kni/debug-tools/pkg/fswrap
+github.com/openshift-kni/debug-tools/pkg/irqs
+github.com/openshift-kni/debug-tools/pkg/irqs/soft
+github.com/openshift-kni/debug-tools/pkg/k8s_imported
+github.com/openshift-kni/debug-tools/pkg/knit/cmd
+github.com/openshift-kni/debug-tools/pkg/knit/cmd/k8s
+github.com/openshift-kni/debug-tools/pkg/machineinformer
+github.com/openshift-kni/debug-tools/pkg/procs
 # github.com/openshift/api v0.0.0-20230223193310-d964c7a58d75
 ## explicit; go 1.19
 github.com/openshift/api/config/v1
