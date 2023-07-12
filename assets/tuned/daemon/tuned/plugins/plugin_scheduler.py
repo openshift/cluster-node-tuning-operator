@@ -465,6 +465,7 @@ class SchedulerPlugin(base.Plugin):
 		return int(2 ** math.ceil(math.log(mp, 2)))
 
 	def _instance_init(self, instance):
+		instance._evlist = None
 		instance._has_dynamic_tuning = False
 		instance._has_static_tuning = True
 		# this is hack, runtime_tuning should be covered by dynamic_tuning configuration
@@ -527,7 +528,7 @@ class SchedulerPlugin(base.Plugin):
 				instance._runtime_tuning = False
 
 	def _instance_cleanup(self, instance):
-		if self._evlist:
+		if instance._evlist:
 			for fd in instance._evlist.get_pollfd():
 				os.close(fd.name)
 
@@ -881,7 +882,7 @@ class SchedulerPlugin(base.Plugin):
 			if orig_affinity != "ERR":
 				self._cgroups_original_affinity[cgroup] = orig_affinity
 			else:
-				log.err("Refusing to set affinity of cgroup '%s', reading original affinity failed" % cgroup)
+				log.error("Refusing to set affinity of cgroup '%s', reading original affinity failed" % cgroup)
 				return
 		if not self._cmd.write_to_file(path, affinity, no_error = True):
 			log.error("Unable to set affinity '%s' for cgroup '%s'" % (affinity, cgroup))
@@ -1002,7 +1003,7 @@ class SchedulerPlugin(base.Plugin):
 		for cg in self._cgroups:
 			self._cgroup_cleanup_tasks_one(cg)
 
-	def _instance_unapply_static(self, instance, full_rollback = False):
+	def _instance_unapply_static(self, instance, full_rollback = consts.ROLLBACK_SOFT):
 		super(SchedulerPlugin, self)._instance_unapply_static(instance, full_rollback)
 		if self._daemon and instance._runtime_tuning:
 			instance._terminate.set()
