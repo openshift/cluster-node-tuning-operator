@@ -2,6 +2,14 @@
 
 export SYSTEMD_IGNORE_CHROOT=1
 
+set_tuned_main_opt() {
+  local key=$1
+  local val=$2
+  local tuned_main_conf=/etc/tuned/tuned-main.conf
+
+  sed -Ei 's|^#?\s*'"$key"'\s*=.*$|'"$key"' = '"$val"'|' $tuned_main_conf
+}
+
 start() {
   # Tuned can take ~20s to reload/start when "ulimit -Sn == 1048576".
   # See:
@@ -9,6 +17,8 @@ start() {
   # - https://www.python.org/dev/peps/pep-0446/#closing-all-open-file-descriptors
   # - http://bugs.python.org/issue1663329
   ulimit -Sn 1024	# workaround for the issue above
+
+  set_tuned_main_opt rollback not_on_exit
 
   exec /usr/bin/openshift-tuned \
     -v=0
