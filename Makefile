@@ -1,3 +1,4 @@
+# minor change
 PACKAGE=github.com/openshift/cluster-node-tuning-operator
 PACKAGE_BIN=$(lastword $(subst /, ,$(PACKAGE)))
 PACKAGE_MAIN=$(PACKAGE)/cmd/$(PACKAGE_BIN)
