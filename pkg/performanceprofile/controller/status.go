@@ -242,18 +242,19 @@ func (r *PerformanceProfileReconciler) getTunedConditionsByProfile(profile *perf
 		isApplied := true
 		var tunedDegradedCondition *tunedv1.ProfileStatusCondition
 
-		for _, condition := range tunedProfile.Status.Conditions {
+		for i := 0; i < len(tunedProfile.Status.Conditions); i++ {
+			condition := &tunedProfile.Status.Conditions[i]
 			if (condition.Type == tunedv1.TunedDegraded) && condition.Status == corev1.ConditionTrue {
 				isDegraded = true
-				tunedDegradedCondition = &condition
+				tunedDegradedCondition = condition
 			}
 
 			if (condition.Type == tunedv1.TunedProfileApplied) && condition.Status == corev1.ConditionFalse {
 				isApplied = false
 			}
 		}
-		// We need both condition to exists,
-		// since there is a scenario where both Degraded & Applied condition are true
+		// We need both conditions to exist,
+		// since there is a scenario where both Degraded & Applied conditions are true
 		if isDegraded == true && isApplied == false {
 			if len(tunedDegradedCondition.Reason) > 0 {
 				message.WriteString("Tuned " + tunedProfile.GetName() + " Degraded Reason: " + tunedDegradedCondition.Reason + ".\n")
