@@ -18,6 +18,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -31,6 +32,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	e2etuned "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 	"github.com/openshift/cluster-node-tuning-operator/test/framework"
 )
@@ -89,6 +91,19 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 				}
 
 				for _, node := range workerRTNodes {
+					var condStatus string
+					Eventually(context.TODO(), func() bool {
+						tunedProfile, err := e2etuned.GetProfile(context.TODO(), testclient.Client, components.NamespaceNodeTuningOperator, node.Name)
+						Expect(err).ToNot(HaveOccurred(), "failed to get Tuned Profile for node %q", node.Name)
+						for _, cond := range tunedProfile.Status.Conditions {
+							if cond.Type == tunedv1.TunedProfileApplied && cond.Status != corev1.ConditionTrue {
+								condStatus = string(cond.Status)
+								return false
+							}
+						}
+						return true
+					}).WithPolling(time.Second*10).WithTimeout(3*time.Minute).Should(BeTrue(), "Tuned Profile for node %q was not applied successfully conditionStatus=%q", node.Name, condStatus)
+
 					By(fmt.Sprintf("verifying worker node %q", node.Name))
 
 					bannedCPUs, err := getIrqBalanceBannedCPUs(&node)

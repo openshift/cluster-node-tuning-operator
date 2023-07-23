@@ -127,3 +127,16 @@ func CheckParameters(node *corev1.Node, sysctlMap map[string]string, kernelParam
 		ExpectWithOffset(1, err).To(HaveOccurred(), "node should have non-RT kernel")
 	}
 }
+
+func GetProfile(ctx context.Context, cli client.Client, ns, name string) (*tunedv1.Profile, error) {
+	key := client.ObjectKey{
+		Namespace: ns,
+		Name:      name,
+	}
+	p := &tunedv1.Profile{}
+	err := cli.Get(ctx, key, p)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
+}
