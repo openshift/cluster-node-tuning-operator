@@ -670,7 +670,7 @@ func checkPodHTSiblings(testpod *corev1.Pod) bool {
 	podcpus, err := cpuset.Parse(strings.Trim(fmt.Sprint(output), "\n"))
 	Expect(err).ToNot(
 		HaveOccurred(), "Unable to cpuset.Parse pod allocated cpu set from output %s", fmt.Sprint(output))
-	By(fmt.Sprintf("Test pod CPU list: %s", podcpus.String()))
+	testlog.Infof("Test pod CPU list: %s", podcpus.String())
 
 	// aggregate cpu sibling paris from the host based on the cpus allocated to the pod
 	By("Get host cpu siblings for pod cpuset")
