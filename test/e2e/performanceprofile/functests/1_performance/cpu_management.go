@@ -665,7 +665,7 @@ func checkPodHTSiblings(testpod *corev1.Pod) bool {
 		fmt.Sprintf("/bin/crictl inspect %s | /bin/jq -r '.info.runtimeSpec.linux.resources.cpu.cpus'", containerID),
 	}
 	output, err := nodes.ExecCommandOnNode(cmd, workerRTNode)
-	Expect(err).ToNot(HaveOccurred(), "Unable to crictl inspect containerID %s", "containerID")
+	Expect(err).ToNot(HaveOccurred(), "Unable to crictl inspect containerID %q", containerID)
 
 	podcpus, err := cpuset.Parse(strings.Trim(fmt.Sprint(output), "\n"))
 	Expect(err).ToNot(
