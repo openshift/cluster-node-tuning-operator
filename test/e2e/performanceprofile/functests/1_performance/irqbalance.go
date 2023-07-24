@@ -91,17 +91,21 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 				}
 
 				for _, node := range workerRTNodes {
-					var condStatus string
+					condStatus := corev1.ConditionUnknown
 					Eventually(context.TODO(), func() bool {
 						tunedProfile, err := e2etuned.GetProfile(context.TODO(), testclient.Client, components.NamespaceNodeTuningOperator, node.Name)
 						Expect(err).ToNot(HaveOccurred(), "failed to get Tuned Profile for node %q", node.Name)
 						for _, cond := range tunedProfile.Status.Conditions {
-							if cond.Type == tunedv1.TunedProfileApplied && cond.Status != corev1.ConditionTrue {
-								condStatus = string(cond.Status)
+							if cond.Type != tunedv1.TunedProfileApplied {
+								continue
+							}
+							if cond.Status != corev1.ConditionTrue {
+								condStatus = cond.Status
 								return false
 							}
+							return true
 						}
-						return true
+						return false
 					}).WithPolling(time.Second*10).WithTimeout(3*time.Minute).Should(BeTrue(), "Tuned Profile for node %q was not applied successfully conditionStatus=%q", node.Name, condStatus)
 
 					By(fmt.Sprintf("verifying worker node %q", node.Name))
