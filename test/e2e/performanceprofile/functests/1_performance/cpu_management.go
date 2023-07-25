@@ -290,10 +290,6 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			testpod = getTestPodWithAnnotations(annotations, smtLevel)
 		})
 
-		AfterEach(func() {
-			deleteTestPod(testpod)
-		})
-
 		It("[test_id:32646] should disable CPU load balancing for CPU's used by the pod", func() {
 			var err error
 			By("Starting the pod")
