@@ -233,14 +233,14 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		var testpod *corev1.Pod
 
 		// getCPUswithLoadBalanceDisabled Return cpus which are not in any scheduling domain
-		getCPUswithLoadBalanceDisabled := func() ([]string, error) {
+		getCPUswithLoadBalanceDisabled := func() (map[int]string, error) {
 			cmd := []string{"/bin/bash", "-c", "cat /proc/schedstat"}
 			schedstat, err := nodes.ExecCommandOnNode(cmd, workerRTNode)
 			if err != nil {
 				return nil, err
 			}
 			lines := strings.Split(schedstat, "\n")
-			cpusWithoutDomainLines := []string{}
+			cpusWithoutDomainLines := make(map[int]string)
 
 			// In the following loop, we iterate through each line that starts with "cpu".
 			// we examine the next line to determine if it starts with "domain".
@@ -250,7 +250,15 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				line := lines[i]
 				if strings.HasPrefix(line, "cpu") {
 					if i+1 >= len(lines) || !strings.HasPrefix(lines[i+1], "domain") {
-						cpusWithoutDomainLines = append(cpusWithoutDomainLines, line)
+						// take the first word in the line which is the cpuX while X is the cpu id
+						cpuName := strings.Split(line, " ")[0]
+						// trim the 3 first characters from the cpuX word. we left with the cpu id
+						cpuId := cpuName[3:]
+						id, err := strconv.Atoi(cpuId)
+						if err != nil {
+							return nil, fmt.Errorf("failed to convert %q to int %w", cpuId, err)
+						}
+						cpusWithoutDomainLines[id] = line
 					}
 				}
 			}
@@ -263,7 +271,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			// defaultCpuNotInSchedulingDomains is empty if no gu pods are running
 			defaultCpuNotInSchedulingDomains, err := getCPUswithLoadBalanceDisabled()
 			Expect(err).ToNot(HaveOccurred(), "Unable to fetch scheduling domains")
-			testlog.Infof("Default scheduling Domains are: %s", defaultCpuNotInSchedulingDomains)
+			testlog.Infof("Default scheduling Domains are: %v", defaultCpuNotInSchedulingDomains)
 			annotations := map[string]string{
 				"cpu-load-balancing.crio.io": "disable",
 			}
@@ -319,13 +327,12 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred(), "unable to fetch cpus with load balancing disabled from /proc/schedstat")
 
 				for _, podcpu := range podCpus.ToSlice() {
-					for _, cpu := range cpusNotInSchedulingDomains {
-						if strings.Contains(cpu, fmt.Sprint(podcpu)) {
-							return true
-						}
+					// all pod's cpus should be present in this map
+					if _, ok := cpusNotInSchedulingDomains[podcpu]; !ok {
+						return false
 					}
 				}
-				return false
+				return true
 			}, 2*time.Minute, 5*time.Second).Should(BeTrue())
 
 			By("Deleting the pod")
@@ -343,14 +350,14 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 					return true
 				} else {
 					for _, podcpu := range podCpus.ToSlice() {
-						for _, cpu := range cpusNotinSchedulingDomains {
-							if !strings.Contains(cpu, fmt.Sprint(podcpu)) {
-								return true
-							}
+						// all pod's cpus should NOT be present in this map
+						// IOW they should be back into the scheduling domain
+						if _, ok := cpusNotinSchedulingDomains[podcpu]; ok {
+							return false
 						}
 					}
 				}
-				return false
+				return true
 			}, 15*time.Minute, 10*time.Second).Should(BeTrue())
 
 		})
