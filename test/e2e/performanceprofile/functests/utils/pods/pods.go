@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -204,4 +205,34 @@ func GetContainerIDByName(pod *corev1.Pod, containerName string) (string, error)
 		}
 	}
 	return "", fmt.Errorf("failed to find the container ID for the container %q under the pod %q", containerName, pod.Name)
+}
+
+func DumpResourceRequirements(pod *corev1.Pod) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "resource requirements for pod %s/%s:\n", pod.Namespace, pod.Name)
+	allContainers := []corev1.Container{}
+	allContainers = append(allContainers, pod.Spec.Containers...)
+	allContainers = append(allContainers, pod.Spec.InitContainers...)
+	for _, container := range allContainers {
+		fmt.Fprintf(&sb, "+- container %q: %s\n", container.Name, resourceListToString(container.Resources.Limits))
+	}
+	fmt.Fprintf(&sb, "---\n")
+	return sb.String()
+}
+
+func resourceListToString(res corev1.ResourceList) string {
+	idx := 0
+	resNames := make([]string, len(res))
+	for resName := range res {
+		resNames[idx] = string(resName)
+		idx++
+	}
+	sort.Strings(resNames)
+
+	items := []string{}
+	for _, resName := range resNames {
+		resQty := res[corev1.ResourceName(resName)]
+		items = append(items, fmt.Sprintf("%s=%s", resName, resQty.String()))
+	}
+	return strings.Join(items, ", ")
 }

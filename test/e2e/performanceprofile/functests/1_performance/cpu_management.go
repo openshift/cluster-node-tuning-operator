@@ -718,6 +718,7 @@ func startHTtestPod(cpuCount int) *corev1.Pod {
 	testpod.Namespace = testutils.NamespaceTesting
 
 	By(fmt.Sprintf("Creating test pod with %d cpus", cpuCount))
+	testlog.Info(pods.DumpResourceRequirements(testpod))
 	err := testclient.Client.Create(context.TODO(), testpod)
 	Expect(err).ToNot(HaveOccurred())
 	testpod, err = pods.WaitForCondition(client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
