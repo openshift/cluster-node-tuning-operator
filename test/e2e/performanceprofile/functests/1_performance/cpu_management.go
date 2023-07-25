@@ -350,20 +350,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				cpusNotinSchedulingDomains, err := getCPUsWithLoadBalanceDisabled()
 				Expect(err).ToNot(HaveOccurred())
 				testlog.Infof("cpus with load balancing disabled are: %v", cpusNotinSchedulingDomains)
-				if len(cpusNotinSchedulingDomains) == 0 {
-					return true
-				} else {
-					for _, podcpu := range podCpus.ToSlice() {
-						// all pod's cpus should NOT be present in this map
-						// IOW they should be back into the scheduling domain
-						if _, ok := cpusNotinSchedulingDomains[podcpu]; ok {
-							return false
-						}
-					}
-				}
-				return true
+				return len(cpusNotinSchedulingDomains) == 0
 			}, 15*time.Minute, 10*time.Second).Should(BeTrue())
-
 		})
 	})
 
