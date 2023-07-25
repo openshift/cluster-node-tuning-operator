@@ -266,12 +266,21 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		}
 
 		BeforeEach(func() {
-			var err error
-			// It's possible that when this test runs the value of
-			// defaultCpuNotInSchedulingDomains is empty if no gu pods are running
-			defaultCpuNotInSchedulingDomains, err := getCPUsWithLoadBalanceDisabled()
-			Expect(err).ToNot(HaveOccurred(), "Unable to fetch scheduling domains")
-			testlog.Infof("Default scheduling Domains are: %v", defaultCpuNotInSchedulingDomains)
+			// before the test begins, we should make sure all cpus are in scheduling domains.
+			// IOW, all cpus have load-balancing enabled.
+			Eventually(func() bool {
+				defaultCpuNotInSchedulingDomains, err := getCPUsWithLoadBalanceDisabled()
+				Expect(err).ToNot(HaveOccurred(), "Unable to fetch scheduling domains")
+				if len(defaultCpuNotInSchedulingDomains) != 0 {
+					ids := []string{}
+					for k := range defaultCpuNotInSchedulingDomains {
+						ids = append(ids, strconv.Itoa(k))
+					}
+					testlog.Warningf("cpu ids: %q are not in any scheduling domain while they should", strings.Join(ids, ","))
+					return false
+				}
+				return true
+			}).WithPolling(15*time.Second).WithTimeout(5*time.Minute).Should(BeTrue(), "some cpus are not in any scheduling domain")
 			annotations := map[string]string{
 				"cpu-load-balancing.crio.io": "disable",
 			}
@@ -286,7 +295,6 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		})
 
 		It("[test_id:32646] should disable CPU load balancing for CPU's used by the pod", func() {
-
 			var err error
 			By("Starting the pod")
 			err = testclient.Client.Create(context.TODO(), testpod)
