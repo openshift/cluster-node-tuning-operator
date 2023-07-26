@@ -97,6 +97,10 @@ rules:
 - apiGroups: ["operators.coreos.com"]
   resources: ["clusterserviceversions","operatorgroups","subscriptions"]
   verbs: ["get","delete","list","update","watch"] 
+# Needed to set the cgroup version, as NTO needs v1 for now
+- apiGroups: ["config.openshift.io"]
+  resources: ["nodes"]
+  verbs: ["create", "update"]
 ---
 
 # Bind the operator cluster role to its Service Account.
