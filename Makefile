@@ -197,6 +197,15 @@ pao-functests-only:
 	hack/show-cluster-version.sh
 	hack/run-functests.sh
 
+.PHONY: pao-functests-updating-profile
+pao-functests-updating-profile: cluster-label-worker-cnf pao-functests-update-only
+
+.PHONY: pao-functests-update-only
+pao-functests-update-only:
+	@echo "Cluster Version"
+	hack/show-cluster-version.sh
+	hack/run-update-testing.sh
+
 .PHONY: pao-functests-latency-testing
 pao-functests-latency-testing: dist-latency-tests
 	@echo "Cluster Version"
