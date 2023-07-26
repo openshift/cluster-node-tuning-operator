@@ -14,7 +14,6 @@ import (
 	paocontroller "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
-	olmoperators "github.com/operator-framework/api/pkg/operators/install"
 	olmv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -51,6 +50,8 @@ const (
 	webhookCertDir  = "/apiserver.local.config/certificates"
 	webhookCertName = "apiserver.crt"
 	webhookKeyName  = "apiserver.key"
+
+	performanceOperatorDeploymentName = "performance-operator"
 )
 
 var (
@@ -210,33 +211,22 @@ func removePerformanceOLMOperator(cfg *rest.Config) error {
 		return err
 	}
 
-	// Register OLM types to the client
-	olmoperators.Install(k8sclient.Scheme())
-
-	var performanceOperatorCSVs []olmv1alpha1.ClusterServiceVersion
-	csvs := &olmv1alpha1.ClusterServiceVersionList{}
 	csvSelector := labels.NewSelector()
 	req, err := labels.NewRequirement(olmv1alpha1.CopiedLabelKey, selection.DoesNotExist, []string{})
 	if err != nil {
 		return err
 	}
 	csvSelector.Add(*req)
-	if err := k8sclient.List(context.TODO(), csvs, client.MatchingLabelsSelector{Selector: csvSelector}); err != nil {
-		if !errors.IsNotFound(err) {
-			return err
-		}
+
+	//REVIEW - should this be an input parameter? or something configurable?
+	paginationLimit := uint64(1000)
+	options := []client.ListOption{
+		client.MatchingLabelsSelector{Selector: csvSelector},
 	}
-	for i := range csvs.Items {
-		csv := &csvs.Items[i]
-		deploymentSpecs := csv.Spec.InstallStrategy.StrategySpec.DeploymentSpecs
-		if deploymentSpecs != nil {
-			for _, deployment := range deploymentSpecs {
-				if deployment.Name == "performance-operator" {
-					performanceOperatorCSVs = append(performanceOperatorCSVs, *csv)
-					break
-				}
-			}
-		}
+
+	performanceOperatorCSVs, err := paocontroller.ListPerformanceOperatorCSVs(k8sclient, options, paginationLimit, performanceOperatorDeploymentName)
+	if err != nil {
+		return err
 	}
 
 	subscriptions := &olmv1alpha1.SubscriptionList{}
@@ -257,7 +247,7 @@ func removePerformanceOLMOperator(cfg *rest.Config) error {
 					}
 					subscriptionExists = false
 				}
-				klog.Infof("Removing performance-addon-operator related CSV %s/%s", csv.Name, csv.Namespace)
+				klog.Infof("Removing performance-addon-operator related CSV %s/%s", csv.Namespace, csv.Name)
 				if err := k8sclient.Delete(context.TODO(), &csv); err != nil {
 					return err
 				}
