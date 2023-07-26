@@ -21,6 +21,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
@@ -69,10 +70,12 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				availableHugepagesFile := fmt.Sprintf("/sys/devices/system/node/node%d/hugepages/hugepages-%skB/nr_hugepages", *page.Node, hugepagesSize)
-				nrHugepages := checkHugepagesStatus(availableHugepagesFile, workerRTNode)
+				nrHugepages, err := checkHugepagesStatus(availableHugepagesFile, workerRTNode)
+				Expect(err).ToNot(HaveOccurred())
 
 				freeHugepagesFile := fmt.Sprintf("/sys/devices/system/node/node%d/hugepages/hugepages-%skB/free_hugepages", *page.Node, hugepagesSize)
-				freeHugepages := checkHugepagesStatus(freeHugepagesFile, workerRTNode)
+				freeHugepages, err := checkHugepagesStatus(freeHugepagesFile, workerRTNode)
+				Expect(err).ToNot(HaveOccurred())
 
 				Expect(int32(nrHugepages)).To(Equal(page.Count), "The number of available hugepages should be equal to the number in performance profile")
 				Expect(nrHugepages).To(Equal(freeHugepages), "On idle system the number of available hugepages should be equal to free hugepages")
@@ -90,7 +93,8 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 				if page.Node != nil {
 					availableHugepagesFile = fmt.Sprintf("/sys/devices/system/node/node%d/hugepages/hugepages-%skB/nr_hugepages", *page.Node, hugepagesSize)
 				}
-				nrHugepages := checkHugepagesStatus(availableHugepagesFile, workerRTNode)
+				nrHugepages, err := checkHugepagesStatus(availableHugepagesFile, workerRTNode)
+				Expect(err).ToNot(HaveOccurred())
 
 				if discovery.Enabled() && nrHugepages != 0 {
 					Skip("Skipping test since other guests might reside in the cluster affecting results")
@@ -101,7 +105,8 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 					freeHugepagesFile = fmt.Sprintf("/sys/devices/system/node/node%d/hugepages/hugepages-%skB/free_hugepages", *page.Node, hugepagesSize)
 				}
 
-				freeHugepages := checkHugepagesStatus(freeHugepagesFile, workerRTNode)
+				freeHugepages, err := checkHugepagesStatus(freeHugepagesFile, workerRTNode)
+				Expect(err).ToNot(HaveOccurred())
 
 				Expect(int32(nrHugepages)).To(Equal(page.Count), "The number of available hugepages should be equal to the number in performance profile")
 				Expect(nrHugepages).To(Equal(freeHugepages), "On idle system the number of available hugepages should be equal to free hugepages")
@@ -125,9 +130,13 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 			hpSizeKb, err := machineconfig.GetHugepagesSizeKilobytes(hpSize)
 			Expect(err).ToNot(HaveOccurred())
 
-			By("checking hugepages usage in bytes - should be 0 on idle system")
+			By(fmt.Sprintf("checking hugepages usage in bytes - should be 0 on idle system [node=%s]", workerRTNode.Name))
 			usageHugepagesFile := fmt.Sprintf("/rootfs/sys/fs/cgroup/hugetlb/hugetlb.%sB.usage_in_bytes", hpSize)
-			usageHugepages := checkHugepagesStatus(usageHugepagesFile, workerRTNode)
+			usageHugepages, err := checkHugepagesStatus(usageHugepagesFile, workerRTNode)
+			if err != nil {
+				dumpSysfsInfo(workerRTNode)
+			}
+			Expect(err).ToNot(HaveOccurred())
 			if discovery.Enabled() && usageHugepages != 0 {
 				Skip("Skipping test since other guests might reside in the cluster affecting results")
 			}
@@ -149,30 +158,43 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 			_, err = pods.ExecCommandOnPod(testclient.K8sClient, testpod, cmd2)
 			Expect(err).ToNot(HaveOccurred())
 
-			By("checking free hugepages - one should be used by pod")
+			By(fmt.Sprintf("checking free hugepages - one should be used by pod [node=%s]", workerRTNode.Name))
 			availableHugepagesFile := fmt.Sprintf("/sys/kernel/mm/hugepages/hugepages-%skB/nr_hugepages", hpSizeKb)
-			availableHugepages := checkHugepagesStatus(availableHugepagesFile, workerRTNode)
+			availableHugepages, err := checkHugepagesStatus(availableHugepagesFile, workerRTNode)
+			Expect(err).ToNot(HaveOccurred())
 
 			freeHugepagesFile := fmt.Sprintf("/sys/kernel/mm/hugepages/hugepages-%skB/free_hugepages", hpSizeKb)
 			Eventually(func() int {
-				freeHugepages := checkHugepagesStatus(freeHugepagesFile, workerRTNode)
+				freeHugepages, err := checkHugepagesStatus(freeHugepagesFile, workerRTNode)
+				Expect(err).ToNot(HaveOccurred())
 				return availableHugepages - freeHugepages
 			}, cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode), time.Second).Should(Equal(1))
 
-			By("checking hugepages usage in bytes")
-			usageHugepages = checkHugepagesStatus(usageHugepagesFile, workerRTNode)
+			By(fmt.Sprintf("checking hugepages usage in bytes [node=%s]", workerRTNode.Name))
+			usageHugepages, err = checkHugepagesStatus(usageHugepagesFile, workerRTNode)
+			Expect(err).ToNot(HaveOccurred())
 			Expect(strconv.Itoa(usageHugepages/1024)).To(Equal(hpSizeKb), "usage in bytes should be %s", hpSizeKb)
 		})
 	})
 })
 
-func checkHugepagesStatus(path string, workerRTNode *corev1.Node) int {
+func checkHugepagesStatus(path string, workerRTNode *corev1.Node) (int, error) {
 	command := []string{"cat", path}
 	out, err := nodes.ExecCommandOnMachineConfigDaemon(workerRTNode, command)
-	Expect(err).ToNot(HaveOccurred())
-	n, err := strconv.Atoi(strings.Trim(string(out), "\n\r"))
-	Expect(err).ToNot(HaveOccurred())
-	return n
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(strings.Trim(string(out), "\n\r"))
+}
+
+func dumpSysfsInfo(workerRTNode *corev1.Node) {
+	command := []string{"find", "/rootfs/sys/fs/cgroup/", "-maxdepth", "2"}
+	out, err := nodes.ExecCommandOnMachineConfigDaemon(workerRTNode, command)
+	if err != nil {
+		testlog.Infof("dump sysfs failed for %q: %v", workerRTNode.Name, err)
+		return
+	}
+	testlog.Infof("dump sysfs for %q:\n%s", workerRTNode.Name, string(out))
 }
 
 func getCentosPod(nodeName string) *corev1.Pod {
