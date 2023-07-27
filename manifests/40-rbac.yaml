@@ -64,6 +64,9 @@ rules:
 - apiGroups: ["config.openshift.io"]
   resources: ["clusteroperators", "infrastructures"]
   verbs: ["create","get","list","watch"]
+- apiGroups: ["config.openshift.io"]
+  resources: ["nodes"]
+  verbs: ["*"]
 # Needed by every CVO-managed operator.
 - apiGroups: ["config.openshift.io"]
   resources: ["clusteroperators/status","clusteroperators/finalizers"]
