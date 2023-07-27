@@ -22,8 +22,9 @@ containerized TuneD daemon handles termination signals by rolling back any
 node-level settings it has applied before gracefully shutting down.
 
 ## Perfomance Profile Controller
-[Performance Addon controller](docs/performanceprofile/performance_addon.md), 
-previously known as Performance addons operator and now a part of the Node Tuning Operator, 
+
+[Performance Addon controller](docs/performanceprofile/performance_addon.md),
+previously known as Performance addons operator and now a part of the Node Tuning Operator,
 optimizes OpenShift clusters for applications sensitive to cpu and network latency.
 
 ## Deploying the Node Tuning Operator
@@ -35,7 +36,7 @@ and custom resource
 for the TuneD daemons. The following shows the default CR created
 by the Operator on a cluster with the Operator installed.
 
-```
+```shell
 $ oc get Tuned -n openshift-cluster-node-tuning-operator
 NAME      AGE
 default   1h
@@ -54,15 +55,14 @@ and strongly advised against especially in large-scale clusters. The default
 Tuned CR ships without pod label matching. If a custom profile is created
 with pod label matching the functionality will be enabled at that time.
 
-
 ## Custom tuning specification
 
 For an example of a tuning specification, refer to
 `/assets/tuned/manifests/default-cr-tuned.yaml` in the Operator's directory or to
 the resource created in a live cluster by:
 
-```
-$ oc get Tuned/default -o yaml
+```shell
+oc get Tuned/default -o yaml
 ```
 
 The CR for the Operator has two major sections. The first
@@ -82,16 +82,15 @@ By default, the Operator is in the Managed state and the `spec.managementState`
 field is not present in the default Tuned CR. Valid values for the Operator
 Management state are as follows:
 
-  * Managed: the Operator will update its operands as configuration resources are updated
-  * Unmanaged: the Operator will ignore changes to the configuration resources
-  * Removed: the Operator will remove its operands and resources the Operator provisioned
-
+* Managed: the Operator will update its operands as configuration resources are updated
+* Unmanaged: the Operator will ignore changes to the configuration resources
+* Removed: the Operator will remove its operands and resources the Operator provisioned
 
 ### Profile data
 
 The `profile:` section lists TuneD profiles and their names.
 
-```
+```yaml
   profile:
   - name: tuned_profile_1
     data: |
@@ -115,8 +114,7 @@ The `profile:` section lists TuneD profiles and their names.
 ```
 
 Refer to a list of
-(TuneD plug-ins supported by the Operator)[#supported-tuned-daemon-plug-ins].
-
+[TuneD plug-ins supported by the Operator](#supported-tuned-daemon-plug-ins).
 
 ### Recommended profiles
 
@@ -124,7 +122,7 @@ The `profile:` selection logic is defined by the `recommend:` section of the CR.
 The `recommend:` section is a list of items to recommend the profiles based on
 a selection criteria.
 
-```
+```yaml
   recommend:
   <recommend-item-1>
   # ...
@@ -133,24 +131,24 @@ a selection criteria.
 
 The individual items of the list:
 
-```
+```yaml
   - machineConfigLabels:                # optional
       <mcLabels>                        # a dictionary of key/value MachineConfig labels; the keys must be unique
     match:                              # optional; if omitted, profile match is assumed unless a profile with a higher priority matches first or 'machineConfigLabels' is set
     <match>                             # an optional list
     priority: <priority>                # profile ordering priority, lower numbers mean higher priority (0 is the highest priority)
     profile: <tuned_profile_name>       # a TuneD profile to apply on a match; for example tuned_profile_1
-    operand:				# optional operand configuration
-      debug: <bool>			# turn debugging on/off for the TuneD daemon: true/false (default is false)
-      tunedConfig:			# global configuration for the TuneD daemon as defined in tuned-main.conf
-        reapply_sysctl: <bool>		# turn reapply_sysctl functionality on/off for the TuneD daemon: true/false
+    operand:    # optional operand configuration
+      debug: <bool>   # turn debugging on/off for the TuneD daemon: true/false (default is false)
+      tunedConfig:   # global configuration for the TuneD daemon as defined in tuned-main.conf
+        reapply_sysctl: <bool>  # turn reapply_sysctl functionality on/off for the TuneD daemon: true/false
 ```
 
 If `<match>` is omitted, a profile match (i.e. _true_) is assumed.
 
 `<match>` is an optional list recursively defined as follows:
 
-```
+```yaml
     - label: <label_name>     # node or pod label name
       value: <label_value>    # optional node or pod label value; if omitted, the presence of <label_name> is enough to match
       type: <label_type>      # optional node or pod type ("node" or "pod"); if omitted, "node" is assumed
@@ -177,10 +175,9 @@ The list items `match` and `machineConfigLabels` are connected by the logical OR
 The `match` item is evaluated first in a short-circuit manner. Therefore, if it evaluates to
 `true`, `machineConfigLabels` item is not considered.
 
-
 #### Example
 
-```
+```yaml
   - match:
     - label: tuned.openshift.io/elasticsearch
       match:
@@ -228,7 +225,7 @@ OpenShift nodes that run an ingress pod with label
 `tuned.openshift.io/ingress-pod-label=ingress-pod-label-value`.
 As an administrator, use the following command to create a custom Tuned CR.
 
-```
+```yaml
 oc create -f- <<_EOF_
 apiVersion: tuned.openshift.io/v1
 kind: Tuned
@@ -254,7 +251,6 @@ spec:
     profile: openshift-ingress
 _EOF_
 ```
-
 
 ## Supported TuneD daemon plug-ins
 
@@ -288,8 +284,8 @@ The following TuneD plug-ins are currently not fully supported:
 * bootloader
 * script
 
-
 ## Additional tuning on fully-managed hosts
+
 Support for the [stall daemon](https://github.com/bristot/stalld)
 (stalld) has been added to complement tuning performed by TuneD realtime
 profiles. Currently, only hosts fully-managed by the
@@ -297,7 +293,7 @@ profiles. Currently, only hosts fully-managed by the
 (MCO) can benefit from this functionality. To deploy stalld on such hosts,
 the following line needs to be added to the TuneD service plugin.
 
-```
+```conf
 service.stalld=start,enable
 ```
 
@@ -306,6 +302,6 @@ unit created when using the line above in the TuneD service plugin. This
 file can then be referred to by prefixing the absolute path to the overlay
 file on the host by the `/host` prefix.
 
-```
+```conf
 service.stalld=start,enable,file:/host<absolute_path_to_the_overlay_file_on_the_host>
 ```
