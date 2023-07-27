@@ -173,5 +173,8 @@ func kniExpectedCloneContent() []string {
 		"/sys/class/dmi/id/product_name",
 		"/sys/class/dmi/id/product_sku",
 		"/sys/class/dmi/id/product_version",
+		// Workload partioning files
+		"/etc/crio/crio.conf.d/01-workload-partitioning",
+		"/etc/kubernetes/openshift-workload-pinning",
 	}
 }
