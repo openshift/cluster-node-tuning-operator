@@ -81,10 +81,6 @@ spec:
               is for internal use only and its fields may be changed/removed in the
               future.
             properties:
-              bootcmdline:
-                description: kernel parameters calculated by tuned for the active
-                  Tuned profile
-                type: string
               conditions:
                 description: conditions represents the state of the per-node Profile
                   application
@@ -126,3 +122,5 @@ spec:
         type: object
     served: true
     storage: true
+    subresources:
+      status: {}
