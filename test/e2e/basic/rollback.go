@@ -97,6 +97,14 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlVar, "1")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
+			ginkgo.By(fmt.Sprintf("deleting custom profile %s", profileIngress))
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileIngress)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By(fmt.Sprintf("waiting for TuneD profile %s on node %s", util.GetDefaultWorkerProfile(node), node.Name))
+			err = util.WaitForProfileConditionStatus(cs, pollInterval, waitDuration, node.Name, util.GetDefaultWorkerProfile(node), tunedv1.TunedProfileApplied, coreapi.ConditionTrue)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
 			_, err = util.ExecCmdInPod(pod, "sysctl", fmt.Sprintf("%s=%s", sysctlVar, sysctlValDef))
 			gomega.Expect(err).NotTo(gomega.HaveOccurred()) // sysctl exits 1 when it fails to configure a kernel parameter at runtime
 
@@ -104,9 +112,6 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlVar, sysctlValDef)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("deleting custom profile %s", profileIngress))
-			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileIngress)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		})
 	})
 })
