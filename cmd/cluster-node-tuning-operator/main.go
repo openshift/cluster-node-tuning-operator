@@ -23,6 +23,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -47,6 +48,7 @@ import (
 const (
 	operandFilename  = "openshift-tuned"
 	operatorFilename = "cluster-node-tuning-operator"
+	nodeCfgName      = "cluster"
 	webhookPort      = 4343
 	webhookCertDir   = "/apiserver.local.config/certificates"
 	webhookCertName  = "apiserver.crt"
@@ -132,6 +134,10 @@ func operatorRun() {
 
 	if err != nil {
 		klog.Exit(err)
+	}
+
+	if err := setCgroupsV1(restConfig); err != nil {
+		klog.Fatalf("unable to set cgroups mode to v1:  %v", err)
 	}
 
 	if !config.InHyperShift() {
@@ -320,6 +326,40 @@ func migratePinnedSingleNodeInfraStatus(cfg *rest.Config, scheme *apiruntime.Sch
 		}
 	}
 
+	return nil
+}
+
+// Update the config.openshift.io/node object with the desired cgroupsv1 mode.
+// (TODO) This code can be removed in the future when the cgroupsv2 is supported
+func setCgroupsV1(cfg *rest.Config) error {
+	k8sclient, err := client.New(cfg, client.Options{})
+	if err != nil {
+		return err
+	}
+
+	utilruntime.Must(apiconfigv1.Install(k8sclient.Scheme()))
+
+	key := types.NamespacedName{
+		Name: nodeCfgName,
+	}
+	nodeCfg := &apiconfigv1.Node{}
+	nodeCfg.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "config.openshift.io",
+		Version: "v1",
+		Kind:    "Node",
+	})
+
+	err = k8sclient.Get(context.Background(), key, nodeCfg)
+	if err != nil {
+		klog.Errorf("failed to get config node object; name=%q err=%v", nodeCfg.GetName(), err)
+		nodeCfg.Name = nodeCfgName
+		nodeCfg.Spec.CgroupMode = apiconfigv1.CgroupModeV1
+		return k8sclient.Create(context.Background(), nodeCfg)
+	}
+	if nodeCfg.Spec.CgroupMode != apiconfigv1.CgroupModeV1 {
+		nodeCfg.Spec.CgroupMode = apiconfigv1.CgroupModeV1
+		return k8sclient.Update(context.Background(), nodeCfg)
+	}
 	return nil
 }
 
