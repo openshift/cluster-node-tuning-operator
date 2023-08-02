@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"io/ioutil"
 	"path/filepath"
 	"text/template"
@@ -60,7 +61,12 @@ const (
 	setCPUsOffline            = "set-cpus-offline"
 	setRPSMask                = "set-rps-mask"
 	clearIRQBalanceBannedCPUs = "clear-irqbalance-banned-cpus"
-	cpusetConfigure           = "cpuset-configure"
+
+	ovsSliceName                     = "ovs.slice"
+	ovsDynamicPinningTriggerFile     = "ovs-enable-dynamic-cpu-affinity"
+	ovsDynamicPinningTriggerHostFile = "/etc/openvswitch/enable_dynamic_cpu_affinity"
+
+	cpusetConfigure = "cpuset-configure"
 )
 
 const (
@@ -94,10 +100,13 @@ const (
 )
 
 const (
-	templateReservedCpus = "ReservedCpus"
-	templateWorkload     = "Workload"
-	templateRuntimePath  = "RuntimePath"
-	templateRuntimeRoot  = "RuntimeRoot"
+	templateReservedCpus           = "ReservedCpus"
+	templateOvsSliceName           = "OvsSliceName"
+	templateOvsSliceDefinitionFile = "ovs.slice"
+	templateOvsSliceUsageFile      = "01-use-ovs-slice.conf"
+	templateWorkload               = "Workload"
+	templateRuntimePath            = "RuntimePath"
+	templateRuntimeRoot            = "RuntimeRoot"
 )
 
 // New returns new machine configuration object for performance sensitive workloads
@@ -282,7 +291,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 		})
 
 		dst := getBashScriptPath(cpusetConfigure)
-		content, err := assets.Scripts.ReadFile(fmt.Sprintf("scripts/%s.sh", cpusetConfigure))
+		content, err := getTemplatedOvsFile(assets.Scripts, fmt.Sprintf("scripts/%s.sh", cpusetConfigure), ovsSliceName)
 		if err != nil {
 			return nil, err
 		}
@@ -318,7 +327,49 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 		Name:     getSystemdService(clearIRQBalanceBannedCPUs),
 	})
 
+	if ok, ovsSliceName := MoveOvsIntoOwnSlice(); ok {
+		// Create the OVS slice that will lift the cpu restrictions for better kernel networking performance
+		// This is technically not necessary as systemd is smart enough
+		// to create a slice when a unit references it.
+		// However, this allows us to set the resources allocated and the cpu balancing
+
+		ovsCgroupUnit, err := getOvsSliceDefinition(ovsSliceName)
+		if err != nil {
+			return nil, err
+		}
+
+		ovsMode := 0644
+		addContent(ignitionConfig, ovsCgroupUnit, "/etc/systemd/system/"+ovsSliceName, &ovsMode)
+
+		// Configure OVS services to use the newly created slice
+		serviceOvsSlice, err := getOvsSliceUsage(ovsSliceName)
+		if err != nil {
+			return nil, err
+		}
+
+		addContent(ignitionConfig, serviceOvsSlice, "/etc/systemd/system/openvswitch.service.d/"+templateOvsSliceUsageFile, &ovsMode)
+		addContent(ignitionConfig, serviceOvsSlice, "/etc/systemd/system/ovs-vswitchd.service.d/"+templateOvsSliceUsageFile, &ovsMode)
+		addContent(ignitionConfig, serviceOvsSlice, "/etc/systemd/system/ovsdb-server.service.d/"+templateOvsSliceUsageFile, &ovsMode)
+
+		// Tell OVN-K to enable dynamic cpu pinning
+		content, err := getTemplatedOvsFile(assets.Configs, filepath.Join("configs", ovsDynamicPinningTriggerFile), ovsSliceName)
+		if err != nil {
+			return nil, err
+		}
+		addContent(ignitionConfig, content, ovsDynamicPinningTriggerHostFile, &ovsMode)
+	}
+
 	return ignitionConfig, nil
+}
+
+func MoveOvsIntoOwnSlice() (bool, string) {
+	// Make sure this does not interfere with SNO and workload partitioning
+	// where OVS is intentionally still running in reserved only due to
+	// workload partitioning restricting the cpuset for OVN-K pods.
+	//
+	// This will be propagated by the ovkube-node cpu affinity logic
+	// and restrict OVS to reserved only.
+	return true, ovsSliceName
 }
 
 func getBashScriptPath(scriptName string) string {
@@ -352,6 +403,31 @@ func GetHugepagesSizeKilobytes(hugepagesSize performancev2.HugePageSize) (string
 	default:
 		return "", fmt.Errorf("can not convert size %q to kilobytes", hugepagesSize)
 	}
+}
+
+func getTemplatedOvsFile(fsys fs.FS, templateName string, name string) ([]byte, error) {
+	templateArgs := make(map[string]string)
+	templateArgs[templateOvsSliceName] = name
+
+	sliceTemplate, err := template.ParseFS(fsys, templateName)
+	if err != nil {
+		return nil, err
+	}
+
+	slice := &bytes.Buffer{}
+	if err := sliceTemplate.Execute(slice, templateArgs); err != nil {
+		return nil, err
+	}
+
+	return slice.Bytes(), nil
+}
+
+func getOvsSliceDefinition(name string) ([]byte, error) {
+	return getTemplatedOvsFile(assets.Configs, filepath.Join("configs", templateOvsSliceDefinitionFile), name)
+}
+
+func getOvsSliceUsage(name string) ([]byte, error) {
+	return getTemplatedOvsFile(assets.Configs, filepath.Join("configs", templateOvsSliceUsageFile), name)
 }
 
 func getCpusetConfigureServiceOptions() []*unit.UnitOption {
@@ -530,6 +606,12 @@ func renderManagementCPUPinningConfig(cpuv2 *performancev2.CPU, src string) ([]b
 	return pinningConfigData.Bytes(), nil
 }
 
+// BootstrapWorkloadPinningMC creates an initial state MachineConfig resource that establishes an empty CPU set for both
+// CRIO config and Kubelet config. The purpose is provide empty state initialization for both CRIO and Kubelet so that the nodes
+// always start and join the cluster in a Workload Pinning configuration.
+//
+// When a performance profiles is created, they will override the config files in this MC with the desired CPU Set. If that performance
+// profile were to be deleted later on, this initial MC will be the fallback that MCO re-renders and maintain a workload pinning configuration.
 func BootstrapWorkloadPinningMC(role string, pinningMode *apiconfigv1.CPUPartitioningMode) (*machineconfigv1.MachineConfig, error) {
 	if pinningMode == nil {
 		return nil, fmt.Errorf("can not generate configs, CPUPartitioningMode is nil")
@@ -540,7 +622,22 @@ func BootstrapWorkloadPinningMC(role string, pinningMode *apiconfigv1.CPUPartiti
 	}
 
 	mode := 420
-	source := "data:text/plain;charset=utf-8;base64,ewogICJtYW5hZ2VtZW50IjogewogICAgImNwdXNldCI6ICIiCiAgfQp9Cg=="
+	emptySet := performancev2.CPUSet("")
+	emptySetCPU := performancev2.CPU{Reserved: &emptySet}
+
+	ocpPartitionEmptySetFileData, err := renderManagementCPUPinningConfig(&emptySetCPU, ocpPartitioningConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	crioPartitionEmptySetFileData, err := renderManagementCPUPinningConfig(&emptySetCPU, crioPartitioningConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	// We add lower hierarchical config file name so as to not disturb any
+	// pre-existing files that users might have for workload pinning
+	crioDefaultPartitioningConfig := "01-workload-pinning-default.conf"
 
 	mc := &machineconfigv1.MachineConfig{
 		TypeMeta: metav1.TypeMeta{
@@ -560,20 +657,20 @@ func BootstrapWorkloadPinningMC(role string, pinningMode *apiconfigv1.CPUPartiti
 		Ignition: igntypes.Ignition{
 			Version: igntypes.MaxVersion.String(),
 		},
-		Storage: igntypes.Storage{
-			Files: []igntypes.File{{
-				Node: igntypes.Node{
-					Path: "/etc/kubernetes/openshift-workload-pinning",
-				},
-				FileEmbedded1: igntypes.FileEmbedded1{
-					Contents: igntypes.Resource{
-						Source: &source,
-					},
-					Mode: &mode,
-				},
-			}},
-		},
 	}
+
+	// Add empty set kubelet configuration file
+	addContent(
+		ignitionConfig,
+		ocpPartitionEmptySetFileData,
+		filepath.Join(kubernetesConfDir, ocpPartitioningConfig),
+		&mode)
+	// Add empty set crio configuration file
+	addContent(
+		ignitionConfig,
+		crioPartitionEmptySetFileData,
+		filepath.Join(crioConfd, crioDefaultPartitioningConfig),
+		&mode)
 
 	rawIgnition, err := json.Marshal(ignitionConfig)
 	if err != nil {

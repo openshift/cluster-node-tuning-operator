@@ -147,7 +147,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				re := regexp.MustCompile(`tuned.non_isolcpus=\S+`)
 				nonIsolcpusFullArgument := re.FindString(string(cmdline))
 				Expect(nonIsolcpusFullArgument).To(ContainSubstring("tuned.non_isolcpus="), "tuned.non_isolcpus parameter not found in %q", cmdline)
-				nonIsolcpusMask := strings.Split(string(nonIsolcpusFullArgument), "=")[1]
+				nonIsolcpusMask := strings.Split(nonIsolcpusFullArgument, "=")[1]
 				nonIsolcpusMaskNoDelimiters := strings.Replace(nonIsolcpusMask, ",", "", -1)
 
 				getTrimmedMaskFromData := func(maskType string, data []byte) string {
@@ -339,8 +339,16 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				!*profile.Spec.WorkloadHints.RealTime && !profileutil.IsRpsEnabled(profile) {
 				Skip("realTime Workload Hints is not enabled")
 			}
+
 			expectedRPSCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
 			Expect(err).ToNot(HaveOccurred())
+
+			expectedPhysRPSCPUs := expectedRPSCPUs.Clone()
+			if !profileutil.IsPhysicalRpsEnabled(profile) {
+				// empty cpuset
+				expectedPhysRPSCPUs = cpuset.NewCPUSet()
+			}
+
 			for _, node := range workerRTNodes {
 				// Verify the systemd RPS service uses the correct RPS mask
 				cmd := []string{"sysctl", "-n", "net.core.rps_default_mask"}
@@ -370,10 +378,6 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				}
 
 				By("verify RPS mask on physical network devices")
-				if !profileutil.IsPhysicalRpsEnabled(profile) {
-					// empty cpuset
-					expectedRPSCPUs = cpuset.NewCPUSet([]int{}...)
-				}
 				cmd = []string{
 					"find", "/rootfs/sys/devices",
 					"-regex", "/rootfs/sys/devices/pci.*",
@@ -387,7 +391,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				for _, devRPS := range strings.Split(devsRPS, "\n") {
 					rpsCPUs, err = components.CPUMaskToCPUSet(devRPS)
 					Expect(err).ToNot(HaveOccurred())
-					Expect(rpsCPUs.Equals(expectedRPSCPUs)).To(BeTrue(), "a host device rps mask is different from the reserved CPUs; have %q want %q", rpsCPUs.String(), expectedRPSCPUs.String())
+					Expect(rpsCPUs.Equals(expectedPhysRPSCPUs)).To(BeTrue(), "a host device rps mask is different from the reserved CPUs; have %q want %q", rpsCPUs.String(), expectedPhysRPSCPUs.String())
 				}
 			}
 		})
@@ -413,8 +417,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				"vm.swappiness":             "10",
 			}
 			schedulerKnobs := map[string]string{
-				"min_granularity_ns": "10000000",
-				"migration_cost_ns":  "5000000",
+				"migration_cost_ns": "5000000",
 			}
 			key := types.NamespacedName{
 				Name:      components.GetComponentName(testutils.PerformanceProfileName, components.ProfileNamePerformance),
@@ -458,10 +461,10 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					},
 					NodeSelector: map[string]string{newLabel: ""},
 					RealTimeKernel: &performancev2.RealTimeKernel{
-						Enabled: pointer.BoolPtr(true),
+						Enabled: pointer.Bool(true),
 					},
 					NUMA: &performancev2.NUMA{
-						TopologyPolicy: pointer.StringPtr("restricted"),
+						TopologyPolicy: pointer.String("restricted"),
 					},
 				},
 			}
@@ -554,13 +557,13 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					},
 					NodeSelector: map[string]string{newLabel: ""},
 					RealTimeKernel: &performancev2.RealTimeKernel{
-						Enabled: pointer.BoolPtr(true),
+						Enabled: pointer.Bool(true),
 					},
 					AdditionalKernelArgs: []string{
 						"NEW_ARGUMENT",
 					},
 					NUMA: &performancev2.NUMA{
-						TopologyPolicy: pointer.StringPtr("restricted"),
+						TopologyPolicy: pointer.String("restricted"),
 					},
 				},
 			}
@@ -782,7 +785,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				profile.Name = testProfileName
 				profile.ResourceVersion = ""
 				profile.Spec.NodeSelector = map[string]string{"test/test": "test"}
-				profile.Spec.GloballyDisableIrqLoadBalancing = pointer.BoolPtr(globallyDisableIrqLoadBalancing)
+				profile.Spec.GloballyDisableIrqLoadBalancing = pointer.Bool(globallyDisableIrqLoadBalancing)
 				profile.Spec.MachineConfigPoolSelector = nil
 				profile.Spec.MachineConfigLabel = nil
 
@@ -903,11 +906,11 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					},
 					Spec: performancev1alpha1.PerformanceProfileSpec{
 						RealTimeKernel: &performancev1alpha1.RealTimeKernel{
-							Enabled: pointer.BoolPtr(true),
+							Enabled: pointer.Bool(true),
 						},
 						NodeSelector: map[string]string{"v1alpha1/v1alpha1": "v1alpha1"},
 						NUMA: &performancev1alpha1.NUMA{
-							TopologyPolicy: pointer.StringPtr("restricted"),
+							TopologyPolicy: pointer.String("restricted"),
 						},
 					},
 				}
@@ -962,11 +965,11 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					},
 					Spec: performancev1.PerformanceProfileSpec{
 						RealTimeKernel: &performancev1.RealTimeKernel{
-							Enabled: pointer.BoolPtr(true),
+							Enabled: pointer.Bool(true),
 						},
 						NodeSelector: map[string]string{"v1/v1": "v1"},
 						NUMA: &performancev1.NUMA{
-							TopologyPolicy: pointer.StringPtr("restricted"),
+							TopologyPolicy: pointer.String("restricted"),
 						},
 					},
 				}
@@ -1021,11 +1024,11 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					},
 					Spec: performancev2.PerformanceProfileSpec{
 						RealTimeKernel: &performancev2.RealTimeKernel{
-							Enabled: pointer.BoolPtr(true),
+							Enabled: pointer.Bool(true),
 						},
 						NodeSelector: map[string]string{"v2/v2": "v2"},
 						NUMA: &performancev2.NUMA{
-							TopologyPolicy: pointer.StringPtr("restricted"),
+							TopologyPolicy: pointer.String("restricted"),
 						},
 					},
 				}
@@ -1237,7 +1240,7 @@ func verifyV2Conversion(v2Profile *performancev2.PerformanceProfile, v1Profile *
 		}
 		if specCPU.Offlined != nil {
 			if string(*specCPU.Offlined) != string(*v1Profile.Spec.CPU.Offlined) {
-				return fmt.Errorf("Offlined CPUs are different [v2: %s, v1: %s]",
+				return fmt.Errorf("offlined CPUs are different [v2: %s, v1: %s]",
 					*specCPU.Offlined, *v1Profile.Spec.CPU.Offlined)
 			}
 		}

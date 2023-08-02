@@ -14,7 +14,7 @@ REV=$(shell git describe --long --tags --match='v*' --always --dirty)
 
 # Upstream tuned daemon variables
 TUNED_REPO:=https://github.com/redhat-performance/tuned.git
-TUNED_COMMIT:=ce3d0926289942407cf7bdc717c464e9bf3079df
+TUNED_COMMIT:=850368d2f89681725e9bd5eb2dfb44ad2226bc73
 TUNED_DIR:=daemon
 
 # API-related variables
@@ -54,7 +54,7 @@ clone-tuned:
 	  cd $(TUNED_DIR) && git checkout $(TUNED_COMMIT) && cd .. && \
 	  rm -rf $(TUNED_DIR)/.git)
 
-build: $(BINDATA) pkg/generated build-performance-profile-creator
+build: $(BINDATA) pkg/generated build-performance-profile-creator build-gather-sysinfo
 	$(GO_BUILD_RECIPE)
 	ln -sf $(PACKAGE_BIN) $(OUT_DIR)/openshift-tuned
 
@@ -100,7 +100,7 @@ test-e2e:
 	done
 
 .PHONY: test-e2e-local
-test-e2e-local: $(BINDATA) performance-profile-creator-tests
+test-e2e-local: $(BINDATA) performance-profile-creator-tests gather-sysinfo-tests
 	$(GO_BUILD_RECIPE)
 	for d in performanceprofile/functests-render-command/1_render_command; do \
 	  $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.no-color -ginkgo.fail-fast || exit; \
@@ -208,7 +208,7 @@ pao-functests-updating-profile: cluster-label-worker-cnf pao-functests-update-on
 pao-functests-update-only:
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
-	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/2_performance_update test/e2e/performanceprofile/functests/3_performance_status test/e2e/performanceprofile/functests/7_performance_kubelet_node test/e2e/performanceprofile/functests/8_reboot" -p "-v -r --fail-fast --flake-attempts=2 --timeout=5h --junit-report=report.xml" -m "Running Functional Tests"
+	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/2_performance_update test/e2e/performanceprofile/functests/3_performance_status test/e2e/performanceprofile/functests/7_performance_kubelet_node test/e2e/performanceprofile/functests/9_reboot" -p "-v -r --fail-fast --flake-attempts=2 --timeout=5h --junit-report=report.xml" -m "Running Functional Tests"
 
 .PHONY: pao-functests-performance-workloadhints
 pao-functests-performance-workloadhints: cluster-label-worker-cnf pao-functests-performance-workloadhints-only
@@ -241,6 +241,19 @@ build-performance-profile-creator:
 performance-profile-creator-tests: build-performance-profile-creator
 	@echo "Running Performance Profile Creator Tests"
 	hack/run-test.sh -t "test/e2e/performanceprofile/functests-performance-profile-creator" -p "--v -r --fail-fast --flake-attempts=2" -m "Running Functional Tests" -r "--junit-report=/tmp/artifacts"
+
+# Gather sysinfo binary for use in must-gather
+.PHONY: build-gather-sysinfo
+build-gather-sysinfo:
+	@echo "Building gather-sysinfo"
+	LDFLAGS="-s -w -X ${PACKAGE}/cmd/gather-sysinfo/version.Version=${REV} "; \
+	$(GO) build -v $(LDFLAGS) -o $(OUT_DIR)/gather-sysinfo ./cmd/gather-sysinfo
+
+.PHONY: gather-sysinfo-tests
+gather-sysinfo-tests: build-gather-sysinfo
+	@echo "Running gather-sysinfo Tests"
+	$(GO) test -v ./cmd/gather-sysinfo
+
 
 .PHONY: render-sync
 render-sync: build

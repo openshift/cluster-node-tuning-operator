@@ -49,7 +49,7 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 
 	AfterEach(func() {
 		if clean != nil {
-			clean()
+			Expect(clean(), "failed to cleanup in AfterEach")
 		}
 
 	})
@@ -135,7 +135,7 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 				err := testclient.Client.Get(context.TODO(), key, runtimeClass)
 				// if err != nil probably the resource were already deleted
 				if err == nil {
-					testclient.Client.Delete(context.TODO(), runtimeClass)
+					Expect(testclient.Client.Delete(context.TODO(), runtimeClass), "failed to delete runtimeClass %q", runtimeClass.Name)
 				}
 				return err
 			}

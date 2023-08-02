@@ -1,15 +1,19 @@
 package machineconfig
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
 
 	"k8s.io/utils/pointer"
 
+	igntypes "github.com/coreos/ignition/v2/config/v3_2/types"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
+	configv1 "github.com/openshift/api/config/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"sigs.k8s.io/yaml"
 
@@ -221,6 +225,73 @@ var _ = Describe("Pinning Config", func() {
 				})
 			})
 		}
+	})
+})
+
+var _ = Describe("Bootstrap Pinning Config", func() {
+
+	allNodes := configv1.CPUPartitioningAllNodes
+	none := configv1.CPUPartitioningNone
+	defaultEmptyCrio := []byte(`
+[crio.runtime.workloads.management]
+activation_annotation = "target.workload.openshift.io/management"
+annotation_prefix = "resources.workload.openshift.io"
+resources = { "cpushares" = 0, "cpuset" = "" }
+`)
+	defaultEmptyKubelet := []byte(`
+{
+  "management": {
+    "cpuset": ""
+  }
+}
+`)
+
+	expected := map[string][]byte{
+		"/etc/kubernetes/openshift-workload-pinning":             defaultEmptyKubelet,
+		"/etc/crio/crio.conf.d/01-workload-pinning-default.conf": defaultEmptyCrio,
+	}
+
+	Context("should generate config", func() {
+		It("when cpu partitioning set", func() {
+			mc, err := BootstrapWorkloadPinningMC("master", &allNodes)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(mc).ToNot(BeNil())
+		})
+
+		It("with correct ignition configs", func() {
+			mc, err := BootstrapWorkloadPinningMC("master", &allNodes)
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+
+			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.Storage.Files).To(HaveLen(2))
+
+			for _, f := range result.Storage.Files {
+				nonEncodedContent, ok := expected[f.Node.Path]
+				Expect(ok).To(BeTrue(), "path %s is not present in expected map", f.Node.Path)
+				encoded := base64.StdEncoding.EncodeToString(nonEncodedContent)
+				Expect(f.Contents.Source).ToNot(BeNil())
+				Expect(*f.Contents.Source).To(
+					Equal(fmt.Sprintf("%s,%s", defaultIgnitionContentSource, encoded)),
+					"path %s contains content mismatch", f.Node.Path)
+			}
+		})
+	})
+
+	Context("should not be generated", func() {
+		It("with cpu partitioning set to none", func() {
+			mc, err := BootstrapWorkloadPinningMC("master", &none)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(mc).To(BeNil())
+		})
+
+		It("with nil being provided", func() {
+			mc, err := BootstrapWorkloadPinningMC("master", nil)
+			Expect(err).To(HaveOccurred())
+			Expect(mc).To(BeNil())
+		})
 	})
 })
 

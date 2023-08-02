@@ -1,0 +1,10 @@
+# This file enables the dynamic cpu affinity management of the OVS services
+#
+# It is read by the OVN's ovnkube-node DaemonSet container and the feature
+# is enabled when this file exists and is not empty (this commentary text
+# ensures that)
+#
+# For disabling this feature in emergencies, either:
+# 1) delete this file and set the cpu affinity of OVS services manually
+# 2) or replace the contents of this file with an empty string
+#    via a MachineConfig

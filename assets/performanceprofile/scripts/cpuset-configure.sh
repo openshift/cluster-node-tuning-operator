@@ -10,6 +10,9 @@ root=/sys/fs/cgroup/cpuset
 system="$root"/system
 machine="$root"/machine.slice
 
+ovsslice="${root}/{{ .OvsSliceName }}"
+ovsslice_systemd="/sys/fs/cgroup/pids/{{ .OvsSliceName }}"
+
 # As such, the root cgroup needs to have cpuset.sched_load_balance=0. 
 echo 0 > "$root"/cpuset.sched_load_balance
 
@@ -36,3 +39,25 @@ mkdir -p "$machine"
 
 # It's unlikely, but possible, that this cpuset already existed. Iterate just in case.
 for file in $(find "$machine" -name cpuset.cpus | sort -r); do echo "$reserved_set" > "$file"; done
+
+# OVS is running in its own slice that spans all cpus. The real affinity is managed by OVN-K ovnkube-node daemonset
+# Make sure this slice will not enable cpu balancing for other slice configured by this script.
+# This might seem counter-intuitive, but this will actually NOT disable cpu balancing for OVS itself.
+# - OVS has access to reserved cpus, but those have balancing enabled via the `system` cgroup created above
+# - OVS has access to isolated cpus that are currently not assigned to pinned pods. Those have balancing enabled by the
+#   pods running there (burstable and best-effort pods have balancing enabled in the container cgroup and access to all
+#   unpinned cpus).
+
+# systemd does not manage the cpuset cgroup controller, so move everything from the managed pids controller's ovs.slice
+# to the cpuset controller.
+
+# Create the ovs.slice
+mkdir -p "$ovsslice"
+echo 0 > "$ovsslice"/cpuset.sched_load_balance
+cat "$root"/cpuset.cpus > "$ovsslice"/cpuset.cpus
+cat "$root"/cpuset.mems > "$ovsslice"/cpuset.mems
+
+# Move OVS over
+for process in $(cat "$ovsslice_systemd"/*/cgroup.procs | sort -r); do
+        echo $process > "$ovsslice"/cgroup.procs 2>&1 | grep -v "Invalid Argument" || true;
+done

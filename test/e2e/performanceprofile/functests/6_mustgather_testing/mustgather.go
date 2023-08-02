@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -29,7 +28,7 @@ var _ = Describe("[rfe_id: 50649] Performance Addon Operator Must Gather", func(
 	mgContentFolder := ""
 
 	testutils.CustomBeforeAll(func() {
-		destDirContent, err := ioutil.ReadDir(destDir)
+		destDirContent, err := os.ReadDir(destDir)
 		Expect(err).NotTo(HaveOccurred(), "unable to read contents from destDir:%s. error: %w", destDir, err)
 
 		for _, content := range destDirContent {

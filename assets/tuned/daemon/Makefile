@@ -61,7 +61,7 @@ release-dir:
 	mkdir -p $(VERSIONED_NAME)
 
 release-cp: release-dir
-	cp -a AUTHORS COPYING INSTALL README $(VERSIONED_NAME)
+	cp -a AUTHORS COPYING INSTALL README.md $(VERSIONED_NAME)
 
 	cp -a tuned.py tuned.spec tuned.service tuned.tmpfiles Makefile tuned-adm.py \
 		tuned-adm.bash dbus.conf recommend.conf tuned-main.conf 00_tuned \
@@ -191,7 +191,7 @@ install: install-dirs
 	install -Dpm 0644 tuned.service $(DESTDIR)$(UNITDIR)/tuned.service
 
 	# dbus configuration
-	install -Dpm 0644 dbus.conf $(DESTDIR)$(SYSCONFDIR)/dbus-1/system.d/com.redhat.tuned.conf
+	install -Dpm 0644 dbus.conf $(DESTDIR)$(DATADIR)/dbus-1/system.d/com.redhat.tuned.conf
 
 	# grub template
 	install -Dpm 0755 00_tuned $(DESTDIR)$(SYSCONFDIR)/grub.d/00_tuned
@@ -209,7 +209,7 @@ install: install-dirs
 	# documentation
 	cp -a doc/README* $(DESTDIR)$(DOCDIR)
 	cp -a doc/*.txt $(DESTDIR)$(DOCDIR)
-	cp AUTHORS COPYING README $(DESTDIR)$(DOCDIR)
+	cp AUTHORS COPYING README.md $(DESTDIR)$(DOCDIR)
 
 	# libexec scripts
 	$(foreach file, $(wildcard libexec/*), \

@@ -122,7 +122,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 			By("Modifying profile")
 			profile.Spec.CPU = &performancev2.CPU{
-				BalanceIsolated: pointer.BoolPtr(false),
+				BalanceIsolated: pointer.Bool(false),
 				Reserved:        &reserved,
 				Isolated:        &isolated,
 			}
@@ -132,17 +132,17 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					{
 						Count: hpCntOnNuma0,
 						Size:  hpSize2M,
-						Node:  pointer.Int32Ptr(0),
+						Node:  pointer.Int32(0),
 					},
 					{
 						Count: hpCntOnNuma1,
 						Size:  hpSize2M,
-						Node:  pointer.Int32Ptr(1),
+						Node:  pointer.Int32(1),
 					},
 				},
 			}
 			profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-				Enabled: pointer.BoolPtr(true),
+				Enabled: pointer.Bool(true),
 			}
 
 			By("Verifying that mcp is ready for update")
@@ -230,7 +230,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				},
 			}
 			profile.Spec.CPU = &performancev2.CPU{
-				BalanceIsolated: pointer.BoolPtr(false),
+				BalanceIsolated: pointer.Bool(false),
 				Reserved:        &reserved,
 				Isolated:        &isolated,
 			}
@@ -238,7 +238,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				TopologyPolicy: &policy,
 			}
 			profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-				Enabled: pointer.BoolPtr(false),
+				Enabled: pointer.Bool(false),
 			}
 
 			if profile.Spec.AdditionalKernelArgs == nil {
@@ -379,8 +379,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		var oldMcpSelector, oldNodeSelector map[string]string
 
 		BeforeEach(func() {
-			testutils.KnownIssueJira("OCPBUGS-12836")
-
 			// initialize on every run
 			labelsDeletion = false
 			//fetch the latest profile
@@ -446,8 +444,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:28440]Verifies that nodeSelector can be updated in performance profile", func() {
-			testutils.KnownIssueJira("OCPBUGS-12836")
-
 			kubeletConfig, err := nodes.GetKubeletConfig(newCnfNode)
 			Expect(kubeletConfig.TopologyManagerPolicy).ToNot(BeEmpty())
 			cmdline, err := nodes.ExecCommandOnNode(chkCmdLine, newCnfNode)
@@ -457,8 +453,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:27484]Verifies that node is reverted to plain worker when the extra labels are removed", func() {
-			testutils.KnownIssueJira("OCPBUGS-12836")
-
 			By("Deleting cnf labels from the node")
 			removeLabels(profile.Spec.NodeSelector, newCnfNode)
 			labelsDeletion = true
@@ -490,8 +484,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		AfterEach(func() {
-			testutils.KnownIssueJira("OCPBUGS-12836")
-
 			if labelsDeletion == false {
 				removeLabels(profile.Spec.NodeSelector, newCnfNode)
 			}
@@ -872,7 +864,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			totalCpus := fmt.Sprintf("%s,%s", reservedCpus, isolatedCpus)
 			totalCpuSlice := strings.Split(totalCpus, ",")
 			// get partial cpus from the combined cpus
-			partialCpulist := (totalCpuSlice[:len(totalCpuSlice)/2])
+			partialCpulist := totalCpuSlice[:len(totalCpuSlice)/2]
 			offlineCpus := strings.Join(partialCpulist, ",")
 			// Create new performance with offlined
 			reservedSet := performancev2.CPUSet(reservedCpus)
@@ -1145,13 +1137,13 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		It("[test_id:54191]Verify RPS Mask is not applied when RealtimeHint is disabled", func() {
 			By("Modifying profile")
 			profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-				HighPowerConsumption:  pointer.BoolPtr(false),
-				RealTime:              pointer.BoolPtr(false),
-				PerPodPowerManagement: pointer.BoolPtr(false),
+				HighPowerConsumption:  pointer.Bool(false),
+				RealTime:              pointer.Bool(false),
+				PerPodPowerManagement: pointer.Bool(false),
 			}
 
 			profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-				Enabled: pointer.BoolPtr(false),
+				Enabled: pointer.Bool(false),
 			}
 			By("Updating the performance profile")
 			profiles.UpdateWithRetry(profile)

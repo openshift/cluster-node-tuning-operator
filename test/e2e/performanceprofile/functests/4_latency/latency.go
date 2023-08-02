@@ -404,7 +404,7 @@ func getLatencyTestPod(profile *performancev2.PerformanceProfile, node *corev1.N
 						},
 					},
 					SecurityContext: &corev1.SecurityContext{
-						Privileged: pointer.BoolPtr(true),
+						Privileged: pointer.Bool(true),
 					},
 					VolumeMounts: []corev1.VolumeMount{
 						{

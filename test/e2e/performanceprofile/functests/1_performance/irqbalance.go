@@ -18,6 +18,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -31,6 +32,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	e2etuned "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 	"github.com/openshift/cluster-node-tuning-operator/test/framework"
 )
@@ -89,6 +91,23 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 				}
 
 				for _, node := range workerRTNodes {
+					condStatus := corev1.ConditionUnknown
+					Eventually(context.TODO(), func() bool {
+						tunedProfile, err := e2etuned.GetProfile(context.TODO(), testclient.Client, components.NamespaceNodeTuningOperator, node.Name)
+						Expect(err).ToNot(HaveOccurred(), "failed to get Tuned Profile for node %q", node.Name)
+						for _, cond := range tunedProfile.Status.Conditions {
+							if cond.Type != tunedv1.TunedProfileApplied {
+								continue
+							}
+							if cond.Status != corev1.ConditionTrue {
+								condStatus = cond.Status
+								return false
+							}
+							return true
+						}
+						return false
+					}).WithPolling(time.Second*10).WithTimeout(3*time.Minute).Should(BeTrue(), "Tuned Profile for node %q was not applied successfully conditionStatus=%q", node.Name, condStatus)
+
 					By(fmt.Sprintf("verifying worker node %q", node.Name))
 
 					bannedCPUs, err := getIrqBalanceBannedCPUs(&node)
@@ -350,21 +369,6 @@ func findIrqBalanceBannedCPUsVarFromConf(conf string) string {
 		return line
 	}
 	return ""
-}
-
-func makeBackupForFile(node *corev1.Node, path string) func() {
-	fullPath := filepath.Join("/", "rootfs", path)
-	savePath := fullPath + ".save"
-
-	out, err := nodes.ExecCommandOnNode([]string{"/usr/bin/cp", "-v", fullPath, savePath}, node)
-	ExpectWithOffset(1, err).ToNot(HaveOccurred())
-	fmt.Fprintf(GinkgoWriter, "%s", out)
-
-	return func() {
-		out, err := nodes.ExecCommandOnNode([]string{"/usr/bin/mv", "-v", savePath, fullPath}, node)
-		Expect(err).ToNot(HaveOccurred())
-		fmt.Fprintf(GinkgoWriter, "%s", out)
-	}
 }
 
 func pickNodeIdx(nodes []corev1.Node) int {
