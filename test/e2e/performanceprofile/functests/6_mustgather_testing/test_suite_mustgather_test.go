@@ -13,9 +13,6 @@ import (
 	qe_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 )
 
-const must_gather_version = "4.12-snapshot"
-const must_gather_image = "quay.io/openshift-kni/performance-addon-operator-must-gather"
-
 var _ = BeforeSuite(func() {
 	By("Looking for oc tool")
 	ocExec, err := exec.LookPath("oc")
@@ -24,14 +21,12 @@ var _ = BeforeSuite(func() {
 		Skip(fmt.Sprintf("unable to find 'oc' executable %v\n", err))
 	}
 
-	mgImageParam := fmt.Sprintf("--image=%s:%s", must_gather_image, must_gather_version)
 	mgDestDirParam := fmt.Sprintf("--dest-dir=%s", destDir)
 
 	cmdline := []string{
 		ocExec,
 		"adm",
 		"must-gather",
-		mgImageParam,
 		mgDestDirParam,
 	}
 	By(fmt.Sprintf("running: %v\n", cmdline))
