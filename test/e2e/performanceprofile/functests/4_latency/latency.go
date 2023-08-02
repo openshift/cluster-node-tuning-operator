@@ -31,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"k8s.io/utils/pointer"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -452,7 +453,7 @@ func createLatencyTestPod(testPod *corev1.Pod) {
 
 	By("Waiting two minutes to download the latencyTest image")
 	podKey := fmt.Sprintf("%s/%s", testPod.Namespace, testPod.Name)
-	currentPod, err := pods.WaitForPredicate(testPod, 2*time.Minute, func(pod *corev1.Pod) (bool, error) {
+	currentPod, err := pods.WaitForPredicate(client.ObjectKeyFromObject(testPod), 2*time.Minute, func(pod *corev1.Pod) (bool, error) {
 		if pod.Status.Phase == corev1.PodRunning {
 			return true, nil
 		}
@@ -474,7 +475,7 @@ func createLatencyTestPod(testPod *corev1.Pod) {
 
 	By("Waiting another two minutes to give enough time for the cluster to move the pod to Succeeded phase")
 	podTimeout := time.Duration(timeout + latencyTestDelay + 120)
-	err = pods.WaitForPhase(testPod, corev1.PodSucceeded, podTimeout*time.Second)
+	testPod, err = pods.WaitForPhase(client.ObjectKeyFromObject(testPod), corev1.PodSucceeded, podTimeout*time.Second)
 	if err != nil {
 		logEventsForPod(testPod)
 	}
