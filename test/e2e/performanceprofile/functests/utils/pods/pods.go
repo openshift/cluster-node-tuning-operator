@@ -51,13 +51,8 @@ func GetTestPod() *corev1.Pod {
 
 // WaitForDeletion waits until the pod will be removed from the cluster
 func WaitForDeletion(pod *corev1.Pod, timeout time.Duration) error {
-	key := types.NamespacedName{
-		Name:      pod.Name,
-		Namespace: pod.Namespace,
-	}
 	return wait.PollImmediate(time.Second, timeout, func() (bool, error) {
-		pod := &corev1.Pod{}
-		if err := testclient.Client.Get(context.TODO(), key, pod); errors.IsNotFound(err) {
+		if err := testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(pod), pod); errors.IsNotFound(err) {
 			return true, nil
 		}
 		return false, nil
@@ -65,17 +60,12 @@ func WaitForDeletion(pod *corev1.Pod, timeout time.Duration) error {
 }
 
 // WaitForCondition waits until the pod will have specified condition type with the expected status
-func WaitForCondition(pod *corev1.Pod, conditionType corev1.PodConditionType, conditionStatus corev1.ConditionStatus, timeout time.Duration) error {
-	key := types.NamespacedName{
-		Name:      pod.Name,
-		Namespace: pod.Namespace,
-	}
-	return wait.PollImmediate(time.Second, timeout, func() (bool, error) {
-		updatedPod := &corev1.Pod{}
-		if err := testclient.Client.Get(context.TODO(), key, updatedPod); err != nil {
+func WaitForCondition(podKey client.ObjectKey, conditionType corev1.PodConditionType, conditionStatus corev1.ConditionStatus, timeout time.Duration) (*corev1.Pod, error) {
+	updatedPod := &corev1.Pod{}
+	err := wait.PollImmediate(time.Second, timeout, func() (bool, error) {
+		if err := testclient.Client.Get(context.TODO(), podKey, updatedPod); err != nil {
 			return false, nil
 		}
-
 		for _, c := range updatedPod.Status.Conditions {
 			if c.Type == conditionType && c.Status == conditionStatus {
 				return true, nil
@@ -83,13 +73,14 @@ func WaitForCondition(pod *corev1.Pod, conditionType corev1.PodConditionType, co
 		}
 		return false, nil
 	})
+	return updatedPod, err
 }
 
 // WaitForPredicate waits until the given predicate against the pod returns true or error.
-func WaitForPredicate(pod *corev1.Pod, timeout time.Duration, pred func(pod *corev1.Pod) (bool, error)) (*corev1.Pod, error) {
+func WaitForPredicate(podKey client.ObjectKey, timeout time.Duration, pred func(pod *corev1.Pod) (bool, error)) (*corev1.Pod, error) {
 	updatedPod := &corev1.Pod{}
 	err := wait.PollImmediate(time.Second, timeout, func() (bool, error) {
-		if err := testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(pod), updatedPod); err != nil {
+		if err := testclient.Client.Get(context.TODO(), podKey, updatedPod); err != nil {
 			return false, nil
 		}
 
@@ -103,23 +94,19 @@ func WaitForPredicate(pod *corev1.Pod, timeout time.Duration, pred func(pod *cor
 }
 
 // WaitForPhase waits until the pod will have specified phase
-func WaitForPhase(pod *corev1.Pod, phase corev1.PodPhase, timeout time.Duration) error {
-	key := types.NamespacedName{
-		Name:      pod.Name,
-		Namespace: pod.Namespace,
-	}
-	return wait.PollImmediate(time.Second, timeout, func() (bool, error) {
-		updatedPod := &corev1.Pod{}
-		if err := testclient.Client.Get(context.TODO(), key, updatedPod); err != nil {
+func WaitForPhase(podKey client.ObjectKey, phase corev1.PodPhase, timeout time.Duration) (*corev1.Pod, error) {
+	updatedPod := &corev1.Pod{}
+	err := wait.PollImmediate(time.Second, timeout, func() (bool, error) {
+		if err := testclient.Client.Get(context.TODO(), podKey, updatedPod); err != nil {
 			return false, nil
 		}
 
 		if updatedPod.Status.Phase == phase {
 			return true, nil
 		}
-
 		return false, nil
 	})
+	return updatedPod, err
 }
 
 // GetLogs returns logs of the specified pod
