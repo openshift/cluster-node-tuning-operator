@@ -234,14 +234,14 @@ func HasPreemptRTKernel(node *corev1.Node) error {
 func BannedCPUs(node corev1.Node) (banned cpuset.CPUSet, err error) {
 	irqAff, err := GetDefaultSmpAffinityRaw(&node)
 	if err != nil {
-		return cpuset.NewCPUSet(), err
+		return cpuset.New(), err
 	}
 	testlog.Infof("Default SMP IRQ affinity on node %q is {%s} expected mask length %d", node.Name, irqAff, len(irqAff))
 
 	cmd := []string{"sed", "-n", "s/^IRQBALANCE_BANNED_CPUS=\\(.*\\)/\\1/p", "/rootfs/etc/sysconfig/irqbalance"}
 	bannedCPUs, err := ExecCommandOnNode(cmd, &node)
 	if err != nil {
-		return cpuset.NewCPUSet(), fmt.Errorf("failed to execute %v: %v", cmd, err)
+		return cpuset.New(), fmt.Errorf("failed to execute %v: %v", cmd, err)
 	}
 
 	testlog.Infof("Banned CPUs on node %q raw value is {%s}", node.Name, bannedCPUs)
@@ -250,7 +250,7 @@ func BannedCPUs(node corev1.Node) (banned cpuset.CPUSet, err error) {
 
 	if unquotedBannedCPUs == "" {
 		testlog.Infof("Banned CPUs on node %q returned empty set", node.Name)
-		return cpuset.NewCPUSet(), nil // TODO: should this be a error?
+		return cpuset.New(), nil // TODO: should this be a error?
 	}
 
 	fixedBannedCPUs := fixMaskPadding(unquotedBannedCPUs, len(irqAff))
@@ -258,7 +258,7 @@ func BannedCPUs(node corev1.Node) (banned cpuset.CPUSet, err error) {
 
 	banned, err = components.CPUMaskToCPUSet(fixedBannedCPUs)
 	if err != nil {
-		return cpuset.NewCPUSet(), fmt.Errorf("failed to parse the banned CPUs: %v", err)
+		return cpuset.New(), fmt.Errorf("failed to parse the banned CPUs: %v", err)
 	}
 
 	return banned, nil
@@ -305,7 +305,7 @@ func GetDefaultSmpAffinityRaw(node *corev1.Node) (string, error) {
 func GetDefaultSmpAffinitySet(node *corev1.Node) (cpuset.CPUSet, error) {
 	defaultSmpAffinity, err := GetDefaultSmpAffinityRaw(node)
 	if err != nil {
-		return cpuset.NewCPUSet(), err
+		return cpuset.New(), err
 	}
 	return components.CPUMaskToCPUSet(defaultSmpAffinity)
 }
@@ -315,7 +315,7 @@ func GetOnlineCPUsSet(node *corev1.Node) (cpuset.CPUSet, error) {
 	command := []string{"cat", sysDevicesOnlineCPUs}
 	onlineCPUs, err := ExecCommandOnNode(command, node)
 	if err != nil {
-		return cpuset.NewCPUSet(), err
+		return cpuset.New(), err
 	}
 	return cpuset.Parse(onlineCPUs)
 }

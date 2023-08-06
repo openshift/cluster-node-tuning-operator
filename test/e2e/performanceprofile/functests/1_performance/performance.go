@@ -346,7 +346,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			expectedPhysRPSCPUs := expectedRPSCPUs.Clone()
 			if !profileutil.IsPhysicalRpsEnabled(profile) {
 				// empty cpuset
-				expectedPhysRPSCPUs = cpuset.NewCPUSet()
+				expectedPhysRPSCPUs = cpuset.New()
 			}
 
 			for _, node := range workerRTNodes {

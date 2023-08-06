@@ -303,7 +303,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 		if err != nil {
 			return nil, err
 		}
-		offlinedCPUSstring := components.ListToString(offlinedCPUSList.ToSlice())
+		offlinedCPUSstring := components.ListToString(offlinedCPUSList.List())
 		offlineCPUsService, err := getSystemdContent(getOfflineCPUs(offlinedCPUSstring))
 		if err != nil {
 			return nil, err

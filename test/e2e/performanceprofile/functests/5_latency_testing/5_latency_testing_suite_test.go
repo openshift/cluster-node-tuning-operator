@@ -60,8 +60,12 @@ var _ = BeforeSuite(func() {
 	latencyIsolatedSet := performancev2.CPUSet("1-9")
 	latencyReservedSet := performancev2.CPUSet("0")
 	testlog.Infof("current isolated cpus: %s, desired is %s", string(*initialIsolated), latencyIsolatedSet)
-	totalCpus := cpuset.MustParse(string(latencyIsolatedSet)).Size() + cpuset.MustParse(string(latencyReservedSet)).Size()
-	nodesWithSufficientCpu := nodes.GetByCpuCapacity(workerNodes, totalCpus)
+	isolated, err := cpuset.Parse(string(latencyIsolatedSet))
+	Expect(err).ToNot(HaveOccurred(), "failed to parse cpus %q", string(latencyIsolatedSet))
+	reserved, err := cpuset.Parse(string(latencyReservedSet))
+	Expect(err).ToNot(HaveOccurred(), "failed to parse cpus %q", string(latencyReservedSet))
+	totalCpus := isolated.Union(reserved)
+	nodesWithSufficientCpu := nodes.GetByCpuCapacity(workerNodes, totalCpus.Size())
 	//before applying the changes verify that there are compute nodes with sufficient cpus
 	Expect(len(nodesWithSufficientCpu)).NotTo(Equal(0), "found 0 nodes with sufficient cpus %d for the performance profile configuration.", totalCpus)
 

@@ -716,7 +716,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				output, err := nodes.ExecCommandOnNode(cmd, &workerRTNodes[0])
 				Expect(err).ToNot(HaveOccurred())
 				cpus, err := cpuset.Parse(output)
-				targetCpus := cpus.ToSlice()
+				targetCpus := cpus.List()
 				err = checkCpuGovernorsAndResumeLatency(targetCpus, &workerRTNodes[0], "0", "schedutil")
 				Expect(err).ToNot(HaveOccurred())
 				//verify the rest of the cpus do not have powersave cpu governors
@@ -813,7 +813,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				output, err := nodes.ExecCommandOnNode(cmd, &workerRTNodes[0])
 				Expect(err).ToNot(HaveOccurred())
 				cpus, err := cpuset.Parse(output)
-				targetCpus := cpus.ToSlice()
+				targetCpus := cpus.List()
 				err = checkCpuGovernorsAndResumeLatency(targetCpus, &workerRTNodes[0], "n/a", "performance")
 				Expect(err).ToNot(HaveOccurred())
 				By("Verify the rest of cpus have default power setting")

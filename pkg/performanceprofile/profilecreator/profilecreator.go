@@ -595,7 +595,7 @@ func (ca *cpuAccumulator) Result() cpuset.CPUSet {
 		keys = append(keys, k)
 	}
 
-	return cpuset.NewCPUSet(keys...)
+	return cpuset.New(keys...)
 }
 
 // getCPUsSplitAcrossNUMA returns Reserved and Isolated CPUs split across NUMA nodes

@@ -78,7 +78,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		reservedCPU = string(*profile.Spec.CPU.Reserved)
 		reservedCPUSet, err = cpuset.Parse(reservedCPU)
 		Expect(err).ToNot(HaveOccurred())
-		listReservedCPU = reservedCPUSet.ToSlice()
+		listReservedCPU = reservedCPUSet.List()
 
 		onlineCPUSet, err = nodes.GetOnlineCPUsSet(workerRTNode)
 		Expect(err).ToNot(HaveOccurred())
@@ -175,7 +175,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		})
 
 		DescribeTable("Verify CPU usage by stress PODs", func(guaranteed bool) {
-			cpuID := onlineCPUSet.ToSliceNoSort()[0]
+			cpuID := onlineCPUSet.UnsortedList()[0]
 			smtLevel := nodes.GetSMTLevel(cpuID, workerRTNode)
 			if smtLevel < 2 {
 				Skip(fmt.Sprintf("designated worker node %q has SMT level %d - minimum required 2", workerRTNode.Name, smtLevel))
@@ -186,11 +186,11 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			testpod = getStressPod(workerRTNode.Name, cpuRequest)
 			testpod.Namespace = testutils.NamespaceTesting
 
-			listCPU := onlineCPUSet.ToSlice()
+			listCPU := onlineCPUSet.List()
 			expectedQos := corev1.PodQOSBurstable
 
 			if guaranteed {
-				listCPU = onlineCPUSet.Difference(reservedCPUSet).ToSlice()
+				listCPU = onlineCPUSet.Difference(reservedCPUSet).List()
 				expectedQos = corev1.PodQOSGuaranteed
 				promotePodToGuaranteed(testpod)
 			} else if !balanceIsolated {
@@ -268,7 +268,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				"cpu-load-balancing.crio.io": "disable",
 			}
 			// any random existing cpu is fine
-			cpuID := onlineCPUSet.ToSliceNoSort()[0]
+			cpuID := onlineCPUSet.UnsortedList()[0]
 			smtLevel = nodes.GetSMTLevel(cpuID, workerRTNode)
 			testpod = getTestPodWithAnnotations(annotations, smtLevel)
 		})
@@ -318,7 +318,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				testlog.Infof("cpus with load balancing disabled are: %v", cpusNotInSchedulingDomains)
 				Expect(err).ToNot(HaveOccurred(), "unable to fetch cpus with load balancing disabled from /proc/schedstat")
 
-				for _, podcpu := range podCpus.ToSlice() {
+				for _, podcpu := range podCpus.List() {
 					for _, cpu := range cpusNotInSchedulingDomains {
 						if strings.Contains(cpu, fmt.Sprint(podcpu)) {
 							return true
@@ -342,7 +342,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				if len(cpusNotinSchedulingDomains) == 0 {
 					return true
 				} else {
-					for _, podcpu := range podCpus.ToSlice() {
+					for _, podcpu := range podCpus.List() {
 						for _, cpu := range cpusNotinSchedulingDomains {
 							if !strings.Contains(cpu, fmt.Sprint(podcpu)) {
 								return true
@@ -367,7 +367,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				Skip("IRQ load balance should be enabled (GloballyDisableIrqLoadBalancing=false), skipping test")
 			}
 
-			cpuID := onlineCPUSet.ToSliceNoSort()[0]
+			cpuID := onlineCPUSet.UnsortedList()[0]
 			smtLevel = nodes.GetSMTLevel(cpuID, workerRTNode)
 		})
 
@@ -501,7 +501,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				cpus, err := cpuset.Parse(output)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(cpus.ToSlice()).To(Equal(reservedCPUSet.ToSlice()))
+				Expect(cpus.List()).To(Equal(reservedCPUSet.List()))
 			}
 		})
 	})
@@ -529,7 +529,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		It("[test_id:49149] should reject pods which request integral CPUs not aligned with machine SMT level", func() {
 			// also covers Hyper-thread aware sheduling [test_id:46545] Odd number of isolated CPU threads
 			// any random existing cpu is fine
-			cpuID := onlineCPUSet.ToSliceNoSort()[0]
+			cpuID := onlineCPUSet.UnsortedList()[0]
 			smtLevel := nodes.GetSMTLevel(cpuID, workerRTNode)
 			if smtLevel < 2 {
 				Skip(fmt.Sprintf("designated worker node %q has SMT level %d - minimum required 2", workerRTNode.Name, smtLevel))
@@ -588,7 +588,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 				// Check for SMT enabled
 				// any random existing cpu is fine
-				cpuID := onlineCPUSet.ToSliceNoSort()[0]
+				cpuID := onlineCPUSet.UnsortedList()[0]
 				smtLevel := nodes.GetSMTLevel(cpuID, workerRTNode)
 				hasWP := checkForWorkloadPartitioning()
 
@@ -675,7 +675,7 @@ func checkPodHTSiblings(testpod *corev1.Pod) bool {
 	// aggregate cpu sibling paris from the host based on the cpus allocated to the pod
 	By("Get host cpu siblings for pod cpuset")
 	hostHTSiblingPaths := strings.Builder{}
-	for _, cpuNum := range podcpus.ToSlice() {
+	for _, cpuNum := range podcpus.List() {
 		_, err = hostHTSiblingPaths.WriteString(
 			fmt.Sprintf(" /sys/devices/system/cpu/cpu%d/topology/thread_siblings_list", cpuNum),
 		)
