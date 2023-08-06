@@ -677,8 +677,8 @@ github.com/opencontainers/selinux v1.10.2 h1:NFy2xCsjn7+WspbfZkUd5zyVeisV7VFbPSP
 github.com/opencontainers/selinux v1.10.2/go.mod h1:cARutUbaUrlRClyvxOICCgKixCs6L05aUsohzA3EkHQ=
 github.com/openshift-kni/debug-tools v0.1.11 h1:FlcRlL5XQcfWrtzzzpeld9HOEBZqNKc8hipNbBM6plc=
 github.com/openshift-kni/debug-tools v0.1.11/go.mod h1:O3tmG9+vhUW0Fej5xj3ZbslNUigjwYVEACG5AbHMLis=
-github.com/openshift-kni/mixed-cpu-node-plugin v0.0.0-20230702081448-7469c1234b04 h1:x1ABDc78uiQwPnwA4Tv4AAzUNQNhAEeVt6AxA7vHoto=
-github.com/openshift-kni/mixed-cpu-node-plugin v0.0.0-20230702081448-7469c1234b04/go.mod h1:F6h4rqK/rjFQw37SobNmh7ibWn0/1stW2FqsxvpcOk4=
+github.com/openshift-kni/mixed-cpu-node-plugin v0.0.0-20230804071114-20042f01ea0b h1:Uil5HNUlWkg3EtredvCxuUdyAD+4Gkt9nDKTge9Hy3A=
+github.com/openshift-kni/mixed-cpu-node-plugin v0.0.0-20230804071114-20042f01ea0b/go.mod h1:F6h4rqK/rjFQw37SobNmh7ibWn0/1stW2FqsxvpcOk4=
 github.com/openshift/api v0.0.0-20230807132801-600991d550ac h1:HqT8MmYGXiUGUW0BjygTGOOvqO2wIsTaG3q8nboJyPY=
 github.com/openshift/api v0.0.0-20230807132801-600991d550ac/go.mod h1:yimSGmjsI+XF1mr+AKBs2//fSXIOhhetHGbMlBEfXbs=
 github.com/openshift/build-machinery-go v0.0.0-20230306181456-d321ffa04533 h1:mh3ZYs7kPIIe3UUY6tJcTExmtjnXXUu0MrBuK2W/Qvw=
