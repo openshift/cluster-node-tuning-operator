@@ -32,6 +32,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/config"
@@ -128,6 +129,12 @@ func operatorRun() {
 		RetryPeriod:             &le.RetryPeriod.Duration,
 		RenewDeadline:           &le.RenewDeadline.Duration,
 		Namespace:               ntoNamespace,
+		WebhookServer: webhook.NewServer(webhook.Options{
+			Port:     webhookPort,
+			CertDir:  webhookCertDir,
+			CertName: webhookCertName,
+			KeyName:  webhookKeyName,
+		}),
 	})
 
 	if err != nil {
@@ -166,13 +173,6 @@ func operatorRun() {
 		}).SetupWithManager(mgr); err != nil {
 			klog.Exitf("unable to create PerformanceProfile controller: %v", err)
 		}
-
-		// Configure webhook server.
-		webHookServer := mgr.GetWebhookServer()
-		webHookServer.Port = webhookPort
-		webHookServer.CertDir = webhookCertDir
-		webHookServer.CertName = webhookCertName
-		webHookServer.KeyName = webhookKeyName
 
 		if err = (&performancev1.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
 			klog.Exitf("unable to create PerformanceProfile v1 webhook: %v", err)

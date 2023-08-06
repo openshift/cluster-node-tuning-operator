@@ -921,7 +921,7 @@ var _ = Describe("Controller", func() {
 			},
 		}
 		r := newFakeReconciler(profile, mcp)
-		requests := r.mcpToPerformanceProfile(mcp)
+		requests := r.mcpToPerformanceProfile(context.TODO(), mcp)
 		Expect(requests).NotTo(BeEmpty())
 		Expect(requests[0].Name).To(Equal(profile.Name))
 	})

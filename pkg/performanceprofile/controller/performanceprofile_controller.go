@@ -51,7 +51,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 const (
@@ -150,30 +149,27 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		Owns(&mcov1.KubeletConfig{}, builder.WithPredicates(kubeletPredicates)).
 		Owns(&tunedv1.Tuned{}, builder.WithPredicates(p)).
 		Owns(&nodev1.RuntimeClass{}, builder.WithPredicates(p)).
-		Watches(
-			&source.Kind{Type: &mcov1.MachineConfigPool{}},
+		Watches(&mcov1.MachineConfigPool{},
 			handler.EnqueueRequestsFromMapFunc(r.mcpToPerformanceProfile),
 			builder.WithPredicates(mcpPredicates)).
-		Watches(
-			&source.Kind{Type: &tunedv1.Profile{}},
+		Watches(&tunedv1.Profile{},
 			handler.EnqueueRequestsFromMapFunc(r.tunedProfileToPerformanceProfile),
 			builder.WithPredicates(tunedProfilePredicates),
 		).
-		Watches(
-			&source.Kind{Type: &mcov1.ContainerRuntimeConfig{}},
+		Watches(&mcov1.ContainerRuntimeConfig{},
 			handler.EnqueueRequestsFromMapFunc(r.ctrRuntimeConfToPerformanceProfile),
 			builder.WithPredicates(ctrcfgPredicates)).
 		Complete(r)
 }
 
-func (r *PerformanceProfileReconciler) mcpToPerformanceProfile(mcpObj client.Object) []reconcile.Request {
+func (r *PerformanceProfileReconciler) mcpToPerformanceProfile(ctx context.Context, mcpObj client.Object) []reconcile.Request {
 	mcp := &mcov1.MachineConfigPool{}
 
 	key := types.NamespacedName{
 		Namespace: mcpObj.GetNamespace(),
 		Name:      mcpObj.GetName(),
 	}
-	if err := r.Get(context.TODO(), key, mcp); err != nil {
+	if err := r.Get(ctx, key, mcp); err != nil {
 		klog.Errorf("failed to get the machine config pool %+v: %v", key, err)
 		return nil
 	}
@@ -205,14 +201,14 @@ func mcpToPerformanceProfileReconcileRequests(profiles *performancev2.Performanc
 	return requests
 }
 
-func (r *PerformanceProfileReconciler) tunedProfileToPerformanceProfile(tunedProfileObj client.Object) []reconcile.Request {
+func (r *PerformanceProfileReconciler) tunedProfileToPerformanceProfile(ctx context.Context, tunedProfileObj client.Object) []reconcile.Request {
 	node := &corev1.Node{}
 	key := types.NamespacedName{
 		// the tuned profile name is the same as node
 		Name: tunedProfileObj.GetName(),
 	}
 
-	if err := r.Get(context.TODO(), key, node); err != nil {
+	if err := r.Get(ctx, key, node); err != nil {
 		klog.Errorf("failed to get the tuned profile %+v: %v", key, err)
 		return nil
 	}
@@ -235,8 +231,7 @@ func (r *PerformanceProfileReconciler) tunedProfileToPerformanceProfile(tunedPro
 	return requests
 }
 
-func (r *PerformanceProfileReconciler) ctrRuntimeConfToPerformanceProfile(ctrRuntimeConfObj client.Object) []reconcile.Request {
-	ctx := context.Background()
+func (r *PerformanceProfileReconciler) ctrRuntimeConfToPerformanceProfile(ctx context.Context, ctrRuntimeConfObj client.Object) []reconcile.Request {
 	ctrcfg := &mcov1.ContainerRuntimeConfig{}
 
 	err := r.Get(ctx, client.ObjectKeyFromObject(ctrRuntimeConfObj), ctrcfg)
