@@ -14,6 +14,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
@@ -142,7 +144,7 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 			}
 			err = testclient.Client.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
-			err = pods.WaitForCondition(testpod, corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+			testpod, err = pods.WaitForCondition(client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 			Expect(err).ToNot(HaveOccurred())
 
 			cmd2 := []string{"/bin/bash", "-c", "tmux new -d 'LD_PRELOAD=libhugetlbfs.so HUGETLB_MORECORE=yes top -b > /dev/null'"}

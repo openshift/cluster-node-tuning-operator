@@ -167,7 +167,7 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 
 		// things should be settled now so we can use again a short timeout
 		testlog.Infof("post reboot: running a fresh pod %s/%s resource=%q", wlPod.Namespace, wlPod.Name, sriovDeviceResourceName)
-		updatedPod, err := testpods.WaitForPredicate(wlPod, 1*time.Minute, func(pod *corev1.Pod) (bool, error) {
+		updatedPod, err := testpods.WaitForPredicate(client.ObjectKeyFromObject(wlPod), 1*time.Minute, func(pod *corev1.Pod) (bool, error) {
 			return isPodReady(*pod), nil
 		})
 		Expect(err).ToNot(HaveOccurred(), "error checking the workload pod post reboot")
@@ -192,7 +192,7 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 		Expect(err).ToNot(HaveOccurred(), "error creating workload pod")
 
 		// short timeout: we are on idle cluster
-		updatedPod, err := testpods.WaitForPredicate(wlPod, 3*time.Minute, func(pod *corev1.Pod) (bool, error) {
+		updatedPod, err := testpods.WaitForPredicate(client.ObjectKeyFromObject(wlPod), 3*time.Minute, func(pod *corev1.Pod) (bool, error) {
 			return isPodReady(*pod), nil
 		})
 		Expect(err).ToNot(HaveOccurred(), "error waiting for the workload pod to be ready - pre restart")
@@ -214,7 +214,7 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 		testlog.Infof("post restart: finished cooldown time: %v", rebootCooldownTime)
 
 		// longer timeout. We expect things to be still on flux
-		postRestartPod, err := testpods.WaitForPredicate(wlPod, 10*time.Minute, func(pod *corev1.Pod) (bool, error) {
+		postRestartPod, err := testpods.WaitForPredicate(client.ObjectKeyFromObject(wlPod), 10*time.Minute, func(pod *corev1.Pod) (bool, error) {
 			return isPodReady(*pod), nil
 		})
 		Expect(err).ToNot(HaveOccurred(), "error waiting for the workload pod to be ready - post restart")
@@ -230,7 +230,7 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 
 		// things should be settled now so we can use again a short timeout
 		testlog.Infof("post restart: running a fresh pod %s/%s resource=%q", wlPod2.Namespace, wlPod2.Name, sriovDeviceResourceName)
-		updatedPod2, err := testpods.WaitForPredicate(wlPod2, 1*time.Minute, func(pod *corev1.Pod) (bool, error) {
+		updatedPod2, err := testpods.WaitForPredicate(client.ObjectKeyFromObject(wlPod2), 1*time.Minute, func(pod *corev1.Pod) (bool, error) {
 			return isPodReady(*pod), nil
 		})
 		Expect(err).ToNot(HaveOccurred(), "error checking the workload pod post kubelet restart")

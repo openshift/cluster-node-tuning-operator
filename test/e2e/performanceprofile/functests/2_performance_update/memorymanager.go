@@ -142,7 +142,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			By("creating test pod")
 			err = testclient.Client.Create(context.TODO(), testPod)
 			Expect(err).ToNot(HaveOccurred(), "Failed to create test pod")
-			err = pods.WaitForCondition(testPod, corev1.PodConditionType(corev1.PodFailed), corev1.ConditionFalse, 2*time.Minute)
+			testPod, err = pods.WaitForCondition(client.ObjectKeyFromObject(testPod), corev1.PodConditionType(corev1.PodFailed), corev1.ConditionFalse, 2*time.Minute)
 			// Even though number of hugepage requests can be satisfied by 2 numa nodes together
 			// Number of cpus are only 2 which only requires 1 numa node , So minimum number of numa nodes needed to satisfy is only 1.
 			// According to Restricted TM policy: only allow allocations from the minimum number of NUMA nodes.
@@ -392,7 +392,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			By("creating test pod")
 			err = testclient.Client.Create(context.TODO(), testPod2)
 			Expect(err).ToNot(HaveOccurred(), "failed to create testpod2")
-			err = pods.WaitForCondition(testPod2, corev1.PodConditionType(corev1.PodFailed), corev1.ConditionTrue, 2*time.Minute)
+			testPod2, err = pods.WaitForCondition(client.ObjectKeyFromObject(testPod2), corev1.PodConditionType(corev1.PodFailed), corev1.ConditionTrue, 2*time.Minute)
 			Expect(err).To(HaveOccurred(), "testpod2 did not go in to failed condition")
 			err = checkPodEvent(testPod2, "FailedScheduling")
 			Expect(err).ToNot(HaveOccurred(), "failed to find expected event: failedScheduling")
@@ -520,7 +520,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			By("creating test pod")
 			err = testclient.Client.Create(context.TODO(), testPod)
 			Expect(err).ToNot(HaveOccurred(), "failed to create testpod")
-			err = pods.WaitForCondition(testPod, corev1.PodConditionType(corev1.PodFailed), corev1.ConditionFalse, 2*time.Minute)
+			testPod, err = pods.WaitForCondition(client.ObjectKeyFromObject(testPod), corev1.PodConditionType(corev1.PodFailed), corev1.ConditionFalse, 2*time.Minute)
 			err := checkPodEvent(testPod, "TopologyAffinityError")
 			Expect(err).ToNot(HaveOccurred(), "pod did not fail with TopologyAffinityError")
 			Expect(testPod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed), "Test pod does not have QoS class of Guaranteed")
@@ -802,7 +802,7 @@ func initializePod(testPod *corev1.Pod) error {
 	if err != nil {
 		testlog.Errorf("Failed to create test pod %v", testPod)
 	}
-	err = pods.WaitForCondition(testPod, corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+	testPod, err = pods.WaitForCondition(client.ObjectKeyFromObject(testPod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 	if err != nil {
 		testlog.Errorf("%v failed to start", testPod)
 	}
