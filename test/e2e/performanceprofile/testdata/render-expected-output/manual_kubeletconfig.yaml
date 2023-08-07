@@ -20,6 +20,7 @@ spec:
       webhook:
         cacheAuthorizedTTL: 0s
         cacheUnauthorizedTTL: 0s
+    containerRuntimeEndpoint: ""
     cpuManagerPolicy: static
     cpuManagerPolicyOptions:
       full-pcpus-only: "true"
