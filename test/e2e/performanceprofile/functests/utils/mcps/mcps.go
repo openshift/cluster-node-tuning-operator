@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -270,6 +271,17 @@ func WaitForProfilePickedUp(mcpName string, profile *performancev2.PerformancePr
 	}, cluster.ComputeTestTimeout(10*time.Minute, runningOnSingleNode), 30*time.Second).Should(BeTrue(), "PerformanceProfile's %q MC was not picked up by MCP %q in time", profile.Name, mcpName)
 }
 
+// WaitForDeletion waits until the pod will be removed from the cluster
+func WaitForDeletion(ctx context.Context, mcpKey types.NamespacedName, timeout time.Duration) error {
+	return wait.PollImmediate(5*time.Second, timeout, func() (bool, error) {
+		mcp := &machineconfigv1.MachineConfigPool{}
+		if err := testclient.Client.Get(ctx, mcpKey, mcp); apierrors.IsNotFound(err) {
+			return true, nil
+		}
+		return false, nil
+	})
+}
+
 func Delete(name string) error {
 	mcp := &machineconfigv1.MachineConfigPool{}
 	if err := testclient.Client.Get(context.TODO(), types.NamespacedName{Name: name}, mcp); err != nil {
@@ -282,6 +294,5 @@ func Delete(name string) error {
 	if err := testclient.Client.Delete(context.TODO(), mcp); err != nil {
 		return err
 	}
-
-	return nil
+	return WaitForDeletion(context.TODO(), client.ObjectKey{Name: name}, 2*time.Minute)
 }

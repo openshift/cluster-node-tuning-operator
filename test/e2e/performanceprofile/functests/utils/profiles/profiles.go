@@ -13,6 +13,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
@@ -142,6 +144,8 @@ func Delete(name string) error {
 	if err := testclient.Client.Delete(context.TODO(), profile); err != nil {
 		return err
 	}
-
-	return nil
+	key := client.ObjectKey{
+		Name: name,
+	}
+	return WaitForDeletion(key, 2*time.Minute)
 }
