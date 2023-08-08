@@ -178,8 +178,8 @@ WorkloadHints defines the set of upper level flags for different type of workloa
 
 | Field | Description | Scheme | Required |
 | ----- | ----------- | ------ | -------- |
-| highPowerConsumption | HighPowerConsumption defines if the node should be configured in high power consumption mode. The flag will affect the power consumption but will improve the CPUs latency. | *bool | false |
-| realTime | RealTime defines if the node should be configured for the real time workload. | *bool | false |
-| perPodPowerManagement | PerPodPowerManagement defines if the node should be configured in per pod power management. PerPodPowerManagement and HighPowerConsumption hints can not be enabled together. | *bool | false |
+| highPowerConsumption | HighPowerConsumption defines if the node should be configured in high power consumption mode. The flag will affect the power consumption but will improve the CPUs latency. Defaults to false. | *bool | false |
+| realTime | RealTime defines if the node should be configured for the real time workload. Defaults to true. | *bool | false |
+| perPodPowerManagement | PerPodPowerManagement defines if the node should be configured in per pod power management. PerPodPowerManagement and HighPowerConsumption hints can not be enabled together. Defaults to false. | *bool | false |
 
 [Back to TOC](#table-of-contents)

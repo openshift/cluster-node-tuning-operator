@@ -5,10 +5,9 @@ package fake
 import (
 	"context"
 
-	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
@@ -20,25 +19,25 @@ type FakeProfiles struct {
 	ns   string
 }
 
-var profilesResource = schema.GroupVersionResource{Group: "tuned.openshift.io", Version: "v1", Resource: "profiles"}
+var profilesResource = v1.SchemeGroupVersion.WithResource("profiles")
 
-var profilesKind = schema.GroupVersionKind{Group: "tuned.openshift.io", Version: "v1", Kind: "Profile"}
+var profilesKind = v1.SchemeGroupVersion.WithKind("Profile")
 
 // Get takes name of the profile, and returns the corresponding profile object, and an error if there is any.
-func (c *FakeProfiles) Get(ctx context.Context, name string, options v1.GetOptions) (result *tunedv1.Profile, err error) {
+func (c *FakeProfiles) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.Profile, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(profilesResource, c.ns, name), &tunedv1.Profile{})
+		Invokes(testing.NewGetAction(profilesResource, c.ns, name), &v1.Profile{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*tunedv1.Profile), err
+	return obj.(*v1.Profile), err
 }
 
 // List takes label and field selectors, and returns the list of Profiles that match those selectors.
-func (c *FakeProfiles) List(ctx context.Context, opts v1.ListOptions) (result *tunedv1.ProfileList, err error) {
+func (c *FakeProfiles) List(ctx context.Context, opts metav1.ListOptions) (result *v1.ProfileList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewListAction(profilesResource, profilesKind, c.ns, opts), &tunedv1.ProfileList{})
+		Invokes(testing.NewListAction(profilesResource, profilesKind, c.ns, opts), &v1.ProfileList{})
 
 	if obj == nil {
 		return nil, err
@@ -48,8 +47,8 @@ func (c *FakeProfiles) List(ctx context.Context, opts v1.ListOptions) (result *t
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &tunedv1.ProfileList{ListMeta: obj.(*tunedv1.ProfileList).ListMeta}
-	for _, item := range obj.(*tunedv1.ProfileList).Items {
+	list := &v1.ProfileList{ListMeta: obj.(*v1.ProfileList).ListMeta}
+	for _, item := range obj.(*v1.ProfileList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
 		}
@@ -58,69 +57,69 @@ func (c *FakeProfiles) List(ctx context.Context, opts v1.ListOptions) (result *t
 }
 
 // Watch returns a watch.Interface that watches the requested profiles.
-func (c *FakeProfiles) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeProfiles) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewWatchAction(profilesResource, c.ns, opts))
 
 }
 
 // Create takes the representation of a profile and creates it.  Returns the server's representation of the profile, and an error, if there is any.
-func (c *FakeProfiles) Create(ctx context.Context, profile *tunedv1.Profile, opts v1.CreateOptions) (result *tunedv1.Profile, err error) {
+func (c *FakeProfiles) Create(ctx context.Context, profile *v1.Profile, opts metav1.CreateOptions) (result *v1.Profile, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewCreateAction(profilesResource, c.ns, profile), &tunedv1.Profile{})
+		Invokes(testing.NewCreateAction(profilesResource, c.ns, profile), &v1.Profile{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*tunedv1.Profile), err
+	return obj.(*v1.Profile), err
 }
 
 // Update takes the representation of a profile and updates it. Returns the server's representation of the profile, and an error, if there is any.
-func (c *FakeProfiles) Update(ctx context.Context, profile *tunedv1.Profile, opts v1.UpdateOptions) (result *tunedv1.Profile, err error) {
+func (c *FakeProfiles) Update(ctx context.Context, profile *v1.Profile, opts metav1.UpdateOptions) (result *v1.Profile, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateAction(profilesResource, c.ns, profile), &tunedv1.Profile{})
+		Invokes(testing.NewUpdateAction(profilesResource, c.ns, profile), &v1.Profile{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*tunedv1.Profile), err
+	return obj.(*v1.Profile), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeProfiles) UpdateStatus(ctx context.Context, profile *tunedv1.Profile, opts v1.UpdateOptions) (*tunedv1.Profile, error) {
+func (c *FakeProfiles) UpdateStatus(ctx context.Context, profile *v1.Profile, opts metav1.UpdateOptions) (*v1.Profile, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateSubresourceAction(profilesResource, "status", c.ns, profile), &tunedv1.Profile{})
+		Invokes(testing.NewUpdateSubresourceAction(profilesResource, "status", c.ns, profile), &v1.Profile{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*tunedv1.Profile), err
+	return obj.(*v1.Profile), err
 }
 
 // Delete takes name of the profile and deletes it. Returns an error if one occurs.
-func (c *FakeProfiles) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+func (c *FakeProfiles) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteActionWithOptions(profilesResource, c.ns, name, opts), &tunedv1.Profile{})
+		Invokes(testing.NewDeleteActionWithOptions(profilesResource, c.ns, name, opts), &v1.Profile{})
 
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeProfiles) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+func (c *FakeProfiles) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	action := testing.NewDeleteCollectionAction(profilesResource, c.ns, listOpts)
 
-	_, err := c.Fake.Invokes(action, &tunedv1.ProfileList{})
+	_, err := c.Fake.Invokes(action, &v1.ProfileList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched profile.
-func (c *FakeProfiles) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *tunedv1.Profile, err error) {
+func (c *FakeProfiles) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.Profile, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(profilesResource, c.ns, name, pt, data, subresources...), &tunedv1.Profile{})
+		Invokes(testing.NewPatchSubresourceAction(profilesResource, c.ns, name, pt, data, subresources...), &v1.Profile{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*tunedv1.Profile), err
+	return obj.(*v1.Profile), err
 }
