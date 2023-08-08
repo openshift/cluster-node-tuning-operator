@@ -139,7 +139,8 @@ var _ = Describe("[performance] Latency Test", Ordered, func() {
 				Skip(fmt.Sprintf("Skip the oslat test, the profile %q does not have isolated CPUs", profile.Name))
 			}
 
-			isolatedCpus := cpuset.MustParse(string(*profile.Spec.CPU.Isolated))
+			isolatedCpus, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+			Expect(err).ToNot(HaveOccurred(), "failed to parse cpus %q", string(*profile.Spec.CPU.Isolated))
 			// we require at least two CPUs to run oslat test, because one CPU should be used to run the main oslat thread
 			// we can not use all isolated CPUs, because if reserved and isolated include all node CPUs, and reserved CPUs
 			// do not calculated into the Allocated, at least part of time of one of isolated CPUs will be used to run
@@ -361,7 +362,8 @@ func getLatencyTestPod(profile *performancev2.PerformanceProfile, node *corev1.N
 		// we can not use all isolated CPUs, because if reserved and isolated include all node CPUs, and reserved CPUs
 		// do not calculated into the Allocated, at least part of time of one of isolated CPUs will be used to run
 		// other node containers
-		cpus := cpuset.MustParse(string(*profile.Spec.CPU.Isolated))
+		cpus, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+		Expect(err).ToNot(HaveOccurred(), "failed to parse cpus %q", string(*profile.Spec.CPU.Isolated))
 		latencyTestCpus = cpus.Size() - 1
 	}
 
@@ -501,7 +503,8 @@ func isEqual(qty *resource.Quantity, amount int) bool {
 
 func isOddCpuNumber(cpusNum int, profile *performancev2.PerformanceProfile) bool {
 	if cpusNum == defaultTestCpus {
-		isolatedCpus := cpuset.MustParse(string(*profile.Spec.CPU.Isolated))
+		isolatedCpus, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+		Expect(err).ToNot(HaveOccurred(), "failed to parse cpus %q", string(*profile.Spec.CPU.Isolated))
 		isolatedCpusNum := isolatedCpus.Size() - 1
 		return isolatedCpusNum%2 != 0
 	}

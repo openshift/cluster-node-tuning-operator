@@ -34,6 +34,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/pointer"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -921,7 +922,7 @@ var _ = Describe("Controller", func() {
 			},
 		}
 		r := newFakeReconciler(profile, mcp)
-		requests := r.mcpToPerformanceProfile(mcp)
+		requests := r.mcpToPerformanceProfile(context.TODO(), mcp)
 		Expect(requests).NotTo(BeEmpty())
 		Expect(requests[0].Name).To(Equal(profile.Name))
 	})
@@ -986,8 +987,11 @@ func reconcileTimes(reconciler *PerformanceProfileReconciler, request reconcile.
 }
 
 // newFakeReconciler returns a new reconcile.Reconciler with a fake client
-func newFakeReconciler(initObjects ...runtime.Object) *PerformanceProfileReconciler {
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(initObjects...).Build()
+func newFakeReconciler(profile client.Object, initObjects ...runtime.Object) *PerformanceProfileReconciler {
+	// we need to add the profile using the `WithStatusSubresource` function
+	// because we're updating its status during the reconciliation loop
+	initObjects = append(initObjects, profile)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithStatusSubresource(profile).WithRuntimeObjects(initObjects...).Build()
 	fakeRecorder := record.NewFakeRecorder(10)
 	return &PerformanceProfileReconciler{
 		Client:   fakeClient,

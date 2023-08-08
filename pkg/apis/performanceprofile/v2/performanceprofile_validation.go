@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 
@@ -38,26 +39,26 @@ const (
 )
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *PerformanceProfile) ValidateCreate() error {
+func (r *PerformanceProfile) ValidateCreate() (admission.Warnings, error) {
 	klog.Infof("Create validation for the performance profile %q", r.Name)
 
 	return r.validateCreateOrUpdate()
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *PerformanceProfile) ValidateUpdate(old runtime.Object) error {
+func (r *PerformanceProfile) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 	klog.Infof("Update validation for the performance profile %q", r.Name)
 
 	return r.validateCreateOrUpdate()
 }
 
-func (r *PerformanceProfile) validateCreateOrUpdate() error {
+func (r *PerformanceProfile) validateCreateOrUpdate() (admission.Warnings, error) {
 	var allErrs field.ErrorList
 
 	// validate node selector duplication
 	ppList := &PerformanceProfileList{}
 	if err := validatorClient.List(context.TODO(), ppList); err != nil {
-		return apierrors.NewInternalError(err)
+		return admission.Warnings{}, apierrors.NewInternalError(err)
 	}
 
 	allErrs = append(allErrs, r.validateNodeSelectorDuplication(ppList)...)
@@ -66,20 +67,20 @@ func (r *PerformanceProfile) validateCreateOrUpdate() error {
 	allErrs = append(allErrs, r.validateFields()...)
 
 	if len(allErrs) == 0 {
-		return nil
+		return admission.Warnings{}, nil
 	}
 
-	return apierrors.NewInvalid(
+	return admission.Warnings{}, apierrors.NewInvalid(
 		schema.GroupKind{Group: "performance.openshift.io", Kind: "PerformanceProfile"},
 		r.Name, allErrs)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *PerformanceProfile) ValidateDelete() error {
+func (r *PerformanceProfile) ValidateDelete() (admission.Warnings, error) {
 	klog.Infof("Delete validation for the performance profile %q", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
-	return nil
+	return admission.Warnings{}, nil
 }
 
 func (r *PerformanceProfile) validateNodeSelectorDuplication(ppList *PerformanceProfileList) field.ErrorList {

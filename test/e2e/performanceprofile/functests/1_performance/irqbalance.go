@@ -87,7 +87,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 				if irqLoadBalancingDisabled {
 					expectedBannedCPUs = isolatedCPUSet
 				} else {
-					expectedBannedCPUs = cpuset.NewCPUSet()
+					expectedBannedCPUs = cpuset.New()
 				}
 
 				for _, node := range workerRTNodes {
@@ -274,7 +274,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %q", targetNode.Name)
 			testlog.Infof("banned CPUs on %q after the tuned restart: {%s}", targetNode.Name, postRestartBannedCPUs.String())
 
-			Expect(postRestartBannedCPUs.ToSlice()).To(Equal(postCreateBannedCPUs.ToSlice()), "banned CPUs changed post tuned restart on node %q", postRestartBannedCPUs.ToSlice(), targetNode.Name)
+			Expect(postRestartBannedCPUs.List()).To(Equal(postCreateBannedCPUs.List()), "banned CPUs changed post tuned restart on node %q", postRestartBannedCPUs.List(), targetNode.Name)
 		})
 
 		It("Should store empty cpu mask in the backup file", func() {
@@ -318,14 +318,14 @@ func getIrqBalanceBannedCPUs(node *corev1.Node) (cpuset.CPUSet, error) {
 	cmd := []string{"cat", "/rootfs/etc/sysconfig/irqbalance"}
 	conf, err := nodes.ExecCommandOnNode(cmd, node)
 	if err != nil {
-		return cpuset.NewCPUSet(), err
+		return cpuset.New(), err
 	}
 
 	keyValue := findIrqBalanceBannedCPUsVarFromConf(conf)
 	if len(keyValue) == 0 {
 		// can happen: everything commented out (default if no tuning ever)
 		testlog.Warningf("cannot find the CPU ban list in the configuration (\n%s)\n", conf)
-		return cpuset.NewCPUSet(), nil
+		return cpuset.New(), nil
 	}
 
 	testlog.Infof("banned CPUs setting: %q", keyValue)
@@ -334,10 +334,10 @@ func getIrqBalanceBannedCPUs(node *corev1.Node) (cpuset.CPUSet, error) {
 		return c == '='
 	})
 	if len(items) == 1 {
-		return cpuset.NewCPUSet(), nil
+		return cpuset.New(), nil
 	}
 	if len(items) != 2 {
-		return cpuset.NewCPUSet(), fmt.Errorf("malformed CPU ban list in the configuration")
+		return cpuset.New(), fmt.Errorf("malformed CPU ban list in the configuration")
 	}
 
 	bannedCPUs := unquote(strings.TrimSpace(items[1]))
@@ -345,7 +345,7 @@ func getIrqBalanceBannedCPUs(node *corev1.Node) (cpuset.CPUSet, error) {
 
 	banned, err := components.CPUMaskToCPUSet(bannedCPUs)
 	if err != nil {
-		return cpuset.NewCPUSet(), fmt.Errorf("failed to parse the banned CPUs: %v", err)
+		return cpuset.New(), fmt.Errorf("failed to parse the banned CPUs: %v", err)
 	}
 
 	return banned, nil

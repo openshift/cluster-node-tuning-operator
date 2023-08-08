@@ -1529,7 +1529,7 @@ var _ = Describe("PerformanceProfileCreator: Test Helper cpuAccumulator", func()
 				_, err := acc.AddCores(allCores, node.Cores)
 				Expect(err).NotTo(HaveOccurred())
 			}
-			cores := acc.Result().ToSlice()
+			cores := acc.Result().List()
 			Expect(cores).Should(Equal([]int{0, 1, 2, 3, 4, 5, 6, 7}))
 		})
 		It("should accumulate cores up to the max", func() {
@@ -1538,7 +1538,7 @@ var _ = Describe("PerformanceProfileCreator: Test Helper cpuAccumulator", func()
 				_, err := acc.AddCores(3, node.Cores)
 				Expect(err).NotTo(HaveOccurred())
 			}
-			cores := acc.Result().ToSlice()
+			cores := acc.Result().List()
 			Expect(cores).Should(Equal([]int{0, 1, 2}))
 		})
 
@@ -1553,7 +1553,7 @@ var _ = Describe("PerformanceProfileCreator: Test Helper cpuAccumulator", func()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(n2).To(Equal(0))
 
-			cores := acc.Result().ToSlice()
+			cores := acc.Result().List()
 			Expect(cores).Should(Equal([]int{0, 1, 2, 3}))
 		})
 
@@ -1564,7 +1564,7 @@ var _ = Describe("PerformanceProfileCreator: Test Helper cpuAccumulator", func()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(n1).To(Equal(4))
 
-			cores := acc.Result().ToSlice()
+			cores := acc.Result().List()
 			Expect(cores).Should(Equal([]int{0, 1, 2, 3}))
 
 			_, err = acc.AddCores(allCores, node.Cores)
