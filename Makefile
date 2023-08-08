@@ -38,6 +38,8 @@ IMAGE=$(REGISTRY)/$(ORG)/origin-cluster-node-tuning-operator:$(TAG)
 CLUSTER ?= "ci"
 PAO_CRD_APIS :=$(addprefix ./$(API_TYPES_DIR)/performanceprofile/,v2 v1 v1alpha1)
 
+PAO_E2E_SUITES := $(shell hack/list-test-bin.sh)
+
 all: build
 
 # Do not put any includes above the "all" target.  We want the default target to build
@@ -258,3 +260,16 @@ gather-sysinfo-tests: build-gather-sysinfo
 .PHONY: render-sync
 render-sync: build
 	hack/render-sync.sh
+
+pao-build-e2e-%:
+	@hack/build-test-bin.sh $(shell echo $@ | sed -e 's/^pao-build-e2e-//' )
+
+.PHONY: pao-build-e2e
+pao-build-e2e:
+	@for suite in $(PAO_E2E_SUITES); do \
+		hack/build-test-bin.sh $$suite; \
+	done
+
+.PHONY: pao-clean-e2e
+pao-clean-e2e:
+	@rm -f _output/e2e-pao*.test
