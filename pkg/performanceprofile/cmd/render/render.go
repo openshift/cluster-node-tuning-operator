@@ -270,6 +270,10 @@ func selectMachineConfigPool(pools []*mcfgv1.MachineConfigPool, selectors map[st
 		}
 	}
 
+	if count == 0 {
+		return nil, fmt.Errorf("no MCP found that matches performance profile node selector %q", profileNodeSelector.String())
+	}
+
 	if count > 1 {
 		return nil, fmt.Errorf("more than one MCP found that matches performance profile node selector %q", profileNodeSelector.String())
 	}
