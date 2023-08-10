@@ -404,8 +404,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				"vm.swappiness":             "10",
 			}
 			schedulerKnobs := map[string]string{
-				"min_granularity_ns": "10000000",
-				"migration_cost_ns":  "5000000",
+				"migration_cost_ns": "5000000",
 			}
 
 			key := types.NamespacedName{
