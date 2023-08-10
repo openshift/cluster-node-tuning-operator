@@ -2,17 +2,29 @@
 
 set -e
 
-if ! which go; then
-  echo "No go command available"
-  exit 1
+PREFIX="pao-build-e2e-"
+SUITEPATH="./test/e2e/performanceprofile/functests"
+TARGET=$1
+
+if [ -z "$TARGET" ]; then
+	echo "usage: $0 suite"
+	echo "example: $0 1_performance"
+	exit 1
 fi
 
-GOPATH="${GOPATH:-~/go}"
-export PATH=$PATH:$GOPATH/bin
+OUTDIR="${2:-_output}"
 
-if ! which gingko; then
-	echo "Downloading ginkgo tool"
-	go install github.com/onsi/ginkgo/v2/ginkgo@v2.6.1
+if [ ! -d "$SUITEPATH/$TARGET" ]; then
+	echo "unknown suite: $TARGET"
+	echo -e "must be one of:\n$( ls $SUITEPATH | grep -E '[0-9]+_.*' )"
+	exit 2
 fi
 
-ginkgo build ./functests/*
+SUITE="${SUITEPATH}/${TARGET}"
+SUFFIX=$( echo $TARGET | cut -d_ -f2- )
+BASENAME="e2e-pao"
+EXTENSION="test"
+OUTPUT="${BASENAME}-${SUFFIX}.${EXTENSION}"
+
+echo "${SUITE} -> ${OUTDIR}/${OUTPUT}"
+go test -c -v -o ${OUTDIR}/${OUTPUT} ${SUITE}
