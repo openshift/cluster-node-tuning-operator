@@ -26,7 +26,7 @@ var (
 	cmdlineCPUsPartitioning           = "+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded} intel_iommu=on iommu=pt"
 	cmdlineWithStaticIsolation        = "+isolcpus=domain,managed_irq,${isolated_cores}"
 	cmdlineWithoutStaticIsolation     = "+isolcpus=managed_irq,${isolated_cores}"
-	cmdlineRealtime                   = "+nohz_full=${isolated_cores} tsc=nowatchdog nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11"
+	cmdlineRealtime                   = "+nohz_full=${isolated_cores} tsc=reliable nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11"
 	cmdlineHighPowerConsumption       = "+processor.max_cstate=1 intel_idle.max_cstate=0"
 	cmdlineIdlePoll                   = "+idle=poll"
 	cmdlineHugepages                  = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4"
