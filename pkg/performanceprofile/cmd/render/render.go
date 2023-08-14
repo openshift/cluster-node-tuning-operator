@@ -156,6 +156,11 @@ func render(inputDir, outputDir string) error {
 			return err
 		}
 
+		if mcp == nil {
+			klog.Infof("render: No MachineConfigPool found for PerformanceProfile %s", pp.Name)
+			continue
+		}
+
 		defaultRuntime, err := getContainerRuntimeName(pp, mcp, ctrcfgs)
 		if err != nil {
 			return fmt.Errorf("render: could not determine high-performance runtime class container-runtime for profile %q; %w", pp.Name, err)
