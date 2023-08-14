@@ -607,7 +607,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1"}
+				kernelParameters := []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1"}
 
 				wg := sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
@@ -665,7 +665,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1"}
+				kernelParameters := []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1"}
 
 				wg := sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
@@ -783,7 +783,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
+				kernelParameters := []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
 					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
 
 				wg := sync.WaitGroup{}
@@ -900,7 +900,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
+				kernelParameters := []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
 					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
 
 				wg := sync.WaitGroup{}
@@ -965,7 +965,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-				kernelParameters = []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1", "intel_pstate=passive"}
+				kernelParameters = []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1", "intel_pstate=passive"}
 
 				wg = sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
@@ -1036,7 +1036,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-				kernelParameters := []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1", "intel_pstate=passive"}
+				kernelParameters := []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1", "intel_pstate=passive"}
 
 				wg := sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
@@ -1100,7 +1100,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-				kernelParameters = []string{noHzParam, "tsc=nowatchdog", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
+				kernelParameters = []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
 					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
 
 				wg = sync.WaitGroup{}
