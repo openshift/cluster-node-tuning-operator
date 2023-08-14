@@ -7,7 +7,7 @@
 set -euo pipefail
 
 root=/sys/fs/cgroup/cpuset
-system="$root"/system
+system="$root"/system.slice
 machine="$root"/machine.slice
 
 ovsslice="${root}/{{ .OvsSliceName }}"
