@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"reflect"
 	"time"
 
@@ -53,10 +52,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-const (
-	finalizer   = "foreground-deletion"
-	nodeCfgName = "cluster"
-)
+const finalizer = "foreground-deletion"
 
 // PerformanceProfileReconciler reconciles a PerformanceProfile object
 type PerformanceProfileReconciler struct {
@@ -419,29 +415,6 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 		// we exit reconcile loop because we will have additional update reconcile
 		return reconcile.Result{}, nil
-	}
-
-	// Update the config.openshift.io/node object with the desired cgroupsv1 mode.
-	// (TODO) This code can be removed in the future when the cgroupsv2 is supported
-	key := types.NamespacedName{
-		Name: nodeCfgName,
-	}
-	nodeCfg := &apiconfigv1.Node{}
-	nodeCfg.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   "config.openshift.io",
-		Version: "v1",
-		Kind:    "Node",
-	})
-	err = r.Client.Get(context.Background(), key, nodeCfg)
-	if err != nil {
-		klog.Errorf("failed to get config node object; name=%q err=%v", nodeCfg.GetName(), err)
-		nodeCfg.Name = nodeCfgName
-		nodeCfg.Spec.CgroupMode = apiconfigv1.CgroupModeV1
-		r.Client.Update(ctx, nodeCfg)
-	}
-	if nodeCfg.Spec.CgroupMode != apiconfigv1.CgroupModeV1 {
-		nodeCfg.Spec.CgroupMode = apiconfigv1.CgroupModeV1
-		r.Client.Update(ctx, nodeCfg)
 	}
 
 	profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
