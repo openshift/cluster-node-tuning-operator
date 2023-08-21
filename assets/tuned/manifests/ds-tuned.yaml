@@ -69,6 +69,10 @@ spec:
           name: lib-modules
           mountPropagation: HostToContainer
           readOnly: true
+        - mountPath: /var/lib/kubelet
+          name: var-lib-kubelet
+          mountPropagation: HostToContainer
+          readOnly: true
         - mountPath: /host
           name: host
           mountPropagation: HostToContainer
@@ -124,6 +128,10 @@ spec:
           path: /lib/modules
           type: Directory
         name: lib-modules
+      - hostPath:
+          path: /var/lib/kubelet
+          type: Directory
+        name: var-lib-kubelet
       - name: host
         hostPath:
           path: /
