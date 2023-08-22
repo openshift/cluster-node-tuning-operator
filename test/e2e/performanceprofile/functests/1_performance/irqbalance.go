@@ -84,7 +84,13 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 
 			By(fmt.Sprintf("verifying the behavior with irqLoadBalancingDisabled=%v isolatedCPUSet=%v", irqLoadBalancingDisabled, isolatedCPUSet))
 
-			verifyNodes := func(expectedBannedCPUs cpuset.CPUSet) error {
+			verifyNodes := func(irqLoadBalancingDisabled bool) error {
+				var expectedBannedCPUs cpuset.CPUSet
+				if irqLoadBalancingDisabled {
+					expectedBannedCPUs = isolatedCPUSet
+				} else {
+					expectedBannedCPUs = cpuset.New()
+				}
 				for _, node := range workerRTNodes {
 					By(fmt.Sprintf("verifying worker node %q", node.Name))
 
@@ -150,17 +156,10 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 				)).ToNot(HaveOccurred())
 				// in the initial profile `GloballyDisableIrqLoadBalancing` value should be false,
 				// so we expect the banned cpu set to be empty
-				Eventually(verifyNodes).WithArguments(cpuset.New()).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).ShouldNot(HaveOccurred())
+				Eventually(verifyNodes).WithArguments(false).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).ShouldNot(HaveOccurred())
 			}()
 
-			var expectedBannedCPUs cpuset.CPUSet
-			if irqLoadBalancingDisabled {
-				expectedBannedCPUs = isolatedCPUSet
-			} else {
-				expectedBannedCPUs = cpuset.New()
-			}
-
-			err = verifyNodes(expectedBannedCPUs)
+			err = verifyNodes(irqLoadBalancingDisabled)
 			Expect(err).ToNot(HaveOccurred())
 
 			irqLoadBalancingDisabled = !irqLoadBalancingDisabled
@@ -171,12 +170,6 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			spec, err := json.Marshal(profile.Spec)
 			Expect(err).ToNot(HaveOccurred())
 
-			if irqLoadBalancingDisabled {
-				expectedBannedCPUs = isolatedCPUSet
-			} else {
-				expectedBannedCPUs = cpuset.New()
-			}
-
 			By("Applying changes in performance profile and waiting until mcp will start updating")
 			Expect(testclient.Client.Patch(context.TODO(), profile,
 				client.RawPatch(
@@ -184,7 +177,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
 				),
 			)).ToNot(HaveOccurred())
-			Eventually(verifyNodes).WithArguments(expectedBannedCPUs).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).ShouldNot(HaveOccurred())
+			Eventually(verifyNodes).WithArguments(irqLoadBalancingDisabled).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).ShouldNot(HaveOccurred())
 		})
 	})
 
