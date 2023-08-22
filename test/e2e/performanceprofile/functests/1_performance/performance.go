@@ -295,7 +295,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Skip("Test Skipped due nil Reserved cpus")
 			}
 		})
-		It("[test_id: 59572] Check RPS Mask is applied to atleast one single rx queue on all veth interface", func() {
+		It("[test_id: 59572] Check RPS Mask is applied to at least one single rx queue on all veth interface", func() {
 			if profile.Spec.WorkloadHints != nil && profile.Spec.WorkloadHints.RealTime != nil &&
 				!*profile.Spec.WorkloadHints.RealTime && !profileutil.IsRpsEnabled(profile) {
 				Skip("realTime Workload Hints is not enabled")
@@ -309,14 +309,15 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				allInterfaces, err := nodes.GetNodeInterfaces(node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(allInterfaces).ToNot(BeNil())
-				// collect all vethinterfaces in a list
+				// collect all veth interfaces in a list
 				for _, iface := range allInterfaces {
 					if iface.Bridge == true && iface.Physical == false {
 						vethInterfaces = append(vethInterfaces, iface.Name)
 					}
 				}
-				//iterate over all the vethinterface and
+				//iterate over all the veth interfaces and
 				//check if at least on single rx-queue has rps mask
+				klog.Infof("%v", vethInterfaces)
 				for _, vethinterface := range vethInterfaces {
 					devicePath := fmt.Sprintf("%s/%s", "/rootfs/sys/devices/virtual/net", vethinterface)
 					getRPSMaskCmd := []string{"find", devicePath, "-type", "f", "-name", "rps_cpus", "-exec", "cat", "{}", ";"}
@@ -338,46 +339,59 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				!*profile.Spec.WorkloadHints.RealTime && !profileutil.IsRpsEnabled(profile) {
 				Skip("realTime Workload Hints is not enabled")
 			}
+
 			expectedRPSCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
 			Expect(err).ToNot(HaveOccurred())
+
+			expectedPhysRPSCPUs := expectedRPSCPUs.Clone()
+			if !profileutil.IsPhysicalRpsEnabled(profile) {
+				// empty cpuset
+				expectedPhysRPSCPUs = cpuset.NewCPUSet()
+			}
+
 			for _, node := range workerRTNodes {
 				// Verify the systemd RPS service uses the correct RPS mask
-				var maskContent string
-				cmd := []string{"cat", "/rootfs/etc/systemd/system/update-rps@.service"}
-				unitFileContents, err := nodes.ExecCommandOnNode(cmd, &node)
-				Expect(err).ToNot(HaveOccurred())
-				for _, line := range strings.Split(unitFileContents, "\n") {
-					if strings.Contains(line, "ExecStart=/usr/local/bin/set-rps-mask.sh") {
-						maskContent = line
-					}
+				cmd := []string{"sysctl", "-n", "net.core.rps_default_mask"}
+				rpsMaskContent, err := nodes.ExecCommandOnNode(cmd, &node)
+				Expect(err).ToNot(HaveOccurred(), "failed to exec command %q on node %q", cmd, node)
+				rpsMaskContent = strings.TrimSuffix(rpsMaskContent, "\n")
+				rpsCPUs, err := components.CPUMaskToCPUSet(rpsMaskContent)
+				Expect(err).ToNot(HaveOccurred(), "failed to parse RPS mask %q", rpsMaskContent)
+				Expect(rpsCPUs.Equals(expectedRPSCPUs)).To(BeTrue(), "the default rps mask is different from the reserved CPUs; have %q want %q", rpsCPUs.String(), expectedRPSCPUs.String())
+
+				By("verify RPS mask on virtual network devices")
+				cmd = []string{
+					"find", "/rootfs/sys/devices/virtual/net",
+					"-path", "/rootfs/sys/devices/virtual/net/lo",
+					"-prune", "-o",
+					"-type", "f",
+					"-name", "rps_cpus",
+					"-exec", "cat", "{}", ";",
 				}
-				rpsMaskContent := strings.TrimSuffix(maskContent, "\r")
-				Expect(len(strings.Split(rpsMaskContent, " "))).To(Equal(3), "systemd unit file rps mask value is empty")
-				serviceRPSCPUs := strings.Split(rpsMaskContent, " ")[2]
-
-				rpsCPUs, err := components.CPUMaskToCPUSet(serviceRPSCPUs)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(rpsCPUs).To(Equal(expectedRPSCPUs), "the service rps mask is different from the reserved CPUs")
-
-				// Verify all host network devices have the correct RPS mask
-				if profileutil.IsRpsEnabled(profile) {
-					cmd = []string{"find", "/rootfs/sys/devices", "-type", "f", "-name", "rps_cpus", "-exec", "cat", "{}", ";"}
-				} else {
-					cmd = []string{"find", "/rootfs/sys/devices/virtual", "-type", "f", "-name", "rps_cpus", "-exec", "cat", "{}", ";"}
-				}
-
 				devsRPS, err := nodes.ExecCommandOnNode(cmd, &node)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).ToNot(HaveOccurred(), "failed to exec command %q on node %q", cmd, node.Name)
+				for _, devRPS := range strings.Split(devsRPS, "\n") {
+					rpsCPUs, err = components.CPUMaskToCPUSet(devRPS)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(rpsCPUs.Equals(expectedRPSCPUs)).To(BeTrue(),
+						"a host device rps mask is different from the reserved CPUs; have %q want %q", rpsCPUs.String(), expectedRPSCPUs.String())
+				}
+
+				By("verify RPS mask on physical network devices")
+				cmd = []string{
+					"find", "/rootfs/sys/devices",
+					"-regex", "/rootfs/sys/devices/pci.*",
+					"-type", "f",
+					"-name", "rps_cpus",
+					"-exec", "cat", "{}", ";",
+				}
+				devsRPS, err = nodes.ExecCommandOnNode(cmd, &node)
+				Expect(err).ToNot(HaveOccurred(), "failed to exec command %q on node %q", cmd, node.Name)
 
 				for _, devRPS := range strings.Split(devsRPS, "\n") {
 					rpsCPUs, err = components.CPUMaskToCPUSet(devRPS)
 					Expect(err).ToNot(HaveOccurred())
-					if rpsCPUs.String() != string(*profile.Spec.CPU.Reserved) {
-						testlog.Info("Applying RPS Mask can be skipped due to race conditions")
-						testlog.Info("This is a known issue, Refer OCPBUGS-4194")
-					}
-					//Once the OCPBUGS-4194 is fixed Remove the If condition and uncomment the below assertion
-					//Expect(rpsCPUs).To(Equal(expectedRPSCPUs), "a host device rps mask is different from the reserved CPUs")
+					Expect(rpsCPUs.Equals(expectedPhysRPSCPUs)).To(BeTrue(), "a host device rps mask is different from the reserved CPUs; have %q want %q", rpsCPUs.String(), expectedPhysRPSCPUs.String())
 				}
 			}
 		})

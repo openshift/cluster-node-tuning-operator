@@ -1924,34 +1924,29 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			for _, node := range workerRTNodes {
 				// Verify the systemd RPS service uses the correct RPS mask
 				var maskContent string
-				cmd := []string{"cat", "/rootfs/etc/systemd/system/update-rps@.service"}
-				unitFileContents, err := nodes.ExecCommandOnNode(cmd, &node)
-				Expect(err).ToNot(HaveOccurred())
-				for _, line := range strings.Split(unitFileContents, "\n") {
-					if strings.Contains(line, "ExecStart=/usr/local/bin/set-rps-mask.sh") {
-						maskContent = line
-					}
-				}
-				rpsMaskContent := strings.TrimSuffix(maskContent, "\r")
-				Expect(len(strings.Split(rpsMaskContent, " "))).To(Equal(3), "systemd unit file doesn't have proper rpsmask")
-				serviceRPSCPUs := strings.Split(rpsMaskContent, " ")[2]
-				rpsCPUs, err := components.CPUMaskToCPUSet(serviceRPSCPUs)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(rpsCPUs).To(Equal(expectedRPSCPUs), "the service rps mask is different from the reserved CPUs")
+				cmd := []string{"sysctl", "-n", "net.core.rps_default_mask"}
+				maskContent, err := nodes.ExecCommandOnNode(cmd, &node)
+				Expect(err).ToNot(HaveOccurred(), "failed to exec command %q on node %q", cmd, node)
+				rpsMaskContent := strings.Trim(maskContent, "\n")
+				rpsCPUs, err := components.CPUMaskToCPUSet(rpsMaskContent)
+				Expect(err).ToNot(HaveOccurred(), "failed to parse RPS mask %q", rpsMaskContent)
+				Expect(rpsCPUs.Equals(expectedRPSCPUs)).To(BeTrue(), "the default rps mask is different from the reserved CPUs")
 
 				// Verify all host network devices have the correct RPS mask
-				cmd = []string{"find", "/rootfs/sys/devices/virtual", "-type", "f", "-name", "rps_cpus", "-exec", "cat", "{}", ";"}
+				cmd = []string{
+					"find", "/rootfs/sys/devices/virtual/net",
+					"-path", "/rootfs/sys/devices/virtual/net/lo",
+					"-prune", "-o",
+					"-type", "f",
+					"-name", "rps_cpus",
+					"-exec", "cat", "{}", ";",
+				}
 				devsRPS, err := nodes.ExecCommandOnNode(cmd, &node)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).ToNot(HaveOccurred(), "failed to exec command %q on node %q", cmd, node.Name)
 				for _, devRPS := range strings.Split(devsRPS, "\n") {
 					rpsCPUs, err = components.CPUMaskToCPUSet(devRPS)
 					Expect(err).ToNot(HaveOccurred())
-					if rpsCPUs.String() != string(*profile.Spec.CPU.Reserved) {
-						testlog.Info("Applying RPS Mask can be skipped due to race conditions")
-						testlog.Info("This is a known issue, Refer OCPBUGS-4194")
-					}
-					//Once the OCPBUGS-4194 is fixed Remove the If condition and uncomment the below assertion
-					//Expect(rpsCPUs).To(Equal(expectedRPSCPUs), "a host device rps mask is different from the reserved CPUs")
+					Expect(rpsCPUs.Equals(expectedRPSCPUs)).To(BeTrue(), "a host device rps mask is different from the reserved CPUs")
 				}
 			}
 		})

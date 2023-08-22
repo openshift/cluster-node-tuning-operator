@@ -44,7 +44,9 @@ spec:
       out of physical memory and onto the swap disk.\n# 0 tells the kernel to avoid
       swapping processes out of physical memory\n# for as long as possible\n# 100
       tells the kernel to aggressively swap processes out of physical memory\n# and
-      move them to swap cache\n#> latency-performance\nvm.swappiness=10\n\n\n\n[selinux]\n#>
+      move them to swap cache\n#> latency-performance\nvm.swappiness=10\n\n# also
+      configured via a sysctl.d file\n# placed here for better reflection of the change\n#>
+      rps configuration\nnet.core.rps_default_mask=${not_isolated_cpumask}\n\n\n\n[selinux]\n#>
       Custom (atomic host)\navc_cache_threshold=8192\n\n\n[net]\nnf_conntrack_hashsize=131072\n\n\n[bootloader]\n#
       set empty values to disable RHEL initrd setting in cpu-partitioning\ninitrd_remove_dir=\ninitrd_dst_img=\ninitrd_add_dir=\n\n#
       overrides cpu-partitioning cmdline\ncmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores}
