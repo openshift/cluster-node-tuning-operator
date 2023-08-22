@@ -138,6 +138,21 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 				return nil
 			}
 
+			defer func() { // return initial configuration
+				By("reverting the profile into its initial state")
+				spec, err := json.Marshal(initialProfile.Spec)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(testclient.Client.Patch(context.TODO(), profile,
+					client.RawPatch(
+						types.JSONPatchType,
+						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
+					),
+				)).ToNot(HaveOccurred())
+				// in the initial profile `GloballyDisableIrqLoadBalancing` value should be false,
+				// so we expect the banned cpu set to be empty
+				Eventually(verifyNodes).WithArguments(cpuset.New()).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).ShouldNot(HaveOccurred())
+			}()
+
 			var expectedBannedCPUs cpuset.CPUSet
 			if irqLoadBalancingDisabled {
 				expectedBannedCPUs = isolatedCPUSet
@@ -169,18 +184,6 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
 				),
 			)).ToNot(HaveOccurred())
-
-			defer func() { // return initial configuration
-				spec, err := json.Marshal(initialProfile.Spec)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(testclient.Client.Patch(context.TODO(), profile,
-					client.RawPatch(
-						types.JSONPatchType,
-						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-					),
-				)).ToNot(HaveOccurred())
-			}()
-
 			Eventually(verifyNodes).WithArguments(expectedBannedCPUs).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).ShouldNot(HaveOccurred())
 		})
 	})
