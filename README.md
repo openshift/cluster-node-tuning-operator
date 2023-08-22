@@ -1,5 +1,5 @@
 # Node Tuning Operator
-
+ 
 The Node Tuning Operator (NTO) manages cluster node-level tuning for
 [OpenShift](https://openshift.io/).
 
