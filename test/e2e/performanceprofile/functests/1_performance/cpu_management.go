@@ -205,7 +205,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			err = testclient.Client.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
 
-			err = pods.WaitForCondition(testpod, corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+			testpod, err = pods.WaitForCondition(client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 			logEventsForPod(testpod)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -305,7 +305,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			err = testclient.Client.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
 
-			err = pods.WaitForCondition(testpod, corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+			testpod, err = pods.WaitForCondition(client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 			logEventsForPod(testpod)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -403,7 +403,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 			err = testclient.Client.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
-			err = pods.WaitForCondition(testpod, corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+			testpod, err = pods.WaitForCondition(client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 			logEventsForPod(testpod)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -458,7 +458,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			err := testclient.Client.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
 
-			err = pods.WaitForCondition(testpod, corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+			testpod, err = pods.WaitForCondition(client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 			logEventsForPod(testpod)
 			Expect(err).ToNot(HaveOccurred())
 		})
@@ -549,7 +549,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			err := testclient.Client.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
 
-			currentPod, err := pods.WaitForPredicate(testpod, 10*time.Minute, func(pod *corev1.Pod) (bool, error) {
+			currentPod, err := pods.WaitForPredicate(client.ObjectKeyFromObject(testpod), 10*time.Minute, func(pod *corev1.Pod) (bool, error) {
 				if pod.Status.Phase != corev1.PodPending {
 					return true, nil
 				}
@@ -671,13 +671,16 @@ func checkPodHTSiblings(testpod *corev1.Pod) bool {
 		"-c",
 		fmt.Sprintf("/bin/crictl inspect %s | /bin/jq -r '.info.runtimeSpec.linux.resources.cpu.cpus'", containerID),
 	}
-	output, err := nodes.ExecCommandOnNode(cmd, workerRTNode)
-	Expect(err).ToNot(HaveOccurred(), "Unable to crictl inspect containerID %s", "containerID")
+	node, err := nodes.GetByName(testpod.Spec.NodeName)
+	Expect(err).ToNot(HaveOccurred(), "failed to get node %q", testpod.Spec.NodeName)
+	Expect(testpod.Spec.NodeName).ToNot(BeEmpty(), "testpod %s/%s still pending - no nodeName set", testpod.Namespace, testpod.Name)
+	output, err := nodes.ExecCommandOnNode(cmd, node)
+	Expect(err).ToNot(HaveOccurred(), "Unable to crictl inspect containerID %q", containerID)
 
-	podcpus, err := cpuset.Parse(strings.Trim(fmt.Sprint(output), "\n"))
+	podcpus, err := cpuset.Parse(strings.Trim(output, "\n"))
 	Expect(err).ToNot(
-		HaveOccurred(), "Unable to cpuset.Parse pod allocated cpu set from output %s", fmt.Sprint(output))
-	By(fmt.Sprintf("Test pod CPU list: %s", podcpus.String()))
+		HaveOccurred(), "Unable to cpuset.Parse pod allocated cpu set from output %s", output)
+	testlog.Infof("Test pod CPU list: %s", podcpus.String())
 
 	// aggregate cpu sibling paris from the host based on the cpus allocated to the pod
 	By("Get host cpu siblings for pod cpuset")
@@ -722,9 +725,10 @@ func startHTtestPod(cpuCount int) *corev1.Pod {
 	testpod.Namespace = testutils.NamespaceTesting
 
 	By(fmt.Sprintf("Creating test pod with %d cpus", cpuCount))
+	testlog.Info(pods.DumpResourceRequirements(testpod))
 	err := testclient.Client.Create(context.TODO(), testpod)
 	Expect(err).ToNot(HaveOccurred())
-	err = pods.WaitForCondition(testpod, corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+	testpod, err = pods.WaitForCondition(client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 	logEventsForPod(testpod)
 	Expect(err).ToNot(HaveOccurred(), "Start pod failed")
 	// Sanity check for QoS Class == Guaranteed
