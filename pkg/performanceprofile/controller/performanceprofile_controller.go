@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"os"
 	"reflect"
 	"time"
 
@@ -30,6 +31,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
+	operatorv1helpers "github.com/openshift/library-go/pkg/operator/v1helpers"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	corev1 "k8s.io/api/core/v1"
@@ -370,10 +372,24 @@ func validateUpdateEvent(e *event.UpdateEvent) bool {
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	co, err := r.getClusterOperator()
+	if err != nil {
+		klog.Errorf("failed to get ClusterOperator: %v", err)
+		return reconcile.Result{}, err
+	}
+
+	operatorReleaseVersion := os.Getenv("RELEASE_VERSION")
+	operandReleaseVersion := operatorv1helpers.FindOperandVersion(co.Status.Versions, tunedv1.TunedOperandName)
+	if operandReleaseVersion == nil || operatorReleaseVersion != operandReleaseVersion.Version {
+		// Upgrade in progress
+		klog.Infof("operator and operand release versions do not match")
+		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+	}
+
 	klog.Info("Reconciling PerformanceProfile")
 	// Fetch the PerformanceProfile instance
 	instance := &performancev2.PerformanceProfile{}
-	err := r.Get(ctx, req.NamespacedName, instance)
+	err = r.Get(ctx, req.NamespacedName, instance)
 	if err != nil {
 		if k8serros.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
