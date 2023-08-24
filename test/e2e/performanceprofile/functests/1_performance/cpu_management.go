@@ -264,9 +264,6 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		}
 
 		BeforeEach(func() {
-			// It's possible that when this test runs the value of
-			// defaultCpuNotInSchedulingDomains is empty if no gu pods are running
-
 			// Due to OCPBUGS-17792 we cannot check if any cpus are still not part
 			// of scheduling domains. Because in some of the previous test we create
 			// guaranteed pods , Though they are deleted the cpus used by them are still
