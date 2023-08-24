@@ -264,7 +264,6 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		}
 
 		BeforeEach(func() {
-			var err error
 			// It's possible that when this test runs the value of
 			// defaultCpuNotInSchedulingDomains is empty if no gu pods are running
 			Eventually(func() bool {
