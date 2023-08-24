@@ -266,19 +266,11 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		BeforeEach(func() {
 			// It's possible that when this test runs the value of
 			// defaultCpuNotInSchedulingDomains is empty if no gu pods are running
-			Eventually(func() bool {
-				defaultCpuNotInSchedulingDomains, err := getCPUsWithLoadBalanceDisabled()
-				Expect(err).ToNot(HaveOccurred(), "Unable to fetch scheduling domains")
-				if len(defaultCpuNotInSchedulingDomains) != 0 {
-					ids := []string{}
-					for k := range defaultCpuNotInSchedulingDomains {
-						ids = append(ids, strconv.Itoa(k))
-					}
-					testlog.Warningf("cpu ids: %q are not in any scheduling domain while they should", strings.Join(ids, ","))
-					return false
-				}
-				return true
-			}).WithPolling(15*time.Second).WithTimeout(5*time.Minute).Should(BeTrue(), "some cpus are not in any scheduling domain")
+
+			// Due to OCPBUGS-17792 we cannot check if any cpus are still not part
+			// of scheduling domains. Because in some of the previous test we create
+			// guaranteed pods , Though they are deleted the cpus used by them are still
+			// not part of any scheduling domain
 			annotations := map[string]string{
 				"cpu-load-balancing.crio.io": "disable",
 			}
