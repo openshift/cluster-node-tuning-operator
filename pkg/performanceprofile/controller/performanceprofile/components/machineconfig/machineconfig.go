@@ -64,7 +64,7 @@ const (
 
 	ovsSliceName                     = "ovs.slice"
 	ovsDynamicPinningTriggerFile     = "ovs-enable-dynamic-cpu-affinity"
-	ovsDynamicPinningTriggerHostFile = "/etc/openvswitch/enable_dynamic_cpu_affinity"
+	ovsDynamicPinningTriggerHostFile = "/var/lib/ovn-ic/etc/enable_dynamic_cpu_affinity"
 
 	cpusetConfigure = "cpuset-configure"
 )

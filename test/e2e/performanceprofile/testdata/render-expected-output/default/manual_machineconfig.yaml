@@ -114,7 +114,7 @@ spec:
           verification: {}
         group: {}
         mode: 420
-        path: /etc/openvswitch/enable_dynamic_cpu_affinity
+        path: /var/lib/ovn-ic/etc/enable_dynamic_cpu_affinity
         user: {}
     systemd:
       units:
