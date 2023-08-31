@@ -266,9 +266,14 @@ func removePerformanceOLMOperator(cfg *rest.Config) error {
 	return nil
 }
 
-// During upgrade from 4.12 -> 4.13, this logic will update the authoritative flag in the new
+// During upgrade from 4.13 -> 4.14, this logic will update the authoritative flag in the new
 // Infrastructures.Status.CPUPartitioning to migrate Single Node clusters to the new method.
-// TODO: Revisit after 4.13 to remove logic when no longer needed.
+// Note:
+// This method will also execute during fresh installs on SNO using the legacy method. We are
+// generating the bootstrap files during that process, when this method then executes, it will only
+// update the API flag as intended, and since the bootstrap configs will already exist, nothing will happen.
+//
+// TODO: Revisit after 4.14 to remove logic when no longer needed.
 func migratePinnedSingleNodeInfraStatus(cfg *rest.Config, scheme *apiruntime.Scheme) error {
 	k8sclient, err := client.New(cfg, client.Options{Scheme: scheme})
 	if err != nil {
