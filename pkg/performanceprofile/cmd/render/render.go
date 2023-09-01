@@ -240,7 +240,9 @@ func isLegacySNOWorkloadPinningMethod(mcs []*mcfgv1.MachineConfig, infra *apicfg
 		return false
 	}
 
-	const kubernetesConfDir = "/etc/kubernetes/openshift-workload-pinning"
+	// This file name is stable and currently hardcoded in kubelet
+	// https://github.com/openshift/kubernetes/blob/ba1825544533d273d86b405195ee791e500b74c7/pkg/kubelet/managed/managed.go#L31
+	const kubernetesPinningConfFile = "/etc/kubernetes/openshift-workload-pinning"
 
 	for _, mc := range mcs {
 		ign := &igntypes.Config{}
@@ -251,8 +253,8 @@ func isLegacySNOWorkloadPinningMethod(mcs []*mcfgv1.MachineConfig, infra *apicfg
 		}
 
 		for _, file := range ign.Storage.Files {
-			if file.Node.Path == kubernetesConfDir {
-				klog.Infof("mc (%s) contains file path (%s), using legacy signal for workload pinning", mc.Name, kubernetesConfDir)
+			if file.Node.Path == kubernetesPinningConfFile {
+				klog.Infof("mc (%s) contains file path (%s), using legacy signal for workload pinning", mc.Name, kubernetesPinningConfFile)
 				return true
 			}
 		}
