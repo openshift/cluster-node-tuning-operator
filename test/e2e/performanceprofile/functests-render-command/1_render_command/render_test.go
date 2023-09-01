@@ -2,7 +2,6 @@ package __render_command_test
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -68,7 +67,7 @@ var _ = Describe("render command e2e test", func() {
 })
 
 func createTempAssetsDir() string {
-	assets, err := ioutil.TempDir("", "assets")
+	assets, err := os.MkdirTemp("", "assets")
 	Expect(err).ToNot(HaveOccurred())
 	fmt.Printf("assets` output dir at: %q\n", assets)
 	return assets
@@ -82,17 +81,17 @@ func runAndCompare(cmd *exec.Cmd) {
 	_, err := cmd.Output()
 	Expect(err).ToNot(HaveOccurred())
 
-	outputAssetsFiles, err := ioutil.ReadDir(assetsOutDir)
+	outputAssetsFiles, err := os.ReadDir(assetsOutDir)
 	Expect(err).ToNot(HaveOccurred())
 
 	refPath := filepath.Join(testDataPath, "render-expected-output")
 	fmt.Fprintf(GinkgoWriter, "reference data at: %q\n", refPath)
 
 	for _, f := range outputAssetsFiles {
-		refData, err := ioutil.ReadFile(filepath.Join(refPath, f.Name()))
+		refData, err := os.ReadFile(filepath.Join(refPath, f.Name()))
 		Expect(err).ToNot(HaveOccurred())
 
-		data, err := ioutil.ReadFile(filepath.Join(assetsOutDir, f.Name()))
+		data, err := os.ReadFile(filepath.Join(assetsOutDir, f.Name()))
 		Expect(err).ToNot(HaveOccurred())
 
 		diff, err := getFilesDiff(data, refData)
