@@ -16,6 +16,7 @@ limitations under the License.
 package render
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +24,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
+	igntypes "github.com/coreos/ignition/v2/config/v3_2/types"
 	apicfgv1 "github.com/openshift/api/config/v1"
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
@@ -86,6 +88,7 @@ func render(inputDir, outputDir string) error {
 	var (
 		perfProfiles []*performancev2.PerformanceProfile
 		mcPools      []*mcfgv1.MachineConfigPool
+		mcConfigs    []*mcfgv1.MachineConfig
 		infra        *apicfgv1.Infrastructure
 		ctrcfgs      []*mcfgv1.ContainerRuntimeConfig
 	)
@@ -102,7 +105,7 @@ func render(inputDir, outputDir string) error {
 			return fmt.Errorf("error parsing manifests from %s: %w", file.Name(), err)
 		}
 
-		// Decode manifest files and
+		// Decode manifest files
 		for idx, m := range manifests {
 			obji, err := runtime.Decode(runtimeDecoder, m.Raw)
 			if err != nil {
@@ -118,6 +121,8 @@ func render(inputDir, outputDir string) error {
 				perfProfiles = append(perfProfiles, obj)
 			case *mcfgv1.MachineConfigPool:
 				mcPools = append(mcPools, obj)
+			case *mcfgv1.MachineConfig:
+				mcConfigs = append(mcConfigs, obj)
 			case *apicfgv1.Infrastructure:
 				if obj.Name == clusterConfigResourceName {
 					infra = obj
@@ -134,18 +139,23 @@ func render(inputDir, outputDir string) error {
 		klog.Warning("zero performance profiles were found")
 	}
 
-	var pinnedMode *apicfgv1.CPUPartitioningMode
+	var partitioningMode *apicfgv1.CPUPartitioningMode
 	if infra != nil {
-		pinnedMode = &infra.Status.CPUPartitioning
+		partitioningMode = &infra.Status.CPUPartitioning
 	}
 
-	if err := genBootstrapWorkloadPinningManifests(pinnedMode, outputDir, defaultMCPNames...); err != nil {
+	if isLegacySNOWorkloadPinningMethod(mcConfigs, infra, partitioningMode) {
+		legacyAllNodes := apicfgv1.CPUPartitioningAllNodes
+		partitioningMode = &legacyAllNodes
+	}
+
+	if err := genBootstrapWorkloadPinningManifests(partitioningMode, outputDir, defaultMCPNames...); err != nil {
 		return err
 	}
 
 	// If the user supplies extra machine pools, we ingest them here
 	for _, pool := range mcPools {
-		if err := genBootstrapWorkloadPinningManifests(pinnedMode, outputDir, pool.Name); err != nil {
+		if err := genBootstrapWorkloadPinningManifests(partitioningMode, outputDir, pool.Name); err != nil {
 			return err
 		}
 	}
@@ -166,7 +176,7 @@ func render(inputDir, outputDir string) error {
 			return fmt.Errorf("render: could not determine high-performance runtime class container-runtime for profile %q; %w", pp.Name, err)
 		}
 
-		components, err := manifestset.GetNewComponents(pp, mcp, pinnedMode, defaultRuntime)
+		components, err := manifestset.GetNewComponents(pp, mcp, partitioningMode, defaultRuntime)
 		if err != nil {
 			return err
 		}
@@ -208,6 +218,49 @@ func render(inputDir, outputDir string) error {
 	}
 
 	return nil
+}
+
+// isLegacySNOWorkloadPinningMethod provides a check for situations where the user is creating an SNO cluster with the
+// legacy method for CPU Partitioning. In order to make sure the bootstrap and running cluster MCs are synced up we check the MCs
+// provided by the user, if any one of them contain the file addition to `/etc/kubernetes/openshift-workload-pinning` and have not set
+// the API CPUPartitioningAllNodes at install time, we assume a legacy intention and alter the flag to generate the new bootstrap manifests.
+//
+// Note:
+//   - This will only trigger when Control plane is SNO or the CPU Partitioning API is NOT set to AllNodes
+//   - We do not alter the API flag here, when NTO starts up in cluster, it will notice the flag and
+//     update the flag and ignore the create error since the files already exist.
+func isLegacySNOWorkloadPinningMethod(mcs []*mcfgv1.MachineConfig, infra *apicfgv1.Infrastructure, partitioningMode *apicfgv1.CPUPartitioningMode) bool {
+
+	// If we can't determine SNO topology, we return.
+	if infra == nil {
+		return false
+	}
+
+	if infra.Status.ControlPlaneTopology != apicfgv1.SingleReplicaTopologyMode || (partitioningMode != nil && *partitioningMode == apicfgv1.CPUPartitioningAllNodes) {
+		return false
+	}
+
+	// This file name is stable and currently hardcoded in kubelet
+	// https://github.com/openshift/kubernetes/blob/ba1825544533d273d86b405195ee791e500b74c7/pkg/kubelet/managed/managed.go#L31
+	const kubernetesPinningConfFile = "/etc/kubernetes/openshift-workload-pinning"
+
+	for _, mc := range mcs {
+		ign := &igntypes.Config{}
+		err := json.Unmarshal(mc.Spec.Config.Raw, ign)
+		if err != nil {
+			klog.Errorf("skipping legacy check on mc (%s) unable to marshal raw config to ignition struct: %s", mc.Name, err)
+			continue
+		}
+
+		for _, file := range ign.Storage.Files {
+			if file.Node.Path == kubernetesPinningConfFile {
+				klog.Infof("mc (%s) contains file path (%s), using legacy signal for workload pinning", mc.Name, kubernetesPinningConfFile)
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // genBootstrapWorkloadPinningManifests is used to generate the appropriate bootstrap workload pinning manifests
