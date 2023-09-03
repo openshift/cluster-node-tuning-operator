@@ -973,9 +973,29 @@ var _ = Describe("Controller", func() {
 			}
 			Expect(config.Storage.Files).To(ContainElements(containFiles))
 		})
-
 	})
 
+	Context("cgroups mode with performanceprofile", func() {
+		It("should set to cgroups v1 until v2 is supported", func() {
+			r := newFakeReconciler(profile, profileMCP, infra, clusterOperator)
+			Expect(reconcileTimes(r, request, 2)).To(Equal(reconcile.Result{}))
+
+			// Cluster has "" set
+			nodeCfg := &apiconfigv1.Node{}
+			err := r.Get(context.TODO(), types.NamespacedName{Name: nodeCfgName}, nodeCfg)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(nodeCfg.Spec.CgroupMode).To(Equal(apiconfigv1.CgroupModeV1))
+
+			// Cluster has "v2" set
+			nodeCfg.Spec.CgroupMode = apiconfigv1.CgroupModeV2
+			err = r.Update(context.TODO(), nodeCfg)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
+			err = r.Get(context.TODO(), types.NamespacedName{Name: nodeCfgName}, nodeCfg)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(nodeCfg.Spec.CgroupMode).To(Equal(apiconfigv1.CgroupModeV1))
+		})
+	})
 })
 
 func reconcileTimes(reconciler *PerformanceProfileReconciler, request reconcile.Request, times int) reconcile.Result {
@@ -992,6 +1012,12 @@ func reconcileTimes(reconciler *PerformanceProfileReconciler, request reconcile.
 func newFakeReconciler(profile client.Object, initObjects ...runtime.Object) *PerformanceProfileReconciler {
 	// we need to add the profile using the `WithStatusSubresource` function
 	// because we're updating its status during the reconciliation loop
+	nodeCfg := &apiconfigv1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: nodeCfgName,
+		},
+	}
+	initObjects = append(initObjects, nodeCfg)
 	initObjects = append(initObjects, profile)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithStatusSubresource(profile).WithRuntimeObjects(initObjects...).Build()
 	fakeRecorder := record.NewFakeRecorder(10)

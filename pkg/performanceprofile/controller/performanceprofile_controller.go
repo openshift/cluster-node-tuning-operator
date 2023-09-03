@@ -19,10 +19,11 @@ package controller
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"os"
 	"reflect"
 	"time"
+
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	apiconfigv1 "github.com/openshift/api/config/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -177,7 +178,7 @@ func (r *PerformanceProfileReconciler) mcpToPerformanceProfile(ctx context.Conte
 	}
 
 	profiles := &performancev2.PerformanceProfileList{}
-	if err := r.List(context.TODO(), profiles); err != nil {
+	if err := r.List(ctx, profiles); err != nil {
 		klog.Errorf("failed to get performance profiles: %v", err)
 		return nil
 	}
@@ -216,7 +217,7 @@ func (r *PerformanceProfileReconciler) tunedProfileToPerformanceProfile(ctx cont
 	}
 
 	profiles := &performancev2.PerformanceProfileList{}
-	if err := r.List(context.TODO(), profiles); err != nil {
+	if err := r.List(ctx, profiles); err != nil {
 		klog.Errorf("failed to get performance profiles: %v", err)
 		return nil
 	}
@@ -280,13 +281,13 @@ func (r *PerformanceProfileReconciler) ctrRuntimeConfToPerformanceProfile(ctx co
 	return allRequests
 }
 
-func (r *PerformanceProfileReconciler) getInfraPartitioningMode() (pinning apiconfigv1.CPUPartitioningMode, err error) {
+func (r *PerformanceProfileReconciler) getInfraPartitioningMode(ctx context.Context) (pinning apiconfigv1.CPUPartitioningMode, err error) {
 	key := types.NamespacedName{
 		Name: "cluster",
 	}
 	infra := &apiconfigv1.Infrastructure{}
 
-	if err = r.Client.Get(context.Background(), key, infra); err != nil {
+	if err = r.Client.Get(ctx, key, infra); err != nil {
 		return
 	}
 
@@ -448,16 +449,15 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		Version: "v1",
 		Kind:    "Node",
 	})
-	err = r.Client.Get(context.Background(), key, nodeCfg)
-	if err != nil {
+	if err := r.Client.Get(ctx, key, nodeCfg); err != nil {
 		klog.Errorf("failed to get config node object; name=%q err=%v", nodeCfg.GetName(), err)
-		nodeCfg.Name = nodeCfgName
-		nodeCfg.Spec.CgroupMode = apiconfigv1.CgroupModeV1
-		r.Client.Update(ctx, nodeCfg)
+		return reconcile.Result{}, err
 	}
 	if nodeCfg.Spec.CgroupMode != apiconfigv1.CgroupModeV1 {
 		nodeCfg.Spec.CgroupMode = apiconfigv1.CgroupModeV1
-		r.Client.Update(ctx, nodeCfg)
+		if err := r.Client.Update(ctx, nodeCfg); err != nil {
+			return reconcile.Result{}, err
+		}
 	}
 
 	profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
@@ -486,7 +486,7 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	pinningMode, err := r.getInfraPartitioningMode()
+	pinningMode, err := r.getInfraPartitioningMode(ctx)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
