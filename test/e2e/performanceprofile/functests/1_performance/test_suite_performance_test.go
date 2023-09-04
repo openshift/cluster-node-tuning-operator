@@ -6,6 +6,7 @@ package __performance_test
 import (
 	"context"
 	"flag"
+	"path"
 	"testing"
 	"time"
 
@@ -65,7 +66,8 @@ func TestPerformance(t *testing.T) {
 		Fail(message, callerSkip...)
 	})
 	if *reportPath != "" {
-		reporter = k8sreporter.New(*reportPath)
+		reportPath := path.Join(*reportPath, "nto_failure_report.log")
+		reporter = k8sreporter.New(reportPath)
 	}
 
 	RunSpecs(t, "Performance Test")

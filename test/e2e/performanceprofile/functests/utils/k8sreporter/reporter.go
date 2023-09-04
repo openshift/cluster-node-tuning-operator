@@ -1,7 +1,9 @@
 package k8sreporter
 
 import (
+	"errors"
 	"log"
+	"os"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
@@ -27,6 +29,11 @@ func New(reportPath string) *k8sreporter.KubernetesReporter {
 
 	crds := []k8sreporter.CRData{
 		{Cr: &performancev2.PerformanceProfileList{}},
+	}
+
+	err := os.Mkdir(reportPath, 0755)
+	if err != nil && !errors.Is(err, os.ErrExist) {
+		log.Fatalf("Failed to create the reporter dir: %s", err)
 	}
 
 	reporter, err := k8sreporter.New("", addToScheme, dumpNamespace, reportPath, crds...)
