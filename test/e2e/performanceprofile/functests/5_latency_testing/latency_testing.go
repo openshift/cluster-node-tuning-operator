@@ -75,7 +75,7 @@ const (
 
 	// we do not care about the actual system latency because CI systems are not tuned well enough to be an example for
 	// latency measuring, besides this suite only cares about testing the test executable with different values of env vars.
-	untunedLatencyThreshold = "900000"
+	untunedLatencyThreshold = "10000000" //10s
 	negativeTesting         = false
 	positiveTesting         = true
 )
