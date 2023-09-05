@@ -556,6 +556,8 @@ func (c *Controller) syncTunedRendered(tuned *tunedv1.Tuned) error {
 }
 
 func (c *Controller) syncDaemonSet(tuned *tunedv1.Tuned) error {
+	var update bool
+
 	dsMf := ntomf.TunedDaemonSet()
 	dsMf.ObjectMeta.OwnerReferences = getDefaultTunedRefs(tuned)
 
@@ -584,12 +586,24 @@ func (c *Controller) syncDaemonSet(tuned *tunedv1.Tuned) error {
 		}
 	}
 
-	ds = ds.DeepCopy() // never update the objects from cache
-	ds.Spec = dsMf.Spec
-
 	if operatorReleaseVersion != operandReleaseVersion {
-		// Update the DaemonSet
 		klog.V(2).Infof("syncDaemonSet(): operatorReleaseVersion (%s) != operandReleaseVersion (%s), updating", operatorReleaseVersion, operandReleaseVersion)
+		update = true
+	}
+
+	// OCPBUGS-18480: sync the DaemonSet also when the operand image changes
+	operandImageCurrent := ds.Spec.Template.Spec.Containers[0].Image
+	operandImageWanted := os.Getenv("CLUSTER_NODE_TUNED_IMAGE")
+	if operandImageCurrent != operandImageWanted {
+		klog.V(2).Infof("syncDaemonSet(): operandImageCurrent (%s) != operandImageWanted (%s), updating", operandImageCurrent, operandImageWanted)
+		update = true
+	}
+
+	if update {
+		// Update the DaemonSet
+		ds = ds.DeepCopy() // never update the objects from cache
+		ds.Spec = dsMf.Spec
+
 		_, err = c.clients.Apps.DaemonSets(ntoconfig.WatchNamespace()).Update(context.TODO(), ds, metav1.UpdateOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to update DaemonSet: %v", err)
