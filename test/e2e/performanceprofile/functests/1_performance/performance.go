@@ -342,15 +342,23 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 
 			expectedRPSCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
 			Expect(err).ToNot(HaveOccurred())
+			expectedRPSCPUsMask, err := components.CPUListToMaskList(expectedRPSCPUs.String())
+			Expect(err).ToNot(HaveOccurred())
+			testlog.Infof("expected RPS CPU mask for virtual network devices=%q", expectedRPSCPUsMask)
 
 			expectedPhysRPSCPUs := expectedRPSCPUs.Clone()
 			if !profileutil.IsPhysicalRpsEnabled(profile) {
 				// empty cpuset
 				expectedPhysRPSCPUs = cpuset.New()
+				expectedPhyRPSCPUsMask, err := components.CPUListToMaskList(expectedPhysRPSCPUs.String())
+				Expect(err).ToNot(HaveOccurred())
+				testlog.Infof("physical RPS disabled, expected RPS CPU mask for physical network devices is=%q", expectedPhyRPSCPUsMask)
+			} else {
+				testlog.Infof("physical RPS enabled, expected RPS CPU mask for physical network devices is=%q", expectedRPSCPUsMask)
 			}
 
 			for _, node := range workerRTNodes {
-				// Verify the systemd RPS service uses the correct RPS mask
+				By("verify the systemd RPS service uses the correct RPS mask")
 				cmd := []string{"sysctl", "-n", "net.core.rps_default_mask"}
 				rpsMaskContent, err := nodes.ExecCommandOnNode(cmd, &node)
 				Expect(err).ToNot(HaveOccurred(), "failed to exec command %q on node %q", cmd, node)
