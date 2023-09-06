@@ -16,7 +16,6 @@ const (
 	DefaultPodmanBinaryPath = "/usr/bin/podman"
 )
 
-
 var _ = BeforeSuite(func() {
 	var err error
 	By("Check podman binary exists")
