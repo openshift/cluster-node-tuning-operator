@@ -55,10 +55,9 @@ func (p *PPCTestIntegration) MakeOptions(args []string) []string {
 	return args
 }
 func PPCTestCreateUtil() *PPCTestIntegration {
-	podmanBinary := "/usr/bin/podman"
 	p := &PPCTestIntegration{
 		PPCTest: PPCTest{
-			PodmanBinary: podmanBinary,
+			PodmanBinary: DefaultPodmanBinaryPath,
 		},
 	}
 	p.PodmanMakeOptions = p.MakeOptions
@@ -104,7 +103,6 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 			Eventually(session).Should(gexec.Exit(0))
 		})
 		It("[test_id:41405] Verify PPC script fails when the splitting of reserved cpus and single numa-node policy is specified", func() {
-			//pp := &performancev2.PerformanceProfile{}
 			defaultArgs := []string{
 				"run",
 				"--entrypoint",
@@ -159,9 +157,7 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 			output := session.Wait(20).Err.Contents()
 			errString := "Error: failed to compute the reserved and isolated CPUs: can't allocate odd number of CPUs from a NUMA Node"
 			ok, err := regexp.MatchString(errString, string(output))
-			if err != nil {
-				testlog.Error(err.Error())
-			}
+			Expect(err).ToNot(HaveOccurred(), "did not fail with Expected:%s failure", errString)
 			if ok {
 				testlog.Info(errString)
 			}
@@ -192,9 +188,7 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 			output := session.Wait(20).Err.Contents()
 			errString := "Error: failed to compute the reserved and isolated CPUs: please specify the reserved CPU count in the range [1,3]"
 			ok, err := regexp.MatchString(errString, string(output))
-			if err != nil {
-				testlog.Error(err.Error())
-			}
+			Expect(err).ToNot(HaveOccurred(), "did not fail with Expected:%s failure", errString)
 			if ok {
 				testlog.Info(errString)
 			}
