@@ -347,10 +347,11 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			testlog.Infof("expected RPS CPU mask for virtual network devices=%q", expectedRPSCPUsMask)
 
 			expectedPhysRPSCPUs := expectedRPSCPUs.Clone()
+			expectedPhyRPSCPUsMask := expectedRPSCPUsMask
 			if !profileutil.IsPhysicalRpsEnabled(profile) {
 				// empty cpuset
 				expectedPhysRPSCPUs = cpuset.New()
-				expectedPhyRPSCPUsMask, err := components.CPUListToMaskList(expectedPhysRPSCPUs.String())
+				expectedPhyRPSCPUsMask, err = components.CPUListToMaskList(expectedPhysRPSCPUs.String())
 				Expect(err).ToNot(HaveOccurred())
 				testlog.Infof("physical RPS disabled, expected RPS CPU mask for physical network devices is=%q", expectedPhyRPSCPUsMask)
 			} else {
@@ -365,7 +366,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				rpsMaskContent = strings.TrimSuffix(rpsMaskContent, "\n")
 				rpsCPUs, err := components.CPUMaskToCPUSet(rpsMaskContent)
 				Expect(err).ToNot(HaveOccurred(), "failed to parse RPS mask %q", rpsMaskContent)
-				Expect(rpsCPUs.Equals(expectedRPSCPUs)).To(BeTrue(), "the default rps mask is different from the reserved CPUs; have %q want %q", rpsCPUs.String(), expectedRPSCPUs.String())
+				Expect(rpsCPUs.Equals(expectedRPSCPUs)).To(BeTrue(), "the default rps mask is different from the reserved CPUs mask; have %q want %q", rpsMaskContent, expectedRPSCPUsMask)
 
 				By("verify RPS mask on virtual network devices")
 				cmd = []string{
@@ -382,7 +383,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					rpsCPUs, err = components.CPUMaskToCPUSet(devRPS)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(rpsCPUs.Equals(expectedRPSCPUs)).To(BeTrue(),
-						"a host device rps mask is different from the reserved CPUs; have %q want %q", rpsCPUs.String(), expectedRPSCPUs.String())
+						"a host device rps mask is different from the reserved CPUs; have %q want %q", devRPS, expectedRPSCPUsMask)
 				}
 
 				By("verify RPS mask on physical network devices")
@@ -399,7 +400,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				for _, devRPS := range strings.Split(devsRPS, "\n") {
 					rpsCPUs, err = components.CPUMaskToCPUSet(devRPS)
 					Expect(err).ToNot(HaveOccurred())
-					Expect(rpsCPUs.Equals(expectedPhysRPSCPUs)).To(BeTrue(), "a host device rps mask is different from the reserved CPUs; have %q want %q", rpsCPUs.String(), expectedPhysRPSCPUs.String())
+					Expect(rpsCPUs.Equals(expectedPhysRPSCPUs)).To(BeTrue(), "a host device rps mask is different than expected; have %q want %q", devRPS, expectedPhyRPSCPUsMask)
 				}
 			}
 		})
