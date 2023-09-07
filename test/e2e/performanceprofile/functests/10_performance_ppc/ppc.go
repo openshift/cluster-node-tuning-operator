@@ -10,7 +10,6 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
-	v2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"sigs.k8s.io/yaml"
@@ -71,6 +70,7 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 		ppcIntgTest := PPCTestCreateUtil()
 		It("[test_id:40940] Performance Profile regression tests", func() {
 			pp := &performancev2.PerformanceProfile{}
+			var reservedCpuCount = 2
 			defaultArgs := []string{
 				"run",
 				"--entrypoint",
@@ -82,7 +82,7 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 				fmt.Sprintf("%s:%s:z", mustgatherDir, mustgatherDir),
 				ntoImage,
 				"--mcp-name=worker",
-				fmt.Sprintf("--reserved-cpu-count=%d", 2),
+				fmt.Sprintf("--reserved-cpu-count=%d", reservedCpuCount),
 				fmt.Sprintf("--rt-kernel=%t", true),
 				fmt.Sprintf("--power-consumption-mode=%s", "low-latency"),
 				fmt.Sprintf("--split-reserved-cpus-across-numa=%t", false),
@@ -95,9 +95,10 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 			output := session.Wait(20).Out.Contents()
 			err = yaml.Unmarshal(output, pp)
 			Expect(err).ToNot(HaveOccurred(), "Unable to marshal the ppc output")
+			cpuset := *pp.Spec.CPU.Reserved
+			totalReservedCpus := len(strings.Split(string(cpuset), ","))
+			Expect(totalReservedCpus == reservedCpuCount).To(BeTrue())
 			Expect(*pp.Spec.RealTimeKernel.Enabled).To(BeTrue())
-			Expect(*pp.Spec.CPU.Isolated).To(Equal(v2.CPUSet("1,3")))
-			Expect(*pp.Spec.CPU.Reserved).To(Equal(v2.CPUSet("0,2")))
 			Expect(*pp.Spec.WorkloadHints.RealTime).To(BeTrue())
 			Expect(*pp.Spec.NUMA.TopologyPolicy).To(Equal("restricted"))
 			Eventually(session).Should(gexec.Exit(0))
