@@ -225,7 +225,7 @@ pao-functests-performance-workloadhints-only:
 pao-functests-latency-testing: dist-latency-tests
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
-	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/5_latency_testing" -p "-v -r --fail-fast --flake-attempts=2 --junit-report=report.xml" -m "Running Functional Tests"
+	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/5_latency_testing" -p "-v -r --fail-fast --flake-attempts=2 --timeout=5h --junit-report=report.xml" -m "Running Functionalconfiguration latency Tests"
 
 .PHONY: cluster-clean-pao
 cluster-clean-pao:
