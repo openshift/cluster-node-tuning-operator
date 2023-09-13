@@ -1,7 +1,9 @@
 package testing
 
 import (
+	apiconfigv1 "github.com/openshift/api/config/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -107,6 +109,22 @@ func NewProfileMCP() *mcov1.MachineConfigPool {
 			},
 			MachineConfigSelector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{MachineConfigLabelKey: MachineConfigLabelValue},
+			},
+		},
+	}
+}
+
+func NewClusterOperator() *apiconfigv1.ClusterOperator {
+	return &apiconfigv1.ClusterOperator{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node-tuning",
+		},
+		Status: apiconfigv1.ClusterOperatorStatus{
+			Versions: []apiconfigv1.OperandVersion{
+				{
+					Name:    tunedv1.TunedOperandName,
+					Version: "",
+				},
 			},
 		},
 	}

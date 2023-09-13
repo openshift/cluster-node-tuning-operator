@@ -41,6 +41,9 @@ spec:
           name: etc-modprobe-d
         - mountPath: /etc/sysconfig
           name: etc-sysconfig
+        - mountPath: /etc/kubernetes
+          name: etc-kubernetes
+          readOnly: true
         - mountPath: /etc/sysctl.d
           name: etc-sysctl-d
           readOnly: true
@@ -59,6 +62,9 @@ spec:
           readOnly: true
         - mountPath: /lib/modules
           name: lib-modules
+          readOnly: true
+        - mountPath: /var/lib/kubelet
+          name: var-lib-kubelet
           readOnly: true
         - name: host
           mountPath: /host
@@ -87,6 +93,10 @@ spec:
           type: Directory
         name: etc-sysconfig
       - hostPath:
+          path: /etc/kubernetes
+          type: Directory
+        name: etc-kubernetes
+      - hostPath:
           path: /etc/sysctl.d
           type: Directory
         name: etc-sysctl-d
@@ -114,6 +124,10 @@ spec:
           path: /lib/modules
           type: Directory
         name: lib-modules
+      - hostPath:
+          path: /var/lib/kubelet
+          type: Directory
+        name: var-lib-kubelet
       - name: host
         hostPath:
           path: /

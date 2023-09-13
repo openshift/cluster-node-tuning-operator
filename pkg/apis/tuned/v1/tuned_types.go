@@ -19,9 +19,12 @@ const (
 	// that reflects the node tuning operator status.
 	TunedClusterOperatorResourceName = "node-tuning"
 
-	// Annotation on Profiles to denote the operand version responsible for calculating and reporting
-	// the Profile status.
-	GeneratedByOperandVersionAnnotationKey string = "tuned.openshift.io/generated-by-operand-version"
+	// Name of the NTO operand for versioning in ClusterOperator.
+	TunedOperandName = "openshift-tuned"
+
+	// TunedBootcmdlineAnnotationKey is a Node-specific annotation denoting kernel command-line parameters
+	// calculated by TuneD for the current profile applied to that Node.
+	TunedBootcmdlineAnnotationKey string = "tuned.openshift.io/bootcmdline"
 )
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -135,6 +138,7 @@ type TunedList struct {
 /////////////////////////////////////////////////////////////////////////////////
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:subresource:status
 
 // Profile is a specification for a Profile resource.
 type Profile struct {
@@ -165,7 +169,7 @@ type ProfileConfig struct {
 // ProfileStatus is the status for a Profile resource; the status is for internal use only
 // and its fields may be changed/removed in the future.
 type ProfileStatus struct {
-	// kernel parameters calculated by tuned for the active Tuned profile
+	// kernel parameters calculated by tuned for the active Tuned profile; this field is OBSOLETE and will be removed, see OCPBUGS-19351
 	// +optional
 	Bootcmdline string `json:"bootcmdline"`
 
