@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	kmeta "k8s.io/apimachinery/pkg/api/meta"
@@ -577,14 +578,7 @@ func (c *Controller) syncDaemonSet(tuned *tunedv1.Tuned) error {
 	}
 
 	operatorReleaseVersion := os.Getenv("RELEASE_VERSION")
-	operandReleaseVersion := ""
-
-	for _, e := range ds.Spec.Template.Spec.Containers[0].Env {
-		if e.Name == "RELEASE_VERSION" {
-			operandReleaseVersion = e.Value
-			break
-		}
-	}
+	operandReleaseVersion := c.getDaemonSetReleaseVersion(ds)
 
 	if operatorReleaseVersion != operandReleaseVersion {
 		klog.V(2).Infof("syncDaemonSet(): operatorReleaseVersion (%s) != operandReleaseVersion (%s), updating", operatorReleaseVersion, operandReleaseVersion)
@@ -1055,6 +1049,20 @@ func (c *Controller) pruneMachineConfigsHyperShift() error {
 	}
 
 	return nil
+}
+
+// Get daemonset release version.
+func (c *Controller) getDaemonSetReleaseVersion(ds *appsv1.DaemonSet) string {
+	var operandReleaseVersion string
+
+	for _, e := range ds.Spec.Template.Spec.Containers[0].Env {
+		if e.Name == "RELEASE_VERSION" {
+			operandReleaseVersion = e.Value
+			break
+		}
+	}
+
+	return operandReleaseVersion
 }
 
 // Get all operator MachineConfig names for all TuneD daemon profiles.
