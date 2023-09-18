@@ -2,15 +2,15 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+
 	"github.com/jaypipes/ghw/pkg/snapshot"
 	"github.com/openshift-kni/debug-tools/pkg/knit/cmd"
 	"github.com/openshift-kni/debug-tools/pkg/knit/cmd/k8s"
 	"github.com/openshift-kni/debug-tools/pkg/machineinformer"
 	"github.com/spf13/cobra"
-	"io/ioutil"
-	"log"
-	"os"
-	"path/filepath"
 )
 
 const machineInfoFilePath string = "machineinfo.json"
@@ -86,7 +86,7 @@ func makeSnapshot(cmd *cobra.Command, knitOpts *cmd.KnitOptions, opts *snapshotO
 		})
 	}
 
-	scratchDir, err := ioutil.TempDir("", "perf-must-gather-*")
+	scratchDir, err := os.MkdirTemp("", "perf-must-gather-*")
 	if err != nil {
 		return err
 	}

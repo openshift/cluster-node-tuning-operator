@@ -73,6 +73,8 @@ func newMachineConfig(name string, annotations map[string]string, labels map[str
 
 // IgnParseWrapper parses rawIgn for V3.2 ignition config and returns
 // a V3.2 Config or an error.
+//
+//nolint:unused
 func ignParseWrapper(rawIgn []byte) (interface{}, error) {
 	ignCfgV3_2, rptV3_2, errV3_2 := ign3.Parse(rawIgn)
 	if errV3_2 == nil && !rptV3_2.IsFatal() {
@@ -97,6 +99,7 @@ func ignParseWrapper(rawIgn []byte) (interface{}, error) {
 	return ign3types.Config{}, fmt.Errorf("parsing Ignition config spec v3.2 failed with error: %v\nReport: %v", errV3_2, rptV3_2)
 }
 
+//nolint:unused
 func parseAndConvertConfig(rawIgn []byte) (ign3types.Config, error) {
 	ignconfigi, err := ignParseWrapper(rawIgn)
 	if err != nil {
@@ -111,6 +114,7 @@ func parseAndConvertConfig(rawIgn []byte) (ign3types.Config, error) {
 	}
 }
 
+//nolint:unused
 func ignEqual(mcOld, mcNew *mcfgv1.MachineConfig) (bool, error) {
 	ignOld, err := parseAndConvertConfig(mcOld.Spec.Config.Raw)
 	if err != nil {
@@ -150,6 +154,7 @@ func getMachineConfigNameForPools(pools []*mcfgv1.MachineConfigPool) string {
 	return sb.String()
 }
 
+//nolint:unused
 func (pc *ProfileCalculator) getMachineCountForMachineConfigPool(mcpName string) (int32, error) {
 	mcp, err := pc.listers.MachineConfigPools.Get(mcpName)
 	if err != nil {

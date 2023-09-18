@@ -69,7 +69,6 @@ func init() {
 // Render will traverse the input directory and generate the proper performance profile files
 // in to the output dir based on PerformanceProfile manifests contained in the input directory.
 func render(inputDir, outputDir string) error {
-
 	klog.Info("Rendering files into: ", outputDir)
 
 	// Read asset directory fileInfo
@@ -230,7 +229,6 @@ func render(inputDir, outputDir string) error {
 //   - We do not alter the API flag here, when NTO starts up in cluster, it will notice the flag and
 //     update the flag and ignore the create error since the files already exist.
 func isLegacySNOWorkloadPinningMethod(mcs []*mcfgv1.MachineConfig, infra *apicfgv1.Infrastructure, partitioningMode *apicfgv1.CPUPartitioningMode) bool {
-
 	// If we can't determine SNO topology, we return.
 	if infra == nil {
 		return false

@@ -9,7 +9,7 @@ import (
 
 // GetMachineConfigPoolSelector returns the MachineConfigPoolSelector from the CR or a default value calculated based on NodeSelector
 func GetMachineConfigPoolSelector(profile *performancev2.PerformanceProfile, profileMCP *mcov1.MachineConfigPool) map[string]string {
-	// we do not really need profile.spec.machineConfigPoolSelector anymore, but we should use it for backward compatability
+	// we do not really need profile.spec.machineConfigPoolSelector anymore, but we should use it for backward compatibility
 	if profile.Spec.MachineConfigPoolSelector != nil {
 		return profile.Spec.MachineConfigPoolSelector
 	}

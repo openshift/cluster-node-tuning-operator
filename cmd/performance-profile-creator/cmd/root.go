@@ -114,8 +114,8 @@ func init() {
 // NewRootCommand returns entrypoint command to interact with all other commands
 func NewRootCommand() *cobra.Command {
 	pcArgs := &ProfileCreatorArgs{
-		UserLevelNetworking:   pointer.BoolPtr(false),
-		PerPodPowerManagement: pointer.BoolPtr(false),
+		UserLevelNetworking:   pointer.Bool(false),
+		PerPodPowerManagement: pointer.Bool(false),
 	}
 
 	var requiredFlags = []string{
@@ -148,7 +148,9 @@ func NewRootCommand() *cobra.Command {
 
 				clusterInfo := makeClusterInfoFromClusterData(cluster)
 				if infoMode == infoModeJSON {
-					showClusterInfoJSON(clusterInfo)
+					if err := showClusterInfoJSON(clusterInfo); err != nil {
+						return fmt.Errorf("unable to show cluster info %w", err)
+					}
 				} else {
 					showClusterInfoLog(clusterInfo)
 				}
@@ -335,8 +337,8 @@ func makeClusterInfoFromClusterData(cluster ClusterData) ClusterInfo {
 	return cInfo.Sort()
 }
 
-func showClusterInfoJSON(cInfo ClusterInfo) {
-	json.NewEncoder(os.Stdout).Encode(cInfo)
+func showClusterInfoJSON(cInfo ClusterInfo) error {
+	return json.NewEncoder(os.Stdout).Encode(cInfo)
 }
 
 func showClusterInfoLog(cInfo ClusterInfo) {
@@ -464,7 +466,7 @@ func getProfileData(args ProfileCreatorArgs, cluster ClusterData) (*ProfileData,
 	for _, nodeHandler := range cluster[mcp] {
 		matchedNodeNames = append(matchedNodeNames, nodeHandler.Node.GetName())
 	}
-	log.Infof("Nodes targetted by %s MCP are: %v", args.MCPName, matchedNodeNames)
+	log.Infof("Nodes targeted by %s MCP are: %v", args.MCPName, matchedNodeNames)
 	err = profilecreator.EnsureNodesHaveTheSameHardware(cluster[mcp])
 	if err != nil {
 		return nil, fmt.Errorf("targeted nodes differ: %v", err)
@@ -511,16 +513,15 @@ func getProfileData(args ProfileCreatorArgs, cluster ClusterData) (*ProfileData,
 			)
 		}
 	case lowLatency:
-		profileData.realtimeHint = pointer.BoolPtr(true)
+		profileData.realtimeHint = pointer.Bool(true)
 	case ultraLowLatency:
-		profileData.realtimeHint = pointer.BoolPtr(true)
-		profileData.highPowerConsumptionHint = pointer.BoolPtr(true)
+		profileData.realtimeHint = pointer.Bool(true)
+		profileData.highPowerConsumptionHint = pointer.Bool(true)
 		if profileData.perPodPowerManagementHint != nil && *profileData.perPodPowerManagementHint {
 			return nil, fmt.Errorf(
 				"please use one of %v power consumption modes together with the perPodPowerManagement",
 				validPowerConsumptionModes[:2],
 			)
-
 		}
 	}
 	return profileData, nil
@@ -600,9 +601,9 @@ func createProfile(profileData ProfileData) error {
 
 	// configuring workload hints
 	profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-		HighPowerConsumption:  pointer.BoolPtr(false),
-		RealTime:              pointer.BoolPtr(false),
-		PerPodPowerManagement: pointer.BoolPtr(false),
+		HighPowerConsumption:  pointer.Bool(false),
+		RealTime:              pointer.Bool(false),
+		PerPodPowerManagement: pointer.Bool(false),
 	}
 
 	if profileData.highPowerConsumptionHint != nil {
@@ -652,6 +653,9 @@ func MarshallObject(obj interface{}, writer io.Writer) error {
 	unstructured.RemoveNestedField(r.Object, "status")
 
 	deployments, exists, err := unstructured.NestedSlice(r.Object, "spec", "install", "spec", "deployments")
+	if err != nil {
+		return err
+	}
 	if exists {
 		for _, obj := range deployments {
 			deployment := obj.(map[string]interface{})
@@ -659,7 +663,9 @@ func MarshallObject(obj interface{}, writer io.Writer) error {
 			unstructured.RemoveNestedField(deployment, "spec", "template", "metadata", "creationTimestamp")
 			unstructured.RemoveNestedField(deployment, "status")
 		}
-		unstructured.SetNestedSlice(r.Object, deployments, "spec", "install", "spec", "deployments")
+		if err := unstructured.SetNestedSlice(r.Object, deployments, "spec", "install", "spec", "deployments"); err != nil {
+			return err
+		}
 	}
 
 	jsonBytes, err = json.Marshal(r.Object)

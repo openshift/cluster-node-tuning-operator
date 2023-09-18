@@ -44,7 +44,6 @@ func NewRenderCommand() *cobra.Command {
 		Use:   "render",
 		Short: "Render performance-addon-operator manifests",
 		Run: func(cmd *cobra.Command, args []string) {
-
 			if err := renderOpts.Validate(); err != nil {
 				klog.Fatal(err)
 			}

@@ -3,7 +3,7 @@
 
 This document documents the PerformanceProfile API introduced by the Performance controller.
 
-> This document is generated from code comments on the `PerformanceProfile` struct.  
+> This document is generated from code comments on the `PerformanceProfile` struct.
 > When contributing a change to this document please do so by changing those code comments.
 
 ## Table of Contents
@@ -142,7 +142,7 @@ PerformanceProfileSpec defines the desired state of PerformanceProfile.
 | machineConfigPoolSelector | MachineConfigPoolSelector defines the MachineConfigPool label to use in the MachineConfigPoolSelector of resources like KubeletConfigs created by the operator. Defaults to \"machineconfiguration.openshift.io/role=&lt;same role as in NodeSelector label key&gt;\" | map[string]string | false |
 | nodeSelector | NodeSelector defines the Node label to use in the NodeSelectors of resources like Tuned created by the operator. It most likely should, but does not have to match the node label in the NodeSelector of the MachineConfigPool which targets this performance profile. In the case when machineConfigLabels or machineConfigPoolSelector are not set, we are expecting a certain NodeSelector format &lt;domain&gt;/&lt;role&gt;: \"\" in order to be able to calculate the default values for the former mentioned fields. | map[string]string | true |
 | realTimeKernel | RealTimeKernel defines a set of real time kernel related parameters. RT kernel won't be installed when not set. | *[RealTimeKernel](#realtimekernel) | false |
-| additionalKernelArgs | Addional kernel arguments. | []string | false |
+| additionalKernelArgs | Additional kernel arguments. | []string | false |
 | numa | NUMA defines options related to topology aware affinities | *[NUMA](#numa) | false |
 | net | Net defines a set of network related features | *[Net](#net) | false |
 | globallyDisableIrqLoadBalancing | GloballyDisableIrqLoadBalancing toggles whether IRQ load balancing will be disabled for the Isolated CPU set. When the option is set to \"true\" it disables IRQs load balancing for the Isolated CPU set. Setting the option to \"false\" allows the IRQs to be balanced across all CPUs, however the IRQs load balancing can be disabled per pod CPUs when using irq-load-balancing.crio.io/cpu-quota.crio.io annotations. Defaults to \"false\" | *bool | false |

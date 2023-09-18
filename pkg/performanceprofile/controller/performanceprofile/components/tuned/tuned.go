@@ -57,7 +57,7 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 
 	if profile.Spec.CPU.Isolated != nil {
 		templateArgs[templateIsolatedCpus] = string(*profile.Spec.CPU.Isolated)
-		if profile.Spec.CPU.BalanceIsolated != nil && *profile.Spec.CPU.BalanceIsolated == false {
+		if profile.Spec.CPU.BalanceIsolated != nil && !*profile.Spec.CPU.BalanceIsolated {
 			templateArgs[templateStaticIsolation] = strconv.FormatBool(true)
 		}
 	}
@@ -77,7 +77,7 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 				// a user requested to allocate 2M huge pages on the specific NUMA node,
 				// append dummy kernel arguments
 				if page.Size == components.HugepagesSize2M && is2MHugepagesRequested == nil {
-					is2MHugepagesRequested = pointer.BoolPtr(true)
+					is2MHugepagesRequested = pointer.Bool(true)
 				}
 				continue
 			}
@@ -86,7 +86,7 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 			// we need to append 2M hugepages kernel arguments anyway, no need to add dummy
 			// kernel arguments
 			if page.Size == components.HugepagesSize2M {
-				is2MHugepagesRequested = pointer.BoolPtr(false)
+				is2MHugepagesRequested = pointer.Bool(false)
 			}
 
 			hugepages = append(hugepages, fmt.Sprintf("hugepagesz=%s", string(page.Size)))
@@ -118,7 +118,6 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 	templateArgs[templateNetDevices] = fmt.Sprintf("[net]\n%s", nfConntrackHashsize)
 	if profile.Spec.Net != nil && profile.Spec.Net.UserLevelNetworking != nil &&
 		*profile.Spec.Net.UserLevelNetworking && profile.Spec.CPU.Reserved != nil {
-
 		reservedSet, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
 		if err != nil {
 			return nil, err

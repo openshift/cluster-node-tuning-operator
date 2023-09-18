@@ -1,15 +1,14 @@
 package tuned
 
 import (
-	"errors"    // errors.Is()
-	"fmt"       // Printf()
-	"io"        // io.EOF
-	"io/ioutil" // ioutil.ReadFile()
-	"os"        // os.Stat()
-	"os/exec"   // os.Exec()
-	"strings"   // strings.Split()
-	"syscall"   // syscall.SIGHUP, ...
-	"time"      // time.Second, ...
+	"errors"  // errors.Is()
+	"fmt"     // Printf()
+	"io"      // io.EOF
+	"os"      // os.Stat()
+	"os/exec" // os.Exec()
+	"strings" // strings.Split()
+	"syscall" // syscall.SIGHUP, ...
+	"time"    // time.Second, ...
 
 	"gopkg.in/ini.v1"
 	"k8s.io/klog/v2"
@@ -22,7 +21,7 @@ func iniFileLoad(iniFile string) (*ini.File, error) {
 		err error
 	)
 
-	content, err := ioutil.ReadFile(iniFile)
+	content, err := os.ReadFile(iniFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file %s: %v", iniFile, err)
 	}
@@ -65,9 +64,9 @@ func iniCfgSetKey(cfg *ini.File, key string, value interface{}) error {
 	}
 
 	b := func(value interface{}) string {
-		switch value.(type) {
+		switch val := value.(type) {
 		case bool:
-			if value.(bool) {
+			if val {
 				return "1"
 			}
 			return "0"
@@ -113,7 +112,7 @@ func getIniFileSectionSlice(data *string, section, key, separator string) []stri
 func profileIncludesRaw(profileName string, tunedProfilesDir string) []string {
 	profileFile := fmt.Sprintf("%s/%s/%s", tunedProfilesDir, profileName, tunedConfFile)
 
-	content, err := ioutil.ReadFile(profileFile)
+	content, err := os.ReadFile(profileFile)
 	if err != nil {
 		content = []byte{}
 	}
@@ -276,6 +275,7 @@ func execCmd(command []string) (string, error) {
 				return
 			}
 			// Ask nicely first.
+			//nolint:errcheck
 			cmd.Process.Signal(syscall.SIGTERM)
 		}
 		// Wait for the process to stop.
@@ -284,6 +284,7 @@ func execCmd(command []string) (string, error) {
 		case <-time.After(time.Second * waitSeconds):
 			// The process refused to terminate gracefully on SIGTERM.
 			klog.V(1).Infof("sending SIGKILL to PID %d", cmd.Process.Pid)
+			//nolint:errcheck
 			cmd.Process.Signal(syscall.SIGKILL)
 			return
 		}
@@ -395,7 +396,7 @@ func expandTuneDBuiltin(s string) string {
 				// End of a function.  We now have a function name without arguments.
 				// Function name possibly needs expanding.
 				functionExpanded := expandTuneDBuiltin(function)
-				ret += execTuneDBuiltin(functionExpanded, arguments, string(s[iDollar:i+1]))
+				ret += execTuneDBuiltin(functionExpanded, arguments, s[iDollar:i+1])
 				goto init
 			}
 			if s[i] == ':' && !esc && bracket == 1 {
@@ -434,7 +435,7 @@ func expandTuneDBuiltin(s string) string {
 					arguments[j] = expandTuneDBuiltin(arguments[j])
 				}
 				functionExpanded := expandTuneDBuiltin(function)
-				ret += execTuneDBuiltin(functionExpanded, arguments, string(s[iDollar:i+1]))
+				ret += execTuneDBuiltin(functionExpanded, arguments, s[iDollar:i+1])
 				goto init
 			}
 		append_arg:
@@ -449,7 +450,7 @@ func expandTuneDBuiltin(s string) string {
 				ret += string(s[i])
 				continue
 			}
-			ret += string(s[iDollar : i+1])
+			ret += s[iDollar : i+1]
 			goto init
 		}
 		continue
@@ -461,7 +462,7 @@ func expandTuneDBuiltin(s string) string {
 	}
 	if state != sInit {
 		// Unterminated function sequence such as "${f:exec"
-		ret += string(s[iDollar:])
+		ret += s[iDollar:]
 	}
 
 	return ret

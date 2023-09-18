@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"time"
@@ -70,7 +69,7 @@ func buildServer(port int) *http.Server {
 	)
 
 	tlsConfig := &tls.Config{}
-	caCert, err := ioutil.ReadFile(authCAFile)
+	caCert, err := os.ReadFile(authCAFile)
 	if err == nil {
 		caCertPool := x509.NewCertPool()
 		if caCertPool.AppendCertsFromPEM(caCert) {
@@ -149,6 +148,7 @@ func RunServer(port int, ctx context.Context) error {
 					klog.V(2).Infof("event from filewatcher on file: %v, event: %v", event.Name, event.Op)
 
 					if event.Name == authCAFile {
+						//nolint:staticcheck
 						if ok, _ := fileExistsAndNotEmpty(authCAFile); ok {
 							// authCAFile is now created and is not empty.
 							break

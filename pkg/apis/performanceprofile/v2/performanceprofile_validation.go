@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
@@ -285,7 +286,7 @@ func (r *PerformanceProfile) validateNet() field.ErrorList {
 	}
 
 	if r.Spec.Net.UserLevelNetworking != nil && *r.Spec.Net.UserLevelNetworking && r.Spec.CPU.Reserved == nil {
-		allErrs = append(allErrs, field.Invalid(field.NewPath("spec.net"), r.Spec.Net, "can not set network devices queues count without specifiying spec.cpu.reserved"))
+		allErrs = append(allErrs, field.Invalid(field.NewPath("spec.net"), r.Spec.Net, "can not set network devices queues count without specifying spec.cpu.reserved"))
 	}
 
 	for _, device := range r.Spec.Net.Devices {
@@ -299,7 +300,7 @@ func (r *PerformanceProfile) validateNet() field.ErrorList {
 			allErrs = append(allErrs, field.Invalid(field.NewPath("spec.net.devices"), r.Spec.Net.Devices, fmt.Sprintf("device model ID %s has an invalid format. Model ID should be represented as 0x<4 hexadecimal digits> (16 bit representation)", *device.DeviceID)))
 		}
 		if device.DeviceID != nil && device.VendorID == nil {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec.net.devices"), r.Spec.Net.Devices, fmt.Sprintf("device model ID can not be used without specifying the device vendor ID.")))
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec.net.devices"), r.Spec.Net.Devices, "device model ID can not be used without specifying the device vendor ID."))
 		}
 	}
 	return allErrs

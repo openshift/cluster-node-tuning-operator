@@ -622,7 +622,7 @@ func podLabelsNodeWideChange(podLabelsNodeWide map[string]map[string]string,
 	podNsName string,
 	podLabels map[string]string) bool {
 	if podLabelsNodeWide == nil {
-		return podLabels != nil && len(podLabels) > 0
+		return len(podLabels) > 0
 	}
 
 	// Fetch old labels for Pod podNsName, not found on any other Pod that lives on the same Node

@@ -7,7 +7,7 @@ import (
 	"k8s.io/client-go/discovery"
 )
 
-// IsNoMatchError checks if error is for a non existant resource, there is a meaningful difference between a
+// IsNoMatchError checks if error is for a non existent resource, there is a meaningful difference between a
 // resource type not existing on the cluster as a whole versus an individual resource not being found.
 //
 // Example:

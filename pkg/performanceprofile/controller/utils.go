@@ -39,7 +39,6 @@ func ListPerformanceOperatorCSVs(k8sclient client.Client, options []client.ListO
 					break
 				}
 			}
-
 		}
 		if continueToken == "" {
 			// empty token means there is no more elements
