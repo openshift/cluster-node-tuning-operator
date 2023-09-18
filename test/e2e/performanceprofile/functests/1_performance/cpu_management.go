@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -231,6 +232,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 	When("pod runs with the CPU load balancing runtime class", func() {
 		var smtLevel int
+		var allTestpods map[types.UID]*corev1.Pod
 		var testpod *corev1.Pod
 
 		// getCPUswithLoadBalanceDisabled Return cpus which are not in any scheduling domain
@@ -263,6 +265,20 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 		BeforeEach(func() {
 			var err error
+			allTestpods = make(map[types.UID]*corev1.Pod)
+
+			// workaround for https://github.com/kubernetes/kubernetes/issues/107074
+			// until https://github.com/kubernetes/kubernetes/pull/120661 lands
+			unblockerPod := pods.GetTestPod() // any non-GU pod will suffice ...
+			unblockerPod.Namespace = testutils.NamespaceTesting
+			unblockerPod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
+
+			err = testclient.Client.Create(context.TODO(), unblockerPod)
+			Expect(err).ToNot(HaveOccurred())
+			allTestpods[unblockerPod.UID] = unblockerPod
+
+			time.Sleep(30 * time.Second) // let cpumanager reconcile loop catch up
+
 			// It's possible that when this test runs the value of
 			// defaultCpuNotInSchedulingDomains is empty if no gu pods are running
 			defaultCpuNotInSchedulingDomains, err := getCPUswithLoadBalanceDisabled()
@@ -275,7 +291,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				} else {
 					testlog.Infof("pods on %q BEGIN", workerRTNode.Name)
 					for _, pod := range pods {
-						testlog.Infof("- %s/%s %s annotations=%#v", pod.Namespace, pod.Name, pod.UID, pod.Annotations)
+						testlog.Infof("- %s/%s %s", pod.Namespace, pod.Name, pod.UID)
 					}
 					testlog.Infof("pods on %q END", workerRTNode.Name)
 				}
@@ -293,7 +309,10 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		})
 
 		AfterEach(func() {
-			deleteTestPod(testpod)
+			for podUID, testpod := range allTestpods {
+				testlog.Infof("deleting test pod %s/%s UID=%q", testpod.Namespace, testpod.Name, podUID)
+				deleteTestPod(testpod)
+			}
 		})
 
 		It("[test_id:32646] should disable CPU load balancing for CPU's used by the pod", func() {
@@ -305,10 +324,21 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			testpod, err = pods.WaitForCondition(client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 			logEventsForPod(testpod)
 			Expect(err).ToNot(HaveOccurred(), "failed to create guaranteed pod %v", testpod)
+			allTestpods[testpod.UID] = testpod
+
+			// workaround for https://github.com/kubernetes/kubernetes/issues/107074
+			// until https://github.com/kubernetes/kubernetes/pull/120661 lands
+			unblockerPod := pods.GetTestPod() // any non-GU pod will suffice ...
+			unblockerPod.Namespace = testpod.Namespace
+			unblockerPod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: testpod.Spec.NodeName} // ... as long as it hits the same kubelet
+
+			err = testclient.Client.Create(context.TODO(), unblockerPod)
+			Expect(err).ToNot(HaveOccurred())
+			allTestpods[unblockerPod.UID] = unblockerPod
 
 			By("Getting the container cpuset.cpus cgroup")
 			containerID, err := pods.GetContainerIDByName(testpod, "test")
-			Expect(err).ToNot(HaveOccurred(), "unable to fetch containerId")
+			Expect(err).ToNot(HaveOccurred(), "unable to fetch containerID")
 
 			containerCgroup := ""
 			Eventually(func() string {
@@ -347,7 +377,10 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			}).WithTimeout(2*time.Minute).WithPolling(5*time.Second).ShouldNot(HaveOccurred(), "checking scheduling domains with pod running")
 
 			By("Deleting the pod")
-			deleteTestPod(testpod)
+			deletedUID, ok := deleteTestPod(testpod)
+			if ok {
+				delete(allTestpods, deletedUID)
+			}
 
 			// The below loop takes time because kernel takes time
 			// to update /proc/schedstat with cpuid of deleted pods
@@ -832,18 +865,22 @@ func getTestPodWithAnnotations(annotations map[string]string, cpus int) *corev1.
 	return testpod
 }
 
-func deleteTestPod(testpod *corev1.Pod) {
+func deleteTestPod(testpod *corev1.Pod) (types.UID, bool) {
 	// it possible that the pod already was deleted as part of the test, in this case we want to skip teardown
 	err := testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(testpod), testpod)
 	if errors.IsNotFound(err) {
-		return
+		return types.UID(""), false
 	}
+
+	testpodUID := testpod.UID
 
 	err = testclient.Client.Delete(context.TODO(), testpod)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = pods.WaitForDeletion(testpod, pods.DefaultDeletionTimeout*time.Second)
 	Expect(err).ToNot(HaveOccurred())
+
+	return testpodUID, true
 }
 
 func cpuSpecToString(cpus *performancev2.CPU) (string, error) {
