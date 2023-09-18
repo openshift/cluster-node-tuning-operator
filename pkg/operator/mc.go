@@ -259,36 +259,6 @@ func (pc *ProfileCalculator) getPoolsForNode(node *corev1.Node) ([]*mcfgv1.Machi
 	return []*mcfgv1.MachineConfigPool{worker}, nil
 }
 
-// getNodesForPool returns a list of Nodes for MachineConfigPool 'pool'.
-func (pc *ProfileCalculator) getNodesForPool(pool *mcfgv1.MachineConfigPool) ([]*corev1.Node, error) {
-	selector, err := metav1.LabelSelectorAsSelector(pool.Spec.NodeSelector)
-	if err != nil {
-		return nil, fmt.Errorf("invalid label selector %s in MachineConfigPool %s: %v", util.ObjectInfo(selector), pool.ObjectMeta.Name, err)
-	}
-
-	initialNodes, err := pc.listers.Nodes.List(selector)
-	if err != nil {
-		return nil, err
-	}
-
-	nodes := []*corev1.Node{}
-	for _, n := range initialNodes {
-		p, err := pc.getPrimaryPoolForNode(n)
-		if err != nil {
-			klog.Warningf("cannot get pool for node %q: %v", n.Name, err)
-			continue
-		}
-		if p == nil {
-			continue
-		}
-		if p.Name != pool.Name {
-			continue
-		}
-		nodes = append(nodes, n)
-	}
-	return nodes, nil
-}
-
 // getPrimaryPoolForNode uses getPoolsForNode and returns the first one which is the one the node targets
 func (pc *ProfileCalculator) getPrimaryPoolForNode(node *corev1.Node) (*mcfgv1.MachineConfigPool, error) {
 	pools, err := pc.getPoolsForNode(node)

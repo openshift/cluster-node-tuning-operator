@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"reflect"
 
-	apiconfigv1 "github.com/openshift/api/config/v1"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
@@ -62,18 +61,6 @@ func (r *PerformanceProfileReconciler) getMutatedMachineConfig(mc *mcov1.Machine
 	}
 
 	return mutated, nil
-}
-
-func (r *PerformanceProfileReconciler) getClusterOperator() (*apiconfigv1.ClusterOperator, error) {
-	co := &apiconfigv1.ClusterOperator{}
-	key := types.NamespacedName{
-		Name:      "node-tuning",
-		Namespace: metav1.NamespaceNone,
-	}
-	if err := r.Get(context.TODO(), key, co); err != nil {
-		return nil, err
-	}
-	return co, nil
 }
 
 func (r *PerformanceProfileReconciler) createOrUpdateMachineConfig(mc *mcov1.MachineConfig) error {

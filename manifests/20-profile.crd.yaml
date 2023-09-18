@@ -33,8 +33,6 @@ spec:
       name: v1
       served: true
       storage: true
-      subresources:
-        status: {}
       schema:
         openAPIV3Schema:
           description: Profile is a specification for a Profile resource.
@@ -80,6 +78,9 @@ spec:
               required:
                 - tunedProfile
               properties:
+                bootcmdline:
+                  description: kernel parameters calculated by tuned for the active Tuned profile
+                  type: string
                 conditions:
                   description: conditions represents the state of the per-node Profile application
                   type: array

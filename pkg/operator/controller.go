@@ -655,10 +655,6 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 
 	metrics.ProfileCalculated(profileMf.Name, tunedProfileName)
 
-	if err != nil {
-		return fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
-	}
-
 	profile, err := c.listers.TunedProfiles.Get(profileMf.Name)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -676,6 +672,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 			profileMf.Spec.Config.Debug = operand.Debug
 			profileMf.Spec.Config.TuneDConfig = operand.TuneDConfig
 			profileMf.Status.Conditions = tunedpkg.InitializeStatusConditions()
+			c.pc.state.profileLastUpdatedGeneration[profileMf.Name] = 1
 			_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.WatchNamespace()).Create(context.TODO(), profileMf, metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to create Profile %s: %v", profileMf.Name, err)
@@ -700,18 +697,27 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		return fmt.Errorf("failed to get ProviderName: %v", err)
 	}
 
+	// profileLastUpdatedGeneration is set for each Profile when it is created or updated.
+	// In the case where it is not already set due to an operator restart, set it and
+	// clear profile.Status.Bootcmdline instead of syncing MachineConfigs.
+	_, lastUpdateGenSet := c.pc.state.profileLastUpdatedGeneration[profile.Name]
+
 	if ntoconfig.InHyperShift() {
 		// nodePoolName is the name of the NodePool which the Node corresponding to this Profile
 		// is a part of. If nodePoolName is the empty string, it either means that Node label
 		// based matching was used, or we don't know the NodePool, so we should not sync the
 		// MachineConfigs.
-		if nodePoolName != "" {
-			if profile.Status.TunedProfile == tunedProfileName && profileApplied(profile) {
-				// Synchronize MachineConfig only once the (calculated) TuneD profile 'tunedProfileName'
-				// has been successfully applied.
-				err := c.syncMachineConfigHyperShift(nodePoolName, profile)
-				if err != nil {
-					return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
+		if nodePoolName != "" && lastUpdateGenSet {
+			if profile.Generation > c.pc.state.profileLastUpdatedGeneration[profile.Name]+1 {
+				klog.Infof("refusing to sync MachineConfig because Profile %s is more than 1 generation ahead of last update by operator", profile.Name)
+			} else {
+				if profile.Status.TunedProfile == tunedProfileName && profileApplied(profile) {
+					// Synchronize MachineConfig only once the (calculated) TuneD profile 'tunedProfileName'
+					// has been successfully applied.
+					err := c.syncMachineConfigHyperShift(nodePoolName, profile)
+					if err != nil {
+						return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
+					}
 				}
 			}
 		}
@@ -723,7 +729,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 			if profile.Status.TunedProfile == tunedProfileName && profileApplied(profile) {
 				// Synchronize MachineConfig only once the (calculated) TuneD profile 'tunedProfileName'
 				// has been successfully applied.
-				err := c.syncMachineConfig(pools, mcLabels, profile)
+				err := c.syncMachineConfig(getMachineConfigNameForPools(pools), mcLabels, profile)
 				if err != nil {
 					return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
 				}
@@ -731,11 +737,13 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		}
 	}
 
-	// Only update Profile if the spec needs to be changed.
+	// Only update Profile if the spec needs to be changed OR if !lastUpdateGenSet.
+	// Update, triggering the operand to update the Profile status.
 	if profile.Spec.Config.TunedProfile == tunedProfileName &&
 		profile.Spec.Config.Debug == operand.Debug &&
 		reflect.DeepEqual(profile.Spec.Config.TuneDConfig, operand.TuneDConfig) &&
-		profile.Spec.Config.ProviderName == providerName {
+		profile.Spec.Config.ProviderName == providerName &&
+		lastUpdateGenSet {
 		klog.V(2).Infof("syncProfile(): no need to update Profile %s", nodeName)
 		return nil
 	}
@@ -746,7 +754,9 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	profile.Spec.Config.ProviderName = providerName
 	profile.Status.Conditions = tunedpkg.InitializeStatusConditions()
 
-	klog.V(2).Infof("syncProfile(): updating Profile %s [%s]", profile.Name, tunedProfileName)
+	c.pc.state.profileLastUpdatedGeneration[profile.Name] = profile.Generation + 1 // after this update
+
+	klog.V(2).Infof("syncProfile(): updating Profile %s [%s]. Last operator updated generation: %d", profile.Name, tunedProfileName, c.pc.state.profileLastUpdatedGeneration[profile.Name])
 	_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.WatchNamespace()).Update(context.TODO(), profile, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
@@ -765,30 +775,25 @@ func (c *Controller) getProviderName(nodeName string) (string, error) {
 	return util.GetProviderName(node.Spec.ProviderID), nil
 }
 
-func (c *Controller) syncMachineConfig(pools []*mcfgv1.MachineConfigPool, labels map[string]string, profile *tunedv1.Profile) error {
+func (c *Controller) syncMachineConfig(name string, labels map[string]string, profile *tunedv1.Profile) error {
 	var (
 		kernelArguments []string
 	)
 
-	name := getMachineConfigNameForPools(pools)
-	nodes, err := c.pc.getNodesForPool(pools[0])
-	if err != nil {
-		return err
-	}
-
-	bootcmdline, bootcmdlineSet := c.pc.state.bootcmdline[profile.Name]
-	if !bootcmdlineSet {
-		klog.V(2).Infof("syncMachineConfig(): bootcmdline for %s not cached, sync cancelled", profile.Name)
+	if v := profile.ObjectMeta.Annotations[tunedv1.GeneratedByOperandVersionAnnotationKey]; v != os.Getenv("RELEASE_VERSION") {
+		// This looks like an update triggered by an old (not-yet-upgraded) operand.  Ignore it.
+		klog.Infof("refusing to sync MachineConfig %q due to Profile %q change generated by operand version %q", name, profile.Name, v)
 		return nil
 	}
 
-	if ok := c.allNodesAgreeOnBootcmdline(nodes); !ok {
-		return fmt.Errorf("not all %d Nodes in MCP %v agree on bootcmdline: %s", len(nodes), pools[0].ObjectMeta.Name, bootcmdline)
-	}
-
+	bootcmdline := profile.Status.Bootcmdline
 	kernelArguments = util.SplitKernelArguments(bootcmdline)
 
-	annotations := map[string]string{GeneratedByControllerVersionAnnotationKey: version.Version}
+	annotations := map[string]string{
+		GeneratedByControllerVersionAnnotationKey:   version.Version,
+		tunedv1.RendredTunedGenerationAnnotationKey: profile.ObjectMeta.Annotations[tunedv1.RendredTunedGenerationAnnotationKey],
+		tunedv1.TunedProfileAnnotationKey:           profile.Status.TunedProfile,
+	}
 
 	mc, err := c.listers.MachineConfigs.Get(name)
 	if err != nil {
@@ -818,6 +823,17 @@ func (c *Controller) syncMachineConfig(pools []*mcfgv1.MachineConfigPool, labels
 		// No update needed
 		klog.V(2).Infof("syncMachineConfig(): MachineConfig %s doesn't need updating", mc.ObjectMeta.Name)
 		return nil
+	} else if mcAnnotationsMatch(mc.ObjectMeta.Annotations, annotations) {
+		// Kernel arguments differ and they were generated based on the same TuneD profile and Tuned/rendered CR.
+		machineCount, err := c.pc.getMachineCountForMachineConfigPool(mc.Name[len(MachineConfigPrefix)+1:])
+		if err != nil {
+			return err
+		} else if machineCount > 1 {
+			klog.Warningf("refusing to update MachineConfig %s for %s due to kernel arguments change with unchanged input configuration (%s/%s). Node(s) with different (CPU) topology in the same MCP?",
+				mc.Name, profile.Name, annotations[tunedv1.RendredTunedGenerationAnnotationKey], annotations[tunedv1.TunedProfileAnnotationKey])
+			c.bootcmdlineConflict[profile.Name] = true
+			return nil
+		}
 	}
 	mc = mc.DeepCopy() // never update the objects from cache
 	mc.ObjectMeta.Annotations = mcNew.ObjectMeta.Annotations
@@ -836,26 +852,6 @@ func (c *Controller) syncMachineConfig(pools []*mcfgv1.MachineConfigPool, labels
 	return nil
 }
 
-// allNodesAgreeOnBootcmdline returns true if the current cached annotation 'TunedBootcmdlineAnnotationKey'
-// of all Nodes in slice 'nodes' has the same value.
-func (c *Controller) allNodesAgreeOnBootcmdline(nodes []*corev1.Node) bool {
-	if len(nodes) == 0 {
-		return true
-	}
-
-	match := true
-	bootcmdline := c.pc.state.bootcmdline[nodes[0].ObjectMeta.Name]
-	for _, node := range nodes[1:] {
-		if bootcmdline != c.pc.state.bootcmdline[node.ObjectMeta.Name] {
-			klog.V(2).Infof("found a conflicting bootcmdline %q for Node %q", c.pc.state.bootcmdline[node.ObjectMeta.Name], node.ObjectMeta.Name)
-			c.bootcmdlineConflict[node.ObjectMeta.Name] = true
-			match = false
-		}
-	}
-
-	return match
-}
-
 func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *tunedv1.Profile) error {
 	var (
 		kernelArguments []string
@@ -864,16 +860,13 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 	mcName := MachineConfigPrefix + "-" + nodePoolName
 	configMapName := mcConfigMapName(nodePoolName)
 
-	nodes, err := c.getNodesForNodePool(nodePoolName)
-	if err != nil {
-		return fmt.Errorf("could not fetch a list of Nodes for NodePool %s: %v", nodePoolName, err)
+	if v := profile.ObjectMeta.Annotations[tunedv1.GeneratedByOperandVersionAnnotationKey]; v != os.Getenv("RELEASE_VERSION") {
+		// This looks like an update triggered by an old (not-yet-upgraded) operand.  Ignore it.
+		klog.Infof("refusing to sync MachineConfig ConfigMap %q due to Profile %q change generated by operand version %q", configMapName, profile.Name, v)
+		return nil
 	}
 
-	bootcmdline := c.pc.state.bootcmdline[profile.Name]
-	if ok := c.allNodesAgreeOnBootcmdline(nodes); !ok {
-		return fmt.Errorf("not all %d Nodes in NodePool %v agree on bootcmdline: %s", len(nodes), nodePoolName, bootcmdline)
-	}
-
+	bootcmdline := profile.Status.Bootcmdline
 	kernelArguments = util.SplitKernelArguments(bootcmdline)
 
 	annotations := map[string]string{GeneratedByControllerVersionAnnotationKey: version.Version}
@@ -1405,6 +1398,16 @@ func (c *Controller) Start(ctx context.Context) error {
 }
 
 func (c *Controller) NeedLeaderElection() bool {
+	return true
+}
+
+func mcAnnotationsMatch(old, new map[string]string) bool {
+	for _, key := range []string{tunedv1.RendredTunedGenerationAnnotationKey, tunedv1.TunedProfileAnnotationKey} {
+		if old[key] != new[key] {
+			return false
+		}
+	}
+
 	return true
 }
 

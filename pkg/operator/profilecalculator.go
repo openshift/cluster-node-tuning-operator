@@ -24,6 +24,9 @@ const (
 )
 
 type tunedState struct {
+	profileLastUpdatedGeneration map[string]int64
+	// Node name:                    ^^^^^^
+	// Last time operator changed profile:  ^^^
 	nodeLabels map[string]map[string]string
 	// Node name:  ^^^^^^
 	// Node-specific label:   ^^^^^^
@@ -34,9 +37,6 @@ type tunedState struct {
 	providerIDs map[string]string
 	// Node name:   ^^^^^^
 	// provider-id         ^^^^^^
-	bootcmdline map[string]string
-	// Node name:   ^^^^^^
-	// bootcmdline         ^^^^^^
 }
 
 type ProfileCalculator struct {
@@ -53,7 +53,7 @@ func NewProfileCalculator(listers *ntoclient.Listers, clients *ntoclient.Clients
 	pc.state.nodeLabels = map[string]map[string]string{}
 	pc.state.podLabels = map[string]map[string]map[string]string{}
 	pc.state.providerIDs = map[string]string{}
-	pc.state.bootcmdline = map[string]string{}
+	pc.state.profileLastUpdatedGeneration = map[string]int64{}
 	return pc
 }
 
@@ -130,13 +130,6 @@ func (pc *ProfileCalculator) nodeChangeHandler(nodeName string) (bool, error) {
 		pc.state.providerIDs[nodeName] = node.Spec.ProviderID
 		klog.V(3).Infof("Node's %s providerID=%v", nodeName, node.Spec.ProviderID)
 		change = true
-	}
-
-	if node.ObjectMeta.Annotations != nil {
-		if bootcmdlineAnnotVal, bootcmdlineAnnotSet := node.ObjectMeta.Annotations[tunedv1.TunedBootcmdlineAnnotationKey]; bootcmdlineAnnotSet {
-			change = pc.state.bootcmdline[nodeName] != bootcmdlineAnnotVal
-			pc.state.bootcmdline[nodeName] = bootcmdlineAnnotVal
-		}
 	}
 
 	nodeLabelsNew := util.MapOfStringsCopy(node.Labels)
