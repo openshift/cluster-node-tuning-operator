@@ -1,7 +1,6 @@
 package __performance_update
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -23,6 +22,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
@@ -49,7 +49,8 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 	Context("Group Both Numa Nodes with restricted topology", Ordered, func() {
 		var numaCoreSiblings map[int]map[int][]int
 		var reserved, isolated []string
-		var hpCount = 20
+		// Number of hugepages of size 2M created on both numa nodes
+		const hpCount = 20
 		testutils.CustomBeforeAll(func() {
 			var policy = "restricted"
 			workerRTNodes = getUpdatedNodes()
@@ -105,13 +106,11 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 
 			if !*profile.Spec.RealTimeKernel.Enabled {
 				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.BoolPtr(true),
+					Enabled: pointer.Bool(true),
 				}
 			}
-			if profile.Spec.WorkloadHints == nil {
-				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					RealTime: pointer.Bool(true),
-				}
+			profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+				RealTime: pointer.Bool(true),
 			}
 			profile.Spec.CPU = &performancev2.CPU{
 				Reserved: &reservedSet,
@@ -152,8 +151,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			err := checkPodEvent(testPod, "TopologyAffinityError")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(testPod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed), "Test pod does not have QoS class of Guaranteed")
-			err = mm1.removePod(testPod)
-			Expect(err).ToNot(HaveOccurred(), "Failed to remove test pod")
+			Expect(mm1.removePod(testPod)).ToNot(HaveOccurred(), "Failed to remove test pod")
 		})
 
 		It("[test_id:60694] Accept guaranteed pod requesting resources that can be satisfied by 2 numa nodes together", func() {
@@ -174,8 +172,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			// Expect both numa nodes to be used by pod
 			Expect(numaZone).To(Equal("0-1"))
 			Expect(err).ToNot(HaveOccurred(), "Pod's numa affinity is %s instead of %s", numaZone, "0-1")
-			err = mm2.removePod(testPod)
-			Expect(err).ToNot(HaveOccurred(), "Failed to remove test pod")
+			Expect(mm2.removePod(testPod)).ToNot(HaveOccurred(), "Failed to remove test pod")
 		})
 
 		It("[test_id:60695] Allow burstable pod with hugepages", func() {
@@ -192,8 +189,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			numaZone, err := GetMemoryNodes(testPod, targetNode)
 			// Expect both numa nodes to be used by pod
 			Expect(numaZone).To(Equal("0-1"), "Pod's numa affinity is %s instead of %s", numaZone, "0-1")
-			err = mm2.removePod(testPod)
-			Expect(err).ToNot(HaveOccurred(), "Failed to remove test pod")
+			Expect(mm2.removePod(testPod)).ToNot(HaveOccurred(), "Failed to remove test pod")
 		})
 
 		AfterAll(func() {
@@ -203,7 +199,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			currentSpec, _ := json.Marshal(profile.Spec)
 			spec, _ := json.Marshal(initialProfile.Spec)
 			// revert only if the profile changes.
-			if !bytes.Equal(currentSpec, spec) {
+			if !equality.Semantic.DeepEqual(currentSpec, spec) {
 				Expect(testclient.Client.Patch(context.TODO(), profile,
 					client.RawPatch(
 						types.JSONPatchType,
@@ -308,13 +304,11 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			}
 			if !*profile.Spec.RealTimeKernel.Enabled {
 				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.BoolPtr(true),
+					Enabled: pointer.Bool(true),
 				}
 			}
-			if profile.Spec.WorkloadHints == nil {
-				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					RealTime: pointer.Bool(true),
-				}
+			profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+				RealTime: pointer.Bool(true),
 			}
 			profile.Spec.CPU = &performancev2.CPU{
 				Reserved: &reservedSet,
@@ -354,8 +348,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			Expect(numaZone).To(Equal("1"))
 			Expect(err).ToNot(HaveOccurred(), "Pod's numa affinity is %s instead of %s", numaZone, "1")
 			// Delete pod
-			err = mm1.removePod(testPod)
-			Expect(err).ToNot(HaveOccurred(), "failed to remove testpod")
+			Expect(mm1.removePod(testPod)).ToNot(HaveOccurred(), "Failed to remove test pod")
 		})
 
 		It("[test_id:60697] Verify Pod is rejected when the numzone doesn't enough resources", func() {
@@ -397,10 +390,8 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			err = checkPodEvent(testPod2, "FailedScheduling")
 			Expect(err).ToNot(HaveOccurred(), "failed to find expected event: failedScheduling")
 			// Delete pods
-			err = mm1.removePod(testPod1)
-			Expect(err).ToNot(HaveOccurred(), "failed to remove testpod1")
-			err = mm2.removePod(testPod2)
-			Expect(err).ToNot(HaveOccurred(), "failed to remove testpod2")
+			Expect(mm1.removePod(testPod1)).ToNot(HaveOccurred(), "Failed to remove testpod1")
+			Expect(mm2.removePod(testPod2)).ToNot(HaveOccurred(), "Failed to remove testpod2")
 		})
 
 		AfterAll(func() {
@@ -410,7 +401,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			currentSpec, _ := json.Marshal(profile.Spec)
 			spec, _ := json.Marshal(initialProfile.Spec)
 			// revert only if the profile changes.
-			if !bytes.Equal(currentSpec, spec) {
+			if !equality.Semantic.DeepEqual(currentSpec, spec) {
 				Expect(testclient.Client.Patch(context.TODO(), profile,
 					client.RawPatch(
 						types.JSONPatchType,
@@ -430,7 +421,8 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 	Context("Group Both Numa Nodes with single-numa-node topology", Ordered, func() {
 		var numaCoreSiblings map[int]map[int][]int
 		var reserved, isolated []string
-		var hpCount int = 20
+		// Number of hugepages of size 2M
+		const hpCount = 20
 		testutils.CustomBeforeAll(func() {
 			var policy = "single-numa-node"
 			workerRTNodes = getUpdatedNodes()
@@ -484,13 +476,11 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			}
 			if !*profile.Spec.RealTimeKernel.Enabled {
 				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.BoolPtr(true),
+					Enabled: pointer.Bool(true),
 				}
 			}
-			if profile.Spec.WorkloadHints == nil {
-				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					RealTime: pointer.Bool(true),
-				}
+			profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+				RealTime: pointer.Bool(true),
 			}
 			profile.Spec.CPU = &performancev2.CPU{
 				Reserved: &reservedSet,
@@ -524,8 +514,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			err := checkPodEvent(testPod, "TopologyAffinityError")
 			Expect(err).ToNot(HaveOccurred(), "pod did not fail with TopologyAffinityError")
 			Expect(testPod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed), "Test pod does not have QoS class of Guaranteed")
-			err = mm1.removePod(testPod)
-			Expect(err).ToNot(HaveOccurred(), "Failed to remove the pod")
+			Expect(mm1.removePod(testPod)).ToNot(HaveOccurred(), "Failed to remove test pod")
 		})
 		AfterAll(func() {
 			By("Reverting the Profile")
@@ -534,7 +523,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			currentSpec, _ := json.Marshal(profile.Spec)
 			spec, _ := json.Marshal(initialProfile.Spec)
 			// revert only if the profile changes.
-			if !bytes.Equal(currentSpec, spec) {
+			if !equality.Semantic.DeepEqual(currentSpec, spec) {
 				Expect(testclient.Client.Patch(context.TODO(), profile,
 					client.RawPatch(
 						types.JSONPatchType,
@@ -634,13 +623,11 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			}
 			if !*profile.Spec.RealTimeKernel.Enabled {
 				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.BoolPtr(true),
+					Enabled: pointer.Bool(true),
 				}
 			}
-			if profile.Spec.WorkloadHints == nil {
-				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					RealTime: pointer.Bool(true),
-				}
+			profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+				RealTime: pointer.Bool(true),
 			}
 			profile.Spec.CPU = &performancev2.CPU{
 				Reserved: &reservedSet,
@@ -677,8 +664,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			Expect(numaZone).To(Equal("0"))
 			Expect(err).ToNot(HaveOccurred(), "Pod's numa affinity is %s instead of %s", numaZone, "0")
 			// Delete pod
-			err = mm1.removePod(testPod1)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(mm1.removePod(testPod1)).ToNot(HaveOccurred(), "Failed to remove testpod1")
 			// Schedule pod on numa zone 1
 			mm2.noOfhpgs = "4Gi"
 			mm2.memory = "200Mi"
@@ -693,8 +679,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			Expect(numaZone).To(Equal("1"))
 			Expect(err).ToNot(HaveOccurred(), "Pod's numa affinity is %s instead of %s", numaZone, "1")
 			// Delete pod
-			err = mm2.removePod(testPod2)
-			Expect(err).ToNot(HaveOccurred(), "failed to remove testpod")
+			Expect(mm2.removePod(testPod2)).ToNot(HaveOccurred(), "Failed to remove test pod")
 		})
 
 		AfterAll(func() {
@@ -704,7 +689,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			currentSpec, _ := json.Marshal(profile.Spec)
 			spec, _ := json.Marshal(initialProfile.Spec)
 			// revert only if the profile changes.
-			if !bytes.Equal(currentSpec, spec) {
+			if !equality.Semantic.DeepEqual(currentSpec, spec) {
 				Expect(testclient.Client.Patch(context.TODO(), profile,
 					client.RawPatch(
 						types.JSONPatchType,
