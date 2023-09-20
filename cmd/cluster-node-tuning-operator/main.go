@@ -225,13 +225,13 @@ func removePerformanceOLMOperator(cfg *rest.Config) error {
 	}
 
 	performanceOperatorCSVs, err := paocontroller.ListPerformanceOperatorCSVs(k8sclient, options, paginationLimit, performanceOperatorDeploymentName)
-	if err != nil {
+	if err != nil && !util.IsNoMatchError(err) {
 		return err
 	}
 
 	subscriptions := &olmv1alpha1.SubscriptionList{}
 	if err := k8sclient.List(context.TODO(), subscriptions); err != nil {
-		if !errors.IsNotFound(err) {
+		if !errors.IsNotFound(err) && !util.IsNoMatchError(err) {
 			return err
 		}
 	}
