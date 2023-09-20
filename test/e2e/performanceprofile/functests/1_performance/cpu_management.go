@@ -235,34 +235,6 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		var allTestpods map[types.UID]*corev1.Pod
 		var testpod *corev1.Pod
 
-		// getCPUswithLoadBalanceDisabled Return cpus which are not in any scheduling domain
-		getCPUswithLoadBalanceDisabled := func() ([]string, error) {
-			cmd := []string{"/bin/bash", "-c", "cat /proc/schedstat"}
-			schedstatData, err := nodes.ExecCommandOnNode(cmd, workerRTNode)
-			if err != nil {
-				return nil, err
-			}
-
-			info, err := schedstat.ParseData(strings.NewReader(schedstatData))
-			if err != nil {
-				return nil, err
-			}
-
-			cpusWithoutDomain := []string{}
-			for _, cpu := range info.GetCPUs() {
-				doms, ok := info.GetDomains(cpu)
-				if !ok {
-					return nil, fmt.Errorf("unknown cpu: %v", cpu)
-				}
-				if len(doms) > 0 {
-					continue
-				}
-				cpusWithoutDomain = append(cpusWithoutDomain, cpu)
-			}
-
-			return cpusWithoutDomain, nil
-		}
-
 		BeforeEach(func() {
 			var err error
 			allTestpods = make(map[types.UID]*corev1.Pod)
@@ -281,7 +253,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 			// It's possible that when this test runs the value of
 			// defaultCpuNotInSchedulingDomains is empty if no gu pods are running
-			defaultCpuNotInSchedulingDomains, err := getCPUswithLoadBalanceDisabled()
+			defaultCpuNotInSchedulingDomains, err := getCPUswithLoadBalanceDisabled(workerRTNode)
 			Expect(err).ToNot(HaveOccurred(), "Unable to fetch scheduling domains")
 
 			if len(defaultCpuNotInSchedulingDomains) > 0 {
@@ -362,7 +334,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			// After the testpod is started get the schedstat and check for cpus
 			// not participating in scheduling domains
 			Eventually(func() error {
-				cpusNotInSchedulingDomains, err := getCPUswithLoadBalanceDisabled()
+				cpusNotInSchedulingDomains, err := getCPUswithLoadBalanceDisabled(workerRTNode)
 				testlog.Infof("cpus with load balancing disabled are: %v", cpusNotInSchedulingDomains)
 				Expect(err).ToNot(HaveOccurred(), "unable to fetch cpus with load balancing disabled from /proc/schedstat")
 				cpuIDList, err := schedstat.MakeCPUIDListFromCPUList(cpusNotInSchedulingDomains)
@@ -387,7 +359,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			// to be under scheduling domains
 			Eventually(func() error {
 				By("Getting the CPU scheduling flags")
-				cpusNotInSchedulingDomains, err := getCPUswithLoadBalanceDisabled()
+				cpusNotInSchedulingDomains, err := getCPUswithLoadBalanceDisabled(workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				testlog.Infof("cpus with load balancing disabled are: %v", cpusNotInSchedulingDomains)
 				if len(cpusNotInSchedulingDomains) == 0 {
@@ -917,4 +889,32 @@ func logEventsForPod(testPod *corev1.Pod) {
 	for _, event := range evs.Items {
 		testlog.Warningf("-> %s %s %s", event.Action, event.Reason, event.Message)
 	}
+}
+
+// getCPUswithLoadBalanceDisabled Return cpus which are not in any scheduling domain
+func getCPUswithLoadBalanceDisabled(targetNode *corev1.Node) ([]string, error) {
+	cmd := []string{"/bin/bash", "-c", "cat /proc/schedstat"}
+	schedstatData, err := nodes.ExecCommandOnNode(cmd, targetNode)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := schedstat.ParseData(strings.NewReader(schedstatData))
+	if err != nil {
+		return nil, err
+	}
+
+	cpusWithoutDomain := []string{}
+	for _, cpu := range info.GetCPUs() {
+		doms, ok := info.GetDomains(cpu)
+		if !ok {
+			return nil, fmt.Errorf("unknown cpu: %v", cpu)
+		}
+		if len(doms) > 0 {
+			continue
+		}
+		cpusWithoutDomain = append(cpusWithoutDomain, cpu)
+	}
+
+	return cpusWithoutDomain, nil
 }
