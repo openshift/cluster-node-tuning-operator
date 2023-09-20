@@ -169,6 +169,10 @@ type ProfileConfig struct {
 // ProfileStatus is the status for a Profile resource; the status is for internal use only
 // and its fields may be changed/removed in the future.
 type ProfileStatus struct {
+	// kernel parameters calculated by tuned for the active Tuned profile; this field is OBSOLETE and will be removed, see OCPBUGS-19351
+	// +optional
+	Bootcmdline string `json:"bootcmdline"`
+
 	// the current profile in use by the Tuned daemon
 	TunedProfile string `json:"tunedProfile"`
 
