@@ -80,6 +80,9 @@ spec:
               required:
                 - tunedProfile
               properties:
+                bootcmdline:
+                  description: kernel parameters calculated by tuned for the active Tuned profile; this field is OBSOLETE and will be removed, see OCPBUGS-19351
+                  type: string
                 conditions:
                   description: conditions represents the state of the per-node Profile application
                   type: array
