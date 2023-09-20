@@ -5,21 +5,34 @@ package __latency_test
 
 import (
 	"context"
+	"flag"
+	"path"
 	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	"github.com/onsi/ginkgo/v2/reporters"
 	. "github.com/onsi/gomega"
+
+	kniK8sReporter "github.com/openshift-kni/k8sreporter"
+	"k8s.io/apimachinery/pkg/api/errors"
+	qe_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
+
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/k8sreporter"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/namespaces"
-
-	"k8s.io/apimachinery/pkg/api/errors"
-
-	qe_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 )
+
+var (
+	reportPath *string
+	reporter   *kniK8sReporter.KubernetesReporter
+)
+
+func init() {
+	reportPath = flag.String("report", "", "the path of the report file containing details for failed tests")
+}
 
 var _ = BeforeSuite(func() {
 	Expect(testclient.ClientsEnabled).To(BeTrue())
@@ -39,7 +52,23 @@ var _ = AfterSuite(func() {
 })
 
 func TestLatency(t *testing.T) {
-	RegisterFailHandler(Fail)
+	// We want to collect logs before any resource is deleted in AfterEach, so we register the global fail handler
+	// in a way such that the reporter's Dump is always called before the default Fail.
+	RegisterFailHandler(func(message string, callerSkip ...int) {
+		if reporter != nil {
+			reporter.Dump(testutils.LogsFetchDuration, CurrentSpecReport().FullText())
+		}
+
+		// Ensure failing line location is not affected by this wrapper
+		for i := range callerSkip {
+			callerSkip[i]++
+		}
+		Fail(message, callerSkip...)
+	})
+	if *reportPath != "" {
+		reportPath := path.Join(*reportPath, "nto_failure_report.log")
+		reporter = k8sreporter.New(reportPath)
+	}
 
 	RunSpecs(t, "Performance Addon Operator latency e2e tests")
 }

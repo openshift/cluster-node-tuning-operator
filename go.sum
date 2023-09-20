@@ -666,6 +666,8 @@ github.com/opencontainers/selinux v1.10.0 h1:rAiKF8hTcgLI3w0DHm6i0ylVVcOrlgR1kK9
 github.com/opencontainers/selinux v1.10.0/go.mod h1:2i0OySw99QjzBBQByd1Gr9gSjvuho1lHsJxIJ3gGbJI=
 github.com/openshift-kni/debug-tools v0.1.11 h1:FlcRlL5XQcfWrtzzzpeld9HOEBZqNKc8hipNbBM6plc=
 github.com/openshift-kni/debug-tools v0.1.11/go.mod h1:O3tmG9+vhUW0Fej5xj3ZbslNUigjwYVEACG5AbHMLis=
+github.com/openshift-kni/k8sreporter v1.0.4 h1:jEwX6Pqei60kO1U0JLo+ePjQaP7DNn/M6d63KCS2tS0=
+github.com/openshift-kni/k8sreporter v1.0.4/go.mod h1:fg8HI9yxiKAi6UzR6NTtrmQmA2WKzUqmkRUHwQ1+Bj8=
 github.com/openshift/api v0.0.0-20230807132801-600991d550ac h1:HqT8MmYGXiUGUW0BjygTGOOvqO2wIsTaG3q8nboJyPY=
 github.com/openshift/api v0.0.0-20230807132801-600991d550ac/go.mod h1:yimSGmjsI+XF1mr+AKBs2//fSXIOhhetHGbMlBEfXbs=
 github.com/openshift/build-machinery-go v0.0.0-20230306181456-d321ffa04533 h1:mh3ZYs7kPIIe3UUY6tJcTExmtjnXXUu0MrBuK2W/Qvw=

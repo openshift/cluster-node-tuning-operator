@@ -13,6 +13,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.9.5
 	github.com/onsi/gomega v1.27.7
 	github.com/openshift-kni/debug-tools v0.1.11
+	github.com/openshift-kni/k8sreporter v1.0.4
 	github.com/openshift/api v0.0.0-20230807132801-600991d550ac
 	github.com/openshift/build-machinery-go v0.0.0-20230306181456-d321ffa04533
 	github.com/openshift/client-go v0.0.0-20230807132528-be5346fb33cb
@@ -93,6 +94,7 @@ require (
 	github.com/gobuffalo/flect v0.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.0.6 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang/glog v1.0.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/cadvisor v0.47.2 // indirect
