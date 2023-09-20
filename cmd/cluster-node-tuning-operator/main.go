@@ -119,15 +119,16 @@ func operatorRun() {
 	restConfig := ctrl.GetConfigOrDie()
 	le := util.GetLeaderElectionConfig(restConfig, enableLeaderElection)
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		NewCache:                cache.MultiNamespacedCacheBuilder(namespaces),
-		Scheme:                  scheme,
-		LeaderElection:          true,
-		LeaderElectionID:        config.OperatorLockName,
-		LeaderElectionNamespace: ntoNamespace,
-		LeaseDuration:           &le.LeaseDuration.Duration,
-		RetryPeriod:             &le.RetryPeriod.Duration,
-		RenewDeadline:           &le.RenewDeadline.Duration,
-		Namespace:               ntoNamespace,
+		NewCache:                      cache.MultiNamespacedCacheBuilder(namespaces),
+		Scheme:                        scheme,
+		LeaderElection:                true,
+		LeaderElectionID:              config.OperatorLockName,
+		LeaderElectionNamespace:       ntoNamespace,
+		LeaderElectionReleaseOnCancel: true,
+		LeaseDuration:                 &le.LeaseDuration.Duration,
+		RetryPeriod:                   &le.RetryPeriod.Duration,
+		RenewDeadline:                 &le.RenewDeadline.Duration,
+		Namespace:                     ntoNamespace,
 	})
 
 	if err != nil {
