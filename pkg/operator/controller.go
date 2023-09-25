@@ -97,6 +97,7 @@ func NewController() (*Controller, error) {
 	if err != nil {
 		return nil, err
 	}
+	kubeconfig = restclient.AddUserAgent(kubeconfig, version.OperatorFilename)
 
 	listers := &ntoclient.Listers{}
 	clients := &ntoclient.Clients{}
@@ -159,7 +160,7 @@ func NewController() (*Controller, error) {
 		if err != nil {
 			return nil, err
 		}
-		controller.clients.ManagementKube, err = kubeset.NewForConfig(managementKubeconfig)
+		controller.clients.ManagementKube, err = kubeset.NewForConfig(restclient.AddUserAgent(managementKubeconfig, version.OperatorFilename))
 		if err != nil {
 			return nil, err
 		}

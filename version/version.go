@@ -1,5 +1,10 @@
 package version
 
+const (
+	OperandFilename  = "openshift-tuned"
+	OperatorFilename = "cluster-node-tuning-operator"
+)
+
 var (
 	// Version is the operator version
 	Version = "0.0.1"
