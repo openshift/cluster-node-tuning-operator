@@ -81,7 +81,6 @@ func WaitForCondition(podKey client.ObjectKey, conditionType corev1.PodCondition
 func WaitForPredicate(podKey client.ObjectKey, timeout time.Duration, pred func(pod *corev1.Pod) (bool, error)) (*corev1.Pod, error) {
 	updatedPod := &corev1.Pod{}
 	err := wait.PollImmediate(time.Second, timeout, func() (bool, error) {
-		updatedPod := &corev1.Pod{}
 		if err := testclient.Client.Get(context.TODO(), podKey, updatedPod); err != nil {
 			return false, nil
 		}
