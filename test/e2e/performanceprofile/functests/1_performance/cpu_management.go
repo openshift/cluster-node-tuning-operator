@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -21,6 +22,7 @@ import (
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/utils/schedstat"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
@@ -230,40 +232,45 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 	When("pod runs with the CPU load balancing runtime class", func() {
 		var smtLevel int
+		var allTestpods map[types.UID]*corev1.Pod
 		var testpod *corev1.Pod
-
-		// getCPUswithLoadBalanceDisabled Return cpus which are not in any scheduling domain
-		getCPUswithLoadBalanceDisabled := func() ([]string, error) {
-			cmd := []string{"/bin/bash", "-c", "cat /proc/schedstat"}
-			schedstat, err := nodes.ExecCommandOnNode(cmd, workerRTNode)
-			if err != nil {
-				return nil, err
-			}
-			lines := strings.Split(schedstat, "\n")
-			cpusWithoutDomainLines := []string{}
-
-			// In the following loop, we iterate through each line that starts with "cpu".
-			// we examine the next line to determine if it starts with "domain".
-			// If there are no lines that start with "domain", it means cpu is not associated
-			// with any scheduling domain.These are collected in
-			for i := 0; i < len(lines); i++ {
-				line := lines[i]
-				if strings.HasPrefix(line, "cpu") {
-					if i+1 >= len(lines) || !strings.HasPrefix(lines[i+1], "domain") {
-						cpusWithoutDomainLines = append(cpusWithoutDomainLines, line)
-					}
-				}
-			}
-			return cpusWithoutDomainLines, err
-		}
 
 		BeforeEach(func() {
 			var err error
+			allTestpods = make(map[types.UID]*corev1.Pod)
+
+			// workaround for https://github.com/kubernetes/kubernetes/issues/107074
+			// until https://github.com/kubernetes/kubernetes/pull/120661 lands
+			unblockerPod := pods.GetTestPod() // any non-GU pod will suffice ...
+			unblockerPod.Namespace = testutils.NamespaceTesting
+			unblockerPod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
+
+			err = testclient.Client.Create(context.TODO(), unblockerPod)
+			Expect(err).ToNot(HaveOccurred())
+			allTestpods[unblockerPod.UID] = unblockerPod
+
+			time.Sleep(30 * time.Second) // let cpumanager reconcile loop catch up
+
 			// It's possible that when this test runs the value of
 			// defaultCpuNotInSchedulingDomains is empty if no gu pods are running
-			defaultCpuNotInSchedulingDomains, err := getCPUswithLoadBalanceDisabled()
+			defaultCpuNotInSchedulingDomains, err := getCPUswithLoadBalanceDisabled(workerRTNode)
 			Expect(err).ToNot(HaveOccurred(), "Unable to fetch scheduling domains")
-			testlog.Infof("Default scheduling Domains are: %s", defaultCpuNotInSchedulingDomains)
+
+			if len(defaultCpuNotInSchedulingDomains) > 0 {
+				pods, err := pods.GetPodsOnNode(context.TODO(), workerRTNode.Name)
+				if err != nil {
+					testlog.Warningf("cannot list pods on %q: %v", workerRTNode.Name, err)
+				} else {
+					testlog.Infof("pods on %q BEGIN", workerRTNode.Name)
+					for _, pod := range pods {
+						testlog.Infof("- %s/%s %s", pod.Namespace, pod.Name, pod.UID)
+					}
+					testlog.Infof("pods on %q END", workerRTNode.Name)
+				}
+
+				Expect(defaultCpuNotInSchedulingDomains).To(BeEmpty(), "the test expects all CPUs within a scheduling domain when starting")
+			}
+
 			annotations := map[string]string{
 				"cpu-load-balancing.crio.io": "disable",
 			}
@@ -274,11 +281,13 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		})
 
 		AfterEach(func() {
-			deleteTestPod(testpod)
+			for podUID, testpod := range allTestpods {
+				testlog.Infof("deleting test pod %s/%s UID=%q", testpod.Namespace, testpod.Name, podUID)
+				deleteTestPod(testpod)
+			}
 		})
 
 		It("[test_id:32646] should disable CPU load balancing for CPU's used by the pod", func() {
-
 			var err error
 			By("Starting the pod")
 			err = testclient.Client.Create(context.TODO(), testpod)
@@ -287,10 +296,21 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			testpod, err = pods.WaitForCondition(client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 			logEventsForPod(testpod)
 			Expect(err).ToNot(HaveOccurred(), "failed to create guaranteed pod %v", testpod)
+			allTestpods[testpod.UID] = testpod
+
+			// workaround for https://github.com/kubernetes/kubernetes/issues/107074
+			// until https://github.com/kubernetes/kubernetes/pull/120661 lands
+			unblockerPod := pods.GetTestPod() // any non-GU pod will suffice ...
+			unblockerPod.Namespace = testpod.Namespace
+			unblockerPod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: testpod.Spec.NodeName} // ... as long as it hits the same kubelet
+
+			err = testclient.Client.Create(context.TODO(), unblockerPod)
+			Expect(err).ToNot(HaveOccurred())
+			allTestpods[unblockerPod.UID] = unblockerPod
 
 			By("Getting the container cpuset.cpus cgroup")
 			containerID, err := pods.GetContainerIDByName(testpod, "test")
-			Expect(err).ToNot(HaveOccurred(), "unable to fetch containerId")
+			Expect(err).ToNot(HaveOccurred(), "unable to fetch containerID")
 
 			containerCgroup := ""
 			Eventually(func() string {
@@ -313,46 +333,48 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			By("Getting the CPU scheduling flags")
 			// After the testpod is started get the schedstat and check for cpus
 			// not participating in scheduling domains
-			Eventually(func() bool {
-				cpusNotInSchedulingDomains, err := getCPUswithLoadBalanceDisabled()
+			Eventually(func() error {
+				cpusNotInSchedulingDomains, err := getCPUswithLoadBalanceDisabled(workerRTNode)
 				testlog.Infof("cpus with load balancing disabled are: %v", cpusNotInSchedulingDomains)
 				Expect(err).ToNot(HaveOccurred(), "unable to fetch cpus with load balancing disabled from /proc/schedstat")
-
-				for _, podcpu := range podCpus.List() {
-					for _, cpu := range cpusNotInSchedulingDomains {
-						if strings.Contains(cpu, fmt.Sprint(podcpu)) {
-							return true
-						}
-					}
+				cpuIDList, err := schedstat.MakeCPUIDListFromCPUList(cpusNotInSchedulingDomains)
+				if err != nil {
+					return err
 				}
-				return false
-			}, 2*time.Minute, 5*time.Second).Should(BeTrue())
+				cpuIDs := cpuset.New(cpuIDList...)
+				if !podCpus.IsSubsetOf(cpuIDs) {
+					return fmt.Errorf("pod CPUs NOT entirely part of cpus with load balance disabled: %v vs %v", podCpus, cpuIDs)
+				}
+				return nil
+			}).WithTimeout(2*time.Minute).WithPolling(5*time.Second).ShouldNot(HaveOccurred(), "checking scheduling domains with pod running")
 
 			By("Deleting the pod")
-			deleteTestPod(testpod)
+			deletedUID, ok := deleteTestPod(testpod)
+			if ok {
+				delete(allTestpods, deletedUID)
+			}
 
 			// The below loop takes time because kernel takes time
 			// to update /proc/schedstat with cpuid of deleted pods
 			// to be under scheduling domains
-			Eventually(func() bool {
+			Eventually(func() error {
 				By("Getting the CPU scheduling flags")
-				cpusNotinSchedulingDomains, err := getCPUswithLoadBalanceDisabled()
+				cpusNotInSchedulingDomains, err := getCPUswithLoadBalanceDisabled(workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
-				testlog.Infof("cpus with load balancing disabled are: %v", cpusNotinSchedulingDomains)
-				if len(cpusNotinSchedulingDomains) == 0 {
-					return true
-				} else {
-					for _, podcpu := range podCpus.List() {
-						for _, cpu := range cpusNotinSchedulingDomains {
-							if !strings.Contains(cpu, fmt.Sprint(podcpu)) {
-								return true
-							}
-						}
-					}
+				testlog.Infof("cpus with load balancing disabled are: %v", cpusNotInSchedulingDomains)
+				if len(cpusNotInSchedulingDomains) == 0 {
+					return nil
 				}
-				return false
-			}, 15*time.Minute, 10*time.Second).Should(BeTrue())
-
+				cpuIDList, err := schedstat.MakeCPUIDListFromCPUList(cpusNotInSchedulingDomains)
+				if err != nil {
+					return err
+				}
+				cpuIDs := cpuset.New(cpuIDList...)
+				if podCpus.IsSubsetOf(cpuIDs) {
+					return fmt.Errorf("pod CPUs still part of cpus with load balance disabled: %v vs %v", podCpus, cpuIDs)
+				}
+				return nil
+			}).WithTimeout(15*time.Minute).WithPolling(10*time.Second).ShouldNot(HaveOccurred(), "checking the scheduling domains are restored after pod deletion")
 		})
 	})
 
@@ -815,18 +837,22 @@ func getTestPodWithAnnotations(annotations map[string]string, cpus int) *corev1.
 	return testpod
 }
 
-func deleteTestPod(testpod *corev1.Pod) {
+func deleteTestPod(testpod *corev1.Pod) (types.UID, bool) {
 	// it possible that the pod already was deleted as part of the test, in this case we want to skip teardown
 	err := testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(testpod), testpod)
 	if errors.IsNotFound(err) {
-		return
+		return types.UID(""), false
 	}
+
+	testpodUID := testpod.UID
 
 	err = testclient.Client.Delete(context.TODO(), testpod)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = pods.WaitForDeletion(testpod, pods.DefaultDeletionTimeout*time.Second)
 	Expect(err).ToNot(HaveOccurred())
+
+	return testpodUID, true
 }
 
 func cpuSpecToString(cpus *performancev2.CPU) (string, error) {
@@ -863,4 +889,32 @@ func logEventsForPod(testPod *corev1.Pod) {
 	for _, event := range evs.Items {
 		testlog.Warningf("-> %s %s %s", event.Action, event.Reason, event.Message)
 	}
+}
+
+// getCPUswithLoadBalanceDisabled Return cpus which are not in any scheduling domain
+func getCPUswithLoadBalanceDisabled(targetNode *corev1.Node) ([]string, error) {
+	cmd := []string{"/bin/bash", "-c", "cat /proc/schedstat"}
+	schedstatData, err := nodes.ExecCommandOnNode(cmd, targetNode)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := schedstat.ParseData(strings.NewReader(schedstatData))
+	if err != nil {
+		return nil, err
+	}
+
+	cpusWithoutDomain := []string{}
+	for _, cpu := range info.GetCPUs() {
+		doms, ok := info.GetDomains(cpu)
+		if !ok {
+			return nil, fmt.Errorf("unknown cpu: %v", cpu)
+		}
+		if len(doms) > 0 {
+			continue
+		}
+		cpusWithoutDomain = append(cpusWithoutDomain, cpu)
+	}
+
+	return cpusWithoutDomain, nil
 }
