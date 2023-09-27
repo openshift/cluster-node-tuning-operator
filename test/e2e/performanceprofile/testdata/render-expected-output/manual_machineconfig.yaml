@@ -33,7 +33,7 @@ spec:
         path: /usr/local/bin/hugepages-allocation.sh
         user: {}
       - contents:
-          source: data:text/plain;charset=utf-8;base64,IyEvdXNyL2Jpbi9lbnYgYmFzaAoKcGF0aD0kezF9ClsgLW4gIiR7cGF0aH0iIF0gfHwgeyBlY2hvICJUaGUgZGV2aWNlIHBhdGggYXJndW1lbnQgaXMgbWlzc2luZyIgPiYyIDsgZXhpdCAxOyB9CgptYXNrPSR7Mn0KWyAtbiAiJHttYXNrfSIgXSB8fCB7IGVjaG8gIlRoZSBtYXNrIGFyZ3VtZW50IGlzIG1pc3NpbmciID4mMiA7IGV4aXQgMTsgfQoKcXVldWVfcGF0aD0ke3BhdGglcngqfQoKcXVldWVfbnVtPSR7cGF0aCMqcXVldWVzL30KIyByZXBsYWNlICcvJyB3aXRoICctJwpxdWV1ZV9udW09IiR7cXVldWVfbnVtL1wvLy19IgoKIyBzZXQgcnBzIGFmZmluaXR5IGZvciB0aGUgcXVldWUKZWNobyAiJHttYXNrfSIgPiAiL3N5cyR7cXVldWVfcGF0aH0ke3F1ZXVlX251bX0vcnBzX2NwdXMi
+          source: data:text/plain;charset=utf-8;base64,IyEvdXNyL2Jpbi9lbnYgYmFzaAoKZnVsbF9wYXRoPSR7MX0KWyAtbiAiJHtmdWxsX3BhdGh9IiBdIHx8IHsgZWNobyAiVGhlIGZ1bGwgZGV2aWNlIHBhdGggYXJndW1lbnQgaXMgbWlzc2luZyIgPiYyIDsgZXhpdCAxOyB9CgptYXNrPSR7Mn0KWyAtbiAiJHttYXNrfSIgXSB8fCB7IGVjaG8gIlRoZSBtYXNrIGFyZ3VtZW50IGlzIG1pc3NpbmciID4mMiA7IGV4aXQgMTsgfQoKIyByZXBsYWNlICctJyB3aXRoICcvJwpkZV9lc2NhcGVfcGF0aD0iL3N5cyR7ZnVsbF9wYXRoLy8tLy99IgoKIyBnZXQgdGhlIHBhdGggZm9yIHRoZSBxdWV1ZXMKcXVldWVzX3BhdGg9JHtkZV9lc2NhcGVfcGF0aCUvcngqfQoKIyBzZXQgcnBzIGFmZmluaXR5IGZvciBhbGwgcXVldWVzCmZvciBpIGluICIke3F1ZXVlc19wYXRofSIvcngtKi9ycHNfY3B1czsgZG8KICBlY2hvICIke21hc2t9IiA+ICIke2l9Igpkb25lCg==
           verification: {}
         group: {}
         mode: 448
@@ -124,7 +124,7 @@ spec:
 
           [Service]
           Type=oneshot
-          ExecStart=/usr/local/bin/set-rps-mask.sh %I 0
+          ExecStart=/usr/local/bin/set-rps-mask.sh %i 0
         name: update-rps@.service
       - contents: |
           [Unit]
