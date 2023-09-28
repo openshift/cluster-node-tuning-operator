@@ -86,9 +86,6 @@ const (
 	wqKindDaemon  = "daemon"
 	wqKindTuned   = "tuned"
 	wqKindProfile = "profile"
-
-	// path to kubelet kubeconfig
-	kubeletKubeconfigPath = "/var/lib/kubelet/kubeconfig"
 )
 
 // Types
@@ -186,6 +183,21 @@ func parseCmdOpts() {
 
 // Get a client from kubelet's kubeconfig to write to the Node object.
 func getKubeClient() (kubernetes.Interface, error) {
+	var (
+		// paths to kubelet kubeconfig
+		kubeletKubeconfigPaths = []string{
+			"/var/lib/kubelet/kubeconfig",        // traditional OCP
+			"/etc/kubernetes/kubelet-kubeconfig", // IBM Managed OpenShift, see OCPBUGS-19795
+		}
+		kubeletKubeconfigPath string
+	)
+
+	for _, kubeletKubeconfigPath = range kubeletKubeconfigPaths {
+		if _, err := os.Stat(kubeletKubeconfigPath); err == nil {
+			break
+		}
+	}
+
 	config, err := clientcmd.BuildConfigFromFlags("", kubeletKubeconfigPath)
 	if err != nil {
 		return nil, err
@@ -1006,6 +1018,10 @@ func (c *Controller) updateTunedProfile() (err error) {
 	}
 
 	node, err := c.getNodeForProfile(getNodeName())
+	if err != nil {
+		return err
+	}
+
 	if node.ObjectMeta.Annotations == nil {
 		node.ObjectMeta.Annotations = map[string]string{}
 	}

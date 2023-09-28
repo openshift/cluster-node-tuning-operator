@@ -43,6 +43,11 @@ spec:
           mountPropagation: HostToContainer
         - mountPath: /etc/sysconfig
           name: etc-sysconfig
+          mountPropagation: HostToContainer
+        - mountPath: /etc/kubernetes
+          name: etc-kubernetes
+          mountPropagation: HostToContainer
+          readOnly: true
         - mountPath: /etc/sysctl.d
           name: etc-sysctl-d
           mountPropagation: HostToContainer
@@ -100,6 +105,10 @@ spec:
           path: /etc/sysconfig
           type: Directory
         name: etc-sysconfig
+      - hostPath:
+          path: /etc/kubernetes
+          type: Directory
+        name: etc-kubernetes
       - hostPath:
           path: /etc/sysctl.d
           type: Directory
