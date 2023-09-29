@@ -241,14 +241,17 @@ func (c *Controller) computeStatus(tuned *tunedv1.Tuned, conditions []configv1.C
 				return conditions, "", fmt.Errorf(errGenerationMismatch)
 			}
 
+			dsReleaseVersion := c.getDaemonSetReleaseVersion(ds)
+
 			if ds.Status.NumberAvailable > 0 {
 				// The operand maintained by the operator is reported as available in the cluster
 				availableCondition.Status = configv1.ConditionTrue
 				availableCondition.Reason = "AsExpected"
-				if ds.Status.UpdatedNumberScheduled > 0 {
-					// At least one operand instance runs RELEASE_VERSION, report it
-					klog.V(3).Infof("%d operands run release version %q", ds.Status.UpdatedNumberScheduled, os.Getenv("RELEASE_VERSION"))
-					availableCondition.Message = fmt.Sprintf("Cluster has deployed %q", os.Getenv("RELEASE_VERSION"))
+				if ds.Status.UpdatedNumberScheduled > 0 && dsReleaseVersion == os.Getenv("RELEASE_VERSION") {
+					// At least one operand instance deployed with operator's RELEASE_VERSION, report it
+					klog.V(3).Infof("%d operands deployed with release version %q", ds.Status.UpdatedNumberScheduled, os.Getenv("RELEASE_VERSION"))
+					availableCondition.Message = fmt.Sprintf("Cluster has deployed %d/%d %q operands",
+						ds.Status.UpdatedNumberScheduled, ds.Status.CurrentNumberScheduled, os.Getenv("RELEASE_VERSION"))
 				}
 			} else {
 				// No operand maintained by the operator is reported as available in the cluster
