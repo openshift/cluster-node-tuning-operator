@@ -35,6 +35,7 @@ import (
 	tunedset "github.com/openshift/cluster-node-tuning-operator/pkg/generated/clientset/versioned"
 	tunedinformers "github.com/openshift/cluster-node-tuning-operator/pkg/generated/informers/externalversions"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
+	"github.com/openshift/cluster-node-tuning-operator/version"
 )
 
 // Constants
@@ -52,7 +53,7 @@ const (
 // Constants
 const (
 	operandNamespace       = "openshift-cluster-node-tuning-operator"
-	programName            = "openshift-tuned"
+	programName            = version.OperandFilename
 	tunedProfilesDirCustom = "/etc/tuned"
 	tunedProfilesDirSystem = "/usr/lib/tuned"
 	tunedConfFile          = "tuned.conf"

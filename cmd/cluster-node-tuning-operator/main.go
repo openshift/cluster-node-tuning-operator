@@ -47,12 +47,10 @@ import (
 )
 
 const (
-	operandFilename  = "openshift-tuned"
-	operatorFilename = "cluster-node-tuning-operator"
-	webhookPort      = 4343
-	webhookCertDir   = "/apiserver.local.config/certificates"
-	webhookCertName  = "apiserver.crt"
-	webhookKeyName   = "apiserver.key"
+	webhookPort     = 4343
+	webhookCertDir  = "/apiserver.local.config/certificates"
+	webhookCertName = "apiserver.crt"
+	webhookKeyName  = "apiserver.key"
 )
 
 var (
@@ -78,7 +76,7 @@ func printVersion() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   operatorFilename,
+	Use:   version.OperatorFilename,
 	Short: "NTO manages the containerized TuneD instances",
 	Run: func(cmd *cobra.Command, args []string) {
 		operatorRun()
@@ -122,7 +120,7 @@ func operatorRun() {
 
 	restConfig := ctrl.GetConfigOrDie()
 	le := util.GetLeaderElectionConfig(restConfig, enableLeaderElection)
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	mgr, err := ctrl.NewManager(rest.AddUserAgent(ctrl.GetConfigOrDie(), version.OperatorFilename), ctrl.Options{
 		NewCache:                      cache.MultiNamespacedCacheBuilder(namespaces),
 		Scheme:                        scheme,
 		LeaderElection:                enableLeaderElection,
@@ -336,12 +334,12 @@ func main() {
 	runAs := filepath.Base(os.Args[0])
 
 	switch runAs {
-	case operatorFilename:
+	case version.OperatorFilename:
 		prepareCommands()
 		_ = rootCmd.Execute()
-	case operandFilename:
+	case version.OperandFilename:
 		tunedOperandRun()
 	default:
-		klog.Fatalf("application should be run as \"%s\" or \"%s\"", operatorFilename, operandFilename)
+		klog.Fatalf("application should be run as \"%s\" or \"%s\"", version.OperatorFilename, version.OperandFilename)
 	}
 }
