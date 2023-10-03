@@ -25,7 +25,7 @@ var _ = BeforeSuite(func() {
 	}
 	testlog.Infof("Podman binary executed from path %s", path)
 	By("Checking Environment Variables")
-	testlog.Infof("NTO Image used: %s", testutils.NtoImageRegistry)
+	testlog.Infof("NTO Image used: %s", testutils.NTOImage)
 	if testutils.MustGatherDir == "" {
 		Skip("set env variable MUSTGATHER_DIR to ocp mustgather directory")
 	}
