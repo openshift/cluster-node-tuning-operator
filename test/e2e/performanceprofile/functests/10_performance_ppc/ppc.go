@@ -12,6 +12,7 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
+	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"sigs.k8s.io/yaml"
 )
 
@@ -91,9 +92,10 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 			output := session.Wait(20).Out.Contents()
 			err = yaml.Unmarshal(output, pp)
 			Expect(err).ToNot(HaveOccurred(), "Unable to marshal the ppc output")
-			cpuset := *pp.Spec.CPU.Reserved
-			totalReservedCpus := len(strings.Split(string(cpuset), ","))
-			Expect(totalReservedCpus == reservedCpuCount).To(BeTrue())
+			reservedCpus, err := cpuset.Parse(string(*pp.Spec.CPU.Reserved))
+			Expect(err).ToNot(HaveOccurred(), "Unable to parse cpus")
+			totalReservedCpus := reservedCpus.Size()
+			Expect(totalReservedCpus).To(Equal(reservedCpuCount))
 			Expect(*pp.Spec.RealTimeKernel.Enabled).To(BeTrue())
 			Expect(*pp.Spec.WorkloadHints.RealTime).To(BeTrue())
 			Expect(*pp.Spec.NUMA.TopologyPolicy).To(Equal("restricted"))
