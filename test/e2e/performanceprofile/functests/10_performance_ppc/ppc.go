@@ -46,10 +46,6 @@ type PPCTestIntegration struct {
 	PPCTest
 }
 
-type PPCSessionIntegration struct {
-	*PPCSession
-}
-
 func (p *PPCTestIntegration) MakeOptions(args []string) []string {
 	return args
 }
@@ -65,7 +61,7 @@ func PPCTestCreateUtil() *PPCTestIntegration {
 
 var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform awareness", func() {
 	mustgatherDir := testutils.MustGatherDir
-	ntoImage := testutils.NtoImageRegistry
+	ntoImage := testutils.NTOImage
 	Context("PPC Sanity Tests", func() {
 		ppcIntgTest := PPCTestCreateUtil()
 		It("[test_id:40940] Performance Profile regression tests", func() {
