@@ -15,6 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -218,6 +219,15 @@ func DumpResourceRequirements(pod *corev1.Pod) string {
 	}
 	fmt.Fprintf(&sb, "---\n")
 	return sb.String()
+}
+
+func GetPodsOnNode(ctx context.Context, nodeName string) ([]corev1.Pod, error) {
+	pods := corev1.PodList{}
+	listOptions := &client.ListOptions{
+		FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": nodeName}),
+	}
+	err := testclient.Client.List(ctx, &pods, listOptions)
+	return pods.Items, err
 }
 
 func resourceListToString(res corev1.ResourceList) string {
