@@ -6,6 +6,7 @@
 package v2
 
 import (
+	configv1 "github.com/openshift/api/config/v1"
 	v1 "github.com/openshift/custom-resource-status/conditions/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
@@ -368,6 +369,11 @@ func (in *PerformanceProfileStatus) DeepCopyInto(out *PerformanceProfileStatus) 
 		in, out := &in.RuntimeClass, &out.RuntimeClass
 		*out = new(string)
 		**out = **in
+	}
+	if in.RelatedObjects != nil {
+		in, out := &in.RelatedObjects, &out.RelatedObjects
+		*out = make([]configv1.ObjectReference, len(*in))
+		copy(*out, *in)
 	}
 	return
 }
