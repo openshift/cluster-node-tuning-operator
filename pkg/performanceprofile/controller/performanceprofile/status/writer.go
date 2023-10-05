@@ -124,6 +124,11 @@ func (w *writer) update(ctx context.Context, profile *performancev2.PerformanceP
 		modified = true
 	}
 
+	if profileCopy.Status.RelatedObjects == nil {
+		profileCopy.Status.RelatedObjects = getRelatedObjects(profile)
+		modified = true
+	}
+
 	if !modified {
 		return nil
 	}
