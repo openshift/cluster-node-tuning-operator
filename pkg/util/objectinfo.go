@@ -7,6 +7,10 @@ import (
 )
 
 func ObjectInfo(o interface{}) string {
+	if o == nil {
+		return "nil"
+	}
+
 	object := o.(metav1.Object)
 	s := fmt.Sprintf("%T, ", o)
 	if namespace := object.GetNamespace(); namespace != "" {
