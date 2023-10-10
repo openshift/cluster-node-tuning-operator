@@ -90,7 +90,8 @@ type wqKey struct {
 	kind      string // object kind
 	namespace string // object namespace
 	name      string // object name
-	event     string // object event type (add/update/delete) or pass the full object on delete
+	//nolint:unused
+	event string // object event type (add/update/delete) or pass the full object on delete
 }
 
 func NewController() (*Controller, error) {
@@ -518,11 +519,13 @@ func (c *Controller) syncTunedRendered(tuned *tunedv1.Tuned) error {
 	crMf.Name = tunedv1.TunedRenderedResourceName
 
 	nodeLabelsUsed := c.pc.tunedsUseNodeLabels(tunedList)
+	//nolint:errcheck
 	c.enableNodeInformer(nodeLabelsUsed)
 
 	// Enable/Disable Pod events based on tuned CRs using this functionality.
 	// It is strongly advised not to use the Pod-label functionality in large-scale clusters.
 	podLabelsUsed := c.pc.tunedsUsePodLabels(tunedList)
+	//nolint:errcheck
 	c.enablePodInformer(podLabelsUsed)
 
 	cr, err := c.listers.TunedResources.Get(tunedv1.TunedRenderedResourceName)
@@ -787,7 +790,7 @@ func (c *Controller) syncMachineConfig(pools []*mcfgv1.MachineConfigPool, labels
 
 	bootcmdline, bootcmdlineSet := c.pc.state.bootcmdline[profile.Name]
 	if !bootcmdlineSet {
-		klog.V(2).Infof("syncMachineConfig(): bootcmdline for %s not cached, sync cancelled", profile.Name)
+		klog.V(2).Infof("syncMachineConfig(): bootcmdline for %s not cached, sync canceled", profile.Name)
 		return nil
 	}
 
@@ -1119,15 +1122,6 @@ func (c *Controller) getConfigMapNamesForTuned() (map[string]bool, error) {
 	return cmNames, nil
 }
 
-func (c *Controller) getTunedRendered() (*tunedv1.Tuned, error) {
-	cr, err := c.listers.TunedResources.Get(tunedv1.TunedRenderedResourceName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
-	}
-
-	return cr, nil
-}
-
 func getDefaultTunedRefs(tuned *tunedv1.Tuned) []metav1.OwnerReference {
 	return []metav1.OwnerReference{
 		*metav1.NewControllerRef(tuned, tunedv1.SchemeGroupVersion.WithKind("Tuned")),
@@ -1207,6 +1201,7 @@ func (c *Controller) enableNodeInformer(enable bool) error {
 
 		informer = informerFactory.Core().V1().Nodes()
 		c.listers.Nodes = informer.Lister()
+		//nolint:errcheck
 		informer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindNode}))
 
 		informerFactory.Start(c.node.stopCh)
@@ -1236,6 +1231,7 @@ func (c *Controller) enablePodInformer(enable bool) error {
 
 		informer = informerFactory.Core().V1().Pods()
 		c.listers.Pods = informer.Lister()
+		//nolint:errcheck
 		informer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindPod}))
 
 		informerFactory.Start(c.pod.stopCh)
@@ -1322,18 +1318,22 @@ func (c *Controller) run(ctx context.Context) {
 
 	coInformer := configInformerFactory.Config().V1().ClusterOperators()
 	c.listers.ClusterOperators = coInformer.Lister()
+	//nolint:errcheck
 	coInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindClusterOperator}))
 
 	dsInformer := kubeNTOInformerFactory.Apps().V1().DaemonSets()
 	c.listers.DaemonSets = dsInformer.Lister().DaemonSets(ntoconfig.WatchNamespace())
+	//nolint:errcheck
 	dsInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindDaemonSet}))
 
 	trInformer := tunedInformerFactory.Tuned().V1().Tuneds()
 	c.listers.TunedResources = trInformer.Lister().Tuneds(ntoconfig.WatchNamespace())
+	//nolint:errcheck
 	trInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindTuned}))
 
 	tpInformer := tunedInformerFactory.Tuned().V1().Profiles()
 	c.listers.TunedProfiles = tpInformer.Lister().Profiles(ntoconfig.WatchNamespace())
+	//nolint:errcheck
 	tpInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindProfile}))
 
 	InformerFuncs := []cache.InformerSynced{
@@ -1356,6 +1356,7 @@ func (c *Controller) run(ctx context.Context) {
 			}))
 		tunedConfigMapInformer := tunedConfigMapInformerFactory.Core().V1().ConfigMaps()
 		c.listers.ConfigMaps = tunedConfigMapInformer.Lister().ConfigMaps(ntoconfig.OperatorNamespace())
+		//nolint:errcheck
 		tunedConfigMapInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindConfigMap}))
 
 		mcfgConfigMapInformerFactory = kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.ManagementKube,
@@ -1366,6 +1367,7 @@ func (c *Controller) run(ctx context.Context) {
 			}))
 		mcfgConfigMapInformer := mcfgConfigMapInformerFactory.Core().V1().ConfigMaps()
 		c.listers.ConfigMaps = mcfgConfigMapInformer.Lister().ConfigMaps(ntoconfig.OperatorNamespace())
+		//nolint:errcheck
 		mcfgConfigMapInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindConfigMap}))
 
 		InformerFuncs = append(InformerFuncs, tunedConfigMapInformer.Informer().HasSynced, mcfgConfigMapInformer.Informer().HasSynced)
@@ -1377,6 +1379,7 @@ func (c *Controller) run(ctx context.Context) {
 
 		mcpInformer := mcfgInformerFactory.Machineconfiguration().V1().MachineConfigPools()
 		c.listers.MachineConfigPools = mcpInformer.Lister()
+		//nolint:errcheck
 		mcpInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindMachineConfigPool}))
 		InformerFuncs = append(InformerFuncs, mcInformer.Informer().HasSynced, mcpInformer.Informer().HasSynced)
 
@@ -1388,6 +1391,7 @@ func (c *Controller) run(ctx context.Context) {
 			}))
 		caInformer := caConfigMapInformerFactory.Core().V1().ConfigMaps()
 		c.listers.AuthConfigMapCA = caInformer.Lister().ConfigMaps(metrics.AuthConfigMapNamespace)
+		//nolint:errcheck
 		caInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindConfigMap, namespace: metrics.AuthConfigMapNamespace}))
 		InformerFuncs = append(InformerFuncs, caInformer.Informer().HasSynced)
 	}
@@ -1417,7 +1421,9 @@ func (c *Controller) run(ctx context.Context) {
 	klog.Info("started events processor/controller")
 
 	<-ctx.Done()
+	//nolint:errcheck
 	c.enableNodeInformer(false)
+	//nolint:errcheck
 	c.enablePodInformer(false)
 	klog.Info("shutting down events processor/controller")
 }

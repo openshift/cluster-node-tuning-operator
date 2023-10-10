@@ -186,10 +186,7 @@ func getPoolsForNode(node *corev1.Node, clusterPools []*mcfgv1.MachineConfigPool
 func isWindows(node *corev1.Node) bool {
 	windowsOsValue := "windows"
 	if value, ok := node.ObjectMeta.Labels["kubernetes.io/os"]; ok {
-		if value == windowsOsValue {
-			return true
-		}
-		return false
+		return value == windowsOsValue
 	}
 	// All the nodes should have a OS label populated by kubelet, if not just to maintain
 	// backwards compatibility, we can returning true here.

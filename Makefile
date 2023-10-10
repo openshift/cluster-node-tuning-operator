@@ -40,6 +40,11 @@ PAO_CRD_APIS :=$(addprefix ./$(API_TYPES_DIR)/performanceprofile/,v2 v1 v1alpha1
 
 PAO_E2E_SUITES := $(shell hack/list-test-bin.sh)
 
+# golangci-lint variables
+GOLANGCI_LINT_VERSION=1.54.2
+GOLANGCI_LINT_BIN=$(OUT_DIR)/golangci-lint
+GOLANGCI_LINT_VERSION_TAG=v${GOLANGCI_LINT_VERSION}
+
 all: build
 
 # Do not put any includes above the "all" target.  We want the default target to build
@@ -123,6 +128,23 @@ else
 	@echo ""
 	@exit 1
 endif
+
+GOLANGCI_LINT := $(shell command -v ${GOLANGCI_LINT_BIN} 2> /dev/null)
+GOLANGCI_LINT_LOCAL_VERSION := $(shell command ${GOLANGCI_LINT_BIN} --version 2> /dev/null | awk '{print $$4}')
+golangci-lint: $(BINDATA)
+ifdef GOLANGCI_LINT
+	@echo "Found golangci-lint, version: $(GOLANGCI_LINT_LOCAL_VERSION)"
+ifneq ($(GOLANGCI_LINT_LOCAL_VERSION),$(GOLANGCI_LINT_VERSION))
+		@echo "Mismatch version,local: $(GOLANGCI_LINT_LOCAL_VERSION), expected: $(GOLANGCI_LINT_VERSION). Installing golangci-lint $(GOLANGCI_LINT_VERSION)"
+		curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b $(OUT_DIR) $(GOLANGCI_LINT_VERSION_TAG)
+endif
+else
+	@echo "Installing golangci-lint"
+	curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b $(OUT_DIR) $(GOLANGCI_LINT_VERSION_TAG)
+	$(GOLANGCI_LINT_BIN) --version
+endif
+	$(GOLANGCI_LINT_BIN) run --verbose --print-resources-usage -c .golangci.yaml
+
 
 vet: $(BINDATA)
 	$(GO) vet ./...
@@ -234,7 +256,7 @@ cluster-clean-pao:
 
 # Performance Profile Creator (PPC)
 .PHONY: build-performance-profile-creator
-build-performance-profile-creator: 
+build-performance-profile-creator:
 	@echo "Building Performance Profile Creator (PPC)"
 	LDFLAGS="-s -w -X ${PACKAGE}/cmd/performance-profile-creator/version.Version=${REV} "; \
 	$(GO) build  -v $(LDFLAGS) -o $(OUT_DIR)/performance-profile-creator ./cmd/performance-profile-creator

@@ -37,7 +37,7 @@ func (m *manifest) UnmarshalJSON(in []byte) error {
 		return errors.New("manifest: UnmarshalJSON on nil pointer")
 	}
 
-	// This happens when marshalling
+	// This happens when marshaling
 	// <yaml>
 	// ---	(this between two `---`)
 	// ---

@@ -75,7 +75,7 @@ func printAPIDocs(paths []string) {
 		if len(t) > 1 {
 			fmt.Println("| Field | Description | Scheme | Required |")
 			fmt.Println("| ----- | ----------- | ------ | -------- |")
-			fields := t[1:(len(t))]
+			fields := t[1:]
 			for _, f := range fields {
 				fmt.Println("|", f.Name, "|", f.Doc, "|", f.Type, "|", f.Mandatory, "|")
 			}
@@ -232,9 +232,8 @@ func fieldName(field *ast.Field) string {
 
 // fieldRequired returns whether a field is a required field.
 func fieldRequired(field *ast.Field) bool {
-	jsonTag := ""
 	if field.Tag != nil {
-		jsonTag = reflect.StructTag(field.Tag.Value[1 : len(field.Tag.Value)-1]).Get("json") // Delete first and last quotation
+		jsonTag := reflect.StructTag(field.Tag.Value[1 : len(field.Tag.Value)-1]).Get("json") // Delete first and last quotation
 		return !strings.Contains(jsonTag, "omitempty")
 	}
 
@@ -242,21 +241,20 @@ func fieldRequired(field *ast.Field) bool {
 }
 
 func fieldType(typ ast.Expr) string {
-	switch typ.(type) {
+	switch field := typ.(type) {
 	case *ast.Ident:
-		return toLink(typ.(*ast.Ident).Name)
+		return toLink(field.Name)
 	case *ast.StarExpr:
-		return "*" + toLink(fieldType(typ.(*ast.StarExpr).X))
+		return "*" + toLink(fieldType(field.X))
 	case *ast.SelectorExpr:
-		e := typ.(*ast.SelectorExpr)
+		e := field
 		pkg := e.X.(*ast.Ident)
 		t := e.Sel
 		return toLink(pkg.Name + "." + t.Name)
 	case *ast.ArrayType:
-		return "[]" + toLink(fieldType(typ.(*ast.ArrayType).Elt))
+		return "[]" + toLink(fieldType(field.Elt))
 	case *ast.MapType:
-		mapType := typ.(*ast.MapType)
-		return "map[" + toLink(fieldType(mapType.Key)) + "]" + toLink(fieldType(mapType.Value))
+		return "map[" + toLink(fieldType(field.Key)) + "]" + toLink(fieldType(field.Value))
 	default:
 		return ""
 	}

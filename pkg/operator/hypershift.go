@@ -70,7 +70,7 @@ func (c *Controller) syncHostedClusterTuneds() error {
 				newTuned.Spec.Recommend = cmTuned.Spec.Recommend
 
 				klog.V(2).Infof("updating Tuned %v from ConfigMap %s", tunedName, cmTuned.ObjectMeta.Name)
-				newTuned, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.WatchNamespace()).Update(context.TODO(), newTuned, metav1.UpdateOptions{})
+				_, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.WatchNamespace()).Update(context.TODO(), newTuned, metav1.UpdateOptions{})
 				if err != nil {
 					if errors.IsInvalid(err) {
 						// The provided resource is not valid.  Log an error and do not try to resync.
@@ -87,7 +87,7 @@ func (c *Controller) syncHostedClusterTuneds() error {
 			klog.V(1).Infof("need to create Tuned %v based on ConfigMap %s", cmTuned.ObjectMeta.Name, tunedName)
 			// Create the Tuned in the hosted cluster from the config in ConfigMap
 			newTuned := cmTuned.DeepCopy()
-			newTuned, err := c.clients.Tuned.TunedV1().Tuneds(ntoconfig.WatchNamespace()).Create(context.TODO(), newTuned, metav1.CreateOptions{})
+			_, err := c.clients.Tuned.TunedV1().Tuneds(ntoconfig.WatchNamespace()).Create(context.TODO(), newTuned, metav1.CreateOptions{})
 			if err != nil {
 				if errors.IsInvalid(err) {
 					// The provided resource is not valid.  Log an error and do not try to resync.
@@ -176,8 +176,6 @@ func (c *Controller) getObjFromTunedConfigMap() ([]tunedv1.Tuned, error) {
 // getNodesForNodePool uses 'hypershiftNodePoolLabel' to return all Nodes which are in
 // the NodePool 'nodePoolName'.
 func (c *Controller) getNodesForNodePool(nodePoolName string) ([]*corev1.Node, error) {
-	nodes := []*corev1.Node{}
-
 	selector := labels.SelectorFromValidatedSet(
 		map[string]string{
 			hypershiftNodePoolLabel: nodePoolName,
@@ -242,6 +240,7 @@ func parseNamespacedName(namespacedName string) string {
 
 func getMachineConfigFromConfigMap(config *corev1.ConfigMap) (*mcfgv1.MachineConfig, error) {
 	scheme := runtime.NewScheme()
+	//nolint:errcheck
 	mcfgv1.Install(scheme)
 
 	YamlSerializer := serializer.NewSerializerWithOptions(
@@ -291,6 +290,7 @@ func newConfigMapForMachineConfig(configMapName string, nodePoolName string, mc 
 
 func serializeMachineConfig(mc *mcfgv1.MachineConfig) ([]byte, error) {
 	scheme := runtime.NewScheme()
+	//nolint:errcheck
 	mcfgv1.Install(scheme)
 
 	YamlSerializer := serializer.NewSerializerWithOptions(

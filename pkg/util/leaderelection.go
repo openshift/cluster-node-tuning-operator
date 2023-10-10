@@ -12,7 +12,6 @@ import (
 
 // GetLeaderElectionConfig returns leader election configs defaults based on the cluster topology
 func GetLeaderElectionConfig(restcfg *rest.Config, enabled bool) configv1.LeaderElection {
-
 	// Defaults follow conventions
 	// https://github.com/openshift/enhancements/blob/master/CONVENTIONS.md#high-availability
 	defaultLeaderElection := leaderelection.LeaderElectionDefaulting(

@@ -18,7 +18,6 @@ package profilecreator
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -64,11 +63,11 @@ const (
 var (
 	// This filter is used to avoid offlining the first logical processor of each core.
 	// LogicalProcessors is a slice of integers representing the logical processor IDs assigned to
-	// a processing unit for a core. GHW API gurantees that the logicalProcessors correspond
+	// a processing unit for a core. GHW API guarantees that the logicalProcessors correspond
 	// to hyperthread pairs and in the code below we select only the first hyperthread (id=0)
 	// of the available logical processors.
 	// Please refer to https://www.kernel.org/doc/Documentation/x86/topology.txt for more information on
-	// x86 hardware topology. This document clarifies the main aspects of x86 topology modelling and
+	// x86 hardware topology. This document clarifies the main aspects of x86 topology modeling and
 	// representation in the linux kernel and explains why we select id=0 for obtaining the first
 	// hyperthread (logical core).
 	filterFirstLogicalProcessorInCore = func(index, lpID int) bool { return index != 0 }
@@ -89,10 +88,8 @@ func getMustGatherFullPathsWithFilter(mustGatherPath string, suffix string, filt
 	if err != nil {
 		return "", fmt.Errorf("failed to get the path mustGatherPath:%s, suffix:%s %v", mustGatherPath, suffix, err)
 	}
-
 	if len(paths) == 0 {
 		return "", fmt.Errorf("no match for the specified must gather directory path: %s and suffix: %s", mustGatherPath, suffix)
-
 	}
 	if len(paths) > 1 {
 		log.Infof("Multiple matches for the specified must gather directory path: %s and suffix: %s", mustGatherPath, suffix)
@@ -140,7 +137,7 @@ func GetNodeList(mustGatherDirPath string) ([]*v1.Node, error) {
 		return nil, fmt.Errorf("failed to get Nodes from must gather directory: %v", err)
 	}
 
-	nodes, err := ioutil.ReadDir(nodePath)
+	nodes, err := os.ReadDir(nodePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list mustGatherPath directories: %v", err)
 	}
@@ -168,7 +165,7 @@ func GetMCPList(mustGatherDirPath string) ([]*machineconfigv1.MachineConfigPool,
 		return nil, fmt.Errorf("failed to get MCPs path: %v", err)
 	}
 
-	mcpFiles, err := ioutil.ReadDir(mcpPath)
+	mcpFiles, err := os.ReadDir(mcpPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list mustGatherPath directories: %v", err)
 	}
@@ -289,7 +286,7 @@ func (ghwHandler GHWHandler) SortedTopology() (*topology.Info, error) {
 
 // topologyHTDisabled returns topologyinfo in case Hyperthreading needs to be disabled.
 // It receives a pointer to Topology.Info and deletes logicalprocessors from individual cores.
-// The behaviour of this function depends on ghw data representation.
+// The behavior of this function depends on ghw data representation.
 func topologyHTDisabled(info *topology.Info) *topology.Info {
 	disabledHTTopology := &topology.Info{
 		Architecture: info.Architecture,
@@ -304,12 +301,12 @@ func topologyHTDisabled(info *topology.Info) *topology.Info {
 				NumThreads: 1,
 			}
 			// LogicalProcessors is a slice of ints representing the logical processor IDs assigned to
-			// a processing unit for a core. GHW API gurantees that the logicalProcessors correspond
+			// a processing unit for a core. GHW API guarantees that the logicalProcessors correspond
 			// to hyperthread pairs and in the code below we select only the first hyperthread (id=0)
 			// of the available logical processors.
 			for id, logicalProcessor := range processorCore.LogicalProcessors {
 				// Please refer to https://www.kernel.org/doc/Documentation/x86/topology.txt for more information on
-				// x86 hardware topology. This document clarifies the main aspects of x86 topology modelling and
+				// x86 hardware topology. This document clarifies the main aspects of x86 topology modeling and
 				// representation in the linux kernel and explains why we select id=0 for obtaining the first
 				// hyperthread (logical core).
 				if id == 0 {
@@ -369,7 +366,6 @@ func (ghwHandler GHWHandler) GatherSystemInfo() (*systemInfo, error) {
 
 // Calculates the resevered, isolated and offlined cpuSets.
 func CalculateCPUSets(systemInfo *systemInfo, reservedCPUCount int, offlinedCPUCount int, splitReservedCPUsAcrossNUMA bool, disableHTFlag bool, highPowerConsumptionMode bool) (cpuset.CPUSet, cpuset.CPUSet, cpuset.CPUSet, error) {
-
 	topologyInfo := systemInfo.TopologyInfo
 	htEnabled := systemInfo.HtEnabled
 
@@ -427,7 +423,7 @@ func CalculateCPUSets(systemInfo *systemInfo, reservedCPUCount int, offlinedCPUC
 	return reserved, isolated, offlined, nil
 }
 
-// Calculates Isolated cpuSet as the difference between all the cpus in the topology and those already choosen as reserved or offlined.
+// Calculates Isolated cpuSet as the difference between all the cpus in the topology and those already chosen as reserved or offlined.
 // all cpus thar are not offlined or reserved belongs to the isolated cpuSet
 func getIsolatedCPUs(topologyInfoNodes []*topology.Node, reserved, offlined cpuset.CPUSet) (cpuset.CPUSet, error) {
 	total, err := totalCPUSetFromTopology(topologyInfoNodes)
@@ -446,7 +442,6 @@ func AreAllLogicalProcessorsFromSocketUnused(extCpuInfo *extendedCPUInfo, socket
 }
 
 func getOfflinedCPUs(extCpuInfo *extendedCPUInfo, offlinedCPUCount int, disableHTFlag bool, htEnabled bool, highPowerConsumption bool) (cpuset.CPUSet, error) {
-
 	offlined := newCPUAccumulator()
 	lpOfflined := 0
 
@@ -505,7 +500,6 @@ func getOfflinedCPUs(extCpuInfo *extendedCPUInfo, offlinedCPUCount int, disableH
 		log.Warnf("could not offline enough logical processors (required:%d, offlined:%d)", offlinedCPUCount, lpOfflined)
 	}
 	return offlined.Result(), nil
-
 }
 
 func updateTopologyInfo(topoInfo *topology.Info, disableHTFlag bool, htEnabled bool) (*topology.Info, error) {
@@ -519,7 +513,6 @@ func updateTopologyInfo(topoInfo *topology.Info, disableHTFlag bool, htEnabled b
 }
 
 func getReservedCPUs(topologyInfo *topology.Info, reservedCPUCount int, splitReservedCPUsAcrossNUMA bool, disableHTFlag bool, htEnabled bool) (cpuset.CPUSet, error) {
-
 	if htEnabled && disableHTFlag {
 		log.Infof("Currently hyperthreading is enabled and the performance profile will disable it")
 		htEnabled = false
@@ -646,7 +639,6 @@ func getCPUsSequentially(reservedCPUCount int, htEnabled bool, topologyInfoNodes
 		if _, err := reservedCPUs.AddCores(reservedCPUCount, node.Cores); err != nil {
 			return cpuset.CPUSet{}, err
 		}
-
 	}
 	return reservedCPUs.Result(), nil
 }
@@ -757,7 +749,6 @@ func GetAdditionalKernelArgs(disableHT bool) []string {
 }
 
 func updateExtendedCPUInfo(extCpuInfo *extendedCPUInfo, used cpuset.CPUSet, disableHT, htEnabled bool) (*extendedCPUInfo, error) {
-
 	retCpuInfo := &cpu.Info{
 		TotalCores:   0,
 		TotalThreads: 0,
@@ -777,7 +768,6 @@ func updateExtendedCPUInfo(extCpuInfo *extendedCPUInfo, used cpuset.CPUSet, disa
 
 	cpuInfo := extCpuInfo.CpuInfo
 	for _, socket := range cpuInfo.Processors {
-
 		s := &cpu.Processor{
 			ID:           socket.ID,
 			Vendor:       socket.Vendor,

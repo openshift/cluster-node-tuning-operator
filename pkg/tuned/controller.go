@@ -1,20 +1,18 @@
 package tuned
 
 import (
-	"bufio"     // scanner
-	"bytes"     // bytes.Buffer
-	"context"   // context.TODO()
-	"flag"      // command-line options parsing
-	"fmt"       // Printf()
-	"io/ioutil" // ioutil.ReadFile()
-	"math"      // math.Pow()
-	"net"       // net.Conn
-	"os"        // os.Exit(), os.Stderr, ...
-	"os/exec"   // os.Exec()
-	"strconv"   // strconv
-	"strings"   // strings.Join()
-	"syscall"   // syscall.SIGHUP, ...
-	"time"      // time.Second, ...
+	"bufio"   // scanner
+	"bytes"   // bytes.Buffer
+	"context" // context.TODO()
+	"flag"    // command-line options parsing
+	"fmt"     // Printf()
+	"math"    // math.Pow()
+	"os"      // os.Exit(), os.Stderr, ...
+	"os/exec" // os.Exec()
+	"strconv" // strconv
+	"strings" // strings.Join()
+	"syscall" // syscall.SIGHUP, ...
+	"time"    // time.Second, ...
 
 	fsnotify "gopkg.in/fsnotify.v1"
 	"gopkg.in/ini.v1"
@@ -90,14 +88,7 @@ const (
 )
 
 // Types
-type arrayFlags []string
-
 type Bits uint8
-
-type sockAccepted struct {
-	conn net.Conn
-	err  error
-}
 
 type Controller struct {
 	kubeconfig *restclient.Config
@@ -154,19 +145,10 @@ type Controller struct {
 }
 
 type wqKey struct {
-	kind  string // object kind
-	name  string // object name
+	kind string // object kind
+	name string // object name
+	//nolint:unused
 	event string // object event type (add/update/delete) or pass the full object on delete
-}
-
-// Functions
-func (a *arrayFlags) String() string {
-	return strings.Join(*a, ",")
-}
-
-func (a *arrayFlags) Set(value string) error {
-	*a = append(*a, value)
-	return nil
 }
 
 func parseCmdOpts() {
@@ -338,6 +320,7 @@ func (c *Controller) sync(key wqKey) error {
 		if profile.Spec.Config.TuneDConfig.ReapplySysctl != nil {
 			reapplySysctl := c.tunedMainCfg.Section("").Key("reapply_sysctl").MustBool()
 			if *profile.Spec.Config.TuneDConfig.ReapplySysctl != reapplySysctl {
+				//nolint:errcheck
 				iniCfgSetKey(c.tunedMainCfg, "reapply_sysctl", !reapplySysctl)
 				err = iniFileSave(tunedProfilesDirCustom+"/"+tunedMainConfFile, c.tunedMainCfg)
 				if err != nil {
@@ -357,17 +340,6 @@ func (c *Controller) sync(key wqKey) error {
 	return nil
 }
 
-func newUnixListener(addr string) (net.Listener, error) {
-	if err := os.Remove(addr); err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-	l, err := net.Listen("unix", addr)
-	if err != nil {
-		return nil, err
-	}
-	return l, nil
-}
-
 func disableSystemTuned() {
 	var (
 		stdout bytes.Buffer
@@ -384,7 +356,7 @@ func disableSystemTuned() {
 }
 
 func profilesEqual(profileFile string, profileData string) bool {
-	content, err := ioutil.ReadFile(profileFile)
+	content, err := os.ReadFile(profileFile)
 	if err != nil {
 		content = []byte{}
 	}
@@ -599,8 +571,8 @@ func (c *Controller) tunedRun() {
 				continue
 			}
 
-			profileApplied := strings.Index(l, " tuned.daemon.daemon: static tuning from profile ") >= 0 && strings.Index(l, " applied") >= 0
-			reloadFailed := strings.Index(l, " tuned.daemon.controller: Failed to reload TuneD: ") >= 0
+			profileApplied := strings.Contains(l, " tuned.daemon.daemon: static tuning from profile ") && strings.Contains(l, " applied")
+			reloadFailed := strings.Contains(l, " tuned.daemon.controller: Failed to reload TuneD: ")
 
 			if profileApplied {
 				c.daemon.status |= scApplied
@@ -657,8 +629,6 @@ func (c *Controller) tunedRun() {
 		klog.Errorf("error waiting for tuned: %v", err)
 		return
 	}
-
-	return
 }
 
 // tunedStop tries to gracefully stop the TuneD daemon process by sending it SIGTERM.
@@ -678,6 +648,7 @@ func (c *Controller) tunedStop() (bool, error) {
 	if c.tunedCmd.Process != nil {
 		// The TuneD daemon rolls back the current profile and should terminate on SIGTERM.
 		klog.V(1).Infof("sending SIGTERM to PID %d", c.tunedCmd.Process.Pid)
+		//nolint:errcheck
 		c.tunedCmd.Process.Signal(syscall.SIGTERM)
 	} else {
 		// This should never happen!
@@ -690,6 +661,7 @@ func (c *Controller) tunedStop() (bool, error) {
 		// It looks like the TuneD daemon refuses to terminate gracefully on SIGTERM
 		// within tunedGracefulExitWait.
 		klog.V(1).Infof("sending SIGKILL to PID %d", c.tunedCmd.Process.Pid)
+		//nolint:errcheck
 		c.tunedCmd.Process.Signal(syscall.SIGKILL)
 		<-c.tunedExit
 		return false, nil
@@ -925,25 +897,7 @@ func (c *Controller) eventProcessorTuneD() {
 			// Successful processing.
 			c.wqTuneD.Forget(obj)
 		}()
-
 	}
-}
-
-func getTuned(obj interface{}) (tuned *tunedv1.Tuned, err error) {
-	tuned, ok := obj.(*tunedv1.Tuned)
-	if !ok {
-		return nil, fmt.Errorf("could not convert object to a Tuned object: %+v", obj)
-	}
-	return tuned, nil
-}
-
-func getTunedProfile(obj interface{}) (profile *tunedv1.Profile, err error) {
-	profile, ok := obj.(*tunedv1.Profile)
-	if !ok {
-		return nil, fmt.Errorf("could not convert object to a Tuned Profile object: %+v", obj)
-	}
-
-	return profile, nil
 }
 
 func getNodeName() string {
@@ -1146,10 +1100,12 @@ func (c *Controller) changeWatcher() (err error) {
 
 	trInformer := tunedInformerFactory.Tuned().V1().Tuneds()
 	c.listers.TunedResources = trInformer.Lister().Tuneds(operandNamespace)
+	//nolint:errcheck
 	trInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindTuned}))
 
 	tpInformer := tunedInformerFactory.Tuned().V1().Profiles()
 	c.listers.TunedProfiles = tpInformer.Lister().Profiles(operandNamespace)
+	//nolint:errcheck
 	tpInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindProfile}))
 
 	tunedInformerFactory.Start(c.stopCh) // Tuned/Profile

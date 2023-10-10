@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"os"
 	"reflect"
 	"time"
@@ -41,6 +40,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
@@ -70,7 +70,6 @@ type PerformanceProfileReconciler struct {
 // SetupWithManager creates a new PerformanceProfile Controller and adds it to the Manager.
 // The Manager will set fields on the Controller and Start it when the Manager is Started.
 func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error {
-
 	// we want to initate reconcile loop only on change under labels or spec of the object
 	p := predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
@@ -453,10 +452,12 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		klog.Errorf("failed to get config node object; name=%q err=%v", nodeCfg.GetName(), err)
 		nodeCfg.Name = nodeCfgName
 		nodeCfg.Spec.CgroupMode = apiconfigv1.CgroupModeV1
+		//nolint:errcheck
 		r.Client.Update(ctx, nodeCfg)
 	}
 	if nodeCfg.Spec.CgroupMode != apiconfigv1.CgroupModeV1 {
 		nodeCfg.Spec.CgroupMode = apiconfigv1.CgroupModeV1
+		//nolint:errcheck
 		r.Client.Update(ctx, nodeCfg)
 	}
 
@@ -667,7 +668,6 @@ func (r *PerformanceProfileReconciler) deleteComponents(profile *performancev2.P
 	}
 
 	return nil
-
 }
 
 func (r *PerformanceProfileReconciler) isComponentsExist(profile *performancev2.PerformanceProfile) bool {
