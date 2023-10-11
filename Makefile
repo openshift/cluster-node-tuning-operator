@@ -44,6 +44,8 @@ PAO_E2E_SUITES := $(shell hack/list-test-bin.sh)
 GOLANGCI_LINT_VERSION=1.54.2
 GOLANGCI_LINT_BIN=$(OUT_DIR)/golangci-lint
 GOLANGCI_LINT_VERSION_TAG=v${GOLANGCI_LINT_VERSION}
+ABS_OUT_DIR := $(abspath $(OUT_DIR))
+GOLANGCI_LINT_CACHE=$(ABS_OUT_DIR)/.cache/golangci-lint
 
 all: build
 
@@ -143,8 +145,7 @@ else
 	curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b $(OUT_DIR) $(GOLANGCI_LINT_VERSION_TAG)
 	$(GOLANGCI_LINT_BIN) --version
 endif
-	$(GOLANGCI_LINT_BIN) run --verbose --print-resources-usage -c .golangci.yaml
-
+	GOLANGCI_LINT_CACHE=$(GOLANGCI_LINT_CACHE) $(GOLANGCI_LINT_BIN) run --verbose --print-resources-usage -c .golangci.yaml
 
 vet: $(BINDATA)
 	$(GO) vet ./...
