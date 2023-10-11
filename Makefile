@@ -154,7 +154,7 @@ test-unit: $(BINDATA)
 
 clean:
 	$(GO) clean $(PACKAGE_MAIN)
-	rm -rf $(BINDATA) $(OUT_DIR)
+	rm -rf $(BINDATA) $(OUT_DIR) tmp
 
 local-image:
 	$(IMAGE_BUILD_CMD) $(IMAGE_BUILD_EXTRA_OPTS) -t $(IMAGE) -f $(DOCKERFILE) .
