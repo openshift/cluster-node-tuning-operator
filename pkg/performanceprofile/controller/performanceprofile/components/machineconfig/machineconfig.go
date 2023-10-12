@@ -514,7 +514,7 @@ func getOfflineCPUs(offlineCpus string) []*unit.UnitOption {
 }
 
 func getRPSUnitOptions(rpsMask string) []*unit.UnitOption {
-	cmd := fmt.Sprintf("%s %%i %s", getBashScriptPath(setRPSMask), rpsMask)
+	cmd := fmt.Sprintf("%s %%I %s", getBashScriptPath(setRPSMask), rpsMask)
 	return []*unit.UnitOption{
 		// [Unit]
 		// Description
