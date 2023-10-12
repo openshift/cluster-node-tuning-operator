@@ -16,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
@@ -170,6 +171,23 @@ func (c *Controller) getObjFromTunedConfigMap() ([]tunedv1.Tuned, error) {
 	}
 
 	return cmTuneds, nil
+}
+
+// getNodesForNodePool uses 'hypershiftNodePoolLabel' to return all Nodes which are in
+// the NodePool 'nodePoolName'.
+func (c *Controller) getNodesForNodePool(nodePoolName string) ([]*corev1.Node, error) {
+	nodes := []*corev1.Node{}
+
+	selector := labels.SelectorFromValidatedSet(
+		map[string]string{
+			hypershiftNodePoolLabel: nodePoolName,
+		})
+	nodes, err := c.pc.listers.Nodes.List(selector)
+	if err != nil {
+		return nodes, err
+	}
+
+	return nodes, err
 }
 
 // parseManifests parses a YAML or JSON document that may contain one or more

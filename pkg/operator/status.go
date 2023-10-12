@@ -21,9 +21,15 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/metrics"
 )
 
+const (
+	errGenerationMismatch = "generation mismatch"
+)
+
 // syncOperatorStatus computes the operator's current status and therefrom
 // creates or updates the ClusterOperator resource for the operator.
 func (c *Controller) syncOperatorStatus(tuned *tunedv1.Tuned) error {
+	var operandReleaseVersion string
+
 	klog.V(2).Infof("syncOperatorStatus()")
 
 	co, err := c.getOrCreateOperatorStatus()
@@ -33,9 +39,16 @@ func (c *Controller) syncOperatorStatus(tuned *tunedv1.Tuned) error {
 	co = co.DeepCopy() // Never modify objects in cache
 
 	oldConditions := co.Status.Conditions
-	co.Status.Conditions, err = c.computeStatusConditions(tuned, oldConditions)
+	co.Status.Conditions, operandReleaseVersion, err = c.computeStatus(tuned, oldConditions)
 	if err != nil {
+		if err.Error() == errGenerationMismatch {
+			// Tuned DaemonSet has not updated its status yet
+			return nil
+		}
 		return err
+	}
+	if len(operandReleaseVersion) > 0 {
+		operatorv1helpers.SetOperandVersion(&co.Status.Versions, configv1.OperandVersion{Name: tunedv1.TunedOperandName, Version: operandReleaseVersion})
 	}
 	// every operator must report its version from the payload
 	// if the operator is reporting available, it resets the release version to the present value
@@ -133,13 +146,30 @@ func numProfilesProgressingDegraded(profileList []*tunedv1.Profile) (int, int) {
 	return numProgressing, numDegraded
 }
 
-// computeStatusConditions computes the operator's current state.
-func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []configv1.ClusterOperatorStatusCondition) ([]configv1.ClusterOperatorStatusCondition, error) {
+// numProfilesWithBootcmdlineConflict returns the total number
+// of Profiles in the internal operator's cache (bootcmdlineConflict)
+// tracked as having kernel command-line conflict due to belonging to
+// the same MCP.
+func (c *Controller) numProfilesWithBootcmdlineConflict(profileList []*tunedv1.Profile) int {
+	numConflict := 0
+	for _, profile := range profileList {
+		if c.bootcmdlineConflict[profile.Name] {
+			numConflict++
+		}
+	}
+
+	return numConflict
+}
+
+// computeStatus computes the operator's current status.
+func (c *Controller) computeStatus(tuned *tunedv1.Tuned, conditions []configv1.ClusterOperatorStatusCondition) ([]configv1.ClusterOperatorStatusCondition, string, error) {
 	const (
 		// maximum number of seconds for the operator to be Unavailable with a unique
 		// Reason/Message before setting the Degraded ClusterOperator condition
 		maxTunedUnavailable = 7200
 	)
+	var operandReleaseVersion string
+
 	dsMf := ntomf.TunedDaemonSet()
 
 	availableCondition := configv1.ClusterOperatorStatusCondition{
@@ -195,7 +225,7 @@ func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []
 					// This should not happen unless there was a manual intervention.
 					// Preserve the previously known conditions and requeue.
 					klog.Errorf("unable to calculate Operator status conditions, preserving the old ones: %v", err)
-					return conditions, err
+					return conditions, "", err
 				}
 			} else {
 				klog.Errorf("setting all ClusterOperator conditions to Unknown: %v", err)
@@ -206,6 +236,11 @@ func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []
 				copyAvailableCondition()
 			}
 		} else {
+			if ds.Status.ObservedGeneration != ds.Generation {
+				// Do not base the conditions on stale information
+				return conditions, "", fmt.Errorf(errGenerationMismatch)
+			}
+
 			if ds.Status.NumberAvailable > 0 {
 				// The operand maintained by the operator is reported as available in the cluster
 				availableCondition.Status = configv1.ConditionTrue
@@ -228,6 +263,7 @@ func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []
 			// (including Nodes correctly running the daemon Pod) != the total number of
 			// Nodes that are running updated daemon Pod.
 			if ds.Status.DesiredNumberScheduled != ds.Status.UpdatedNumberScheduled ||
+				ds.Status.CurrentNumberScheduled != ds.Status.NumberReady ||
 				ds.Status.DesiredNumberScheduled == 0 {
 				klog.V(3).Infof("setting Progressing condition to true")
 				progressingCondition.Status = configv1.ConditionTrue
@@ -237,6 +273,7 @@ func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []
 				progressingCondition.Status = configv1.ConditionFalse
 				progressingCondition.Reason = "AsExpected"
 				progressingCondition.Message = fmt.Sprintf("Cluster version is %q", os.Getenv("RELEASE_VERSION"))
+				operandReleaseVersion = os.Getenv("RELEASE_VERSION")
 			}
 
 			degradedCondition.Status = configv1.ConditionFalse
@@ -266,6 +303,14 @@ func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []
 			klog.Infof(fmt.Sprintf("%v/%v Profiles failed to be applied", numDegradedProfiles, len(profileList)))
 			availableCondition.Reason = "ProfileDegraded"
 			availableCondition.Message = fmt.Sprintf("%v/%v Profiles failed to be applied", numDegradedProfiles, len(profileList))
+		}
+
+		numConflict := c.numProfilesWithBootcmdlineConflict(profileList)
+		if numConflict > 0 {
+			klog.Infof(fmt.Sprintf("%v/%v Profiles with bootcmdline conflict", numConflict, len(profileList)))
+			degradedCondition.Status = configv1.ConditionTrue
+			degradedCondition.Reason = "ProfileConflict"
+			degradedCondition.Message = fmt.Sprintf("%v/%v Profiles with bootcmdline conflict", numConflict, len(profileList))
 		}
 
 		// If the operator is not available for an extensive period of time, set the Degraded operator status.
@@ -304,7 +349,7 @@ func (c *Controller) computeStatusConditions(tuned *tunedv1.Tuned, conditions []
 
 	klog.V(3).Infof("operator status conditions: %v", conditions)
 
-	return conditions, nil
+	return conditions, operandReleaseVersion, nil
 }
 
 func getRelatedObjects() []configv1.ObjectReference {

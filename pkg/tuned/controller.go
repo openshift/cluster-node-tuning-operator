@@ -18,11 +18,14 @@ import (
 
 	fsnotify "gopkg.in/fsnotify.v1"
 	"gopkg.in/ini.v1"
+	corev1 "k8s.io/api/core/v1"
 	kmeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
@@ -96,6 +99,7 @@ type sockAccepted struct {
 
 type Controller struct {
 	kubeconfig *restclient.Config
+	kubeclient kubernetes.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens.
@@ -176,8 +180,41 @@ func parseCmdOpts() {
 	flag.Parse()
 }
 
+// Get a client from kubelet's kubeconfig to write to the Node object.
+func getKubeClient() (kubernetes.Interface, error) {
+	var (
+		// paths to kubelet kubeconfig
+		kubeletKubeconfigPaths = []string{
+			"/var/lib/kubelet/kubeconfig",        // traditional OCP
+			"/etc/kubernetes/kubelet-kubeconfig", // IBM Managed OpenShift, see OCPBUGS-19795
+		}
+		kubeletKubeconfigPath string
+	)
+
+	for _, kubeletKubeconfigPath = range kubeletKubeconfigPaths {
+		if _, err := os.Stat(kubeletKubeconfigPath); err == nil {
+			break
+		}
+	}
+
+	config, err := clientcmd.BuildConfigFromFlags("", kubeletKubeconfigPath)
+	if err != nil {
+		return nil, err
+	}
+	kubeClient, err := kubernetes.NewForConfig(restclient.AddUserAgent(config, programName))
+	if err != nil {
+		return nil, err
+	}
+
+	return kubeClient, nil
+}
+
 func newController(stopCh <-chan struct{}) (*Controller, error) {
 	kubeconfig, err := ntoclient.GetConfig()
+	if err != nil {
+		return nil, err
+	}
+	kubeclient, err := getKubeClient()
 	if err != nil {
 		return nil, err
 	}
@@ -186,6 +223,7 @@ func newController(stopCh <-chan struct{}) (*Controller, error) {
 	clients := &ntoclient.Clients{}
 	controller := &Controller{
 		kubeconfig:   kubeconfig,
+		kubeclient:   kubeclient,
 		listers:      listers,
 		clients:      clients,
 		tunedExit:    make(chan bool, 1),
@@ -885,6 +923,44 @@ func getNodeName() string {
 	return name
 }
 
+func (c *Controller) getNodeForProfile(nodeName string) (*corev1.Node, error) {
+	node, err := c.kubeclient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Node %s: %v", nodeName, err)
+	}
+	return node, nil
+}
+
+func (c *Controller) updateNodeAnnotations(node *corev1.Node, annotations map[string]string) (err error) {
+	var (
+		change bool
+	)
+	node = node.DeepCopy() // never update the objects from cache
+
+	if node.ObjectMeta.Annotations == nil {
+		node.ObjectMeta.Annotations = map[string]string{}
+	}
+
+	for k, v := range annotations {
+		change = change || node.ObjectMeta.Annotations[k] != v
+		node.ObjectMeta.Annotations[k] = v
+	}
+
+	if !change {
+		// No Node annotations changed, no need to update
+		return nil
+	}
+
+	// See OCPBUGS-17585: Instead of carrying information that could affect other cluster nodes in
+	// Profiles's status, use the kubelet's credentials to write to the Node's resource.
+	_, err = c.kubeclient.CoreV1().Nodes().Update(context.TODO(), node, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to update Node %s: %v", node.ObjectMeta.Name, err)
+	}
+
+	return nil
+}
+
 // Method updateTunedProfile updates a Tuned Profile with information to report back
 // to the operator.  Note this method must be called only when the TuneD daemon is
 // not reloading.
@@ -910,10 +986,21 @@ func (c *Controller) updateTunedProfile() (err error) {
 		return err
 	}
 
-	statusConditions := computeStatusConditions(c.daemon.status, c.daemon.stderr, profile.Status.Conditions)
+	node, err := c.getNodeForProfile(getNodeName())
+	if err != nil {
+		return err
+	}
 
-	if profile.Status.Bootcmdline == bootcmdline &&
-		profile.Status.TunedProfile == activeProfile && conditionsEqual(profile.Status.Conditions, statusConditions) {
+	if node.ObjectMeta.Annotations == nil {
+		node.ObjectMeta.Annotations = map[string]string{}
+	}
+
+	statusConditions := computeStatusConditions(c.daemon.status, c.daemon.stderr, profile.Status.Conditions)
+	bootcmdlineAnnotVal, bootcmdlineAnnotSet := node.ObjectMeta.Annotations[tunedv1.TunedBootcmdlineAnnotationKey]
+
+	if bootcmdlineAnnotSet && bootcmdlineAnnotVal == bootcmdline &&
+		profile.Status.TunedProfile == activeProfile &&
+		conditionsEqual(profile.Status.Conditions, statusConditions) {
 		// Do not update node Profile unnecessarily (e.g. bootcmdline did not change).
 		// This will save operator CPU cycles trying to reconcile objects that do not
 		// need reconciling.
@@ -921,16 +1008,17 @@ func (c *Controller) updateTunedProfile() (err error) {
 		return nil
 	}
 
+	annotations := map[string]string{tunedv1.TunedBootcmdlineAnnotationKey: bootcmdline}
+	err = c.updateNodeAnnotations(node, annotations)
+	if err != nil {
+		return err
+	}
+
 	profile = profile.DeepCopy() // never update the objects from cache
 
-	profile.Status.Bootcmdline = bootcmdline
 	profile.Status.TunedProfile = activeProfile
 	profile.Status.Conditions = statusConditions
-	if profile.ObjectMeta.Annotations == nil {
-		profile.ObjectMeta.Annotations = map[string]string{}
-	}
-	profile.ObjectMeta.Annotations[tunedv1.GeneratedByOperandVersionAnnotationKey] = os.Getenv("RELEASE_VERSION")
-	_, err = c.clients.Tuned.TunedV1().Profiles(operandNamespace).Update(context.TODO(), profile, metav1.UpdateOptions{})
+	_, err = c.clients.Tuned.TunedV1().Profiles(operandNamespace).UpdateStatus(context.TODO(), profile, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update Profile %s status: %v", profile.Name, err)
 	}
