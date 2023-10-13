@@ -8,8 +8,8 @@ _output/cluster-node-tuning-operator render \
 --asset-input-dir "${WORKDIR}"/test/e2e/performanceprofile/cluster-setup/manual-cluster/performance,"${WORKDIR}"/test/e2e/performanceprofile/cluster-setup/base/performance \
 --asset-output-dir "${ARTIFACT_DIR}"
 
-cp "${ARTIFACT_DIR}"/*  "${WORKDIR}"/test/e2e/performanceprofile/testdata/render-expected-output
-for f in  "${WORKDIR}"/test/e2e/performanceprofile/testdata/render-expected-output/*
+cp "${ARTIFACT_DIR}"/*  "${WORKDIR}"/test/e2e/performanceprofile/testdata/render-expected-output/default
+for f in  "${WORKDIR}"/test/e2e/performanceprofile/testdata/render-expected-output/default/*
 do
   sed -i "s/uid:.*/uid: \"\"/" "${f}"
 done
