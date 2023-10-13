@@ -19,6 +19,7 @@ import (
 type ManifestResultSet struct {
 	MachineConfig *mcov1.MachineConfig
 	KubeletConfig *mcov1.KubeletConfig
+	NodeConfig    *apiconfigv1.Node
 	Tuned         *tunedv1.Tuned
 	RuntimeClass  *nodev1.RuntimeClass
 }
@@ -35,6 +36,7 @@ func (ms *ManifestResultSet) ToObjects() []metav1.Object {
 		ms.KubeletConfig.GetObjectMeta(),
 		ms.Tuned.GetObjectMeta(),
 		ms.RuntimeClass.GetObjectMeta(),
+		ms.NodeConfig.GetObjectMeta(),
 	)
 	return objs
 }
@@ -46,6 +48,7 @@ func (ms *ManifestResultSet) ToManifestTable() ManifestTable {
 	manifests[ms.KubeletConfig.Kind] = ms.KubeletConfig
 	manifests[ms.Tuned.Kind] = ms.Tuned
 	manifests[ms.RuntimeClass.Kind] = ms.RuntimeClass
+	manifests[ms.NodeConfig.Kind] = ms.NodeConfig
 	return manifests
 }
 
@@ -68,6 +71,19 @@ func GetNewComponents(profile *performancev2.PerformanceProfile, profileMCP *mco
 		return nil, err
 	}
 
+	nodeConfig := &apiconfigv1.Node{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: apiconfigv1.SchemeGroupVersion.String(),
+			Kind:       "Node",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "cluster",
+		},
+		Spec: apiconfigv1.NodeSpec{
+			CgroupMode: apiconfigv1.CgroupModeV1,
+		},
+	}
+
 	runtimeClass := runtimeclass.New(profile, machineconfig.HighPerformanceRuntime)
 
 	manifestResultSet := ManifestResultSet{
@@ -75,6 +91,7 @@ func GetNewComponents(profile *performancev2.PerformanceProfile, profileMCP *mco
 		KubeletConfig: kc,
 		Tuned:         performanceTuned,
 		RuntimeClass:  runtimeClass,
+		NodeConfig:    nodeConfig,
 	}
 	return &manifestResultSet, nil
 }
