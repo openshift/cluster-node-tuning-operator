@@ -454,6 +454,8 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	if nodeCfg.Spec.CgroupMode != apiconfigv1.CgroupModeV1 {
+		klog.Infof("Switching cluster to cgroupv1")
+
 		// gather the MCP generation
 		profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
 		if err != nil {
@@ -474,12 +476,14 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 			}
 			// check to see if machine rollout has happened
 			if startGeneration != profileMCP.Generation {
+				klog.Infof("MachineConfigPool %v has generation %v (startGeneration=%v)", profileMCP.Name, profileMCP.Generation, startGeneration)
 				return true, nil
 			}
 			// check to see if all machines are updating
 			if profileMCP.Status.DegradedMachineCount > 0 {
 				return true, fmt.Errorf("machines have become degraded")
 			}
+			klog.Infof("MachineConfigPool %v has not changed generations", profileMCP.Name)
 			return false, nil
 		})
 		if err != nil {
@@ -494,17 +498,21 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 			}
 			// check to see if all machines are updated
 			if profileMCP.Status.MachineCount == profileMCP.Status.ReadyMachineCount {
+				klog.Infof("MachineConfigPool %v and Node config has rolled out", profileMCP.Name)
 				return true, nil
 			}
 			// check to see if all machines are updated
 			if profileMCP.Status.DegradedMachineCount > 0 {
 				return true, fmt.Errorf("machines have become degraded")
 			}
+			klog.V(2).Infof("MachineConfigPool %v and Node config is still rolling out", profileMCP.Name)
 			return false, nil
 		})
 		if err != nil {
 			return reconcile.Result{}, err
 		}
+
+		klog.Infof("Cluster is using cgroupv1")
 	}
 
 	profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
