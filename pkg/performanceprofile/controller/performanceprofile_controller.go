@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -456,7 +457,6 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if nodeCfg.Spec.CgroupMode != apiconfigv1.CgroupModeV1 {
 		klog.Infof("Switching cluster to cgroupv1")
 
-		// gather the MCP generation
 		profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -468,30 +468,28 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 			return reconcile.Result{}, err
 		}
 
-		// wait for MCP generation to change
-		err = wait.PollUntilContextCancel(context.Background(), time.Duration(7*time.Second), true, func(ctx context.Context) (done bool, err error) {
+		err = wait.PollUntilContextCancel(context.Background(), 7*time.Second, false, func(ctx context.Context) (done bool, err error) {
 			profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
 			if err != nil {
 				return true, err
 			}
-			// check to see if machine rollout has happened
+			klog.Infof("watching for generation change (startGeneration=%v) (mcpGeneration=%v)", startGeneration, profileMCP.Generation)
 			if startGeneration != profileMCP.Generation {
-				klog.Infof("MachineConfigPool %v has generation %v (startGeneration=%v)", profileMCP.Name, profileMCP.Generation, startGeneration)
 				return true, nil
 			}
-			// check to see if all machines are updating
 			if profileMCP.Status.DegradedMachineCount > 0 {
-				return true, fmt.Errorf("machines have become degraded")
+				return true, errors.New("machines are degraded")
 			}
-			klog.Infof("MachineConfigPool %v has not changed generations", profileMCP.Name)
 			return false, nil
 		})
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 
+		klog.Info("waiting for cgroupv1 rollout")
+
 		// wait for Cgroupv1 roll out
-		err = wait.PollUntilContextCancel(context.Background(), time.Duration(7*time.Second), true, func(ctx context.Context) (done bool, err error) {
+		err = wait.PollUntilContextCancel(context.Background(), 7*time.Second, false, func(ctx context.Context) (done bool, err error) {
 			profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
 			if err != nil {
 				return true, err
@@ -505,7 +503,7 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 			if profileMCP.Status.DegradedMachineCount > 0 {
 				return true, fmt.Errorf("machines have become degraded")
 			}
-			klog.V(2).Infof("MachineConfigPool %v and Node config is still rolling out", profileMCP.Name)
+			klog.Infof("MachineConfigPool %v and Node config is still rolling out (%v/%v)", profileMCP.Name, profileMCP.Status.ReadyMachineCount, profileMCP.Status.MachineCount)
 			return false, nil
 		})
 		if err != nil {
