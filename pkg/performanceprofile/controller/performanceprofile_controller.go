@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -42,6 +43,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
 
@@ -449,16 +451,40 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	})
 	err = r.Client.Get(context.Background(), key, nodeCfg)
 	if err != nil {
-		klog.Errorf("failed to get config node object; name=%q err=%v", nodeCfg.GetName(), err)
-		nodeCfg.Name = nodeCfgName
-		nodeCfg.Spec.CgroupMode = apiconfigv1.CgroupModeV1
-		//nolint:errcheck
-		r.Client.Update(ctx, nodeCfg)
+		return reconcile.Result{}, err
 	}
+
 	if nodeCfg.Spec.CgroupMode != apiconfigv1.CgroupModeV1 {
+		klog.Infof("Switching cluster to cgroupv1")
+
+		profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		startGeneration := profileMCP.Generation
+
 		nodeCfg.Spec.CgroupMode = apiconfigv1.CgroupModeV1
-		//nolint:errcheck
-		r.Client.Update(ctx, nodeCfg)
+		if err := r.Client.Update(ctx, nodeCfg); err != nil {
+			return reconcile.Result{}, err
+		}
+
+		err = wait.PollUntilContextCancel(context.Background(), 7*time.Second, true, func(ctx context.Context) (done bool, err error) {
+			profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
+			if err != nil {
+				return true, err
+			}
+			klog.Infof("watching for generation change (startGeneration=%v) (mcpGeneration=%v)", startGeneration, profileMCP.Generation)
+			if startGeneration != profileMCP.Generation {
+				return true, nil
+			}
+			if profileMCP.Status.DegradedMachineCount > 0 {
+				return true, errors.New("machines are degraded")
+			}
+			return false, nil
+		})
+		if err != nil {
+			return reconcile.Result{}, err
+		}
 	}
 
 	profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
