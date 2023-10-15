@@ -75,6 +75,17 @@ func buildServer(port int) *http.Server {
 		if caCertPool.AppendCertsFromPEM(caCert) {
 			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 			tlsConfig.ClientCAs = caCertPool
+			// Default minimum version is TLS 1.2, previous versions are insecure and deprecated.
+			tlsConfig.MinVersion = tls.VersionTLS12
+			tlsConfig.CipherSuites = []uint16{
+				// Drop
+				// - 64-bit block cipher 3DES as it is vulnerable to SWEET32 attack.
+				// - CBC encryption method.
+				// - RSA key exchange.
+				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+				tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			}
 		} else {
 			klog.Error("failed to parse %q", authCAFile)
 		}
