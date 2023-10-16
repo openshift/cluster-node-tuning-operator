@@ -468,7 +468,7 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 			return reconcile.Result{}, err
 		}
 
-		err = wait.PollUntilContextCancel(context.Background(), 7*time.Second, false, func(ctx context.Context) (done bool, err error) {
+		err = wait.PollUntilContextCancel(context.Background(), 7*time.Second, true, func(ctx context.Context) (done bool, err error) {
 			profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
 			if err != nil {
 				return true, err
@@ -489,7 +489,7 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		klog.Info("waiting for cgroupv1 rollout")
 
 		// wait for Cgroupv1 roll out
-		err = wait.PollUntilContextCancel(context.Background(), 7*time.Second, false, func(ctx context.Context) (done bool, err error) {
+		err = wait.PollUntilContextCancel(context.Background(), 7*time.Second, true, func(ctx context.Context) (done bool, err error) {
 			profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
 			if err != nil {
 				return true, err

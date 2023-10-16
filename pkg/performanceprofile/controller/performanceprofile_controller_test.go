@@ -36,6 +36,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -987,12 +988,47 @@ func reconcileTimes(reconciler *PerformanceProfileReconciler, request reconcile.
 	return result
 }
 
+func MCPInterceptor() interceptor.Funcs {
+	generationCounter := int64(0)
+
+	mutateMCP := func(mcp *mcov1.MachineConfigPool) {
+		mcp.SetGeneration(generationCounter)
+	}
+
+	return interceptor.Funcs{
+		Update: func(ctx context.Context, client client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+			if _, isNodeUpdate := obj.(*apiconfigv1.Node); isNodeUpdate {
+				generationCounter++
+			}
+			return client.Update(ctx, obj, opts...)
+		},
+		Get: func(ctx context.Context, client client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			mcp, isMcp := obj.(*mcov1.MachineConfigPool)
+			err := client.Get(ctx, key, obj)
+			if err == nil && isMcp {
+				mutateMCP(mcp)
+			}
+			return err
+		},
+		List: func(ctx context.Context, client client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+			mcpList, isMcpList := list.(*mcov1.MachineConfigPoolList)
+			err := client.List(ctx, list, opts...)
+			if err == nil && isMcpList {
+				for i := range mcpList.Items {
+					mutateMCP(&mcpList.Items[i])
+				}
+			}
+			return err
+		},
+	}
+}
+
 // newFakeReconciler returns a new reconcile.Reconciler with a fake client
 func newFakeReconciler(profile client.Object, initObjects ...runtime.Object) *PerformanceProfileReconciler {
 	// we need to add the profile using the `WithStatusSubresource` function
 	// because we're updating its status during the reconciliation loop
 	initObjects = append(initObjects, profile)
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithStatusSubresource(profile).WithRuntimeObjects(initObjects...).Build()
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithStatusSubresource(profile).WithRuntimeObjects(initObjects...).WithInterceptorFuncs(MCPInterceptor()).Build()
 	fakeRecorder := record.NewFakeRecorder(10)
 	return &PerformanceProfileReconciler{
 		Client:   fakeClient,
