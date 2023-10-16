@@ -1,1 +1,1 @@
-SUBSYSTEM=="net", ACTION=="add", ENV{DEVPATH}!="/devices/virtual/net/*", TAG+="systemd", ENV{SYSTEMD_WANTS}="update-rps@%k.service"
+SUBSYSTEM=="queues", ACTION=="add", ENV{DEVPATH}=="/devices/pci*/queues/rx*", TAG+="systemd", ENV{SYSTEMD_WANTS}="update-rps@%p.service"
