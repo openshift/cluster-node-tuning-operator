@@ -485,32 +485,6 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-
-		klog.Info("waiting for cgroupv1 rollout")
-
-		// wait for Cgroupv1 roll out
-		err = wait.PollUntilContextCancel(context.Background(), 7*time.Second, true, func(ctx context.Context) (done bool, err error) {
-			profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
-			if err != nil {
-				return true, err
-			}
-			// check to see if all machines are updated
-			if profileMCP.Status.MachineCount == profileMCP.Status.ReadyMachineCount {
-				klog.Infof("MachineConfigPool %v and Node config has rolled out", profileMCP.Name)
-				return true, nil
-			}
-			// check to see if all machines are updated
-			if profileMCP.Status.DegradedMachineCount > 0 {
-				return true, fmt.Errorf("machines have become degraded")
-			}
-			klog.Infof("MachineConfigPool %v and Node config is still rolling out (%v/%v)", profileMCP.Name, profileMCP.Status.ReadyMachineCount, profileMCP.Status.MachineCount)
-			return false, nil
-		})
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		klog.Infof("Cluster is using cgroupv1")
 	}
 
 	profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
