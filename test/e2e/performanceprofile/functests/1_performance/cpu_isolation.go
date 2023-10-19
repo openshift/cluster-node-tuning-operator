@@ -7,9 +7,14 @@ import (
 	"time"
 	"strings"
 	"strconv"
+	"encoding/json"
+	"encoding/base64"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/pointer"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -18,12 +23,24 @@ import (
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	igntypes "github.com/coreos/ignition/v2/config/v3_2/types"
+	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	profilecomponent "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
+	assets "github.com/openshift/cluster-node-tuning-operator/assets/performanceprofile"
 )
 
+const (
+	criofixScript                = "runc-wrapper.sh"
+	criofixPath                  = "scripts"
+	defaultIgnitionContentSource = "data:text/plain;charset=utf-8;base64"
+	defaultIgnitionVersion       = "3.2.0"
+)
 
 var _ = Describe("[bz_automation:1910386][performance] CPU Container Isolation", func() {
 		Context("Create Guaranteed pod", func() {
@@ -46,7 +63,21 @@ var _ = Describe("[bz_automation:1910386][performance] CPU Container Isolation",
 				workerRTNode = &workerRTNodes[0]
 
 				//create and update wrapper
-				wrapperFound, originalWrapper = createWrapper(workerRTNode, RUNC_WRAPPER_PATH)
+				profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+				Expect(err).ToNot(HaveOccurred(), "Unable to gather profile")
+
+				performanceMCP, err := mcps.GetByProfile(profile)
+				Expect(err).ToNot(HaveOccurred(), "Unable to gather performance MCP")
+
+				mc, err := createMachineConfig(profile)
+				Expect(err).ToNot(HaveOccurred(), "Unable to create machine config file")
+
+				err = testclient.Client.Create(context.TODO(), mc)
+				Expect(err).ToNot(HaveOccurred(), "Unable to apply the mc")
+
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+				By("Waiting for MCP being updated")
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 
 				originalConfig = updateRuncRuntimePath(workerRTNode, RUNC_WRAPPER_PATH, RUNTIME_CONFIG_FILE_PATH)
 
@@ -227,32 +258,6 @@ func deletePod(pod *corev1.Pod) {
 	}
 }
 
-func createWrapper(node *corev1.Node, filePath string) (bool, string) {
-	// if found , save the original script to restore it after the test , create it if not
-	cmd := []string{"cat", filePath}
-	originalWrapper, err := nodes.ExecCommandOnNode(cmd, node)
-
-	wrapperFound := false
-	if err != nil {
-
-		cmd = []string{"/bin/bash","-c","echo '#!/bin/bash\nif [ -n \"$3\" ] && [ \"$3\" == \"create\" ] && [ -f \"$5/config.json\" ]; then\n        conf=\"$5/config.json\"\n        cat $conf >> /root/create\n\nfi\nexec /bin/runc \"$@\"' > /rootfs/usr/local/bin/runc-wrapper.sh"}
-		createdWrapper, _ := nodes.ExecCommandOnNode(cmd, node)
-		// Expect(err).ToNot(HaveOccurred(), "Failed to write to %s: %w", filePath, err)
-		// ECHO TIMEOUT ISSUE
-		fmt.Println("First time created wrapper")
-
-		cmd = []string{"chmod","a+x", "/rootfs/usr/local/bin/runc-wrapper.sh"}
-		_, err = nodes.ExecCommandOnNode(cmd, node)
-		//Expect(err).ToNot(HaveOccurred(), "Failed to make %s executable: %s", filePath, err)
-		// TIMEOUT ISSUE 
-
-		return wrapperFound, createdWrapper
-	} else {
-
-		wrapperFound = true
-		return wrapperFound, originalWrapper
-	}
-}
 
 func updateRuncRuntimePath(node *corev1.Node, filePath string, configPath string) string {
 	cmd := []string{"cat", configPath}
@@ -278,3 +283,62 @@ func updateRuncRuntimePath(node *corev1.Node, filePath string, configPath string
 	return originalFileContent
 }
 
+
+func createMachineConfig(profile *performancev2.PerformanceProfile) (*machineconfigv1.MachineConfig, error){
+	mcName := fmt.Sprintf("51-%s","crio-full-aff")
+	mc := &machineconfigv1.MachineConfig{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: machineconfigv1.GroupVersion.String(),
+			Kind: "MachineConfig",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: mcName,
+			Labels: profilecomponent.GetMachineConfigLabel(profile),
+		},
+		Spec: machineconfigv1.MachineConfigSpec{},
+	}
+	ignitionConfig, err := addWrapper()
+	if err != nil{
+		return nil, err
+	}
+	rawIgnition, err := json.Marshal(ignitionConfig)
+	if err != nil{
+		return nil, err
+	}
+	mc.Spec.Config = runtime.RawExtension{Raw: rawIgnition}
+	return mc, nil
+}
+
+func addWrapper() (*igntypes.Config, error) {
+	ignitionConfig := &igntypes.Config{
+			Ignition: igntypes.Ignition{
+					Version: defaultIgnitionVersion,
+			},
+			Storage: igntypes.Storage{
+					Files: []igntypes.File{},
+			},
+	}
+
+	scriptMode := 0700
+	content, err := assets.Scripts.ReadFile(fmt.Sprintf("%s/%s", criofixPath, criofixScript))
+	if err != nil {
+			return nil, err
+	}
+	addContent(ignitionConfig, content, "/usr/local/bin/"+criofixScript, scriptMode)
+	return ignitionConfig, nil
+}
+
+func addContent(ignitionConfig *igntypes.Config, content []byte, dst string, mode int) {
+	contentBase64 := base64.StdEncoding.EncodeToString(content)
+	ignitionConfig.Storage.Files = append(ignitionConfig.Storage.Files, igntypes.File{
+			Node: igntypes.Node{
+					Path: dst,
+			},
+			FileEmbedded1: igntypes.FileEmbedded1{
+					Contents: igntypes.Resource{
+							Source: pointer.StringPtr(fmt.Sprintf("%s,%s", defaultIgnitionContentSource, contentBase64)),
+					},
+					Mode: &mode,
+			},
+	})
+}
