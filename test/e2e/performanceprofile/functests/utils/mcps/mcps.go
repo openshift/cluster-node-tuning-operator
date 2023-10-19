@@ -2,6 +2,9 @@ package mcps
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -295,4 +298,30 @@ func Delete(name string) error {
 		return err
 	}
 	return WaitForDeletion(context.TODO(), client.ObjectKey{Name: name}, 2*time.Minute)
+}
+
+func EnableCrun(name string, perfprofile *performancev2.PerformanceProfile, profileMCP *machineconfigv1.MachineConfigPool) *machineconfigv1.ContainerRuntimeConfig {
+	ctrcfg1 := &machineconfigv1.ContainerRuntimeConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: machineconfigv1.ContainerRuntimeConfigSpec{
+			MachineConfigPoolSelector: &metav1.LabelSelector{
+				MatchLabels: profile.GetMachineConfigPoolSelector(perfprofile, profileMCP),
+			},
+			ContainerRuntimeConfig: &machineconfigv1.ContainerRuntimeConfiguration{
+				DefaultRuntime: machineconfigv1.ContainerRuntimeDefaultRuntimeCrun,
+			},
+		},
+	}
+	return ctrcfg1
+}
+
+func GetValueFromCrioConfig(workercnfNode *corev1.Node, key, confPath string) ([]string, error) {
+	out, err := nodes.ExecCommandOnMachineConfigDaemon(workercnfNode, []string{"cat", filepath.Join("/rootfs", confPath)})
+	if err != nil {
+		msg := fmt.Sprintf("failed to fetch values from %s", confPath)
+		return nil, errors.Wrap(err, msg)
+	}
+	re := regexp.MustCompile(fmt.Sprintf(`%s\s*=\s*"([^"]+)"`, key))
+	match := re.FindStringSubmatch(string(out))
+	return match, nil
 }

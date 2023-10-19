@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +21,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	profilecomponent "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
@@ -34,7 +35,9 @@ import (
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
 
-var s_ = Describe("[performance] Cgroups and affinity", Ordered, Label("ovs"), func() {
+type checkCgroupFunction func(*corev1.Node) (string, error)
+
+var s_ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 	var (
 		onlineCPUSet            cpuset.CPUSet
 		workerRTNode            *corev1.Node
@@ -56,9 +59,6 @@ var s_ = Describe("[performance] Cgroups and affinity", Ordered, Label("ovs"), f
 		Expect(err).ToNot(HaveOccurred())
 
 		performanceMCP, err = mcps.GetByProfile(profile)
-		Expect(err).ToNot(HaveOccurred())
-
-		onlineCPUSet, err = nodes.GetOnlineCPUsSet(workerRTNode)
 		Expect(err).ToNot(HaveOccurred())
 
 	})
@@ -147,52 +147,71 @@ var s_ = Describe("[performance] Cgroups and affinity", Ordered, Label("ovs"), f
 			})
 		})
 	})
-	Describe("Verification of cgroup layout on the worker node", func() {
-		It("Verify OVS was placed to its own cgroup", func() {
-			By("checking the cgroup process list")
+
+	Context("Verification of cgroup layout on the worker node", func() {
+		chkOvsCgrpProcs := func(node *corev1.Node) (string, error) {
+			testlog.Info("Verify cgroup.procs is not empty")
 			cmd := []string{"cat", "/rootfs/sys/fs/cgroup/cpuset/ovs.slice/cgroup.procs"}
-			ovsSliceTasks, err := nodes.ExecCommandOnNode(cmd, workerRTNode)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(ovsSliceTasks).To(Not(BeEmpty()))
-		})
-
-		It("Verify OVS slice is configured correctly", func() {
-			By("checking the cpuset spans all cpus")
+			return nodes.ExecCommandOnNode(cmd, node)
+		}
+		chkOvsCgrpCpuset := func(node *corev1.Node) (string, error) {
 			cmd := []string{"cat", "/rootfs/sys/fs/cgroup/cpuset/ovs.slice/cpuset.cpus"}
-			ovsCpuList, err := nodes.ExecCommandOnNode(cmd, workerRTNode)
+			return nodes.ExecCommandOnNode(cmd, workerRTNode)
+		}
 
-			ovsCPUSet, err := cpuset.Parse(ovsCpuList)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(ovsCPUSet).To(Equal(onlineCPUSet))
+		chkOvsCgroupLoadBalance := func(node *corev1.Node) (string, error) {
+			cmd := []string{"cat", "/rootfs/sys/fs/cgroup/cpuset/ovs.slice/cpuset.sched_load_balance"}
+			return nodes.ExecCommandOnNode(cmd, workerRTNode)
+		}
 
-			By("checking the cpuset has balancing disabled")
-			cmd = []string{"cat", "/rootfs/sys/fs/cgroup/cpuset/ovs.slice/cpuset.sched_load_balance"}
-			ovsLoadBalancing, err := nodes.ExecCommandOnNode(cmd, workerRTNode)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(ovsLoadBalancing).To(Equal("0"))
-		})
+		DescribeTable("Verify cgroup layout on worker node",
+			func(crun bool, ovsProc, ovsCpus, ovslb bool) {
+				if crun {
+					By("Enabling crun")
+					mcpLabel := profilecomponent.GetMachineConfigLabel(profile)
+					key, value := components.GetFirstKeyAndValue(mcpLabel)
+					mcp, err := mcps.GetByLabel(key, value)
+					Expect(err).ToNot(HaveOccurred())
+					ctrcfg := mcps.EnableCrun("cnf-crun", profile, &mcp[0])
+					testclient.Client.Create(context.TODO(), ctrcfg)
 
-		It("[test_id:64098] verify cpuset of ovs-vswitchd and ovsdb-server process spans all online cpus", func() {
-			workerRTNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
-			var onlineCPUCount string
-			for _, node := range workerRTNodes {
-				onlineCPUCount, err = nodes.ExecCommandOnNode([]string{"nproc", "--all"}, &node)
-				Expect(err).ToNot(HaveOccurred(), "Unable to fetch total online cpus")
-			}
-			onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
-			Expect(err).ToNot(HaveOccurred())
-			totalCpuset := fmt.Sprintf("0-%d", onlineCPUInt-1)
-			pidList, err := getOVSServicesPid(workerRTNode)
-			Expect(err).ToNot(HaveOccurred())
-			for _, pid := range pidList {
-				cmd := []string{"taskset", "-pc", pid}
-				cpumask, err := nodes.ExecCommandOnNode(cmd, workerRTNode)
-				Expect(err).ToNot(HaveOccurred(), "failed to fetch cpus of %s", pid)
-				mask := strings.SplitAfter(cpumask, " ")
-				maskSet, err := cpuset.Parse(mask[len(mask)-1])
-				Expect(maskSet.String()).To(Equal(totalCpuset))
-			}
-		})
+					By("Applying changes in performance profile and waiting until mcp will start updating")
+					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+
+					By("Waiting when mcp finishes updates")
+					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
+					defer func() {
+						By("Disabling crun")
+						testclient.Client.Delete(context.TODO(), ctrcfg)
+						By("Applying changes in performance profile and waiting until mcp will start updating")
+						mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+						By("Waiting when mcp finishes updates")
+						mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+					}()
+				}
+
+				if ovsProc {
+					result, err := chkOvsCgrpProcs(workerRTNode)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(result).To(Not(BeEmpty()))
+				}
+
+				if ovsCpus {
+					result, err := chkOvsCgrpCpuset(workerRTNode)
+					ovsCPUSet, err := cpuset.Parse(result)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(ovsCPUSet).To(Equal(onlineCPUSet))
+				}
+				if ovslb {
+					result, err := chkOvsCgroupLoadBalance(workerRTNode)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(result).To(Equal("0"))
+				}
+			},
+			Entry("[test_id:68385] Verify ovs cgroup with crun ", true, true, true, true),
+			Entry("[test_id:64098] Verify ovs cgroup with runc", false, true, true, true),
+		)
 	})
 
 	Describe("Affinity", func() {
