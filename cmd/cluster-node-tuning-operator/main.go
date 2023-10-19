@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"os"
 	"path/filepath"
@@ -137,6 +138,7 @@ func operatorRun() {
 			CertDir:  webhookCertDir,
 			CertName: webhookCertName,
 			KeyName:  webhookKeyName,
+			TLSOpts:  []func(config *tls.Config){func(c *tls.Config) { c.NextProtos = []string{"http/1.1"} }}, // CVE-2023-44487
 		}),
 	})
 
