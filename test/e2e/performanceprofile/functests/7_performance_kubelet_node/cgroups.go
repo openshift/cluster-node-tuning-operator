@@ -11,7 +11,9 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,23 +32,17 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
-	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 )
 
-var (
-	workerRTNode            *corev1.Node
-	workerRTNodes           []corev1.Node
-	profile, initialProfile *performancev2.PerformanceProfile
-	mc                      *machineconfigv1.MachineConfig
-	RunningOnSingleNode     bool
-	activation_file         string = "/rootfs/var/lib/ovn-ic/etc/enable_dynamic_cpu_affinity"
-	performanceMCP          string
-	onlineCPUSet            cpuset.CPUSet
-)
-
-var s_ = Describe("[performance] Cgroups and affinity", Ordered, func() {
-	var onlineCPUSet cpuset.CPUSet
+var s_ = Describe("[performance] Cgroups and affinity", Ordered, Label("ovs"), func() {
+	var (
+		onlineCPUSet            cpuset.CPUSet
+		workerRTNode            *corev1.Node
+		workerRTNodes           []corev1.Node
+		profile, initialProfile *performancev2.PerformanceProfile
+		activation_file         string = "/rootfs/var/lib/ovn-ic/etc/enable_dynamic_cpu_affinity"
+		performanceMCP          string
+	)
 
 	BeforeAll(func() {
 		workerRTNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
@@ -207,12 +203,14 @@ var s_ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 			It("[test_id:64100] matches with ovs process affinity", func() {
 				ovnPod, err := getOvnPod(workerRTNode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get ovnPod")
+
 				ovnContainersids, err := getOvnPodContainers(&ovnPod)
 				Expect(err).ToNot(HaveOccurred())
+
 				// Generally there are many containers inside a kubenode pods
 				// we don't need to check cpus used by all the containers
 				// we take first container
-				cpus := getCpusUsedByOvnContainer(ovnContainersids[0])
+				cpus := getCpusUsedByOvnContainer(workerRTNode, ovnContainersids[0])
 				testlog.Infof("Cpus used by ovn Containers are %s", cpus)
 				pidList, err := getOVSServicesPid(workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
@@ -260,7 +258,7 @@ var s_ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				By("Get cpu used by ovn pod containers")
 				ovnContainers, err := getOvnPodContainers(&ovnPod)
 				Expect(err).ToNot(HaveOccurred())
-				cpus := getCpusUsedByOvnContainer(ovnContainers[0])
+				cpus := getCpusUsedByOvnContainer(workerRTNode, ovnContainers[0])
 
 				pidList, err := getOVSServicesPid(workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
@@ -537,7 +535,7 @@ func getOvnPod(workerNode *corev1.Node) (corev1.Pod, error) {
 		return ovnKubeNodePod, err
 	}
 	for _, pod := range ovnpods.Items {
-		if strings.Contains(pod.Name, "node") && pod.Spec.NodeName == workerRTNode.Name {
+		if strings.Contains(pod.Name, "node") && pod.Spec.NodeName == workerNode.Name {
 			ovnKubeNodePod = pod
 			break
 		}
@@ -562,7 +560,7 @@ func getOvnPodContainers(ovnKubeNodePod *corev1.Pod) ([]string, error) {
 }
 
 // getCpusUsedByOvnContainer returns cpus used by the ovn kube node container
-func getCpusUsedByOvnContainer(ovnKubeNodePodCtnid string) string {
+func getCpusUsedByOvnContainer(workerRTNode *corev1.Node, ovnKubeNodePodCtnid string) string {
 	var cpus string
 	var err error
 	var containerCgroup = ""
@@ -596,7 +594,7 @@ func getOvnContainerCpus(workerRTNode *corev1.Node) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	ovnContainerCpus = getCpusUsedByOvnContainer(ovnContainers[0])
+	ovnContainerCpus = getCpusUsedByOvnContainer(workerRTNode, ovnContainers[0])
 	testlog.Infof("cpus used by ovn kube node pods %v", ovnContainerCpus)
 	return ovnContainerCpus, nil
 }
@@ -604,17 +602,10 @@ func getOvnContainerCpus(workerRTNode *corev1.Node) (string, error) {
 // getOVSServicesPid returns the pid of ovs-vswitchd and ovsdb-server
 func getOVSServicesPid(workerNode *corev1.Node) ([]string, error) {
 	var pids []string
-	ovsServices := []string{"ovs-vswitchd", "ovsdb-server"}
-	for _, service := range ovsServices {
-		cmd := []string{"pidof", service}
-		output, err := nodes.ExecCommandOnNode(cmd, workerRTNode)
-		if err != nil {
-			return nil, err
-		}
-		pid := strings.Fields(output)
-		pids = append(pids, pid...)
-	}
-	return pids, nil
+	cmd := []string{"cat", "/rootfs/sys/fs/cgroup/cpuset/ovs.slice/cgroup.procs"}
+	output, err := nodes.ExecCommandOnNode(cmd, workerNode)
+	pids = strings.Split(string(output), "\n")
+	return pids, err
 }
 
 func newDeployment() *appsv1.Deployment {
