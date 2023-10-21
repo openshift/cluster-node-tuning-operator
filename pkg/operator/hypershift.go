@@ -240,8 +240,9 @@ func parseNamespacedName(namespacedName string) string {
 
 func getMachineConfigFromConfigMap(config *corev1.ConfigMap) (*mcfgv1.MachineConfig, error) {
 	scheme := runtime.NewScheme()
-	//nolint:errcheck
-	mcfgv1.Install(scheme)
+	if err := mcfgv1.Install(scheme); err != nil {
+		return nil, err
+	}
 
 	YamlSerializer := serializer.NewSerializerWithOptions(
 		serializer.DefaultMetaFactory, scheme, scheme,
@@ -290,8 +291,9 @@ func newConfigMapForMachineConfig(configMapName string, nodePoolName string, mc 
 
 func serializeMachineConfig(mc *mcfgv1.MachineConfig) ([]byte, error) {
 	scheme := runtime.NewScheme()
-	//nolint:errcheck
-	mcfgv1.Install(scheme)
+	if err := mcfgv1.Install(scheme); err != nil {
+		return nil, err
+	}
 
 	YamlSerializer := serializer.NewSerializerWithOptions(
 		serializer.DefaultMetaFactory, scheme, scheme,

@@ -147,8 +147,6 @@ type Controller struct {
 type wqKey struct {
 	kind string // object kind
 	name string // object name
-	//nolint:unused
-	event string // object event type (add/update/delete) or pass the full object on delete
 }
 
 func parseCmdOpts() {
@@ -320,8 +318,9 @@ func (c *Controller) sync(key wqKey) error {
 		if profile.Spec.Config.TuneDConfig.ReapplySysctl != nil {
 			reapplySysctl := c.tunedMainCfg.Section("").Key("reapply_sysctl").MustBool()
 			if *profile.Spec.Config.TuneDConfig.ReapplySysctl != reapplySysctl {
-				//nolint:errcheck
-				iniCfgSetKey(c.tunedMainCfg, "reapply_sysctl", !reapplySysctl)
+				if err = iniCfgSetKey(c.tunedMainCfg, "reapply_sysctl", !reapplySysctl); err != nil {
+					return err
+				}
 				err = iniFileSave(tunedProfilesDirCustom+"/"+tunedMainConfFile, c.tunedMainCfg)
 				if err != nil {
 					return fmt.Errorf("failed to write global TuneD configuration file: %v", err)
@@ -648,8 +647,9 @@ func (c *Controller) tunedStop() (bool, error) {
 	if c.tunedCmd.Process != nil {
 		// The TuneD daemon rolls back the current profile and should terminate on SIGTERM.
 		klog.V(1).Infof("sending SIGTERM to PID %d", c.tunedCmd.Process.Pid)
-		//nolint:errcheck
-		c.tunedCmd.Process.Signal(syscall.SIGTERM)
+		if err := c.tunedCmd.Process.Signal(syscall.SIGTERM); err != nil {
+			return false, fmt.Errorf("failed to signal TuneD process: %v", err)
+		}
 	} else {
 		// This should never happen!
 		return false, fmt.Errorf("cannot find the TuneD process!")
@@ -661,8 +661,9 @@ func (c *Controller) tunedStop() (bool, error) {
 		// It looks like the TuneD daemon refuses to terminate gracefully on SIGTERM
 		// within tunedGracefulExitWait.
 		klog.V(1).Infof("sending SIGKILL to PID %d", c.tunedCmd.Process.Pid)
-		//nolint:errcheck
-		c.tunedCmd.Process.Signal(syscall.SIGKILL)
+		if err := c.tunedCmd.Process.Signal(syscall.SIGKILL); err != nil {
+			return false, fmt.Errorf("failed to signal TuneD process: %v", err)
+		}
 		<-c.tunedExit
 		return false, nil
 	}
@@ -1100,13 +1101,15 @@ func (c *Controller) changeWatcher() (err error) {
 
 	trInformer := tunedInformerFactory.Tuned().V1().Tuneds()
 	c.listers.TunedResources = trInformer.Lister().Tuneds(operandNamespace)
-	//nolint:errcheck
-	trInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindTuned}))
+	if _, err = trInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindTuned})); err != nil {
+		return err
+	}
 
 	tpInformer := tunedInformerFactory.Tuned().V1().Profiles()
 	c.listers.TunedProfiles = tpInformer.Lister().Profiles(operandNamespace)
-	//nolint:errcheck
-	tpInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindProfile}))
+	if _, err = tpInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindProfile})); err != nil {
+		return err
+	}
 
 	tunedInformerFactory.Start(c.stopCh) // Tuned/Profile
 

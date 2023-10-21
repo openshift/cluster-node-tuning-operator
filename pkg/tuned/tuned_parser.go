@@ -275,8 +275,9 @@ func execCmd(command []string) (string, error) {
 				return
 			}
 			// Ask nicely first.
-			//nolint:errcheck
-			cmd.Process.Signal(syscall.SIGTERM)
+			if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+				klog.Errorf("failed to signal process: %v", err)
+			}
 		}
 		// Wait for the process to stop.
 		select {
@@ -284,8 +285,9 @@ func execCmd(command []string) (string, error) {
 		case <-time.After(time.Second * waitSeconds):
 			// The process refused to terminate gracefully on SIGTERM.
 			klog.V(1).Infof("sending SIGKILL to PID %d", cmd.Process.Pid)
-			//nolint:errcheck
-			cmd.Process.Signal(syscall.SIGKILL)
+			if err := cmd.Process.Signal(syscall.SIGKILL); err != nil {
+				klog.Errorf("failed to signal process: %v", err)
+			}
 			return
 		}
 	}(chSupervisor)
