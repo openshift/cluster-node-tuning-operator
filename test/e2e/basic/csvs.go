@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/yaml"
 
 	olmv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
@@ -30,18 +29,13 @@ const (
 	performanceOperatorDeploymentName = "performance-operator"
 )
 
-var _ = Describe("[basic][clusterserviceversion] ClusterServiceVersion listing", Ordered, func() {
-	var cli client.Client
+var _ = Describe("[basic][clusterserviceversion] ClusterServiceVersion listing", func() {
 	var paginationLimit uint64
 	var namespace corev1.Namespace
 	var baseOptions []client.ListOption
-	BeforeAll(func() {
+
+	BeforeEach(func() {
 		var err error
-
-		By("Getting new client")
-		cli, err = newClient()
-		Expect(err).To(Succeed())
-
 		By("Creating new test namespace ...")
 		randomize := true
 		namespace, err = setupNamespace(cli, namespaceName, randomize)
@@ -50,12 +44,11 @@ var _ = Describe("[basic][clusterserviceversion] ClusterServiceVersion listing",
 		By(fmt.Sprintf("New test namespace %s created", namespace.Name))
 
 		baseOptions = append(baseOptions, client.InNamespace(namespace.Name))
+
 	})
-	AfterAll(func() {
+	AfterEach(func() {
 		var err error
-
 		baseOptions = nil
-
 		By(fmt.Sprintf("Delete test namespace (%s) ", namespace.Name))
 		err = cli.Delete(context.TODO(), &namespace)
 		Expect(err).To(Succeed())
@@ -73,7 +66,11 @@ var _ = Describe("[basic][clusterserviceversion] ClusterServiceVersion listing",
 		const csvsFileRelativePath = "../testing_manifests/csv-dummy.yaml"
 		const numberCSVsToCreate = 1000
 
-		BeforeAll(func() {
+		//NOTE - Please note this `BeforeEach` is gonna create some objects in the cluster.( see numberCSVsToCreate)
+		//       so it could take a while.
+		//       PLEASE! Be very careful adding new `It` clauses, cause executing this multiple times could impact your
+		//               test time execution
+		BeforeEach(func() {
 			var err error
 
 			By("reading file")
@@ -103,48 +100,29 @@ var _ = Describe("[basic][clusterserviceversion] ClusterServiceVersion listing",
 			Expect(len(csvsCreated)).To(Equal(numberCSVsToCreate))
 
 			//NOTE - As all the resources have been created into a test namespace
-			// and that namespace is gonna be deleted in the `Describe`'s `AfterAll` node
+			// and that namespace is gonna be deleted in the `Describe`'s `AfterEach` node
 			// there is no need to explicitly delete created CSVSs
-		})
 
-		When("pagination value is set to ONE", func() {
-			BeforeAll(func() {
-				By("Setting pagination to ONE")
-				paginationLimit = 1
-			})
-			It("Should list CSVs without timeout event with low pagination", func() {
-				By(fmt.Sprintf("Listing elements with pagination %d (this gonna take some time)", paginationLimit))
-				ret, err := paocontroller.ListPerformanceOperatorCSVs(cli, baseOptions, paginationLimit, performanceOperatorDeploymentName)
-				Expect(err).To(Succeed())
-				Expect(ret).To(HaveLen(0))
-			})
 		})
+		It("Should list CVSs without timeout whatever the pagination ", func() {
+			By("=== paginationLimit = 1 ===")
+			paginationLimit = 1
+			By(fmt.Sprintf("Listing elements with pagination %d (this gonna take some time)", paginationLimit))
+			ret, err := paocontroller.ListPerformanceOperatorCSVs(cli, baseOptions, paginationLimit, performanceOperatorDeploymentName)
+			Expect(err).To(Succeed())
+			Expect(ret).To(HaveLen(0))
 
-		When("pagination value is set to a much greater value than the CVS number", func() {
-			BeforeAll(func() {
-				times := 100
-				paginationLimit = uint64(times * numberCSVsToCreate)
-				By(fmt.Sprintf("Setting paginationLimit to (%d), that is %d times number of csvs created (%d)", paginationLimit, times, numberCSVsToCreate))
-			})
-			It("Should list CSVs without timeout even with pagination ", func() {
-				By(fmt.Sprintf("Listing elements with pagination %d", paginationLimit))
-				ret, err := paocontroller.ListPerformanceOperatorCSVs(cli, baseOptions, paginationLimit, performanceOperatorDeploymentName)
-				Expect(err).To(Succeed())
-				Expect(ret).To(HaveLen(0))
-			})
+			By(fmt.Sprintf("=== paginationLimit >>> numberOfCSVs(%d) ===", numberCSVsToCreate))
+			times := 100
+			paginationLimit = uint64(times * numberCSVsToCreate)
+			By(fmt.Sprintf("Setting paginationLimit to (%d), that is %d times number of csvs created (%d)", paginationLimit, times, numberCSVsToCreate))
+			By(fmt.Sprintf("Listing elements with pagination %d", paginationLimit))
+			ret, err = paocontroller.ListPerformanceOperatorCSVs(cli, baseOptions, paginationLimit, performanceOperatorDeploymentName)
+			Expect(err).To(Succeed())
+			Expect(ret).To(HaveLen(0))
 		})
 	})
 })
-
-func newClient() (client.Client, error) {
-	cfg, err := config.GetConfig()
-	if err != nil {
-		return nil, err
-	}
-
-	c, err := client.New(cfg, client.Options{})
-	return c, err
-}
 
 func setupNamespace(cli client.Client, baseName string, randomize bool) (corev1.Namespace, error) {
 	validationErrors := validation.IsDNS1123Label(baseName)
