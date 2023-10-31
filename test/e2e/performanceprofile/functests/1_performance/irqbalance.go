@@ -18,6 +18,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -31,6 +32,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	e2etuned "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 	"github.com/openshift/cluster-node-tuning-operator/test/framework"
 )
@@ -80,22 +82,42 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			isolatedCPUSet, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
 			Expect(err).ToNot(HaveOccurred())
 
-			verifyNodes := func() error {
+			By(fmt.Sprintf("verifying the behavior with irqLoadBalancingDisabled=%v isolatedCPUSet=%v", irqLoadBalancingDisabled, isolatedCPUSet))
+
+			verifyNodes := func(irqLoadBalancingDisabled bool) error {
 				var expectedBannedCPUs cpuset.CPUSet
 				if irqLoadBalancingDisabled {
 					expectedBannedCPUs = isolatedCPUSet
 				} else {
 					expectedBannedCPUs = cpuset.NewCPUSet()
 				}
-
 				for _, node := range workerRTNodes {
 					By(fmt.Sprintf("verifying worker node %q", node.Name))
+
+					condStatus := corev1.ConditionUnknown
+					EventuallyWithOffset(1, context.TODO(), func() bool {
+						tunedProfile, err := e2etuned.GetProfile(context.TODO(), testclient.Client, components.NamespaceNodeTuningOperator, node.Name)
+						Expect(err).ToNot(HaveOccurred(), "failed to get Tuned Profile for node %q", node.Name)
+						for _, cond := range tunedProfile.Status.Conditions {
+							if cond.Type != tunedv1.TunedProfileApplied {
+								continue
+							}
+							if cond.Status != corev1.ConditionTrue {
+								condStatus = cond.Status
+								return false
+							}
+							return true
+						}
+						return false
+					}).WithPolling(time.Second*10).WithTimeout(3*time.Minute).Should(BeTrue(), "Tuned Profile for node %q was not applied successfully conditionStatus=%q", node.Name, condStatus)
 
 					bannedCPUs, err := getIrqBalanceBannedCPUs(&node)
 					Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %s", node.Name)
 
+					By(fmt.Sprintf("node %q banned CPUs: expected %v detected %v", node.Name, expectedBannedCPUs, bannedCPUs))
+
 					if !bannedCPUs.Equals(expectedBannedCPUs) {
-						return fmt.Errorf("banned CPUs %v do not match the expected mask %v on node %s",
+						return fmt.Errorf("banned CPUs %q do not match the expected mask %q on node %q",
 							bannedCPUs, expectedBannedCPUs, node.Name)
 					}
 
@@ -104,6 +126,8 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 
 					onlineCPUsSet, err := nodes.GetOnlineCPUsSet(&node)
 					Expect(err).ToNot(HaveOccurred(), "failed to get Online CPUs list")
+
+					By(fmt.Sprintf("node %q SMP affinity set %v online CPUs set %v", node.Name, smpAffinitySet, onlineCPUsSet))
 
 					if irqLoadBalancingDisabled {
 						if !smpAffinitySet.Equals(onlineCPUsSet.Difference(isolatedCPUSet)) {
@@ -120,13 +144,28 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 				return nil
 			}
 
-			err = verifyNodes()
-			Expect(err).ToNot(HaveOccurred())
+			defer func() { // return initial configuration
+				By("reverting the profile into its initial state")
+				spec, err := json.Marshal(initialProfile.Spec)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(testclient.Client.Patch(context.TODO(), profile,
+					client.RawPatch(
+						types.JSONPatchType,
+						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
+					),
+				)).ToNot(HaveOccurred())
+				// in the initial profile `GloballyDisableIrqLoadBalancing` value should be false,
+				// so we expect the banned cpu set to be empty
+				Eventually(verifyNodes).WithArguments(false).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).ShouldNot(HaveOccurred())
+			}()
 
-			By("Modifying profile")
+			err = verifyNodes(irqLoadBalancingDisabled)
+			Expect(err).ToNot(HaveOccurred())
 
 			irqLoadBalancingDisabled = !irqLoadBalancingDisabled
 			profile.Spec.GloballyDisableIrqLoadBalancing = &irqLoadBalancingDisabled
+
+			By(fmt.Sprintf("Modifying profile: irqLoadBalancingDisabled switched to %v", irqLoadBalancingDisabled))
 
 			spec, err := json.Marshal(profile.Spec)
 			Expect(err).ToNot(HaveOccurred())
@@ -138,19 +177,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
 				),
 			)).ToNot(HaveOccurred())
-
-			defer func() { // return initial configuration
-				spec, err := json.Marshal(initialProfile.Spec)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(testclient.Client.Patch(context.TODO(), profile,
-					client.RawPatch(
-						types.JSONPatchType,
-						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-					),
-				)).ToNot(HaveOccurred())
-			}()
-
-			Eventually(verifyNodes, 1*time.Minute, 10*time.Second).ShouldNot(HaveOccurred())
+			Eventually(verifyNodes).WithArguments(irqLoadBalancingDisabled).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).ShouldNot(HaveOccurred())
 		})
 	})
 
@@ -350,21 +377,6 @@ func findIrqBalanceBannedCPUsVarFromConf(conf string) string {
 		return line
 	}
 	return ""
-}
-
-func makeBackupForFile(node *corev1.Node, path string) func() {
-	fullPath := filepath.Join("/", "rootfs", path)
-	savePath := fullPath + ".save"
-
-	out, err := nodes.ExecCommandOnNode([]string{"/usr/bin/cp", "-v", fullPath, savePath}, node)
-	ExpectWithOffset(1, err).ToNot(HaveOccurred())
-	fmt.Fprintf(GinkgoWriter, "%s", out)
-
-	return func() {
-		out, err := nodes.ExecCommandOnNode([]string{"/usr/bin/mv", "-v", savePath, fullPath}, node)
-		Expect(err).ToNot(HaveOccurred())
-		fmt.Fprintf(GinkgoWriter, "%s", out)
-	}
 }
 
 func pickNodeIdx(nodes []corev1.Node) int {
