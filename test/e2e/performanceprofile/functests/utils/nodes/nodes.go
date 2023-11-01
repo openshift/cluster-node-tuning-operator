@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,6 +39,7 @@ const (
 
 const (
 	sysDevicesOnlineCPUs = "/sys/devices/system/cpu/online"
+	cgroupRoot           = "/rootfs/sys/fs/cgroup"
 )
 
 // NumaNodes defines cpus in each numa node
@@ -539,4 +541,31 @@ func GetNodeInterfaces(node corev1.Node) ([]NodeInterface, error) {
 		nodeInterfaces = append(nodeInterfaces, *nodeInterface)
 	}
 	return nodeInterfaces, err
+}
+
+// GetCgroupFs retrieves the version of the cgroup subsystem on a node.
+func GetCgroupFs(node *corev1.Node) (string, error) {
+	// Command to check cgroup version.
+	cgroupFsCheckCmd := []string{"stat", "-fc", "%T", cgroupRoot}
+	version, err := ExecCommandOnMachineConfigDaemon(node, cgroupFsCheckCmd)
+	if err != nil {
+		return "", err
+	}
+	cgroupFs := strings.TrimSpace(string(version))
+	return cgroupFs, nil
+}
+
+//GetCgroupv1ControllerPath Return container cgroup directory
+func GetCgroupv1ControllerPath(node *corev1.Node, cgroupcontroller string, containerID string, sno bool) string {
+	var cpusetCtlrPath, containerCgroup string
+	var err error
+	cpusetCtlrPath = filepath.Join(cgroupRoot, cgroupcontroller)
+	Eventually(func() string {
+		cmd := []string{"/bin/bash", "-c", fmt.Sprintf("find %s -name *%s*", cpusetCtlrPath, containerID)}
+		containerCgroup, err = ExecCommandOnNode(cmd, node)
+		Expect(err).ToNot(HaveOccurred(), "failed to run %s cmd", cmd)
+		return containerCgroup
+	}, cluster.ComputeTestTimeout(testTimeout*time.Second, sno), testPollInterval*time.Second).ShouldNot(BeEmpty(),
+		fmt.Sprintf("cannot find cgroup for container %q", containerID))
+	return containerCgroup
 }
