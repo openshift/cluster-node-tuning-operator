@@ -123,7 +123,7 @@ func operatorRun() {
 	restConfig := ctrl.GetConfigOrDie()
 	le := util.GetLeaderElectionConfig(restConfig, enableLeaderElection)
 	mgr, err := ctrl.NewManager(rest.AddUserAgent(ctrl.GetConfigOrDie(), version.OperatorFilename), ctrl.Options{
-		Cache:                         cache.Options{Namespaces: namespaces}, //nolint:staticcheck
+		Cache:                         cache.Options{Namespaces: namespaces},
 		Scheme:                        scheme,
 		LeaderElection:                enableLeaderElection,
 		LeaderElectionID:              config.OperatorLockName,
