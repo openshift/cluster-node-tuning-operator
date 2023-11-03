@@ -168,7 +168,7 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[stri
 		return "", nil, nil, operand, fmt.Errorf("failed to list Tuned: %v", err)
 	}
 
-	for _, recommend := range tunedRecommend(tunedList) {
+	for _, recommend := range TunedRecommend(tunedList) {
 		var (
 			pools []*mcfgv1.MachineConfigPool
 			node  *corev1.Node
@@ -257,7 +257,7 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (string
 	}
 	tunedList = append(tunedList, defaultTuned)
 
-	for _, recommend := range tunedRecommend(tunedList) {
+	for _, recommend := range TunedRecommend(tunedList) {
 		// Start with node/pod label based matching
 		if recommend.Match != nil && pc.profileMatches(recommend.Match, nodeName) {
 			klog.V(3).Infof("calculateProfileHyperShift: node / pod label matching used for node: %s, tunedProfileName: %s, nodePoolName: %s, operand: %v", nodeName, *recommend.Profile, "", recommend.Operand)
@@ -512,7 +512,7 @@ func (pc *ProfileCalculator) tunedUsesPodLabels(match []tunedv1.TunedMatch) bool
 
 // tunedsUseNodeLabels returns true if any of the Tuned CRs uses Node labels.
 func (pc *ProfileCalculator) tunedsUseNodeLabels(tunedSlice []*tunedv1.Tuned) bool {
-	for _, recommend := range tunedRecommend(tunedSlice) {
+	for _, recommend := range TunedRecommend(tunedSlice) {
 		if pc.tunedUsesNodeLabels(recommend.Match) {
 			return true
 		}
@@ -522,7 +522,7 @@ func (pc *ProfileCalculator) tunedsUseNodeLabels(tunedSlice []*tunedv1.Tuned) bo
 
 // tunedsUsePodLabels returns true if any of the Tuned CRs uses Pod labels.
 func (pc *ProfileCalculator) tunedsUsePodLabels(tunedSlice []*tunedv1.Tuned) bool {
-	for _, recommend := range tunedRecommend(tunedSlice) {
+	for _, recommend := range TunedRecommend(tunedSlice) {
 		if pc.tunedUsesPodLabels(recommend.Match) {
 			return true
 		}
@@ -537,9 +537,9 @@ func (pc *ProfileCalculator) getNodePoolNameForNode(node *corev1.Node) (string, 
 	return nodePoolName, nil
 }
 
-// tunedRecommend returns a priority-sorted TunedRecommend slice out of
+// TunedRecommend returns a priority-sorted TunedRecommend slice out of
 // a slice of Tuned objects for profile-calculation purposes.
-func tunedRecommend(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedRecommend {
+func TunedRecommend(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedRecommend {
 	var recommendAll []tunedv1.TunedRecommend
 
 	// Tuned profiles should have unique priority across all Tuned CRs and users

@@ -782,7 +782,7 @@ func (c *Controller) syncMachineConfig(pools []*mcfgv1.MachineConfigPool, labels
 		kernelArguments []string
 	)
 
-	name := getMachineConfigNameForPools(pools)
+	name := GetMachineConfigNameForPools(pools)
 	nodes, err := c.pc.getNodesForPool(pools[0])
 	if err != nil {
 		return err
@@ -812,18 +812,18 @@ func (c *Controller) syncMachineConfig(pools []*mcfgv1.MachineConfigPool, labels
 				klog.V(2).Infof("not creating a MachineConfig with empty kernelArguments")
 				return nil
 			}
-			mc = newMachineConfig(name, annotations, labels, kernelArguments)
+			mc = NewMachineConfig(name, annotations, labels, kernelArguments)
 			_, err = c.clients.MC.MachineconfigurationV1().MachineConfigs().Create(context.TODO(), mc, metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to create MachineConfig %s: %v", mc.ObjectMeta.Name, err)
 			}
-			klog.Infof("created MachineConfig %s with%s", mc.ObjectMeta.Name, machineConfigGenerationLogLine(len(bootcmdline) != 0, bootcmdline))
+			klog.Infof("created MachineConfig %s with%s", mc.ObjectMeta.Name, MachineConfigGenerationLogLine(len(bootcmdline) != 0, bootcmdline))
 			return nil
 		}
 		return err
 	}
 
-	mcNew := newMachineConfig(name, annotations, labels, kernelArguments)
+	mcNew := NewMachineConfig(name, annotations, labels, kernelArguments)
 
 	kernelArgsEq := util.StringSlicesEqual(mc.Spec.KernelArguments, kernelArguments)
 	if kernelArgsEq {
@@ -836,7 +836,7 @@ func (c *Controller) syncMachineConfig(pools []*mcfgv1.MachineConfigPool, labels
 	mc.Spec.KernelArguments = kernelArguments
 	mc.Spec.Config = mcNew.Spec.Config
 
-	l := machineConfigGenerationLogLine(!kernelArgsEq, bootcmdline)
+	l := MachineConfigGenerationLogLine(!kernelArgsEq, bootcmdline)
 	klog.V(2).Infof("syncMachineConfig(): updating MachineConfig %s with%s", mc.ObjectMeta.Name, l)
 	_, err = c.clients.MC.MachineconfigurationV1().MachineConfigs().Update(context.TODO(), mc, metav1.UpdateOptions{})
 	if err != nil {
@@ -900,7 +900,7 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 				klog.V(2).Infof("not creating a MachineConfig with empty kernelArguments")
 				return nil
 			}
-			mc := newMachineConfig(mcName, annotations, nil, kernelArguments)
+			mc := NewMachineConfig(mcName, annotations, nil, kernelArguments)
 
 			// put the MC into a ConfigMap and create that instead
 			mcConfigMap, err = newConfigMapForMachineConfig(configMapName, nodePoolName, mc)
@@ -912,7 +912,7 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 			if err != nil {
 				return fmt.Errorf("failed to create ConfigMap %s for MachineConfig %s: %v", configMapName, mc.ObjectMeta.Name, err)
 			}
-			klog.Infof("created ConfigMap %s for MachineConfig %s with%s", configMapName, mc.ObjectMeta.Name, machineConfigGenerationLogLine(len(bootcmdline) != 0, bootcmdline))
+			klog.Infof("created ConfigMap %s for MachineConfig %s with%s", configMapName, mc.ObjectMeta.Name, MachineConfigGenerationLogLine(len(bootcmdline) != 0, bootcmdline))
 			return nil
 		}
 		return err
@@ -926,7 +926,7 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 		return nil
 	}
 
-	mcNew := newMachineConfig(mcName, annotations, nil, kernelArguments)
+	mcNew := NewMachineConfig(mcName, annotations, nil, kernelArguments)
 
 	// Compare kargs between existing and new mcfg
 	kernelArgsEq := util.StringSlicesEqual(mc.Spec.KernelArguments, kernelArguments)
@@ -951,7 +951,7 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 	mc.Spec.KernelArguments = kernelArguments
 	mc.Spec.Config = mcNew.Spec.Config
 
-	l := machineConfigGenerationLogLine(!kernelArgsEq, bootcmdline)
+	l := MachineConfigGenerationLogLine(!kernelArgsEq, bootcmdline)
 	klog.V(2).Infof("syncMachineConfig(): updating MachineConfig %s with%s", mc.ObjectMeta.Name, l)
 
 	newData, err := serializeMachineConfig(mc)
@@ -1078,7 +1078,7 @@ func (c *Controller) getMachineConfigNamesForTuned() (map[string]bool, error) {
 
 	mcNames := map[string]bool{}
 
-	for _, recommend := range tunedRecommend(tunedList) {
+	for _, recommend := range TunedRecommend(tunedList) {
 		if recommend.Profile == nil || recommend.MachineConfigLabels == nil {
 			continue
 		}
@@ -1087,7 +1087,7 @@ func (c *Controller) getMachineConfigNamesForTuned() (map[string]bool, error) {
 		if err != nil {
 			return nil, err
 		}
-		mcName := getMachineConfigNameForPools(pools)
+		mcName := GetMachineConfigNameForPools(pools)
 
 		mcNames[mcName] = true
 	}

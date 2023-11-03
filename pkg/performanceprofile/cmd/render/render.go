@@ -31,6 +31,7 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -72,7 +73,7 @@ func render(inputDir, outputDir string) error {
 	klog.Info("Rendering files into: ", outputDir)
 
 	// Read asset directory fileInfo
-	filePaths, err := listFiles(inputDir)
+	filePaths, err := util.ListFiles(inputDir)
 	klog.V(4).Infof("listed files: %v", filePaths)
 	if err != nil {
 		return err
@@ -99,7 +100,7 @@ func render(inputDir, outputDir string) error {
 		}
 		defer file.Close()
 
-		manifests, err := parseManifests(file.Name(), file)
+		manifests, err := util.ParseManifests(file.Name(), file)
 		if err != nil {
 			return fmt.Errorf("error parsing manifests from %s: %w", file.Name(), err)
 		}

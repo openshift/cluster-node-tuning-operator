@@ -90,6 +90,24 @@ const (
 // Types
 type Bits uint8
 
+type Daemon struct {
+	// reloading is true during the TuneD daemon reload.
+	reloading bool
+	// reloaded is true immediately after the TuneD daemon finished reloading.
+	// and the node Profile k8s object's Status needs to be set for the operator;
+	// it is set to false on successful Profile update.
+	reloaded bool
+	// debugging flag
+	debug bool
+	// bit/set representaton of Profile status conditions to report back via API.
+	status Bits
+	// stderr log from TuneD daemon to report back via API.
+	stderr string
+	// stopping is true while the controller tries to stop the TuneD daemon.
+	stopping bool
+	// the TuneD profile we wish to be applied.
+	recommendedProfile string
+}
 type Controller struct {
 	kubeconfig *restclient.Config
 	kubeclient kubernetes.Interface
@@ -115,24 +133,7 @@ type Controller struct {
 		daemon bool
 	}
 
-	daemon struct {
-		// reloading is true during the TuneD daemon reload.
-		reloading bool
-		// reloaded is true immediately after the TuneD daemon finished reloading.
-		// and the node Profile k8s object's Status needs to be set for the operator;
-		// it is set to false on successful Profile update.
-		reloaded bool
-		// debugging flag
-		debug bool
-		// bit/set representaton of Profile status conditions to report back via API.
-		status Bits
-		// stderr log from TuneD daemon to report back via API.
-		stderr string
-		// stopping is true while the controller tries to stop the TuneD daemon.
-		stopping bool
-		// the TuneD profile we wish to be applied.
-		recommendedProfile string
-	}
+	daemon Daemon
 
 	tunedCmd     *exec.Cmd       // external command (tuned) being prepared or run
 	tunedExit    chan bool       // bi-directional channel to signal and register TuneD daemon exit
@@ -305,7 +306,7 @@ func (c *Controller) sync(key wqKey) error {
 		}
 
 		c.daemon.recommendedProfile = profile.Spec.Config.TunedProfile
-		err = tunedRecommendFileWrite(c.daemon.recommendedProfile)
+		err = TunedRecommendFileWrite(c.daemon.recommendedProfile)
 		if err != nil {
 			return err
 		}
@@ -363,18 +364,18 @@ func profilesEqual(profileFile string, profileData string) bool {
 	return profileData == string(content)
 }
 
-// profilesExtract extracts TuneD daemon profiles to the daemon configuration directory.
+// ProfilesExtract extracts TuneD daemon profiles to the daemon configuration directory.
 // Returns:
 //   - True if the data in the to-be-extracted recommended profile or the profiles being
 //     included from the current recommended profile have changed.
 //   - A map with successfully extracted TuneD profile names.
 //   - A map with names of TuneD profiles the current TuneD recommended profile depends on.
 //   - Error if any or nil.
-func profilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string) (bool, map[string]bool, map[string]bool, error) {
+func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string) (bool, map[string]bool, map[string]bool, error) {
 	var (
 		change bool
 	)
-	klog.Infof("extracting TuneD profiles")
+	klog.Info("profilesExtract(): extracting TuneD profiles")
 
 	// Get a list of TuneD profiles names the recommended profile depends on.
 	recommendedProfileDeps := profileDepends(recommendedProfile)
@@ -431,7 +432,7 @@ func profilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string)
 //     included from the current recommended profile have changed.
 //   - Error if any or nil.
 func profilesSync(profiles []tunedv1.TunedProfile, recommendedProfile string) (bool, error) {
-	change, extractedNew, recommendedProfileDeps, err := profilesExtract(profiles, recommendedProfile)
+	change, extractedNew, recommendedProfileDeps, err := ProfilesExtract(profiles, recommendedProfile)
 	if err != nil {
 		return change, err
 	}
@@ -492,7 +493,7 @@ func openshiftTunedPidFileWrite() error {
 	return nil
 }
 
-func tunedRecommendFileWrite(profileName string) error {
+func TunedRecommendFileWrite(profileName string) error {
 	klog.V(2).Infof("tunedRecommendFileWrite(): %s", profileName)
 	if err := util.Mkdir(tunedRecommendDir); err != nil {
 		return fmt.Errorf("failed to create directory %q: %v", tunedRecommendDir, err)
@@ -534,11 +535,7 @@ func overridenSysctl(data string) string {
 }
 
 func (c *Controller) tunedCreateCmd() *exec.Cmd {
-	args := []string{"--no-dbus"}
-	if c.daemon.debug {
-		args = append(args, "--debug")
-	}
-	return exec.Command("/usr/sbin/tuned", args...)
+	return TunedCreateCmd(c.daemon.debug)
 }
 
 func (c *Controller) tunedRun() {
@@ -548,85 +545,19 @@ func (c *Controller) tunedRun() {
 		close(c.tunedExit)
 	}()
 
-	cmdReader, err := c.tunedCmd.StderrPipe()
+	onDaemonReload := func() {
+		klog.V(2).Infof("profile applied or reload failed, stopping the TuneD watcher")
+		c.tunedTimeout = tunedInitialTimeout // initialize the timeout
+		c.daemon.status &= ^scTimeout        // clear the scTimeout status bit
+		c.tunedTicker.Stop()                 // profile applied or reload failed, stop the TuneD watcher
+
+		// Notify the event processor that the TuneD daemon finished reloading.
+		c.wqTuneD.Add(wqKey{kind: wqKindDaemon})
+	}
+
+	err := TunedRun(c.tunedCmd, &c.daemon, onDaemonReload)
 	if err != nil {
-		klog.Errorf("error creating StderrPipe for tuned: %v", err)
-		return
-	}
-
-	scanner := bufio.NewScanner(cmdReader)
-	go func() {
-		for scanner.Scan() {
-			l := scanner.Text()
-
-			fmt.Printf("%s\n", l)
-
-			if c.daemon.stopping {
-				// We have decided to stop TuneD.  Apart from showing the logs it is
-				// now unnecessary/undesirable to perform any of the following actions.
-				// The undesirability comes from extra processing which will come if
-				// TuneD manages to "get unstuck" during this phase before it receives
-				// SIGKILL (note the time window between SIGTERM/SIGKILL).
-				continue
-			}
-
-			profileApplied := strings.Contains(l, " tuned.daemon.daemon: static tuning from profile ") && strings.Contains(l, " applied")
-			reloadFailed := strings.Contains(l, " tuned.daemon.controller: Failed to reload TuneD: ")
-
-			if profileApplied {
-				c.daemon.status |= scApplied
-			}
-
-			strIndex := strings.Index(l, " WARNING ")
-			if strIndex >= 0 {
-				c.daemon.status |= scWarn
-				prevError := ((c.daemon.status & scError) != 0)
-				if !prevError { // don't overwrite an error message
-					c.daemon.stderr = l[strIndex:] // trim timestamp from log
-				}
-			}
-
-			strIndex = strings.Index(l, " ERROR ")
-			if strIndex >= 0 {
-				c.daemon.status |= scError
-				c.daemon.stderr = l[strIndex:] // trim timestamp from log
-			}
-
-			sysctl := overridenSysctl(l)
-			if sysctl != "" {
-				c.daemon.status |= scSysctlOverride
-				c.daemon.stderr = sysctl
-			}
-
-			if c.daemon.reloading {
-				c.daemon.reloading = !profileApplied && !reloadFailed
-				c.daemon.reloaded = !c.daemon.reloading
-				if c.daemon.reloaded {
-					klog.V(2).Infof("profile applied or reload failed, stopping the TuneD watcher")
-					c.tunedTimeout = tunedInitialTimeout // initialize the timeout
-					c.daemon.status &= ^scTimeout        // clear the scTimeout status bit
-					c.tunedTicker.Stop()                 // profile applied or reload failed, stop the TuneD watcher
-
-					// Notify the event processor that the TuneD daemon finished reloading.
-					c.wqTuneD.Add(wqKey{kind: wqKindDaemon})
-				}
-			}
-		}
-	}()
-
-	c.daemon.reloading = true
-	// Clear the set out of which Profile status conditions are created. Keep timeout condition if already set.
-	c.daemon.status &= scTimeout
-	c.daemon.stderr = ""
-	if err = c.tunedCmd.Start(); err != nil {
-		klog.Errorf("error starting tuned: %v", err)
-		return
-	}
-
-	if err = c.tunedCmd.Wait(); err != nil {
-		// The command exited with non 0 exit status, e.g. terminated by a signal.
-		klog.Errorf("error waiting for tuned: %v", err)
-		return
+		klog.Errorf("Error while running tuned %v", err)
 	}
 }
 
@@ -746,7 +677,7 @@ func getActiveProfile() (string, error) {
 	return responseString, nil
 }
 
-func getBootcmdline() (string, error) {
+func GetBootcmdline() (string, error) {
 	var responseString = ""
 
 	f, err := os.Open(tunedBootcmdlineFile)
@@ -956,7 +887,7 @@ func (c *Controller) updateTunedProfile() (err error) {
 		bootcmdline string
 	)
 
-	if bootcmdline, err = getBootcmdline(); err != nil {
+	if bootcmdline, err = GetBootcmdline(); err != nil {
 		// This should never happen unless something is seriously wrong (e.g. TuneD
 		// daemon no longer uses tunedBootcmdlineFile).  Do not continue.
 		return fmt.Errorf("unable to get kernel command-line parameters: %v", err)

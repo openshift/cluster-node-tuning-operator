@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package render
+package util
 
 import (
 	"bytes"
@@ -51,9 +51,9 @@ func (m *manifest) UnmarshalJSON(in []byte) error {
 	return nil
 }
 
-// parseManifests parses a YAML or JSON document that may contain one or more
+// ParseManifests parses a YAML or JSON document that may contain one or more
 // kubernetes resources.
-func parseManifests(filename string, r io.Reader) ([]manifest, error) {
+func ParseManifests(filename string, r io.Reader) ([]manifest, error) {
 	d := yamlutil.NewYAMLOrJSONDecoder(r, 1024)
 	var manifests []manifest
 	for {
@@ -72,10 +72,14 @@ func parseManifests(filename string, r io.Reader) ([]manifest, error) {
 	}
 }
 
-func listFiles(dirPaths string) ([]string, error) {
+func ListFiles(dirPaths string) ([]string, error) {
 	dirs := strings.Split(dirPaths, ",")
+	return ListFilesFromMultiplePaths(dirs)
+}
+
+func ListFilesFromMultiplePaths(dirPaths []string) ([]string, error) {
 	results := []string{}
-	for _, dir := range dirs {
+	for _, dir := range dirPaths {
 		err := filepath.WalkDir(dir,
 			func(path string, info os.DirEntry, err error) error {
 				if err != nil {
