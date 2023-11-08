@@ -87,6 +87,7 @@ func buildServer(port int) *http.Server {
 				tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
 				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
 			}
+			tlsConfig.NextProtos = []string{"http/1.1"} // CVE-2023-44487
 		} else {
 			klog.Error("failed to parse %q", authCAFile)
 		}
