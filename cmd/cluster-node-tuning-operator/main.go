@@ -123,7 +123,7 @@ func operatorRun() {
 	restConfig := ctrl.GetConfigOrDie()
 	le := util.GetLeaderElectionConfig(restConfig, enableLeaderElection)
 	mgr, err := ctrl.NewManager(rest.AddUserAgent(ctrl.GetConfigOrDie(), version.OperatorFilename), ctrl.Options{
-		NewCache:                      cache.MultiNamespacedCacheBuilder(namespaces), //nolint:staticcheck
+		Cache:                         cache.Options{Namespaces: namespaces},
 		Scheme:                        scheme,
 		LeaderElection:                enableLeaderElection,
 		LeaderElectionID:              config.OperatorLockName,
@@ -132,7 +132,6 @@ func operatorRun() {
 		LeaseDuration:                 &le.LeaseDuration.Duration,
 		RetryPeriod:                   &le.RetryPeriod.Duration,
 		RenewDeadline:                 &le.RenewDeadline.Duration,
-		Namespace:                     ntoNamespace,
 		WebhookServer: webhook.NewServer(webhook.Options{
 			Port:     webhookPort,
 			CertDir:  webhookCertDir,
