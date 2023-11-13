@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -39,12 +40,25 @@ func buildServer(port int) *http.Server {
 		},
 	)
 
+	tlsConfig := &tls.Config{}
+	tlsConfig.CipherSuites = []uint16{
+		// Drop
+		// - 64-bit block cipher 3DES as it is vulnerable to SWEET32 attack.
+		// - CBC encryption method.
+		// - RSA key exchange.
+		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+		tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+	}
+	tlsConfig.NextProtos = []string{"http/1.1"} // CVE-2023-44487
+
 	bindAddr := fmt.Sprintf(":%d", port)
 	router := http.NewServeMux()
 	router.Handle("/metrics", handler)
 	srv := &http.Server{
-		Addr:    bindAddr,
-		Handler: router,
+		Addr:      bindAddr,
+		Handler:   router,
+		TLSConfig: tlsConfig,
 	}
 
 	return srv
