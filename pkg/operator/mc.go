@@ -1,22 +1,16 @@
 package operator
 
 import (
-	"encoding/json"
 	"fmt"
-	"reflect"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 
-	ign3error "github.com/coreos/ignition/v2/config/shared/errors"
-	ign3 "github.com/coreos/ignition/v2/config/v3_2"
-	ign3types "github.com/coreos/ignition/v2/config/v3_2/types"
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
 
@@ -25,31 +19,12 @@ const (
 	MachineConfigPrefix                       string = "50-nto"
 )
 
-func newMachineConfig(name string, annotations map[string]string, labels map[string]string, kernelArguments []string,
-	ignFiles []ign3types.File, ignUnits []ign3types.Unit) *mcfgv1.MachineConfig {
+func newMachineConfig(name string, annotations map[string]string, labels map[string]string, kernelArguments []string) *mcfgv1.MachineConfig {
 	if labels == nil {
 		labels = map[string]string{}
 	}
 	if annotations == nil {
 		annotations = map[string]string{}
-	}
-
-	ignTypesCfg := ign3types.Config{
-		Ignition: ign3types.Ignition{
-			Version: ign3types.MaxVersion.String(),
-		},
-	}
-	if ignFiles != nil {
-		ignTypesCfg.Storage = ign3types.Storage{Files: ignFiles}
-	}
-	if ignUnits != nil {
-		ignTypesCfg.Systemd = ign3types.Systemd{Units: ignUnits}
-	}
-
-	rawNewIgnCfg, err := json.Marshal(ignTypesCfg)
-	if err != nil {
-		// This should never happen
-		panic(err)
 	}
 
 	return &mcfgv1.MachineConfig{
@@ -63,69 +38,9 @@ func newMachineConfig(name string, annotations map[string]string, labels map[str
 			Labels:      labels,
 		},
 		Spec: mcfgv1.MachineConfigSpec{
-			Config: runtime.RawExtension{
-				Raw: rawNewIgnCfg,
-			},
 			KernelArguments: kernelArguments,
 		},
 	}
-}
-
-// IgnParseWrapper parses rawIgn for V3.2 ignition config and returns
-// a V3.2 Config or an error.
-//
-//nolint:unused
-func ignParseWrapper(rawIgn []byte) (interface{}, error) {
-	ignCfgV3_2, rptV3_2, errV3_2 := ign3.Parse(rawIgn)
-	if errV3_2 == nil && !rptV3_2.IsFatal() {
-		return ignCfgV3_2, nil
-	}
-	if errV3_2.Error() == ign3error.ErrUnknownVersion.Error() {
-		// NTO handles NTO-created MachineConfigs only.  The first Ignition version
-		// used was 2.2.0 and only Ignition version was provided by the Ignition
-		// config.  Later a switch to 3.1.0 was made as we started support for
-		// Storage/Systemd types.  As of 3.2.0 it is safe to ignore this error and
-		// provide Ignition config with only Ignition version without pulling old
-		// ignition dependencies for unneeded parsing.  Existing Ignition configs
-		// will automatically be converted to the latest NTO-used Ignition version.
-		ignTypesCfg := ign3types.Config{
-			Ignition: ign3types.Ignition{
-				Version: ign3types.MaxVersion.String(),
-			},
-		}
-
-		return ignTypesCfg, nil
-	}
-	return ign3types.Config{}, fmt.Errorf("parsing Ignition config spec v3.2 failed with error: %v\nReport: %v", errV3_2, rptV3_2)
-}
-
-//nolint:unused
-func parseAndConvertConfig(rawIgn []byte) (ign3types.Config, error) {
-	ignconfigi, err := ignParseWrapper(rawIgn)
-	if err != nil {
-		return ign3types.Config{}, fmt.Errorf("failed to parse Ignition config: %v", err)
-	}
-
-	switch typedConfig := ignconfigi.(type) {
-	case ign3types.Config:
-		return ignconfigi.(ign3types.Config), nil
-	default:
-		return ign3types.Config{}, fmt.Errorf("unexpected type for ignition config: %v", typedConfig)
-	}
-}
-
-//nolint:unused
-func ignEqual(mcOld, mcNew *mcfgv1.MachineConfig) (bool, error) {
-	ignOld, err := parseAndConvertConfig(mcOld.Spec.Config.Raw)
-	if err != nil {
-		return false, fmt.Errorf("parsing old Ignition config failed with error: %v", err)
-	}
-	ignNew, err := parseAndConvertConfig(mcNew.Spec.Config.Raw)
-	if err != nil {
-		return false, fmt.Errorf("parsing new Ignition config failed with error: %v", err)
-	}
-
-	return reflect.DeepEqual(ignOld.Storage.Files, ignNew.Storage.Files) && reflect.DeepEqual(ignOld.Systemd.Units, ignNew.Systemd.Units), nil
 }
 
 func getMachineConfigNameForPools(pools []*mcfgv1.MachineConfigPool) string {
@@ -152,16 +67,6 @@ func getMachineConfigNameForPools(pools []*mcfgv1.MachineConfigPool) string {
 	sb.WriteString(sbPrimary.String())
 
 	return sb.String()
-}
-
-//nolint:unused
-func (pc *ProfileCalculator) getMachineCountForMachineConfigPool(mcpName string) (int32, error) {
-	mcp, err := pc.listers.MachineConfigPools.Get(mcpName)
-	if err != nil {
-		return 0, err
-	}
-
-	return mcp.Status.MachineCount, nil
 }
 
 // getPoolsForMachineConfigLabels chooses the MachineConfigPools that use MachineConfigs with labels 'mcLabels'.
@@ -306,17 +211,10 @@ func (pc *ProfileCalculator) getPrimaryPoolForNode(node *corev1.Node) (*mcfgv1.M
 	return pools[0], nil
 }
 
-func machineConfigGenerationLogLine(bIgn, bCmdline bool, bootcmdline string) string {
+func machineConfigGenerationLogLine(bCmdline bool, bootcmdline string) string {
 	var (
 		sb strings.Builder
 	)
-
-	if bIgn {
-		sb.WriteString(" ignition")
-		if bCmdline {
-			sb.WriteString(" and")
-		}
-	}
 
 	if bCmdline {
 		sb.WriteString(" kernel parameters: [")
