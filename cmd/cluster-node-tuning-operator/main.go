@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"os"
 	"path/filepath"
@@ -175,6 +176,7 @@ func operatorRun() {
 		webHookServer.CertDir = webhookCertDir
 		webHookServer.CertName = webhookCertName
 		webHookServer.KeyName = webhookKeyName
+		webHookServer.TLSOpts = []func(config *tls.Config){func(c *tls.Config) { c.NextProtos = []string{"http/1.1"} }} // CVE-2023-44487
 
 		if err = (&performancev1.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
 			klog.Exitf("unable to create PerformanceProfile v1 webhook: %v", err)
