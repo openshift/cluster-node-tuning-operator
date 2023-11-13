@@ -1836,6 +1836,7 @@ k8s.io/mount-utils
 k8s.io/utils/buffer
 k8s.io/utils/clock
 k8s.io/utils/clock/testing
+k8s.io/utils/cpuset
 k8s.io/utils/exec
 k8s.io/utils/inotify
 k8s.io/utils/integer

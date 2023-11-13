@@ -16,7 +16,7 @@ import (
 	igntypes "github.com/coreos/ignition/v2/config/v3_2/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
+	"k8s.io/utils/cpuset"
 	"k8s.io/utils/pointer"
 
 	apiconfigv1 "github.com/openshift/api/config/v1"

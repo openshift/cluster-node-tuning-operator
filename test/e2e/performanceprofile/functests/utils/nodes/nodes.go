@@ -19,7 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
-	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
+	"k8s.io/utils/cpuset"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 

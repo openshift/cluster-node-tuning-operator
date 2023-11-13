@@ -32,7 +32,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	k8syaml "k8s.io/apimachinery/pkg/util/yaml"
-	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
+	"k8s.io/utils/cpuset"
 
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	v1 "k8s.io/api/core/v1"

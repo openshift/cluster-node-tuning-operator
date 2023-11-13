@@ -12,7 +12,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
+	"k8s.io/utils/cpuset"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	. "github.com/onsi/ginkgo/v2"
