@@ -353,11 +353,11 @@ var _ = Describe("Controller", func() {
 			BeforeEach(func() {
 				var err error
 
-				mc, err = machineconfig.New(profile, &infra.Status.CPUPartitioning, "")
+				mc, err = machineconfig.New(profile, &components.MachineConfigOptions{PinningMode: &infra.Status.CPUPartitioning})
 				Expect(err).ToNot(HaveOccurred())
 
 				mcpSelectorKey, mcpSelectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
-				kc, err = kubeletconfig.New(profile, map[string]string{mcpSelectorKey: mcpSelectorValue})
+				kc, err = kubeletconfig.New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{mcpSelectorKey: mcpSelectorValue}})
 				Expect(err).ToNot(HaveOccurred())
 
 				tunedPerformance, err = tuned.NewNodePerformance(profile)
@@ -830,11 +830,11 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should remove all components and remove the finalizer on first reconcile loop", func() {
-			mc, err := machineconfig.New(profile, nil, "")
+			mc, err := machineconfig.New(profile, &components.MachineConfigOptions{})
 			Expect(err).ToNot(HaveOccurred())
 
 			mcpSelectorKey, mcpSelectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
-			kc, err := kubeletconfig.New(profile, map[string]string{mcpSelectorKey: mcpSelectorValue})
+			kc, err := kubeletconfig.New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{mcpSelectorKey: mcpSelectorValue}})
 			Expect(err).ToNot(HaveOccurred())
 
 			tunedPerformance, err := tuned.NewNodePerformance(profile)
@@ -978,7 +978,7 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should contain cpu partitioning files in machine config", func() {
-			mc, err := machineconfig.New(profile, &infra.Status.CPUPartitioning, "")
+			mc, err := machineconfig.New(profile, &components.MachineConfigOptions{PinningMode: &infra.Status.CPUPartitioning})
 			Expect(err).ToNot(HaveOccurred())
 			r := newFakeReconciler(profile, profileMCP, mc, infra, clusterOperator, nodeConfig, profileMC)
 
@@ -1069,7 +1069,7 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should run high-performance runtimes class with crun as container-runtime", func() {
-			mc, err := machineconfig.New(profile, &infra.Status.CPUPartitioning, "")
+			mc, err := machineconfig.New(profile, &components.MachineConfigOptions{PinningMode: &infra.Status.CPUPartitioning})
 			Expect(err).ToNot(HaveOccurred())
 
 			r := newFakeReconciler(profile, profileMCP, mc, infra, ctrcfg, clusterOperator, nodeConfig, profileMC)

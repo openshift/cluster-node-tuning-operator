@@ -472,7 +472,7 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	// apply components
-	result, err := r.applyComponents(instance, profileMCP, &pinningMode, ctrRuntime)
+	result, err := r.applyComponents(instance, &components.Options{ProfileMCP: profileMCP, MachineConfig: components.MachineConfigOptions{PinningMode: &pinningMode, DefaultRuntime: ctrRuntime}})
 	if err != nil {
 		klog.Errorf("failed to deploy performance profile %q components: %v", instance.Name, err)
 		r.Recorder.Eventf(instance, corev1.EventTypeWarning, "Creation failed", "Failed to create all components: %v", err)
@@ -619,13 +619,13 @@ func (r *PerformanceProfileReconciler) updateDegradedCondition(instance *perform
 	return reconcile.Result{}, conditionError
 }
 
-func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.PerformanceProfile, profileMCP *mcov1.MachineConfigPool, pinningMode *apiconfigv1.CPUPartitioningMode, defaultRuntime mcov1.ContainerRuntimeDefaultRuntime) (*reconcile.Result, error) {
+func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.PerformanceProfile, opts *components.Options) (*reconcile.Result, error) {
 	if profileutil.IsPaused(profile) {
 		klog.Infof("Ignoring reconcile loop for pause performance profile %s", profile.Name)
 		return nil, nil
 	}
 
-	components, err := manifestset.GetNewComponents(profile, profileMCP, pinningMode, defaultRuntime)
+	components, err := manifestset.GetNewComponents(profile, opts)
 	if err != nil {
 		return nil, err
 	}

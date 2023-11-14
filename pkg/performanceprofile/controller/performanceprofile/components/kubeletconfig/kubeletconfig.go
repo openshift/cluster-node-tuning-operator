@@ -43,7 +43,7 @@ const (
 )
 
 // New returns new KubeletConfig object for performance sensetive workflows
-func New(profile *performancev2.PerformanceProfile, profileMCPLabels map[string]string) (*machineconfigv1.KubeletConfig, error) {
+func New(profile *performancev2.PerformanceProfile, opts *components.KubeletConfigOptions) (*machineconfigv1.KubeletConfig, error) {
 	name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
 	kubeletConfig := &kubeletconfigv1beta1.KubeletConfiguration{}
 	if v, ok := profile.Annotations[experimentalKubeletSnippetAnnotation]; ok {
@@ -162,7 +162,7 @@ func New(profile *performancev2.PerformanceProfile, profileMCPLabels map[string]
 		},
 		Spec: machineconfigv1.KubeletConfigSpec{
 			MachineConfigPoolSelector: &metav1.LabelSelector{
-				MatchLabels: profileMCPLabels,
+				MatchLabels: opts.MachineConfigPoolSelector,
 			},
 			KubeletConfig: &runtime.RawExtension{
 				Raw: raw,
