@@ -339,7 +339,7 @@ var _ = Describe("Controller", func() {
 			BeforeEach(func() {
 				var err error
 
-				mc, err = machineconfig.New(profile, &infra.Status.CPUPartitioning, "")
+				mc, err = machineconfig.New(profile, &components.MachineConfigOptions{PinningMode: &infra.Status.CPUPartitioning})
 				Expect(err).ToNot(HaveOccurred())
 
 				mcpSelectorKey, mcpSelectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
@@ -787,7 +787,7 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should remove all components and remove the finalizer on first reconcile loop", func() {
-			mc, err := machineconfig.New(profile, nil, "")
+			mc, err := machineconfig.New(profile, &components.MachineConfigOptions{})
 			Expect(err).ToNot(HaveOccurred())
 
 			mcpSelectorKey, mcpSelectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
@@ -844,7 +844,7 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should contain cpu partitioning files in machine config", func() {
-			mc, err := machineconfig.New(profile, &infra.Status.CPUPartitioning, "")
+			mc, err := machineconfig.New(profile, &components.MachineConfigOptions{PinningMode: &infra.Status.CPUPartitioning})
 			Expect(err).ToNot(HaveOccurred())
 			r := newFakeReconciler(profile, profileMCP, mc, infra, clusterOperator)
 
@@ -935,7 +935,7 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should run high-performance runtimes class with crun as container-runtime", func() {
-			mc, err := machineconfig.New(profile, &infra.Status.CPUPartitioning, "")
+			mc, err := machineconfig.New(profile, &components.MachineConfigOptions{PinningMode: &infra.Status.CPUPartitioning})
 			Expect(err).ToNot(HaveOccurred())
 
 			r := newFakeReconciler(profile, profileMCP, mc, infra, ctrcfg, clusterOperator)

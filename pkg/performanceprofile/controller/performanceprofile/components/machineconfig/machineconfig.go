@@ -110,7 +110,7 @@ const (
 )
 
 // New returns new machine configuration object for performance sensitive workloads
-func New(profile *performancev2.PerformanceProfile, pinningMode *apiconfigv1.CPUPartitioningMode, defaultRuntime machineconfigv1.ContainerRuntimeDefaultRuntime) (*machineconfigv1.MachineConfig, error) {
+func New(profile *performancev2.PerformanceProfile, opts *components.MachineConfigOptions) (*machineconfigv1.MachineConfig, error) {
 	name := GetMachineConfigName(profile)
 	mc := &machineconfigv1.MachineConfig{
 		TypeMeta: metav1.TypeMeta{
@@ -124,7 +124,7 @@ func New(profile *performancev2.PerformanceProfile, pinningMode *apiconfigv1.CPU
 		Spec: machineconfigv1.MachineConfigSpec{},
 	}
 
-	ignitionConfig, err := getIgnitionConfig(profile, pinningMode, defaultRuntime)
+	ignitionConfig, err := getIgnitionConfig(profile, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +154,7 @@ func GetMachineConfigName(profile *performancev2.PerformanceProfile) string {
 	return fmt.Sprintf("50-%s", name)
 }
 
-func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *apiconfigv1.CPUPartitioningMode, defaultRuntime machineconfigv1.ContainerRuntimeDefaultRuntime) (*igntypes.Config, error) {
+func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *components.MachineConfigOptions) (*igntypes.Config, error) {
 	var scripts []string
 	ignitionConfig := &igntypes.Config{
 		Ignition: igntypes.Ignition{
@@ -185,7 +185,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 
 	// add crio config snippet under the node /etc/crio/crio.conf.d/ directory
 	crioConfdRuntimesMode := 0644
-	crioConfigSnippetContent, err := renderCrioConfigSnippet(profile, defaultRuntime, filepath.Join("configs", crioRuntimesConfig))
+	crioConfigSnippetContent, err := renderCrioConfigSnippet(profile, opts.DefaultRuntime, filepath.Join("configs", crioRuntimesConfig))
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +260,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 
 	if profile.Spec.CPU != nil && profile.Spec.CPU.Reserved != nil {
 		// Workload partitioning specific configuration
-		clusterIsPinned := pinningMode != nil && *pinningMode == apiconfigv1.CPUPartitioningAllNodes
+		clusterIsPinned := opts.PinningMode != nil && *opts.PinningMode == apiconfigv1.CPUPartitioningAllNodes
 		if clusterIsPinned {
 			crioPartitionFileData, err := renderManagementCPUPinningConfig(profile.Spec.CPU, crioPartitioningConfig)
 			if err != nil {

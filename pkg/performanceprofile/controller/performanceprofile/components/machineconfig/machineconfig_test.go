@@ -89,7 +89,7 @@ var _ = Describe("Machine Config", func() {
 			profile := testutils.NewPerformanceProfile("test")
 			profile.Spec.HugePages.Pages[0].Node = pointer.Int32Ptr(0)
 
-			_, err := New(profile, nil, "")
+			_, err := New(profile, &components.MachineConfigOptions{})
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
@@ -102,7 +102,7 @@ var _ = Describe("Machine Config", func() {
 			profile.Spec.HugePages.Pages[0].Node = pointer.Int32Ptr(0)
 
 			labelKey, labelValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigLabel)
-			mc, err := New(profile, nil, "")
+			mc, err := New(profile, &components.MachineConfigOptions{})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(mc.Spec.KernelType).To(Equal(MCKernelRT))
 

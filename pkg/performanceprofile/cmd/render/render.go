@@ -29,6 +29,7 @@ import (
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	performanceprofilecomponents "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
 
@@ -175,7 +176,13 @@ func render(inputDir, outputDir string) error {
 			return fmt.Errorf("render: could not determine high-performance runtime class container-runtime for profile %q; %w", pp.Name, err)
 		}
 
-		components, err := manifestset.GetNewComponents(pp, mcp, partitioningMode, defaultRuntime)
+		components, err := manifestset.GetNewComponents(pp,
+			&performanceprofilecomponents.Options{
+				ProfileMCP: mcp,
+				MachineConfig: performanceprofilecomponents.MachineConfigOptions{
+					PinningMode:    partitioningMode,
+					DefaultRuntime: defaultRuntime},
+			})
 		if err != nil {
 			return err
 		}
