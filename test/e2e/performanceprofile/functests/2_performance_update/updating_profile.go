@@ -593,8 +593,13 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("Updating the performance profile")
 				profiles.UpdateWithRetry(profile)
 
-				By("Applying changes in performance profile and waiting until mcp will start updating")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+				expectedMCPUpdatingStatus := corev1.ConditionTrue
+				if isDefaultWorkloadHints(*initialProfile.Spec.WorkloadHints) {
+					expectedMCPUpdatingStatus = corev1.ConditionFalse
+				}
+
+				By(fmt.Sprintf("Expected MCP updating status %s", expectedMCPUpdatingStatus))
+				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, expectedMCPUpdatingStatus)
 
 				By("Waiting for MCP being updated")
 				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
@@ -2233,4 +2238,11 @@ func removeLabels(nodeSelector map[string]string, targetNode *corev1.Node) {
 
 	By(fmt.Sprintf("Waiting when MCP %q complete updates and verifying that node reverted back configuration", testutils.RoleWorker))
 	mcps.WaitForCondition(testutils.RoleWorker, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+}
+
+func isDefaultWorkloadHints(wlh performancev2.WorkloadHints) bool {
+	if *wlh.HighPowerConsumption || *wlh.PerPodPowerManagement || !*wlh.RealTime {
+		return false
+	}
+	return true
 }
