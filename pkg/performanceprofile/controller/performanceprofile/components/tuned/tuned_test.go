@@ -13,7 +13,7 @@ import (
 	"gopkg.in/ini.v1"
 	"sigs.k8s.io/yaml"
 
-	cpuset "k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
+	cpuset "k8s.io/utils/cpuset"
 	"k8s.io/utils/pointer"
 )
 

@@ -10,7 +10,7 @@ import (
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
+	"k8s.io/utils/cpuset"
 	"k8s.io/utils/pointer"
 
 	assets "github.com/openshift/cluster-node-tuning-operator/assets/performanceprofile"
