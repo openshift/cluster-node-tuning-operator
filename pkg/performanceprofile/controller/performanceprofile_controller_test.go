@@ -15,6 +15,7 @@ import (
 
 	igntypes "github.com/coreos/ignition/config/v2_2/types"
 	apiconfigv1 "github.com/openshift/api/config/v1"
+	configv1 "github.com/openshift/api/config/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
@@ -1162,7 +1163,7 @@ func newFakeReconciler(profile client.Object, initObjects ...runtime.Object) *Pe
 	initObjects = append(initObjects, profile)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithStatusSubresource(profile).WithRuntimeObjects(initObjects...).WithInterceptorFuncs(MCPInterceptor()).Build()
 	fakeRecorder := record.NewFakeRecorder(10)
-	fakeFeatureGateAccessor := featuregates.NewHardcodedFeatureGateAccessForTesting(nil, nil, make(chan struct{}), nil)
+	fakeFeatureGateAccessor := featuregates.NewHardcodedFeatureGateAccessForTesting([]configv1.FeatureGateName{configv1.FeatureGateMixedCPUsAllocation}, nil, make(chan struct{}), nil)
 	fg, _ := fakeFeatureGateAccessor.CurrentFeatureGates()
 	return &PerformanceProfileReconciler{
 		Client:      fakeClient,

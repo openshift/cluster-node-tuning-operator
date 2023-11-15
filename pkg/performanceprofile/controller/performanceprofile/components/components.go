@@ -27,10 +27,12 @@ type Options struct {
 }
 
 type MachineConfigOptions struct {
-	PinningMode    *apiconfigv1.CPUPartitioningMode
-	DefaultRuntime mcov1.ContainerRuntimeDefaultRuntime
+	PinningMode      *apiconfigv1.CPUPartitioningMode
+	DefaultRuntime   mcov1.ContainerRuntimeDefaultRuntime
+	MixedCPUsEnabled bool
 }
 
 type KubeletConfigOptions struct {
 	MachineConfigPoolSelector map[string]string
+	MixedCPUsEnabled          bool
 }

@@ -1,0 +1,8 @@
+{{- /*
+File Location On Host: /etc/kubernetes/openshift-workload-mixed-cpus
+*/}}
+{
+  "shared_cpus": {
+     "containers_limit": {{.ContainersLimit}}
+  }
+}

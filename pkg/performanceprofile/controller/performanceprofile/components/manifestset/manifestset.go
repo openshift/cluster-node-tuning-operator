@@ -63,7 +63,11 @@ func GetNewComponents(profile *performancev2.PerformanceProfile, opts *component
 		return nil, err
 	}
 
-	kc, err := kubeletconfig.New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: machineConfigPoolSelector})
+	kc, err := kubeletconfig.New(profile,
+		&components.KubeletConfigOptions{
+			MachineConfigPoolSelector: machineConfigPoolSelector,
+			MixedCPUsEnabled:          opts.MachineConfig.MixedCPUsEnabled,
+		})
 	if err != nil {
 		return nil, err
 	}
