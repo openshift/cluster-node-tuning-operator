@@ -21,7 +21,10 @@ const (
 	// ReservedCPUs defines the reserved CPU set used for tests
 	ReservedCPUs = performancev2.CPUSet("0-3")
 	// OfflinedCPUs defines the Offline CPU set used for tests
-	OfflinedCPUs     = performancev2.CPUSet("6-7") // SingleNUMAPolicy defines the topologyManager policy used for tests
+	OfflinedCPUs = performancev2.CPUSet("6-7")
+	// SharedCPUs defines the shared CPU set used for tests
+	SharedCPUs = performancev2.CPUSet("8-9")
+	// SingleNUMAPolicy defines the topologyManager policy used for tests
 	SingleNUMAPolicy = "single-numa-node"
 
 	// MachineConfigLabelKey defines the MachineConfig label key of the test profile
@@ -43,6 +46,7 @@ func NewPerformanceProfile(name string) *performancev2.PerformanceProfile {
 	isolatedCPUs := IsolatedCPUs
 	reservedCPUs := ReservedCPUs
 	offlineCPUs := OfflinedCPUs
+	sharedCPUs := SharedCPUs
 	numaPolicy := SingleNUMAPolicy
 	additionalKernelArgs := AdditionalKernelArgs
 
@@ -57,6 +61,7 @@ func NewPerformanceProfile(name string) *performancev2.PerformanceProfile {
 				Isolated: &isolatedCPUs,
 				Reserved: &reservedCPUs,
 				Offlined: &offlineCPUs,
+				Shared:   &sharedCPUs,
 			},
 			HugePages: &performancev2.HugePages{
 				DefaultHugePagesSize: &size,
@@ -68,7 +73,7 @@ func NewPerformanceProfile(name string) *performancev2.PerformanceProfile {
 				},
 			},
 			RealTimeKernel: &performancev2.RealTimeKernel{
-				Enabled: pointer.BoolPtr(true),
+				Enabled: pointer.Bool(true),
 			},
 			NUMA: &performancev2.NUMA{
 				TopologyPolicy: &numaPolicy,
@@ -83,9 +88,10 @@ func NewPerformanceProfile(name string) *performancev2.PerformanceProfile {
 				"nodekey": "nodeValue",
 			},
 			WorkloadHints: &performancev2.WorkloadHints{
-				HighPowerConsumption:  pointer.BoolPtr(false),
-				RealTime:              pointer.BoolPtr(true),
-				PerPodPowerManagement: pointer.BoolPtr(false),
+				HighPowerConsumption:  pointer.Bool(false),
+				RealTime:              pointer.Bool(true),
+				PerPodPowerManagement: pointer.Bool(false),
+				MixedCpus:             pointer.Bool(true),
 			},
 			AdditionalKernelArgs: additionalKernelArgs,
 		},

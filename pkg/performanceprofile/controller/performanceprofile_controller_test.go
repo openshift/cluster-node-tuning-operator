@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"regexp"
 	"strings"
 	"time"
@@ -25,6 +24,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/tuned"
 	testutils "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/utils/testing"
 	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	corev1 "k8s.io/api/core/v1"
@@ -35,6 +35,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
+	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
+	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"k8s.io/utils/pointer"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -377,7 +379,7 @@ var _ = Describe("Controller", func() {
 				Expect(ok).To(BeTrue())
 
 				select {
-				case _ = <-fakeRecorder.Events:
+				case <-fakeRecorder.Events:
 					Fail("the recorder should not have new events")
 				default:
 				}
@@ -1064,6 +1066,77 @@ var _ = Describe("Controller", func() {
 		Expect(requests[0].Name).To(Equal(profile.Name))
 	})
 
+	Context("with Mixed CPUs enabled", func() {
+		It("should append the shared cpus to Kubelet config", func() {
+			mcpSelectorKey, mcpSelectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
+			kc, err := kubeletconfig.New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{mcpSelectorKey: mcpSelectorValue}, MixedCPUsEnabled: true})
+			Expect(err).ToNot(HaveOccurred())
+
+			r := newFakeReconciler(profile, profileMCP, kc, infra, clusterOperator)
+			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
+
+			By("verify Kubelet config")
+			key := types.NamespacedName{
+				Name:      components.GetComponentName(profile.Name, components.ComponentNamePrefix),
+				Namespace: metav1.NamespaceNone,
+			}
+			err = r.Get(context.TODO(), key, kc)
+			Expect(err).ToNot(HaveOccurred())
+
+			reserved, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
+			Expect(err).ToNot(HaveOccurred())
+			shared, err := cpuset.Parse(string(*profile.Spec.CPU.Shared))
+			Expect(err).ToNot(HaveOccurred())
+
+			k8sKC := &kubeletconfigv1beta1.KubeletConfiguration{}
+			err = json.Unmarshal(kc.Spec.KubeletConfig.Raw, k8sKC)
+			Expect(err).ToNot(HaveOccurred())
+			k8sReserved, err := cpuset.Parse(k8sKC.ReservedSystemCPUs)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(k8sReserved.Equals(reserved.Union(shared))).To(BeTrue(),
+				"Kubelet ReservedSystemCPUs in not equal to reserved + shared; ReservedSystemCPUs=%q shared=%q reserved=%q", k8sReserved.String(), shared.String(), reserved.String())
+		})
+		It("should contains all configuration files under Machine Config", func() {
+			mc, err := machineconfig.New(profile, &components.MachineConfigOptions{PinningMode: &infra.Status.CPUPartitioning, MixedCPUsEnabled: true})
+			Expect(err).ToNot(HaveOccurred())
+			r := newFakeReconciler(profile, profileMCP, mc, infra, clusterOperator)
+
+			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
+
+			By("Verifying MC update")
+			key := types.NamespacedName{
+				Name:      machineconfig.GetMachineConfigName(profile),
+				Namespace: metav1.NamespaceNone,
+			}
+			mc = &mcov1.MachineConfig{}
+			err = r.Get(context.TODO(), key, mc)
+			Expect(err).ToNot(HaveOccurred())
+
+			config := &igntypes.Config{}
+			err = json.Unmarshal(mc.Spec.Config.Raw, config)
+			Expect(err).ToNot(HaveOccurred())
+
+			var containFiles = []igntypes.File{
+				{
+					Node: igntypes.Node{
+						Path:  "/etc/kubernetes/openshift-workload-mixed-cpus",
+						Group: &igntypes.NodeGroup{},
+						User:  &igntypes.NodeUser{},
+					},
+					FileEmbedded1: igntypes.FileEmbedded1{
+						Contents: igntypes.FileContents{
+							Verification: igntypes.Verification{},
+							Source:       "data:text/plain;charset=utf-8;base64,CnsKICAic2hhcmVkX2NwdXMiOiB7CiAgICAgImNvbnRhaW5lcnNfbGltaXQiOiAyNTYKICB9Cn0=",
+						},
+						Mode: pointer.Int(0644),
+					},
+				},
+			}
+			Expect(config.Storage.Files).To(ContainElements(containFiles))
+		})
+
+	})
+
 	Context("with ContainerRuntimeConfig enabling crun", func() {
 		BeforeEach(func() {
 			ctrcfg = testutils.NewContainerRuntimeConfig(mcov1.ContainerRuntimeDefaultRuntimeCrun, profile.Spec.MachineConfigPoolSelector)
@@ -1100,7 +1173,7 @@ var _ = Describe("Controller", func() {
 					FileEmbedded1: igntypes.FileEmbedded1{
 						Contents: igntypes.FileContents{
 							Verification: igntypes.Verification{},
-							Source:       "data:text/plain;charset=utf-8;base64,CltjcmlvLnJ1bnRpbWVdCmluZnJhX2N0cl9jcHVzZXQgPSAiMC0zIgoKCiMgV2Ugc2hvdWxkIGNvcHkgcGFzdGUgdGhlIGRlZmF1bHQgcnVudGltZSBiZWNhdXNlIHRoaXMgc25pcHBldCB3aWxsIG92ZXJyaWRlIHRoZSB3aG9sZSBydW50aW1lcyBzZWN0aW9uCltjcmlvLnJ1bnRpbWUucnVudGltZXMucnVuY10KcnVudGltZV9wYXRoID0gIiIKcnVudGltZV90eXBlID0gIm9jaSIKcnVudGltZV9yb290ID0gIi9ydW4vcnVuYyIKCiMgVGhlIENSSS1PIHdpbGwgY2hlY2sgdGhlIGFsbG93ZWRfYW5ub3RhdGlvbnMgdW5kZXIgdGhlIHJ1bnRpbWUgaGFuZGxlciBhbmQgYXBwbHkgaGlnaC1wZXJmb3JtYW5jZSBob29rcyB3aGVuIG9uZSBvZgojIGhpZ2gtcGVyZm9ybWFuY2UgYW5ub3RhdGlvbnMgcHJlc2VudHMgdW5kZXIgaXQuCiMgV2Ugc2hvdWxkIHByb3ZpZGUgdGhlIHJ1bnRpbWVfcGF0aCBiZWNhdXNlIHdlIG5lZWQgdG8gaW5mb3JtIHRoYXQgd2Ugd2FudCB0byByZS11c2UgcnVuYyBiaW5hcnkgYW5kIHdlCiMgZG8gbm90IGhhdmUgaGlnaC1wZXJmb3JtYW5jZSBiaW5hcnkgdW5kZXIgdGhlICRQQVRIIHRoYXQgd2lsbCBwb2ludCB0byBpdC4KW2NyaW8ucnVudGltZS5ydW50aW1lcy5oaWdoLXBlcmZvcm1hbmNlXQpydW50aW1lX3BhdGggPSAiL3Vzci9iaW4vY3J1biIKcnVudGltZV90eXBlID0gIm9jaSIKcnVudGltZV9yb290ID0gIi9ydW4vY3J1biIKYWxsb3dlZF9hbm5vdGF0aW9ucyA9IFsiY3B1LWxvYWQtYmFsYW5jaW5nLmNyaW8uaW8iLCAiY3B1LXF1b3RhLmNyaW8uaW8iLCAiaXJxLWxvYWQtYmFsYW5jaW5nLmNyaW8uaW8iLCAiY3B1LWMtc3RhdGVzLmNyaW8uaW8iLCAiY3B1LWZyZXEtZ292ZXJub3IuY3Jpby5pbyJdCg==",
+							Source:       "data:text/plain;charset=utf-8;base64,CltjcmlvLnJ1bnRpbWVdCmluZnJhX2N0cl9jcHVzZXQgPSAiMC0zIgoKCgojIFdlIHNob3VsZCBjb3B5IHBhc3RlIHRoZSBkZWZhdWx0IHJ1bnRpbWUgYmVjYXVzZSB0aGlzIHNuaXBwZXQgd2lsbCBvdmVycmlkZSB0aGUgd2hvbGUgcnVudGltZXMgc2VjdGlvbgpbY3Jpby5ydW50aW1lLnJ1bnRpbWVzLnJ1bmNdCnJ1bnRpbWVfcGF0aCA9ICIiCnJ1bnRpbWVfdHlwZSA9ICJvY2kiCnJ1bnRpbWVfcm9vdCA9ICIvcnVuL3J1bmMiCgojIFRoZSBDUkktTyB3aWxsIGNoZWNrIHRoZSBhbGxvd2VkX2Fubm90YXRpb25zIHVuZGVyIHRoZSBydW50aW1lIGhhbmRsZXIgYW5kIGFwcGx5IGhpZ2gtcGVyZm9ybWFuY2UgaG9va3Mgd2hlbiBvbmUgb2YKIyBoaWdoLXBlcmZvcm1hbmNlIGFubm90YXRpb25zIHByZXNlbnRzIHVuZGVyIGl0LgojIFdlIHNob3VsZCBwcm92aWRlIHRoZSBydW50aW1lX3BhdGggYmVjYXVzZSB3ZSBuZWVkIHRvIGluZm9ybSB0aGF0IHdlIHdhbnQgdG8gcmUtdXNlIHJ1bmMgYmluYXJ5IGFuZCB3ZQojIGRvIG5vdCBoYXZlIGhpZ2gtcGVyZm9ybWFuY2UgYmluYXJ5IHVuZGVyIHRoZSAkUEFUSCB0aGF0IHdpbGwgcG9pbnQgdG8gaXQuCltjcmlvLnJ1bnRpbWUucnVudGltZXMuaGlnaC1wZXJmb3JtYW5jZV0KcnVudGltZV9wYXRoID0gIi91c3IvYmluL2NydW4iCnJ1bnRpbWVfdHlwZSA9ICJvY2kiCnJ1bnRpbWVfcm9vdCA9ICIvcnVuL2NydW4iCmFsbG93ZWRfYW5ub3RhdGlvbnMgPSBbImNwdS1sb2FkLWJhbGFuY2luZy5jcmlvLmlvIiwgImNwdS1xdW90YS5jcmlvLmlvIiwgImlycS1sb2FkLWJhbGFuY2luZy5jcmlvLmlvIiwgImNwdS1jLXN0YXRlcy5jcmlvLmlvIiwgImNwdS1mcmVxLWdvdmVybm9yLmNyaW8uaW8iLCAiY3B1LXNoYXJlZC5jcmlvLmlvIl0K",
 						},
 						Mode: &mode,
 					},
@@ -1163,7 +1236,7 @@ func newFakeReconciler(profile client.Object, initObjects ...runtime.Object) *Pe
 	initObjects = append(initObjects, profile)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithStatusSubresource(profile).WithRuntimeObjects(initObjects...).WithInterceptorFuncs(MCPInterceptor()).Build()
 	fakeRecorder := record.NewFakeRecorder(10)
-	fakeFeatureGateAccessor := featuregates.NewHardcodedFeatureGateAccessForTesting([]configv1.FeatureGateName{configv1.FeatureGateMixedCPUsAllocation}, nil, make(chan struct{}), nil)
+	fakeFeatureGateAccessor := featuregates.NewHardcodedFeatureGateAccessForTesting(nil, []configv1.FeatureGateName{configv1.FeatureGateMixedCPUsAllocation}, make(chan struct{}), nil)
 	fg, _ := fakeFeatureGateAccessor.CurrentFeatureGates()
 	return &PerformanceProfileReconciler{
 		Client:      fakeClient,
