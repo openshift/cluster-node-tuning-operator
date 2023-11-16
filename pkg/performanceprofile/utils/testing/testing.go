@@ -95,7 +95,10 @@ func NewPerformanceProfile(name string) *performancev2.PerformanceProfile {
 // NewProfileMCP returns new MCP used for testing
 func NewProfileMCP() *mcov1.MachineConfigPool {
 	return &mcov1.MachineConfigPool{
-		TypeMeta: metav1.TypeMeta{Kind: "MachineConfigPool"},
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "machineconfiguration.openshift.io/v1",
+			Kind:       "MachineConfigPool",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "test",
 			UID:  "11111111-1111-1111-1111-1111111111111",
@@ -110,6 +113,29 @@ func NewProfileMCP() *mcov1.MachineConfigPool {
 			MachineConfigSelector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{MachineConfigLabelKey: MachineConfigLabelValue},
 			},
+		},
+		Status: mcov1.MachineConfigPoolStatus{
+			Configuration: mcov1.MachineConfigPoolStatusConfiguration{
+				ObjectReference: corev1.ObjectReference{
+					Name: "test",
+				},
+			},
+		},
+	}
+}
+
+func NewProfileMachineConfig(name string, kernelArgs []string) *mcov1.MachineConfig {
+	return &mcov1.MachineConfig{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "machineconfiguration.openshift.io/v1",
+			Kind:       "MachineConfig",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			UID:  "11111111-1111-1111-1111-1111111111111",
+		},
+		Spec: mcov1.MachineConfigSpec{
+			KernelArguments: kernelArgs,
 		},
 	}
 }

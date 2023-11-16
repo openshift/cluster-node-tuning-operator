@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -43,7 +42,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
 
@@ -449,42 +447,20 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		Version: "v1",
 		Kind:    "Node",
 	})
-	err = r.Client.Get(context.Background(), key, nodeCfg)
+	err = r.Client.Get(ctx, key, nodeCfg)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
 	if nodeCfg.Spec.CgroupMode != apiconfigv1.CgroupModeV1 {
 		klog.Infof("Switching cluster to cgroupv1")
-
-		profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-		startGeneration := profileMCP.Generation
-
 		nodeCfg.Spec.CgroupMode = apiconfigv1.CgroupModeV1
 		if err := r.Client.Update(ctx, nodeCfg); err != nil {
 			return reconcile.Result{}, err
 		}
 
-		err = wait.PollUntilContextCancel(context.Background(), 7*time.Second, true, func(ctx context.Context) (done bool, err error) {
-			profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
-			if err != nil {
-				return true, err
-			}
-			klog.Infof("watching for generation change (startGeneration=%v) (mcpGeneration=%v)", startGeneration, profileMCP.Generation)
-			if startGeneration != profileMCP.Generation {
-				return true, nil
-			}
-			if profileMCP.Status.DegradedMachineCount > 0 {
-				return true, errors.New("machines are degraded")
-			}
-			return false, nil
-		})
-		if err != nil {
-			return reconcile.Result{}, err
-		}
+		// we exit the reconcile loop because we know it will take non-zero time to settle.
+		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
@@ -507,6 +483,24 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 		return reconcile.Result{}, nil
 	}
+
+	// (TODO) This code can be removed in the future when the cgroupsv2 is supported
+	currentMC, err := r.getCurrentMachineConfigByMCP(ctx, profileMCP)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	if err := validateCurrentMachineConfigCgroupV1(currentMC); err != nil {
+		conditions := r.getDegradedConditions(conditionReasonCgroupsV1NotEnabled, err.Error())
+		if err := r.updateStatus(instance, conditions); err != nil {
+			klog.Errorf("failed to update performance profile %q status: %v", instance.Name, err)
+			return reconcile.Result{}, err
+		}
+
+		return reconcile.Result{}, nil
+	}
+
+	klog.V(3).Infof("current MachineConfig %q configured for cgroups V1", currentMC.Name)
 
 	// remove components with the old name after the upgrade
 	if err := r.deleteDeprecatedComponents(instance); err != nil {
@@ -561,7 +555,8 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	// if conditions were not added due to machine config pool status change then set as available
 	if conditions == nil {
-		conditions = r.getAvailableConditions()
+		message := "cgroup=" + string(apiconfigv1.CgroupModeV1) + ";"
+		conditions = r.getAvailableConditions(message)
 	}
 
 	if err := r.updateStatus(instance, conditions); err != nil {
@@ -613,7 +608,7 @@ func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.Pe
 	}
 
 	// get mutated machine config
-	mcMutated, err := r.getMutatedMachineConfig(components.MachineConfig)
+	mcMutated, err := r.getMutatedMachineConfig(context.TODO(), components.MachineConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -714,7 +709,7 @@ func (r *PerformanceProfileReconciler) isComponentsExist(profile *performancev2.
 		return true
 	}
 
-	if _, err := r.getMachineConfig(machineconfig.GetMachineConfigName(profile)); !k8serros.IsNotFound(err) {
+	if _, err := r.getMachineConfig(context.TODO(), machineconfig.GetMachineConfigName(profile)); !k8serros.IsNotFound(err) {
 		klog.Infof("Machine Config %q exists under the cluster", name)
 		return true
 	}
@@ -827,4 +822,28 @@ func validateProfileMachineConfigPool(profile *performancev2.PerformanceProfile,
 	}
 
 	return nil
+}
+
+func validateCurrentMachineConfigCgroupV1(mc *mcov1.MachineConfig) error {
+	// taken from MCO pkg/controller/kubelet-config/helpers.go @ d469addcb
+	kernelArgsv1 := []string{
+		"systemd.unified_cgroup_hierarchy=0",
+		"systemd.legacy_systemd_cgroup_controller=1",
+	}
+
+	for _, karg := range kernelArgsv1 {
+		if !containString(mc.Spec.KernelArguments, karg) {
+			return fmt.Errorf("missing required cgroups V1 kernel argument: %q", karg)
+		}
+	}
+	return nil
+}
+
+func containString(strs []string, s string) bool {
+	for _, str := range strs {
+		if str == s {
+			return true
+		}
+	}
+	return false
 }
