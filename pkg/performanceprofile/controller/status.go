@@ -25,7 +25,7 @@ const (
 	conditionReasonComponentsCreationFailed  = "ComponentCreationFailed"
 	conditionReasonMCPDegraded               = "MCPDegraded"
 	conditionFailedGettingMCPStatus          = "GettingMCPStatusFailed"
-	conditionKubeletFailed                   = "KubeletConfig failure"
+	conditionKubeletFailed                   = "KubeletConfigFailure"
 	conditionFailedGettingKubeletStatus      = "GettingKubeletStatusFailed"
 	conditionReasonTunedDegraded             = "TunedProfileDegraded"
 	conditionFailedGettingTunedProfileStatus = "GettingTunedStatusFailed"
