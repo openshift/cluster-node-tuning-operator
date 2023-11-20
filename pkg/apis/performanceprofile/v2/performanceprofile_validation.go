@@ -117,54 +117,59 @@ func (r *PerformanceProfile) validateFields() field.ErrorList {
 
 func (r *PerformanceProfile) validateCPUs() field.ErrorList {
 	var allErrs field.ErrorList
-
-	if r.Spec.CPU == nil {
+	// shortcut
+	cpus := r.Spec.CPU
+	if cpus == nil {
 		allErrs = append(allErrs, field.Required(field.NewPath("spec.cpu"), "cpu section required"))
 	} else {
-		if r.Spec.CPU.Isolated == nil {
+		if cpus.Isolated == nil {
 			allErrs = append(allErrs, field.Required(field.NewPath("spec.cpu.isolated"), "isolated CPUs required"))
 		}
 
-		if r.Spec.CPU.Reserved == nil {
+		if cpus.Reserved == nil {
 			allErrs = append(allErrs, field.Required(field.NewPath("spec.cpu.reserved"), "reserved CPUs required"))
 		}
 
-		if r.Spec.CPU.Isolated != nil && r.Spec.CPU.Reserved != nil {
-			var offlined string
-			if r.Spec.CPU.Offlined != nil {
-				offlined = string(*r.Spec.CPU.Offlined)
+		if cpus.Isolated != nil && cpus.Reserved != nil {
+			var offlined, shared string
+			if cpus.Offlined != nil {
+				offlined = string(*cpus.Offlined)
 			}
-
-			cpuLists, err := components.NewCPULists(string(*r.Spec.CPU.Reserved), string(*r.Spec.CPU.Isolated), offlined)
+			if cpus.Shared != nil {
+				shared = string(*cpus.Shared)
+			}
+			cpuLists, err := components.NewCPULists(string(*cpus.Reserved), string(*cpus.Isolated), offlined, shared)
 			if err != nil {
 				allErrs = append(allErrs, field.InternalError(field.NewPath("spec.cpu"), err))
 			}
 
-			if cpuLists != nil {
-				if cpuLists.GetReserved().IsEmpty() {
-					allErrs = append(allErrs, field.Invalid(field.NewPath("spec.cpu.reserved"), r.Spec.CPU.Reserved, "reserved CPUs can not be empty"))
-				}
-
-				if cpuLists.GetIsolated().IsEmpty() {
-					allErrs = append(allErrs, field.Invalid(field.NewPath("spec.cpu.isolated"), r.Spec.CPU.Isolated, "isolated CPUs can not be empty"))
-				}
-
-				if overlap := components.Intersect(cpuLists.GetIsolated(), cpuLists.GetReserved()); len(overlap) != 0 {
-					allErrs = append(allErrs, field.Forbidden(field.NewPath("spec.cpu"), fmt.Sprintf("reserved and isolated cpus overlap: %v", overlap)))
-				}
+			if cpuLists.GetReserved().IsEmpty() {
+				allErrs = append(allErrs, field.Invalid(field.NewPath("spec.cpu.reserved"), cpus.Reserved, "reserved CPUs can not be empty"))
 			}
 
-			if r.Spec.CPU.Offlined != nil {
-				if overlap := components.Intersect(cpuLists.GetReserved(), cpuLists.GetOfflined()); len(overlap) != 0 {
-					allErrs = append(allErrs, field.Forbidden(field.NewPath("spec.cpu"), fmt.Sprintf("reserved and offlined cpus overlap: %v", overlap)))
-				}
-				if overlap := components.Intersect(cpuLists.GetIsolated(), cpuLists.GetOfflined()); len(overlap) != 0 {
-					allErrs = append(allErrs, field.Forbidden(field.NewPath("spec.cpu"), fmt.Sprintf("isolated and offlined cpus overlap: %v", overlap)))
-				}
+			if cpuLists.GetIsolated().IsEmpty() {
+				allErrs = append(allErrs, field.Invalid(field.NewPath("spec.cpu.isolated"), cpus.Isolated, "isolated CPUs can not be empty"))
+			}
+
+			allErrs = validateNoIntersectionExists(cpuLists, allErrs)
+		}
+	}
+	return allErrs
+}
+
+// validateNoIntersectionExists iterates over the provided CPU lists and validates that
+// none of the lists are intersected with each other.
+func validateNoIntersectionExists(lists *components.CPULists, allErrs field.ErrorList) field.ErrorList {
+	for k1, cpuset1 := range lists.GetSets() {
+		for k2, cpuset2 := range lists.GetSets() {
+			if k1 == k2 {
+				continue
+			}
+			if overlap := components.Intersect(cpuset1, cpuset2); len(overlap) != 0 {
+				allErrs = append(allErrs, field.Forbidden(field.NewPath("spec.cpu"), fmt.Sprintf("%s and %s cpus overlap: %v", k1, k2, overlap)))
 			}
 		}
 	}
-
 	return allErrs
 }
 
@@ -332,5 +337,10 @@ func (r *PerformanceProfile) validateWorkloadHints() field.ErrorList {
 		}
 	}
 
+	if r.Spec.WorkloadHints.MixedCpus != nil && *r.Spec.WorkloadHints.MixedCpus {
+		if r.Spec.CPU.Shared == nil || *r.Spec.CPU.Shared == "" {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec.workloadHints.MixedCpus"), r.Spec.WorkloadHints.MixedCpus, "Invalid WorkloadHints configuration: MixedCpus enabled but no shared CPUs were specified"))
+		}
+	}
 	return allErrs
 }
