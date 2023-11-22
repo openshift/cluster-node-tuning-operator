@@ -795,6 +795,31 @@ var _ = Describe("Controller", func() {
 		})
 	})
 
+	Context("with the kubelet.experimental annotation set", func() {
+		It("should create all resources on first reconcile loop", func() {
+			prof := profile.DeepCopy()
+			prof.Annotations = map[string]string{
+				"kubeletconfig.experimental": `{"systemReserved": {"memory": "256Mi"}, "kubeReserved": {"memory": "256Mi"}}`,
+			}
+			r := newFakeReconciler(prof, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+
+			Expect(reconcileTimes(r, request, 2)).To(Equal(reconcile.Result{}))
+
+			key := types.NamespacedName{
+				Name:      components.GetComponentName(profile.Name, components.ComponentNamePrefix),
+				Namespace: metav1.NamespaceNone,
+			}
+
+			kc := &mcov1.KubeletConfig{}
+			err := r.Get(context.TODO(), key, kc)
+			Expect(err).ToNot(HaveOccurred())
+
+			kubeletConfigString := string(kc.Spec.KubeletConfig.Raw)
+			Expect(kubeletConfigString).To(ContainSubstring(`"kubeReserved":{"memory":"256Mi"}`))
+			Expect(kubeletConfigString).To(ContainSubstring(`"systemReserved":{"memory":"256Mi"}`))
+		})
+	})
+
 	Context("with profile with deletion timestamp", func() {
 		BeforeEach(func() {
 			profile.DeletionTimestamp = &metav1.Time{
