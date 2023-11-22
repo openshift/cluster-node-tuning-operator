@@ -436,71 +436,11 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return reconcile.Result{}, nil
 	}
 
-	// Update the config.openshift.io/node object with the desired cgroupsv1 mode.
-	// (TODO) This code can be removed in the future when the cgroupsv2 is supported
-	key := types.NamespacedName{
-		Name: nodeCfgName,
-	}
-	nodeCfg := &apiconfigv1.Node{}
-	nodeCfg.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   "config.openshift.io",
-		Version: "v1",
-		Kind:    "Node",
-	})
-	err = r.Client.Get(ctx, key, nodeCfg)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	if nodeCfg.Spec.CgroupMode != apiconfigv1.CgroupModeV1 {
-		klog.Infof("Switching cluster to cgroupv1")
-		nodeCfg.Spec.CgroupMode = apiconfigv1.CgroupModeV1
-		if err := r.Client.Update(ctx, nodeCfg); err != nil {
-			return reconcile.Result{}, err
+	if !profileutil.IsCgroupsVersionIgnored(instance) {
+		if res, err, done := r.reconcileCgroupsV1(ctx, instance); done {
+			return res, err
 		}
-
-		// we exit the reconcile loop because we know it will take non-zero time to settle.
-		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
 	}
-
-	profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
-	if err != nil {
-		conditions := r.getDegradedConditions(conditionFailedToFindMachineConfigPool, err.Error())
-		if err := r.updateStatus(instance, conditions); err != nil {
-			klog.Errorf("failed to update performance profile %q status: %v", instance.Name, err)
-			return reconcile.Result{}, err
-		}
-
-		return reconcile.Result{}, nil
-	}
-
-	if err := validateProfileMachineConfigPool(instance, profileMCP); err != nil {
-		conditions := r.getDegradedConditions(conditionBadMachineConfigLabels, err.Error())
-		if err := r.updateStatus(instance, conditions); err != nil {
-			klog.Errorf("failed to update performance profile %q status: %v", instance.Name, err)
-			return reconcile.Result{}, err
-		}
-
-		return reconcile.Result{}, nil
-	}
-
-	// (TODO) This code can be removed in the future when the cgroupsv2 is supported
-	currentMC, err := r.getCurrentMachineConfigByMCP(ctx, profileMCP)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	if err := validateCurrentMachineConfigCgroupV1(currentMC); err != nil {
-		conditions := r.getDegradedConditions(conditionReasonCgroupsV1NotEnabled, err.Error())
-		if err := r.updateStatus(instance, conditions); err != nil {
-			klog.Errorf("failed to update performance profile %q status: %v", instance.Name, err)
-			return reconcile.Result{}, err
-		}
-
-		return reconcile.Result{}, nil
-	}
-
-	klog.V(3).Infof("current MachineConfig %q configured for cgroups V1", currentMC.Name)
 
 	// remove components with the old name after the upgrade
 	if err := r.deleteDeprecatedComponents(instance); err != nil {
@@ -517,6 +457,17 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("could not determine high-performance runtime class container-runtime for profile %q; %w", instance.Name, err)
 	}
 	klog.Infof("using %q as high-performance runtime class container-runtime for profile %q", ctrRuntime, instance.Name)
+
+	profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
+	if err != nil {
+		conditions := r.getDegradedConditions(conditionFailedToFindMachineConfigPool, err.Error())
+		if err := r.updateStatus(instance, conditions); err != nil {
+			klog.Errorf("failed to update performance profile %q status: %v", instance.Name, err)
+			return reconcile.Result{}, err
+		}
+
+		return reconcile.Result{}, nil
+	}
 
 	// apply components
 	result, err := r.applyComponents(instance, profileMCP, &pinningMode, ctrRuntime)
@@ -574,6 +525,81 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *PerformanceProfileReconciler) reconcileCgroupsV1(ctx context.Context, instance *performancev2.PerformanceProfile) (ctrl.Result, error, bool) {
+	// Update the config.openshift.io/node object with the desired cgroupsv1 mode.
+	// (TODO) This code can be removed in the future when the cgroupsv2 is supported
+	key := types.NamespacedName{
+		Name: nodeCfgName,
+	}
+	nodeCfg := &apiconfigv1.Node{}
+	nodeCfg.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "config.openshift.io",
+		Version: "v1",
+		Kind:    "Node",
+	})
+	err := r.Client.Get(ctx, key, nodeCfg)
+	if err != nil {
+		klog.Errorf("failed to get cluster nodeconfig %q: %v", nodeCfgName, err)
+		return reconcile.Result{}, err, true
+	}
+
+	if nodeCfg.Spec.CgroupMode != apiconfigv1.CgroupModeV1 {
+		klog.Infof("Switching cluster to cgroupv1")
+		nodeCfg.Spec.CgroupMode = apiconfigv1.CgroupModeV1
+		if err := r.Client.Update(ctx, nodeCfg); err != nil {
+			return reconcile.Result{}, err, true
+		}
+
+		klog.Infof("Switched cluster to cgroupv1")
+		// we exit the reconcile loop because we know it will take non-zero time to settle.
+		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil, true
+	}
+
+	profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
+	if err != nil {
+		conditions := r.getDegradedConditions(conditionFailedToFindMachineConfigPool, err.Error())
+		if err := r.updateStatus(instance, conditions); err != nil {
+			klog.Errorf("failed to update performance profile %q status: %v", instance.Name, err)
+			return reconcile.Result{}, err, true
+		}
+
+		klog.Errorf("failed to get MCP: %v", err)
+		return reconcile.Result{}, nil, true
+	}
+
+	if err := validateProfileMachineConfigPool(instance, profileMCP); err != nil {
+		conditions := r.getDegradedConditions(conditionBadMachineConfigLabels, err.Error())
+		if err := r.updateStatus(instance, conditions); err != nil {
+			klog.Errorf("failed to update performance profile %q status: %v", instance.Name, err)
+			return reconcile.Result{}, err, true
+		}
+
+		klog.Errorf("failed to validate MCP %q: %v", profileMCP.Name, err)
+		return reconcile.Result{}, nil, true
+	}
+
+	// (TODO) This code can be removed in the future when the cgroupsv2 is supported
+	currentMC, err := r.getCurrentMachineConfigByMCP(ctx, profileMCP)
+	if err != nil {
+		return reconcile.Result{}, err, true
+	}
+
+	if err := validateCurrentMachineConfigCgroupV1(currentMC); err != nil {
+		conditions := r.getDegradedConditions(conditionReasonCgroupsV1NotEnabled, err.Error())
+		if err := r.updateStatus(instance, conditions); err != nil {
+			klog.Errorf("failed to update performance profile %q status: %v", instance.Name, err)
+			return reconcile.Result{}, err, true
+		}
+
+		klog.Errorf("failed to validate MC %q: %v", currentMC.Name, err)
+		return reconcile.Result{}, nil, true
+	}
+
+	klog.V(3).Infof("current MachineConfig %q configured for cgroups V1", currentMC.Name)
+
+	return reconcile.Result{}, nil, false
 }
 
 func (r *PerformanceProfileReconciler) deleteDeprecatedComponents(instance *performancev2.PerformanceProfile) error {
