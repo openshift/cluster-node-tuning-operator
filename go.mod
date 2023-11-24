@@ -20,7 +20,6 @@ require (
 	github.com/openshift/library-go v0.0.0-20211220195323-eca2c467c492
 	github.com/openshift/machine-config-operator v0.0.1-0.20210514234214-c415ce6aed25
 	github.com/operator-framework/api v0.10.7
-	github.com/operator-framework/operator-lifecycle-manager v3.11.0+incompatible
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.1
 	github.com/sirupsen/logrus v1.8.1
@@ -28,10 +27,10 @@ require (
 	github.com/spf13/pflag v1.0.5
 	gopkg.in/fsnotify.v1 v1.4.7
 	gopkg.in/ini.v1 v1.62.0
-	k8s.io/api v0.23.3
-	k8s.io/apiextensions-apiserver v0.23.3
-	k8s.io/apimachinery v0.23.3
-	k8s.io/client-go v0.23.3
+	k8s.io/api v0.23.5
+	k8s.io/apiextensions-apiserver v0.23.5
+	k8s.io/apimachinery v0.23.5
+	k8s.io/client-go v0.23.5
 	k8s.io/code-generator v0.23.3
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.30.0
@@ -118,7 +117,7 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 	howett.net/plist v0.0.0-20181124034731-591f970eefbb // indirect
-	k8s.io/component-base v0.23.3 // indirect
+	k8s.io/component-base v0.23.5 // indirect
 	k8s.io/gengo v0.0.0-20210813121822-485abfe95c7c // indirect
 	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65 // indirect
 	sigs.k8s.io/json v0.0.0-20211020170558-c049b76a60c6 // indirect
@@ -153,7 +152,7 @@ replace (
 	k8s.io/mount-utils => k8s.io/mount-utils v0.23.3
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.23.3
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.23.3
-	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.11.1
+	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.11.3-0.20230530190747-911faffb5965
 	sigs.k8s.io/controller-tools => sigs.k8s.io/controller-tools v0.7.0
 )
 
