@@ -39,7 +39,6 @@ const (
 	cyclictestTestName   = "cyclictest"
 	hwlatdetectTestName  = "hwlatdetect"
 	defaultTestDelay     = 0
-	defaultTestRun       = false
 	defaultTestRuntime   = "300"
 	defaultMaxLatency    = -1
 	defaultTestCpus      = -1
@@ -48,7 +47,6 @@ const (
 
 var (
 	latencyTestDelay   = defaultTestDelay
-	latencyTestRun     = defaultTestRun
 	latencyTestRuntime = defaultTestRuntime
 	maximumLatency     = defaultMaxLatency
 	latencyTestCpus    = defaultTestCpus
@@ -56,7 +54,6 @@ var (
 
 // LATENCY_TEST_DELAY delay the run of the binary, can be useful to give time to the CPU manager reconcile loop
 // to update the default CPU pool
-// LATENCY_TEST_RUN: indicates if the latency test should run
 // LATENCY_TEST_RUNTIME: the amount of time in seconds that the latency test should run
 // LATENCY_TEST_CPUS: the amount of CPUs the pod which run the latency test should request
 
@@ -67,9 +64,6 @@ var _ = Describe("[performance] Latency Test", Ordered, func() {
 	var err error
 
 	BeforeEach(func() {
-		latencyTestRun, err = getLatencyTestRun()
-		Expect(err).ToNot(HaveOccurred())
-
 		latencyTestDelay, err = getLatencyTestDelay()
 		Expect(err).ToNot(HaveOccurred())
 
@@ -78,10 +72,6 @@ var _ = Describe("[performance] Latency Test", Ordered, func() {
 
 		latencyTestRuntime, err = getLatencyTestRuntime()
 		Expect(err).ToNot(HaveOccurred())
-
-		if !latencyTestRun {
-			Skip("Skip the latency test, the LATENCY_TEST_RUN set to false")
-		}
 
 		if discovery.Enabled() && testutils.ProfileNotFound {
 			Skip("Discovery mode enabled, performance profile not found")
@@ -266,17 +256,6 @@ var _ = Describe("[performance] Latency Test", Ordered, func() {
 		})
 	})
 })
-
-func getLatencyTestRun() (bool, error) {
-	if latencyTestRunEnv, ok := os.LookupEnv("LATENCY_TEST_RUN"); ok {
-		val, err := strconv.ParseBool(latencyTestRunEnv)
-		if err != nil {
-			return val, fmt.Errorf("the environment variable LATENCY_TEST_RUN has incorrect value %q: %w", latencyTestRunEnv, err)
-		}
-		return val, nil
-	}
-	return defaultTestRun, nil
-}
 
 func getLatencyTestRuntime() (string, error) {
 	if latencyTestRuntimeEnv, ok := os.LookupEnv("LATENCY_TEST_RUNTIME"); ok {

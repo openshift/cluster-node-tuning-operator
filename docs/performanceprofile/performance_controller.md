@@ -107,18 +107,15 @@ To run the latency test inside the container:
 ```shell
 docker run --rm -v /kubeconfig:/kubeconfig \
 -e KUBECONFIG=/kubeconfig \
--e LATENCY_TEST_RUN=true \
 -e LATENCY_TEST_RUNTIME=60 \
 -e MAXIMUM_LATENCY=700 \
  quay.io/openshift-kni/cnf-tests /usr/bin/run-tests.sh
 ```
 
 You can run the container with different ENV variables, but the bare minimum is to pass
-`KUBECONFIG` mount and ENV variable, to give to the test access to the cluster and
-`LATENCY_TEST_RUN=true` to run the latency test.
+`KUBECONFIG` mount and ENV variable, to give to the test access to the cluster.
 
 - `LATENCY_TEST_DELAY` indicates an (optional) delay in seconds to be used between the container is created and the tests actually start. Default is zero (start immediately).
-- `LATENCY_TEST_RUN` indicates if the latency test should run.
 - `LATENCY_TEST_RUNTIME` the amount of time in seconds that the latency test should run.
 - `LATENCY_TEST_IMAGE` the image that used under the latency test.
 - `LATECNY_TEST_CPUS` the amount of CPUs the pod which run the latency test should request
