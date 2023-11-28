@@ -58,6 +58,28 @@ var _ = Describe("PerformanceProfile", func() {
 
 		})
 	})
+
+	DescribeTable("IsCgroupsVersionIgnored", func(anns map[string]string, exp bool) {
+		profile := testutils.NewPerformanceProfile("test")
+		profile.Annotations = anns
+		got := IsCgroupsVersionIgnored(profile)
+		Expect(got).To(Equal(exp), "got=%v exp=%v anns=%+v", got, exp, anns)
+	},
+		Entry("nil anns", nil, false),
+		Entry("empty anns", map[string]string{}, false),
+		Entry("unrelated anns", map[string]string{
+			performancev2.PerformanceProfilePauseAnnotation: "true",
+		}, false),
+		Entry("unexpected value - 1", map[string]string{
+			performancev2.PerformanceProfileIgnoreCgroupsVersion: "True",
+		}, false),
+		Entry("unexpected value - 2", map[string]string{
+			performancev2.PerformanceProfileIgnoreCgroupsVersion: "1",
+		}, false),
+		Entry("expected value - one and only", map[string]string{
+			performancev2.PerformanceProfileIgnoreCgroupsVersion: "true",
+		}, true),
+	)
 })
 
 func setValidNodeSelector(profile *performancev2.PerformanceProfile) {

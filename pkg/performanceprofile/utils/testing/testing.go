@@ -23,13 +23,13 @@ const (
 	OfflinedCPUs     = performancev2.CPUSet("6-7") // SingleNUMAPolicy defines the topologyManager policy used for tests
 	SingleNUMAPolicy = "single-numa-node"
 
-	//MachineConfigLabelKey defines the MachineConfig label key of the test profile
+	// MachineConfigLabelKey defines the MachineConfig label key of the test profile
 	MachineConfigLabelKey = "mcKey"
-	//MachineConfigLabelValue defines the MachineConfig label vlue of the test profile
+	// MachineConfigLabelValue defines the MachineConfig label vlue of the test profile
 	MachineConfigLabelValue = "mcValue"
-	//MachineConfigPoolLabelKey defines the MachineConfigPool label key of the test profile
+	// MachineConfigPoolLabelKey defines the MachineConfigPool label key of the test profile
 	MachineConfigPoolLabelKey = "mcpKey"
-	//MachineConfigPoolLabelValue defines the MachineConfigPool label value of the test profile
+	// MachineConfigPoolLabelValue defines the MachineConfigPool label value of the test profile
 	MachineConfigPoolLabelValue = "mcpValue"
 )
 
@@ -94,7 +94,10 @@ func NewPerformanceProfile(name string) *performancev2.PerformanceProfile {
 // NewProfileMCP returns new MCP used for testing
 func NewProfileMCP() *mcov1.MachineConfigPool {
 	return &mcov1.MachineConfigPool{
-		TypeMeta: metav1.TypeMeta{Kind: "MachineConfigPool"},
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "machineconfiguration.openshift.io/v1",
+			Kind:       "MachineConfigPool",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "test",
 			UID:  "11111111-1111-1111-1111-1111111111111",
@@ -110,11 +113,34 @@ func NewProfileMCP() *mcov1.MachineConfigPool {
 				MatchLabels: map[string]string{MachineConfigLabelKey: MachineConfigLabelValue},
 			},
 		},
+		Status: mcov1.MachineConfigPoolStatus{
+			Configuration: mcov1.MachineConfigPoolStatusConfiguration{
+				ObjectReference: corev1.ObjectReference{
+					Name: "test",
+				},
+			},
+		},
+	}
+}
+
+func NewProfileMachineConfig(name string, kernelArgs []string) *mcov1.MachineConfig {
+	return &mcov1.MachineConfig{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "machineconfiguration.openshift.io/v1",
+			Kind:       "MachineConfig",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			UID:  "11111111-1111-1111-1111-1111111111111",
+		},
+		Spec: mcov1.MachineConfigSpec{
+			KernelArguments: kernelArgs,
+		},
 	}
 }
 
 func NewInfraResource(pin bool) *apiconfigv1.Infrastructure {
-	var pinningMode = apiconfigv1.CPUPartitioningNone
+	pinningMode := apiconfigv1.CPUPartitioningNone
 	if pin {
 		pinningMode = apiconfigv1.CPUPartitioningAllNodes
 	}
@@ -124,6 +150,33 @@ func NewInfraResource(pin bool) *apiconfigv1.Infrastructure {
 		},
 		Status: apiconfigv1.InfrastructureStatus{
 			CPUPartitioning: pinningMode,
+		},
+	}
+}
+
+func NewClusterOperator() *apiconfigv1.ClusterOperator {
+	return &apiconfigv1.ClusterOperator{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node-tuning",
+		},
+		Status: apiconfigv1.ClusterOperatorStatus{
+			Versions: []apiconfigv1.OperandVersion{
+				{
+					Name:    tunedv1.TunedOperandName,
+					Version: "",
+				},
+			},
+		},
+	}
+}
+
+func NewNodeConfig(mode apiconfigv1.CgroupMode) *apiconfigv1.Node {
+	return &apiconfigv1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "cluster",
+		},
+		Spec: apiconfigv1.NodeSpec{
+			CgroupMode: mode,
 		},
 	}
 }

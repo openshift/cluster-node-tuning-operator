@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -35,20 +36,34 @@ import (
 	"k8s.io/utils/pointer"
 
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+)
+
+var (
+	kernelArgsv1 []string = []string{
+		"systemd.unified_cgroup_hierarchy=0",
+		"systemd.legacy_systemd_cgroup_controller=1",
+	}
 )
 
 var _ = Describe("Controller", func() {
 	var request reconcile.Request
 	var profile *performancev2.PerformanceProfile
+	var profileMC *mcov1.MachineConfig
 	var profileMCP *mcov1.MachineConfigPool
 	var infra *apiconfigv1.Infrastructure
 	var ctrcfg *mcov1.ContainerRuntimeConfig
+	var nodeConfig *apiconfigv1.Node
 
 	BeforeEach(func() {
+		profileMC = testutils.NewProfileMachineConfig("test", kernelArgsv1)
 		profileMCP = testutils.NewProfileMCP()
 		profile = testutils.NewPerformanceProfile("test")
 		infra = testutils.NewInfraResource(false)
+		clusterOperator = testutils.NewClusterOperator()
+		nodeConfig = testutils.NewNodeConfig(apiconfigv1.CgroupModeV1)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 		request = reconcile.Request{
 			NamespacedName: types.NamespacedName{
 				Namespace: metav1.NamespaceNone,
@@ -58,7 +73,8 @@ var _ = Describe("Controller", func() {
 	})
 
 	It("should add finalizer to the performance profile", func() {
-		r := newFakeReconciler(profile, profileMCP, infra)
+		r := newFakeReconciler(profile, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 
 		Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -77,7 +93,8 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should create all resources on first reconcile loop", func() {
-			r := newFakeReconciler(profile, profileMCP, infra)
+			r := newFakeReconciler(profile, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 
 			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -115,7 +132,8 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should create event on the second reconcile loop", func() {
-			r := newFakeReconciler(profile, profileMCP, infra)
+			r := newFakeReconciler(profile, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 
 			Expect(reconcileTimes(r, request, 2)).To(Equal(reconcile.Result{}))
 
@@ -127,7 +145,8 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should update the profile status", func() {
-			r := newFakeReconciler(profile, profileMCP, infra)
+			r := newFakeReconciler(profile, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 
 			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -151,7 +170,8 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should promote kubelet config failure condition", func() {
-			r := newFakeReconciler(profile, profileMCP, infra)
+			r := newFakeReconciler(profile, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
 			name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
@@ -199,7 +219,8 @@ var _ = Describe("Controller", func() {
 		})
 
 		It("should not promote old failure condition", func() {
-			r := newFakeReconciler(profile, profileMCP, infra)
+			r := newFakeReconciler(profile, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
 			name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
@@ -257,7 +278,8 @@ var _ = Describe("Controller", func() {
 			tunedOutdatedB.OwnerReferences = []metav1.OwnerReference{
 				{Name: profile.Name},
 			}
-			r := newFakeReconciler(profile, tunedOutdatedA, tunedOutdatedB, profileMCP, infra)
+			r := newFakeReconciler(profile, tunedOutdatedA, tunedOutdatedB, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 
 			keyA := types.NamespacedName{
 				Name:      tunedOutdatedA.Name,
@@ -289,7 +311,8 @@ var _ = Describe("Controller", func() {
 
 		It("should create nothing when pause annotation is set", func() {
 			profile.Annotations = map[string]string{performancev2.PerformanceProfilePauseAnnotation: "true"}
-			r := newFakeReconciler(profile, profileMCP, infra)
+			r := newFakeReconciler(profile, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 
 			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -350,7 +373,8 @@ var _ = Describe("Controller", func() {
 			})
 
 			It("should not record new create event", func() {
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, runtimeClass, profileMCP, infra)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, runtimeClass, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -367,7 +391,8 @@ var _ = Describe("Controller", func() {
 
 			It("should update MC when RT kernel gets disabled", func() {
 				profile.Spec.RealTimeKernel.Enabled = pointer.BoolPtr(false)
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -392,7 +417,8 @@ var _ = Describe("Controller", func() {
 					Isolated: &isolated,
 				}
 
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -427,7 +453,8 @@ var _ = Describe("Controller", func() {
 					BalanceIsolated: pointer.BoolPtr(true),
 				}
 
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -451,7 +478,8 @@ var _ = Describe("Controller", func() {
 					BalanceIsolated: pointer.BoolPtr(false),
 				}
 
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -478,7 +506,8 @@ var _ = Describe("Controller", func() {
 					},
 				}
 
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -507,7 +536,8 @@ var _ = Describe("Controller", func() {
 					},
 				}
 
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -543,11 +573,11 @@ var _ = Describe("Controller", func() {
 						ContainSubstring("Environment=NUMA_NODE=0"),
 					),
 				})))
-
 			})
 
 			It("should update status with generated tuned", func() {
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 				key := types.NamespacedName{
 					Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
@@ -568,7 +598,8 @@ var _ = Describe("Controller", func() {
 			})
 
 			It("should update status with generated runtime class", func() {
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, runtimeClass, profileMCP, infra)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, runtimeClass, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
 				key := types.NamespacedName{
@@ -627,10 +658,16 @@ var _ = Describe("Controller", func() {
 								Message: mcpMessage,
 							},
 						},
+						Configuration: mcov1.MachineConfigPoolStatusConfiguration{
+							ObjectReference: corev1.ObjectReference{
+								Name: "test",
+							},
+						},
 					},
 				}
 
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, mcp, infra)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, mcp, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -696,7 +733,8 @@ var _ = Describe("Controller", func() {
 					},
 				}
 
-				r := newFakeReconciler(profile, mc, kc, tunedPerformance, tuned, nodes, profileMCP, infra)
+				r := newFakeReconciler(profile, mc, kc, tunedPerformance, tuned, nodes, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -724,7 +762,8 @@ var _ = Describe("Controller", func() {
 				profileMCP.Spec.MachineConfigSelector = &metav1.LabelSelector{
 					MatchLabels: map[string]string{"wrongKey": "bad"},
 				}
-				r := newFakeReconciler(profile, profileMCP, infra)
+				r := newFakeReconciler(profile, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
 				updatedProfile := &performancev2.PerformanceProfile{}
@@ -752,7 +791,8 @@ var _ = Describe("Controller", func() {
 					MatchLabels: map[string]string{"wrongKey": "bad"},
 				}
 				profile.Spec.MachineConfigLabel = nil
-				r := newFakeReconciler(profile, profileMCP, infra)
+				r := newFakeReconciler(profile, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
 				updatedProfile := &performancev2.PerformanceProfile{}
@@ -772,6 +812,31 @@ var _ = Describe("Controller", func() {
 				Expect(degradedCondition.Reason).To(Equal(conditionBadMachineConfigLabels))
 				Expect(degradedCondition.Message).To(ContainSubstring("generated from the profile.spec.nodeSelector"))
 			})
+		})
+	})
+
+	Context("with the kubelet.experimental annotation set", func() {
+		It("should create all resources on first reconcile loop", func() {
+			prof := profile.DeepCopy()
+			prof.Annotations = map[string]string{
+				"kubeletconfig.experimental": `{"systemReserved": {"memory": "256Mi"}, "kubeReserved": {"memory": "256Mi"}}`,
+			}
+			r := newFakeReconciler(prof, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+
+			Expect(reconcileTimes(r, request, 2)).To(Equal(reconcile.Result{}))
+
+			key := types.NamespacedName{
+				Name:      components.GetComponentName(profile.Name, components.ComponentNamePrefix),
+				Namespace: metav1.NamespaceNone,
+			}
+
+			kc := &mcov1.KubeletConfig{}
+			err := r.Get(context.TODO(), key, kc)
+			Expect(err).ToNot(HaveOccurred())
+
+			kubeletConfigString := string(kc.Spec.KubeletConfig.Raw)
+			Expect(kubeletConfigString).To(ContainSubstring(`"kubeReserved":{"memory":"256Mi"}`))
+			Expect(kubeletConfigString).To(ContainSubstring(`"systemReserved":{"memory":"256Mi"}`))
 		})
 	})
 
@@ -796,7 +861,8 @@ var _ = Describe("Controller", func() {
 
 			runtimeClass := runtimeclass.New(profile, machineconfig.HighPerformanceRuntime)
 
-			r := newFakeReconciler(profile, mc, kc, tunedPerformance, runtimeClass, profileMCP, infra)
+			r := newFakeReconciler(profile, mc, kc, tunedPerformance, runtimeClass, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 			result, err := r.Reconcile(context.TODO(), request)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result).To(Equal(reconcile.Result{}))
@@ -835,6 +901,97 @@ var _ = Describe("Controller", func() {
 		})
 	})
 
+	Context("with cgroups V1 enforcement", func() {
+		BeforeEach(func() {
+			infra = testutils.NewInfraResource(false)
+			clusterOperator = testutils.NewClusterOperator()
+			profileMCP = testutils.NewProfileMCP()
+			profile = testutils.NewPerformanceProfile("test")
+			request = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: metav1.NamespaceNone,
+					Name:      profile.Name,
+				},
+			}
+		})
+
+		It("should progress cleanly if the nodeconfig is already set to cgroup v1", func() {
+			profileMC = testutils.NewProfileMachineConfig("test", kernelArgsv1)
+			nodeConfig = testutils.NewNodeConfig(apiconfigv1.CgroupModeV1)
+
+			r := newFakeReconciler(profile, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+			Expect(reconcileTimes(r, request, 2)).To(Equal(reconcile.Result{}))
+
+			updatedProfile := &performancev2.PerformanceProfile{}
+			key := types.NamespacedName{
+				Name:      profile.Name,
+				Namespace: metav1.NamespaceNone,
+			}
+			Expect(r.Get(context.TODO(), key, updatedProfile)).To(Succeed())
+
+			availableCondition := conditionsv1.FindStatusCondition(updatedProfile.Status.Conditions, conditionsv1.ConditionAvailable)
+			Expect(availableCondition).ToNot(BeNil())
+			Expect(availableCondition.Status).To(Equal(corev1.ConditionTrue))
+			message := strings.ToLower(availableCondition.Message)
+			Expect(message).To(ContainSubstring("cgroup=v1")) // quite ugly. Should we add an explicit condition?
+		})
+
+		It("should set performance profile as degraded until the machineconfig is set to cgroup v1", func() {
+			profileMC = testutils.NewProfileMachineConfig("test", []string{})
+			nodeConfig = testutils.NewNodeConfig(apiconfigv1.CgroupModeEmpty)
+
+			r := newFakeReconciler(profile, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+
+			reconcileTimes(r, request, 3)
+
+			updatedProfile := &performancev2.PerformanceProfile{}
+			key := types.NamespacedName{
+				Name:      profile.Name,
+				Namespace: metav1.NamespaceNone,
+			}
+			Expect(r.Get(context.TODO(), key, updatedProfile)).To(Succeed())
+
+			degradedCondition := conditionsv1.FindStatusCondition(updatedProfile.Status.Conditions, conditionsv1.ConditionDegraded)
+			Expect(degradedCondition.Status).To(Equal(corev1.ConditionTrue))
+			Expect(degradedCondition.Reason).To(Equal(conditionReasonCgroupsV1NotEnabled))
+		})
+
+		It("should set continue with the performance profile reconciliation once the machineconfig is set to cgroup v1", func() {
+			profileMC = testutils.NewProfileMachineConfig("test", []string{})
+			nodeConfig = testutils.NewNodeConfig(apiconfigv1.CgroupModeEmpty)
+
+			r := newFakeReconciler(profile, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+
+			reconcileTimes(r, request, 3)
+
+			updatedProfile := &performancev2.PerformanceProfile{}
+			key := types.NamespacedName{
+				Name:      profile.Name,
+				Namespace: metav1.NamespaceNone,
+			}
+			Expect(r.Get(context.TODO(), key, updatedProfile)).To(Succeed())
+
+			degradedCondition := conditionsv1.FindStatusCondition(updatedProfile.Status.Conditions, conditionsv1.ConditionDegraded)
+			Expect(degradedCondition.Status).To(Equal(corev1.ConditionTrue))
+			Expect(degradedCondition.Reason).To(Equal(conditionReasonCgroupsV1NotEnabled))
+
+			updatedProfileMC := profileMC.DeepCopy()
+			updatedProfileMC.Spec.KernelArguments = kernelArgsv1
+
+			Expect(r.Update(context.TODO(), updatedProfileMC)).To(Succeed())
+
+			Expect(reconcileTimes(r, request, 2)).To(Equal(reconcile.Result{}))
+
+			Expect(r.Get(context.TODO(), key, updatedProfile)).To(Succeed())
+
+			availableCondition := conditionsv1.FindStatusCondition(updatedProfile.Status.Conditions, conditionsv1.ConditionAvailable)
+			Expect(availableCondition).ToNot(BeNil())
+			Expect(availableCondition.Status).To(Equal(corev1.ConditionTrue))
+			message := strings.ToLower(availableCondition.Message)
+			Expect(message).To(ContainSubstring("cgroup=v1")) // quite ugly. Should we add an explicit condition?
+		})
+	})
+
 	Context("with infrastructure cpuPartitioning", func() {
 		BeforeEach(func() {
 			infra = testutils.NewInfraResource(true)
@@ -843,7 +1000,8 @@ var _ = Describe("Controller", func() {
 		It("should contain cpu partitioning files in machine config", func() {
 			mc, err := machineconfig.New(profile, &infra.Status.CPUPartitioning, "")
 			Expect(err).ToNot(HaveOccurred())
-			r := newFakeReconciler(profile, profileMCP, mc, infra)
+			r := newFakeReconciler(profile, profileMCP, mc, infra, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 
 			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -860,8 +1018,8 @@ var _ = Describe("Controller", func() {
 			err = json.Unmarshal(mc.Spec.Config.Raw, config)
 			Expect(err).ToNot(HaveOccurred())
 
-			var mode = 420
-			var containFiles = []igntypes.File{
+			mode := 420
+			containFiles := []igntypes.File{
 				{
 					Node: igntypes.Node{
 						Path:  "/etc/kubernetes/openshift-workload-pinning",
@@ -920,8 +1078,10 @@ var _ = Describe("Controller", func() {
 				},
 			},
 		}
-		r := newFakeReconciler(profile, mcp)
-		requests := r.mcpToPerformanceProfile(mcp)
+
+		r := newFakeReconciler(profile, mcp, nodeConfig)
+		requests := r.mcpToPerformanceProfile(context.TODO(), mcp)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 		Expect(requests).NotTo(BeEmpty())
 		Expect(requests[0].Name).To(Equal(profile.Name))
 	})
@@ -935,7 +1095,9 @@ var _ = Describe("Controller", func() {
 			mc, err := machineconfig.New(profile, &infra.Status.CPUPartitioning, "")
 			Expect(err).ToNot(HaveOccurred())
 
-			r := newFakeReconciler(profile, profileMCP, mc, infra, ctrcfg)
+
+			r := newFakeReconciler(profile, profileMCP, mc, infra, ctrcfg, clusterOperator, nodeConfig, profileMC)
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 			Expect(reconcileTimes(r, request, 2)).To(Equal(reconcile.Result{}))
 
 			By("Verifying MC update")
@@ -951,8 +1113,8 @@ var _ = Describe("Controller", func() {
 			err = json.Unmarshal(mc.Spec.Config.Raw, config)
 			Expect(err).ToNot(HaveOccurred())
 
-			var mode = 420
-			var containFiles = []igntypes.File{
+			mode := 420
+			containFiles := []igntypes.File{
 				{
 					Node: igntypes.Node{
 						Path:  "/etc/crio/crio.conf.d/99-runtimes.conf",
@@ -970,9 +1132,7 @@ var _ = Describe("Controller", func() {
 			}
 			Expect(config.Storage.Files).To(ContainElements(containFiles))
 		})
-
 	})
-
 })
 
 func reconcileTimes(reconciler *PerformanceProfileReconciler, request reconcile.Request, times int) reconcile.Result {
@@ -980,14 +1140,53 @@ func reconcileTimes(reconciler *PerformanceProfileReconciler, request reconcile.
 	var err error
 	for i := 0; i < times; i++ {
 		result, err = reconciler.Reconcile(context.TODO(), request)
-		Expect(err).ToNot(HaveOccurred())
+		ExpectWithOffset(1, err).ToNot(HaveOccurred())
 	}
 	return result
 }
 
+func MCPInterceptor() interceptor.Funcs {
+	generationCounter := int64(0)
+
+	mutateMCP := func(mcp *mcov1.MachineConfigPool) {
+		mcp.SetGeneration(generationCounter)
+	}
+
+	return interceptor.Funcs{
+		Update: func(ctx context.Context, client client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+			if _, isNodeUpdate := obj.(*apiconfigv1.Node); isNodeUpdate {
+				generationCounter++
+			}
+			return client.Update(ctx, obj, opts...)
+		},
+		Get: func(ctx context.Context, client client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			mcp, isMcp := obj.(*mcov1.MachineConfigPool)
+			err := client.Get(ctx, key, obj)
+			if err == nil && isMcp {
+				mutateMCP(mcp)
+			}
+			return err
+		},
+		List: func(ctx context.Context, client client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+			mcpList, isMcpList := list.(*mcov1.MachineConfigPoolList)
+			err := client.List(ctx, list, opts...)
+			if err == nil && isMcpList {
+				for i := range mcpList.Items {
+					mutateMCP(&mcpList.Items[i])
+				}
+			}
+			return err
+		},
+	}
+}
+
 // newFakeReconciler returns a new reconcile.Reconciler with a fake client
-func newFakeReconciler(initObjects ...runtime.Object) *PerformanceProfileReconciler {
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(initObjects...).Build()
+func newFakeReconciler(profile client.Object, initObjects ...runtime.Object) *PerformanceProfileReconciler {
+	// we need to add the profile using the `WithStatusSubresource` function
+	// because we're updating its status during the reconciliation loop
+	initObjects = append(initObjects, profile)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithStatusSubresource(profile).WithRuntimeObjects(initObjects...).WithInterceptorFuncs(MCPInterceptor()).Build()
+>>>>>>> b70869c7 (  OCPBUGS-18640: Fix Racing Machine Configs and add Day 0 Support (#854))
 	fakeRecorder := record.NewFakeRecorder(10)
 	return &PerformanceProfileReconciler{
 		Client:   fakeClient,

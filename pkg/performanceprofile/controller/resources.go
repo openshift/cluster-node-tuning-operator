@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
@@ -26,20 +27,35 @@ func mergeMaps(src map[string]string, dst map[string]string) {
 
 // TODO: we should merge all create, get and delete methods
 
-func (r *PerformanceProfileReconciler) getMachineConfig(name string) (*mcov1.MachineConfig, error) {
+func (r *PerformanceProfileReconciler) getCurrentMachineConfigByMCP(ctx context.Context, mcp *mcov1.MachineConfigPool) (*mcov1.MachineConfig, error) {
+	if mcp == nil {
+		return nil, fmt.Errorf("nil MachineConfigPool object")
+	}
+
+	currentMCName := mcp.Status.Configuration.Name
+	if currentMCName == "" { // should never happen
+		return nil, fmt.Errorf("MCP %q missing configuration name", mcp.Name)
+	}
+
+	klog.Infof("checking current MachineConfig %q", currentMCName)
+
+	return r.getMachineConfig(ctx, currentMCName)
+}
+
+func (r *PerformanceProfileReconciler) getMachineConfig(ctx context.Context, name string) (*mcov1.MachineConfig, error) {
 	mc := &mcov1.MachineConfig{}
 	key := types.NamespacedName{
 		Name:      name,
 		Namespace: metav1.NamespaceNone,
 	}
-	if err := r.Get(context.TODO(), key, mc); err != nil {
+	if err := r.Get(ctx, key, mc); err != nil {
 		return nil, err
 	}
 	return mc, nil
 }
 
-func (r *PerformanceProfileReconciler) getMutatedMachineConfig(mc *mcov1.MachineConfig) (*mcov1.MachineConfig, error) {
-	existing, err := r.getMachineConfig(mc.Name)
+func (r *PerformanceProfileReconciler) getMutatedMachineConfig(ctx context.Context, mc *mcov1.MachineConfig) (*mcov1.MachineConfig, error) {
+	existing, err := r.getMachineConfig(ctx, mc.Name)
 	if errors.IsNotFound(err) {
 		return mc, nil
 	}
@@ -64,7 +80,7 @@ func (r *PerformanceProfileReconciler) getMutatedMachineConfig(mc *mcov1.Machine
 }
 
 func (r *PerformanceProfileReconciler) createOrUpdateMachineConfig(mc *mcov1.MachineConfig) error {
-	_, err := r.getMachineConfig(mc.Name)
+	_, err := r.getMachineConfig(context.TODO(), mc.Name)
 	if errors.IsNotFound(err) {
 		klog.Infof("Create machine-config %q", mc.Name)
 		if err := r.Create(context.TODO(), mc); err != nil {
@@ -82,7 +98,7 @@ func (r *PerformanceProfileReconciler) createOrUpdateMachineConfig(mc *mcov1.Mac
 }
 
 func (r *PerformanceProfileReconciler) deleteMachineConfig(name string) error {
-	mc, err := r.getMachineConfig(name)
+	mc, err := r.getMachineConfig(context.TODO(), name)
 	if errors.IsNotFound(err) {
 		return nil
 	}
