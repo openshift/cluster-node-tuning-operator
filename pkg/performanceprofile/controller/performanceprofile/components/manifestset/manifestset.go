@@ -9,6 +9,7 @@ import (
 	profilecomponent "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/runtimeclass"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/tuned"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/node"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	nodev1 "k8s.io/api/node/v1"
@@ -19,6 +20,7 @@ import (
 type ManifestResultSet struct {
 	MachineConfig *mcov1.MachineConfig
 	KubeletConfig *mcov1.KubeletConfig
+	NodeConfig    *apiconfigv1.Node
 	Tuned         *tunedv1.Tuned
 	RuntimeClass  *nodev1.RuntimeClass
 }
@@ -35,6 +37,7 @@ func (ms *ManifestResultSet) ToObjects() []metav1.Object {
 		ms.KubeletConfig.GetObjectMeta(),
 		ms.Tuned.GetObjectMeta(),
 		ms.RuntimeClass.GetObjectMeta(),
+		ms.NodeConfig.GetObjectMeta(),
 	)
 	return objs
 }
@@ -46,6 +49,7 @@ func (ms *ManifestResultSet) ToManifestTable() ManifestTable {
 	manifests[ms.KubeletConfig.Kind] = ms.KubeletConfig
 	manifests[ms.Tuned.Kind] = ms.Tuned
 	manifests[ms.RuntimeClass.Kind] = ms.RuntimeClass
+	manifests[ms.NodeConfig.Kind] = ms.NodeConfig
 	return manifests
 }
 
@@ -68,6 +72,7 @@ func GetNewComponents(profile *performancev2.PerformanceProfile, profileMCP *mco
 		return nil, err
 	}
 
+	nodeConfig := node.NewNodeConfig(apiconfigv1.CgroupModeV1)
 	runtimeClass := runtimeclass.New(profile, machineconfig.HighPerformanceRuntime)
 
 	manifestResultSet := ManifestResultSet{
@@ -75,6 +80,7 @@ func GetNewComponents(profile *performancev2.PerformanceProfile, profileMCP *mco
 		KubeletConfig: kc,
 		Tuned:         performanceTuned,
 		RuntimeClass:  runtimeClass,
+		NodeConfig:    nodeConfig,
 	}
 	return &manifestResultSet, nil
 }

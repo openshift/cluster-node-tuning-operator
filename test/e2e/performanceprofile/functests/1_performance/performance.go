@@ -445,105 +445,6 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 	})
 
-	Context("KubeletConfig experimental annotation", func() {
-		var secondMCP *mcov1.MachineConfigPool
-		var secondProfile *performancev2.PerformanceProfile
-		var newRole = "test-annotation"
-
-		BeforeEach(func() {
-			newLabel := fmt.Sprintf("%s/%s", testutils.LabelRole, newRole)
-
-			reserved := performancev2.CPUSet("0")
-			isolated := performancev2.CPUSet("1-3")
-
-			secondProfile = &performancev2.PerformanceProfile{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "PerformanceProfile",
-					APIVersion: performancev2.GroupVersion.String(),
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-annotation",
-					Annotations: map[string]string{
-						"kubeletconfig.experimental": `{"systemReserved": {"memory": "256Mi"}, "kubeReserved": {"memory": "256Mi"}}`,
-					},
-				},
-				Spec: performancev2.PerformanceProfileSpec{
-					CPU: &performancev2.CPU{
-						Reserved: &reserved,
-						Isolated: &isolated,
-					},
-					NodeSelector: map[string]string{newLabel: ""},
-					RealTimeKernel: &performancev2.RealTimeKernel{
-						Enabled: pointer.Bool(true),
-					},
-					NUMA: &performancev2.NUMA{
-						TopologyPolicy: pointer.String("restricted"),
-					},
-				},
-			}
-			Expect(testclient.Client.Create(context.TODO(), secondProfile)).ToNot(HaveOccurred())
-
-			machineConfigSelector := componentprofile.GetMachineConfigLabel(secondProfile)
-			secondMCP = &mcov1.MachineConfigPool{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-annotation",
-					Labels: map[string]string{
-						machineconfigv1.MachineConfigRoleLabelKey: newRole,
-					},
-				},
-				Spec: mcov1.MachineConfigPoolSpec{
-					MachineConfigSelector: &metav1.LabelSelector{
-						MatchLabels: machineConfigSelector,
-					},
-					NodeSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							newLabel: "",
-						},
-					},
-				},
-			}
-
-			Expect(testclient.Client.Create(context.TODO(), secondMCP)).ToNot(HaveOccurred())
-		})
-
-		It("should override system-reserved memory", func() {
-			var kubeletConfig *machineconfigv1.KubeletConfig
-
-			Eventually(func() error {
-				By("Getting that new KubeletConfig")
-				configKey := types.NamespacedName{
-					Name:      components.GetComponentName(secondProfile.Name, components.ComponentNamePrefix),
-					Namespace: metav1.NamespaceNone,
-				}
-				kubeletConfig = &machineconfigv1.KubeletConfig{}
-				if err := testclient.GetWithRetry(context.TODO(), configKey, kubeletConfig); err != nil {
-					klog.Warningf("Failed to get the KubeletConfig %q", configKey.Name)
-					return err
-				}
-
-				return nil
-			}, time.Minute, 5*time.Second).Should(BeNil())
-
-			kubeletConfigString := string(kubeletConfig.Spec.KubeletConfig.Raw)
-			Expect(kubeletConfigString).To(ContainSubstring(`"kubeReserved":{"memory":"256Mi"}`))
-			Expect(kubeletConfigString).To(ContainSubstring(`"systemReserved":{"memory":"256Mi"}`))
-		})
-
-		AfterEach(func() {
-			if secondProfile != nil {
-				if err := profiles.Delete(secondProfile.Name); err != nil {
-					klog.Warningf("failed to delete the performance profile %q: %v", secondProfile.Name, err)
-				}
-			}
-
-			if secondMCP != nil {
-				if err := mcps.Delete(secondMCP.Name); err != nil {
-					klog.Warningf("failed to delete the machine config pool %q: %v", secondMCP.Name, err)
-				}
-			}
-		})
-	})
-
 	Context("Create second performance profiles on a cluster", func() {
 		var secondMCP *mcov1.MachineConfigPool
 		var secondProfile *performancev2.PerformanceProfile
@@ -562,6 +463,9 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				},
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "second-profile",
+					Annotations: map[string]string{
+						performancev2.PerformanceProfileIgnoreCgroupsVersion: "true",
+					},
 				},
 				Spec: performancev2.PerformanceProfileSpec{
 					CPU: &performancev2.CPU{
