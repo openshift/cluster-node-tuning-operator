@@ -99,7 +99,14 @@ rules:
   verbs: ["*"]
 - apiGroups: ["operators.coreos.com"]
   resources: ["clusterserviceversions","operatorgroups","subscriptions"]
-  verbs: ["get","delete","list","update","watch"] 
+  verbs: ["get","delete","list","update","watch"]
+# Needed to check the feature gates
+- apiGroups: ["config.openshift.io"]
+  resources: ["clusterversions", "featuregates"]
+  verbs: ["list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["replicasets"]
+  verbs: ["get"]
 ---
 
 # Bind the operator cluster role to its Service Account.
