@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"os"
 	"reflect"
 	"time"
@@ -63,8 +64,9 @@ const (
 // PerformanceProfileReconciler reconciles a PerformanceProfile object
 type PerformanceProfileReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Scheme      *runtime.Scheme
+	Recorder    record.EventRecorder
+	FeatureGate featuregates.FeatureGate
 }
 
 // SetupWithManager creates a new PerformanceProfile Controller and adds it to the Manager.

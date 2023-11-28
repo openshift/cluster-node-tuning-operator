@@ -4,16 +4,22 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	apiconfigv1 "github.com/openshift/api/config/v1"
+	configclient "github.com/openshift/client-go/config/clientset/versioned"
+	configinformers "github.com/openshift/client-go/config/informers/externalversions"
 	performancev1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v1"
 	performancev1alpha1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v1alpha1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	paocontroller "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
+	"github.com/openshift/library-go/pkg/operator/events"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	olmv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	"github.com/spf13/cobra"
@@ -26,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -122,7 +129,7 @@ func operatorRun() {
 
 	restConfig := ctrl.GetConfigOrDie()
 	le := util.GetLeaderElectionConfig(restConfig, enableLeaderElection)
-	mgr, err := ctrl.NewManager(rest.AddUserAgent(ctrl.GetConfigOrDie(), version.OperatorFilename), ctrl.Options{
+	mgr, err := ctrl.NewManager(rest.AddUserAgent(restConfig, version.OperatorFilename), ctrl.Options{
 		Cache:                         cache.Options{Namespaces: namespaces},
 		Scheme:                        scheme,
 		LeaderElection:                enableLeaderElection,
@@ -169,11 +176,17 @@ func operatorRun() {
 	}
 	metrics.RegisterVersion(version.Version)
 
+	fg, err := setupFeatureGates(context.TODO(), restConfig, ntoNamespace)
+	if err != nil {
+		klog.Exitf("failed to setup feature gates")
+	}
+
 	if !config.InHyperShift() {
 		if err = (&paocontroller.PerformanceProfileReconciler{
-			Client:   mgr.GetClient(),
-			Scheme:   mgr.GetScheme(),
-			Recorder: mgr.GetEventRecorderFor("performance-profile-controller"),
+			Client:      mgr.GetClient(),
+			Scheme:      mgr.GetScheme(),
+			Recorder:    mgr.GetEventRecorderFor("performance-profile-controller"),
+			FeatureGate: fg,
 		}).SetupWithManager(mgr); err != nil {
 			klog.Exitf("unable to create PerformanceProfile controller: %v", err)
 		}
@@ -319,6 +332,45 @@ func migratePinnedSingleNodeInfraStatus(cfg *rest.Config, scheme *apiruntime.Sch
 	}
 
 	return nil
+}
+
+func setupFeatureGates(ctx context.Context, config *rest.Config, operatorNamespace string) (featuregates.FeatureGate, error) {
+	// TODO is this version correct?
+	desiredVersion := version.Version
+	missingVersion := "0.0.1-snapshot"
+
+	configClient, err := configclient.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	k8sClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	controllerRef, err := events.GetControllerReferenceForCurrentPod(ctx, k8sClient, operatorNamespace, nil)
+	if err != nil {
+		return nil, err
+	}
+	eventRecorder := events.NewKubeRecorder(k8sClient.CoreV1().Events(metav1.NamespaceNone), "performance-profile-controller", controllerRef)
+	informersFactory := configinformers.NewSharedInformerFactory(configClient, 10*time.Minute)
+	// By default, this will exit(0) the process if the featuregates ever change to a different set of values.
+	featureGateAccessor := featuregates.NewFeatureGateAccess(
+		desiredVersion, missingVersion,
+		informersFactory.Config().V1().ClusterVersions(), informersFactory.Config().V1().FeatureGates(),
+		eventRecorder,
+	)
+	go featureGateAccessor.Run(ctx)
+	go informersFactory.Start(ctx.Done())
+
+	select {
+	case <-featureGateAccessor.InitialFeatureGatesObserved():
+		featureGates, _ := featureGateAccessor.CurrentFeatureGates()
+		klog.Infof("FeatureGates initialized: knownFeatureGates=%v", featureGates.KnownFeatures())
+	case <-time.After(1 * time.Minute):
+		klog.Errorf("timed out waiting for FeatureGate detection")
+		return nil, fmt.Errorf("timed out waiting for FeatureGate detection")
+	}
+	return featureGateAccessor.CurrentFeatureGates()
 }
 
 func main() {
