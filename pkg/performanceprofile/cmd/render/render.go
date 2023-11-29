@@ -26,12 +26,13 @@ import (
 
 	igntypes "github.com/coreos/ignition/v2/config/v3_2/types"
 	apicfgv1 "github.com/openshift/api/config/v1"
-	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	tunev1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
-
+	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
+	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -55,14 +56,18 @@ var (
 )
 
 func init() {
+	utilruntime.Must(corev1.AddToScheme(manifestScheme))
 	utilruntime.Must(performancev2.AddToScheme(manifestScheme))
 	utilruntime.Must(apicfgv1.Install(manifestScheme))
 	utilruntime.Must(mcfgv1.Install(manifestScheme))
+	utilruntime.Must(tunev1.AddToScheme(manifestScheme))
 	codecFactory = serializer.NewCodecFactory(manifestScheme)
 	runtimeDecoder = codecFactory.UniversalDecoder(
 		performancev2.GroupVersion,
 		apicfgv1.GroupVersion,
 		mcfgv1.GroupVersion,
+		corev1.SchemeGroupVersion,
+		tunev1.SchemeGroupVersion,
 	)
 }
 

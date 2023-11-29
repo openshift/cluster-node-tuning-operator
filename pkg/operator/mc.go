@@ -19,6 +19,11 @@ const (
 	MachineConfigPrefix                       string = "50-nto"
 )
 
+// NewMachineConfig exports newMachineConfig for offline rendering
+func NewMachineConfig(name string, annotations map[string]string, labels map[string]string, kernelArguments []string) *mcfgv1.MachineConfig {
+	return newMachineConfig(name, annotations, labels, kernelArguments)
+}
+
 func newMachineConfig(name string, annotations map[string]string, labels map[string]string, kernelArguments []string) *mcfgv1.MachineConfig {
 	if labels == nil {
 		labels = map[string]string{}

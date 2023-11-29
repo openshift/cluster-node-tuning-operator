@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 
@@ -29,8 +30,9 @@ import (
 )
 
 type renderOpts struct {
-	assetsInDir  string
-	assetsOutDir string
+	assetsInDir      string
+	assetsOutDir     string
+	renderTunedPatch bool
 }
 
 // NewRenderCommand creates a render command.
@@ -62,6 +64,7 @@ func NewRenderCommand() *cobra.Command {
 func (r *renderOpts) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&r.assetsInDir, "asset-input-dir", components.AssetsDir, "Input path for the assets directory. (Can be a comma separated list of directories.)")
 	fs.StringVar(&r.assetsOutDir, "asset-output-dir", r.assetsOutDir, "Output path for the rendered manifests.")
+	fs.BoolVar(&r.renderTunedPatch, "render-tuned-patch", false, "Render Tuned patches from asset directory.")
 	// environment variables has precedence over standard input
 	r.readFlagsFromEnv()
 }
@@ -74,6 +77,9 @@ func (r *renderOpts) readFlagsFromEnv() {
 	if assetsOutDir := os.Getenv("ASSET_OUTPUT_DIR"); len(assetsOutDir) > 0 {
 		r.assetsOutDir = assetsOutDir
 	}
+	if renderTunedPatch := os.Getenv("RENDER_TUNED_PATCH"); strings.Compare(strings.ToLower(renderTunedPatch), "true") == 0 {
+		r.renderTunedPatch = true
+	}
 }
 
 func (r *renderOpts) Validate() error {
@@ -85,6 +91,9 @@ func (r *renderOpts) Validate() error {
 }
 
 func (r *renderOpts) Run() error {
+	if r.renderTunedPatch {
+		return renderPerformance(r.assetsInDir, r.assetsOutDir, r.renderTunedPatch)
+	}
 	return render(r.assetsInDir, r.assetsOutDir)
 }
 
