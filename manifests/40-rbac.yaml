@@ -59,6 +59,10 @@ rules:
 - apiGroups: [""]
   resources: ["nodes/metrics","nodes/specs"]
   verbs: ["get"]
+# Needed to check the feature gates
+- apiGroups: ["config.openshift.io"]
+  resources: ["clusterversions"]
+  verbs: ["list"]
 # Needed by every CVO-managed operator.
 # infrastructures needed for the leader election code to get infra topology
 - apiGroups: ["config.openshift.io"]

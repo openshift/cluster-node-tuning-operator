@@ -295,3 +295,6 @@ pao-build-e2e:
 .PHONY: pao-clean-e2e
 pao-clean-e2e:
 	@rm -f _output/e2e-pao*.test
+
+fg-watch:
+	go build -v -o _output/fg-watch cmd/fg-watch/main.go
