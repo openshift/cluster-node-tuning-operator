@@ -342,22 +342,31 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 
 			expectedRPSCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
 			Expect(err).ToNot(HaveOccurred())
+			expectedRPSCPUsMask, err := components.CPUListToMaskList(expectedRPSCPUs.String())
+			Expect(err).ToNot(HaveOccurred())
+			testlog.Infof("expected RPS CPU mask for virtual network devices=%q", expectedRPSCPUsMask)
 
 			expectedPhysRPSCPUs := expectedRPSCPUs.Clone()
+			expectedPhyRPSCPUsMask := expectedRPSCPUsMask
 			if !profileutil.IsPhysicalRpsEnabled(profile) {
 				// empty cpuset
 				expectedPhysRPSCPUs = cpuset.New()
+				expectedPhyRPSCPUsMask, err = components.CPUListToMaskList(expectedPhysRPSCPUs.String())
+				Expect(err).ToNot(HaveOccurred())
+				testlog.Infof("physical RPS disabled, expected RPS CPU mask for physical network devices is=%q", expectedPhyRPSCPUsMask)
+			} else {
+				testlog.Infof("physical RPS enabled, expected RPS CPU mask for physical network devices is=%q", expectedRPSCPUsMask)
 			}
 
 			for _, node := range workerRTNodes {
-				// Verify the systemd RPS service uses the correct RPS mask
+				By("verify the systemd RPS service uses the correct RPS mask")
 				cmd := []string{"sysctl", "-n", "net.core.rps_default_mask"}
 				rpsMaskContent, err := nodes.ExecCommandOnNode(cmd, &node)
 				Expect(err).ToNot(HaveOccurred(), "failed to exec command %q on node %q", cmd, node)
 				rpsMaskContent = strings.TrimSuffix(rpsMaskContent, "\n")
 				rpsCPUs, err := components.CPUMaskToCPUSet(rpsMaskContent)
 				Expect(err).ToNot(HaveOccurred(), "failed to parse RPS mask %q", rpsMaskContent)
-				Expect(rpsCPUs.Equals(expectedRPSCPUs)).To(BeTrue(), "the default rps mask is different from the reserved CPUs; have %q want %q", rpsCPUs.String(), expectedRPSCPUs.String())
+				Expect(rpsCPUs.Equals(expectedRPSCPUs)).To(BeTrue(), "the default rps mask is different from the reserved CPUs mask; have %q want %q", rpsMaskContent, expectedRPSCPUsMask)
 
 				By("verify RPS mask on virtual network devices")
 				cmd = []string{
@@ -366,15 +375,17 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					"-prune", "-o",
 					"-type", "f",
 					"-name", "rps_cpus",
+					"-printf", "%p ",
 					"-exec", "cat", "{}", ";",
 				}
-				devsRPS, err := nodes.ExecCommandOnNode(cmd, &node)
+				devsRPSContent, err := nodes.ExecCommandOnNode(cmd, &node)
 				Expect(err).ToNot(HaveOccurred(), "failed to exec command %q on node %q", cmd, node.Name)
-				for _, devRPS := range strings.Split(devsRPS, "\n") {
-					rpsCPUs, err = components.CPUMaskToCPUSet(devRPS)
+				devsRPSMap := makeDevRPSMap(devsRPSContent)
+				for path, mask := range devsRPSMap {
+					rpsCPUs, err = components.CPUMaskToCPUSet(mask)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(rpsCPUs.Equals(expectedRPSCPUs)).To(BeTrue(),
-						"a host device rps mask is different from the reserved CPUs; have %q want %q", rpsCPUs.String(), expectedRPSCPUs.String())
+						"a host virtual device: %q rps mask is different from the reserved CPUs; have %q want %q", path, mask, expectedRPSCPUsMask)
 				}
 
 				By("verify RPS mask on physical network devices")
@@ -383,15 +394,17 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					"-regex", "/rootfs/sys/devices/pci.*",
 					"-type", "f",
 					"-name", "rps_cpus",
+					"-printf", "%p ",
 					"-exec", "cat", "{}", ";",
 				}
-				devsRPS, err = nodes.ExecCommandOnNode(cmd, &node)
+				devsRPSContent, err = nodes.ExecCommandOnNode(cmd, &node)
 				Expect(err).ToNot(HaveOccurred(), "failed to exec command %q on node %q", cmd, node.Name)
 
-				for _, devRPS := range strings.Split(devsRPS, "\n") {
-					rpsCPUs, err = components.CPUMaskToCPUSet(devRPS)
+				devsRPSMap = makeDevRPSMap(devsRPSContent)
+				for path, mask := range devsRPSMap {
+					rpsCPUs, err = components.CPUMaskToCPUSet(mask)
 					Expect(err).ToNot(HaveOccurred())
-					Expect(rpsCPUs.Equals(expectedPhysRPSCPUs)).To(BeTrue(), "a host device rps mask is different from the reserved CPUs; have %q want %q", rpsCPUs.String(), expectedPhysRPSCPUs.String())
+					Expect(rpsCPUs.Equals(expectedPhysRPSCPUs)).To(BeTrue(), "a host physical device: %q rps mask is different than expected; have %q want %q", path, mask, expectedPhyRPSCPUsMask)
 				}
 			}
 		})
@@ -1414,4 +1427,17 @@ func validateTunedActiveProfile(wrknodes []corev1.Node) {
 		}, cluster.ComputeTestTimeout(testTimeout*time.Second, RunningOnSingleNode), testPollInterval*time.Second).Should(Equal(activeProfileName),
 			fmt.Sprintf("active_profile is not set to %s. %v", activeProfileName, err))
 	}
+}
+
+// makeDevRPSMap converts the find command output where each line has the following pattern:
+// '/rootfs/sys/devices/virtual/net/<dev-id>/queues/rx-<queue-number>/rps_cpus <rps-mask>'
+// into a map of devices with their corresponding rps mask
+func makeDevRPSMap(content string) map[string]string {
+	devRPSMap := make(map[string]string)
+	for _, line := range strings.Split(content, "\n") {
+		s := strings.Split(line, " ")
+		path, mask := s[0], s[1]
+		devRPSMap[path] = mask
+	}
+	return devRPSMap
 }
