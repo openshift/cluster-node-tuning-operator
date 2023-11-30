@@ -3,7 +3,7 @@
 The Node Tuning Operator (NTO) manages cluster node-level tuning for
 [OpenShift](https://openshift.io/).
 
-The majority of high-performance applications require some
+The majority of   high-performance applications require some
 level of kernel tuning. The Operator provides a unified
 management interface to users of node-level sysctls and more
 flexibility to add [custom tuning](#custom-tuning-specification)
