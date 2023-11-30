@@ -1,38 +1,34 @@
 #!/usr/bin/env bash
 
-dev=$1
-[ -n "${dev}" ] || { echo "The device argument is missing" >&2 ; exit 1; }
-
-mask=$2
-[ -n "${mask}" ] || { echo "The mask argument is missing" >&2 ; exit 1; }
-
-dev_dir="/sys/class/net/${dev}"
-
-function find_dev_dir {
-  systemd_devs=$(systemctl list-units -t device | grep sys-subsystem-net-devices | cut -d' ' -f1)
-
-  for systemd_dev in ${systemd_devs}; do
-    dev_sysfs=$(systemctl show "${systemd_dev}" -p SysFSPath --value)
-
-    dev_orig_name="${dev_sysfs##*/}"
-    if [ "${dev_orig_name}" = "${dev}" ]; then
-      dev_name="${systemd_dev##*-}"
-      dev_name="${dev_name%%.device}"
-      if [ "${dev_name}" = "${dev}" ]; then # disregard the original device unit
-              continue
-      fi
-
-      echo "${dev} device was renamed to $dev_name"
-      dev_dir="/sys/class/net/${dev_name}"
-      break
-    fi
-  done
+function set_queue_rps_mask() {
+# replace x2d with hyphen (-) which is an escaped character
+# that was added by systemd-escape in order to escape the systemd unit name that invokes this script
+path=${path/x2d/-}
+# set rps affinity for the queue
+echo "${mask}"  2> /dev/null > "/sys/${path}/rps_cpus"
+# we return 0 because the 'echo' command might fail if the device path to which the queue belongs has changed.
+# this can happen in case of SRI-OV devices renaming.
+return 0
 }
 
-[ -d "${dev_dir}" ] || find_dev_dir                # the net device was renamed, find the new name
-[ -d "${dev_dir}" ] || { sleep 5; find_dev_dir; }  # search failed, wait a little and try again
-[ -d "${dev_dir}" ] || { echo "${dev_dir}" directory not found >&2 ; exit 0; } # the interface disappeared, not an error
-
-for i in "${dev_dir}"/queues/rx-*/rps_cpus; do
-  echo "${mask}" > "${i}"
+function set_net_dev_rps_mask() {
+  # in case of device we want to iterate through all queues
+for i in /sys/"${path}"/queues/rx-*; do
+  echo "${mask}" 2> /dev/null > "${i}/rps_cpus"
 done
+# we return 0 because the 'echo' command might fail if the device path to which the queue belongs has changed.
+# this can happen in case of SRI-OV devices renaming.
+return 0
+ }
+
+path=${1}
+[ -n "${path}" ] || { echo "The device path argument is missing" >&2 ; exit 1; }
+
+mask=${2}
+[ -n "${mask}" ] || { echo "The mask argument is missing" >&2 ; exit 1; }
+
+if [[ "${path}" =~ "queues" ]]; then
+ set_queue_rps_mask
+else
+ set_net_dev_rps_mask
+fi
