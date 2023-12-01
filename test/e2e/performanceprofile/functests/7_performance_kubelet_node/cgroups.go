@@ -34,8 +34,6 @@ import (
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
 
-type checkCgroupFunction func(*corev1.Node) (string, error)
-
 var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 	var (
 		onlineCPUSet            cpuset.CPUSet
@@ -174,28 +172,22 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 			return nodes.ExecCommandOnNode(cmd, node)
 		}
 
-		DescribeTable("Verify cgroup layout on worker node",
-			func(ovsProc, ovsCpus, ovslb bool) {
-				if ovsProc {
-					result, err := chkOvsCgrpProcs(workerRTNode)
-					Expect(err).ToNot(HaveOccurred())
-					Expect(result).To(Not(BeEmpty()))
-				}
+		It("[test_id:64098] Verify cgroup layout on worker node", func() {
+			// check cgroups.procs
+			result, err := chkOvsCgrpProcs(workerRTNode)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(Not(BeEmpty()))
 
-				if ovsCpus {
-					result, err := chkOvsCgrpCpuset(workerRTNode)
-					ovsCPUSet, err := cpuset.Parse(result)
-					Expect(err).ToNot(HaveOccurred())
-					Expect(ovsCPUSet).To(Equal(onlineCPUSet))
-				}
-				if ovslb {
-					result, err := chkOvsCgroupLoadBalance(workerRTNode)
-					Expect(err).ToNot(HaveOccurred())
-					Expect(result).To(Equal("0"))
-				}
-			},
-			Entry("[test_id:64098] Verify ovs cgroup with runc", true, true, true),
-		)
+			result, err = chkOvsCgrpCpuset(workerRTNode)
+			Expect(err).ToNot(HaveOccurred(), "Unable to read cpuset.cpus")
+			ovsCPUSet, err := cpuset.Parse(result)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(ovsCPUSet).To(Equal(onlineCPUSet))
+
+			result, err = chkOvsCgroupLoadBalance(workerRTNode)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(Equal("0"))
+		})
 	})
 
 	Describe("Affinity", func() {
@@ -263,7 +255,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				for _, cpumask := range cpumaskList {
 					Expect(cpus).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", cpus, cpumask)
 				}
-				deleteTestPod(testpod)
+				deleteTestPod(context.TODO(), testpod)
 			})
 
 			It("[test_id:64102] Create and remove gu pods to verify affinity of ovs are changed appropriately", func() {
@@ -332,7 +324,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				}
 				// Delete testpod1
 				testlog.Infof("Deleting pod %v", testpod1.Name)
-				deleteTestPod(testpod1)
+				deleteTestPod(context.TODO(), testpod1)
 
 				// Check the cpus of ovnkubenode pods
 				ovnContainerCpus, err = getOvnContainerCpus(workerRTNode)
@@ -348,7 +340,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 					Expect(ovnContainerCpus).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", ovnContainerCpus, cpumask)
 				}
 				// Delete testpod2
-				deleteTestPod(testpod2)
+				deleteTestPod(context.TODO(), testpod2)
 			})
 
 			It("[test_id:64103] ovs process affinity still excludes guaranteed pods after reboot", func() {
@@ -479,9 +471,9 @@ func cpuSpecToString(cpus *performancev2.CPU) string {
 }
 
 // deleteTestPod removes guaranteed pod
-func deleteTestPod(testpod *corev1.Pod) {
+func deleteTestPod(ctx context.Context, testpod *corev1.Pod) {
 	// it possible that the pod already was deleted as part of the test, in this case we want to skip teardown
-	err := testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(testpod), testpod)
+	err := testclient.Client.Get(ctx, client.ObjectKeyFromObject(testpod), testpod)
 	if errors.IsNotFound(err) {
 		return
 	}
