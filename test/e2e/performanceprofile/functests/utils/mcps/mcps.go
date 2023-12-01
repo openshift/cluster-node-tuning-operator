@@ -318,8 +318,7 @@ func EnableCrun(name string, perfprofile *performancev2.PerformanceProfile, prof
 func GetValueFromCrioConfig(workercnfNode *corev1.Node, key, confPath string) ([]string, error) {
 	out, err := nodes.ExecCommandOnMachineConfigDaemon(workercnfNode, []string{"cat", filepath.Join("/rootfs", confPath)})
 	if err != nil {
-		msg := fmt.Sprintf("failed to fetch values from %s", confPath)
-		return nil, errors.Wrap(err, msg)
+		return nil, fmt.Errorf("failed to fetch values from %s: %w", confPath, err)
 	}
 	re := regexp.MustCompile(fmt.Sprintf(`%s\s*=\s*"([^"]+)"`, key))
 	match := re.FindStringSubmatch(string(out))
