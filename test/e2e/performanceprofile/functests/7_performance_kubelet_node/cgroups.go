@@ -17,7 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/cpuset"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -352,13 +352,14 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 			})
 
 			It("[test_id:64103] ovs process affinity still excludes guaranteed pods after reboot", func() {
+				var dp *appsv1.Deployment
 				cpuID := onlineCPUSet.UnsortedList()[0]
 				smtLevel := nodes.GetSMTLevel(cpuID, workerRTNode)
 				if smtLevel < 2 {
 					Skip(fmt.Sprintf("designated worker node %q has SMT level %d - minimum required 2", workerRTNode.Name, smtLevel))
 				}
 				// create a deployment to deploy gu pods
-				dp := newDeployment()
+				dp = newDeployment()
 				testNode := make(map[string]string)
 				testNode["kubernetes.io/hostname"] = workerRTNode.Name
 				dp.Spec.Template.Spec.NodeSelector = testNode
@@ -408,6 +409,14 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
 				By("Waiting for MCP being updated")
 				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
+				// After reboot we want the deployment to be ready before moving forward
+				desiredStatus := appsv1.DeploymentStatus{
+					Replicas:          3,
+					AvailableReplicas: 3,
+				}
+
+				err = waitForCondition(dp, desiredStatus)
 
 				// Check the cpus of ovn kube node pods and ovs services
 				ovnContainerCpus, err = getOvnContainerCpus(workerRTNode)
@@ -634,4 +643,22 @@ func newDeployment() *appsv1.Deployment {
 		},
 	}
 	return dp
+}
+
+// waitForCondition wait for deployment to be ready
+func waitForCondition(deployment *appsv1.Deployment, status appsv1.DeploymentStatus) error {
+	var err error
+	var val bool
+	err = wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
+		if err != nil {
+			if errors.IsNotFound(err) {
+				return false, fmt.Errorf("deployment not found")
+			}
+			return false, err
+		}
+		val = (deployment.Status.Replicas == status.Replicas && deployment.Status.AvailableReplicas == status.AvailableReplicas)
+		return val, err
+	})
+
+	return err
 }
