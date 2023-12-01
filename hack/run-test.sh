@@ -70,8 +70,6 @@ main() {
         exit_error "Missing arguments -t or -p"
     fi
 
-    LATENCY_TEST_RUN=${LATENCY_TEST_RUN:-"false"}
-
     which ginkgo
     if [ $? -ne 0 ]; then
         echo "Downloading ginkgo tool"
@@ -83,11 +81,6 @@ main() {
     if ! which tput &>/dev/null 2>&1 || [[ $(tput -T$TERM colors) -lt 8 ]]; then
         echo "Terminal does not seem to support colored output, disabling it"
         NO_COLOR="--no-color"
-    fi
-
-    # run the latency tests under the OpenShift CI, just to verify that the image works
-    if [ -n "${IMAGE_FORMAT}" ]; then
-        LATENCY_TEST_RUN="true"
     fi
 
     MESSAGE="${HEADER_MESSAGE}: ${GINKGO_SUITS}"
