@@ -35,6 +35,7 @@ var (
 	cmdlineMultipleHugePages          = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=128"
 	cmdlinePerPodPowerManagementHint  = "+intel_pstate=passive"
 	cmdlineHighPowerConsumptionPstate = "+intel_pstate=disable"
+	cmdlineHarrdwareTuningPstate      = "+intel_pstate=active"
 )
 
 var _ = Describe("Tuned", func() {
@@ -216,6 +217,8 @@ var _ = Describe("Tuned", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(bootLoaderSection.Key("cmdline_pstate").String()).ToNot(Equal(cmdlinePerPodPowerManagementHint))
 				Expect(bootLoaderSection.Key("cmdline_pstate").String()).ToNot(Equal(cmdlineHighPowerConsumptionPstate))
+				Expect(bootLoaderSection.Key("cmdline_pstate").String()).ToNot(Equal(cmdlineHarrdwareTuningPstate))
+
 			})
 		})
 
@@ -231,6 +234,7 @@ var _ = Describe("Tuned", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(bootLoaderSection.Key("cmdline_pstate").String()).ToNot(Equal(cmdlinePerPodPowerManagementHint))
 				Expect(bootLoaderSection.Key("cmdline_pstate").String()).To(Equal(cmdlineHighPowerConsumptionPstate))
+				Expect(bootLoaderSection.Key("cmdline_pstate").String()).ToNot(Equal(cmdlineHarrdwareTuningPstate))
 			})
 		})
 
@@ -245,6 +249,7 @@ var _ = Describe("Tuned", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(bootLoader.Key("cmdline_pstate").String()).To(Equal(cmdlinePerPodPowerManagementHint))
 				Expect(bootLoader.Key("cmdline_pstate").String()).ToNot(Equal(cmdlineHighPowerConsumptionPstate))
+				Expect(bootLoader.Key("cmdline_pstate").String()).ToNot(Equal(cmdlineHarrdwareTuningPstate))
 			})
 		})
 

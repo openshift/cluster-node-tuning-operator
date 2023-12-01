@@ -496,6 +496,22 @@ spec:
                 - isolated
                 - reserved
                 type: object
+              hardwareTuning:
+                description: HardwareTuning defines cpu frequencies for isolated and reserved cpus. 
+                  It is an optional parameter and requires vendor recommendation to find suitable 
+                  frequencies. The intention is to set higher frequencies for reserved cpus where 
+                  platform application is running while setting isolated cpu frequencies to match 
+                  vendor recommendation.
+                properties:
+                  isolatedCpuFreq: 
+                    description: IsolatedCpuFreq defines the maximum cpu frequency for isolated CPUs.
+                    format: int32
+                    type: integer
+                  reservedCpuFreq:
+                    description: ReservedCpuFreq defines the maximum cpu frequency for reserved CPUs.
+                    format: int32
+                    type: integer
+                type: object
               globallyDisableIrqLoadBalancing:
                 description: GloballyDisableIrqLoadBalancing toggles whether IRQ load
                   balancing will be disabled for the Isolated CPU set. When the option

@@ -13,21 +13,23 @@ import (
 )
 
 const (
-	defaultExpectedDir   = "default"
-	pinnedExpectedDir    = "pinned"
-	bootstrapExpectedDir = "bootstrap"
-	noRefExpectedDir     = "no-ref"
+	defaultExpectedDir      = "default"
+	pinnedExpectedDir       = "pinned"
+	bootstrapExpectedDir    = "bootstrap"
+	noRefExpectedDir        = "no-ref"
+	cpuFrequencyExpectedDir = defaultExpectedDir + "/" + "cpuFrequency"
 )
 
 var (
-	assetsOutDir       string
-	assetsInDirs       []string
-	ppDir              string
-	testDataPath       string
-	defaultPinnedDir   string
-	snoLegacyPinnedDir string
-	bootstrapPPDir     string
-	extraMCPDir        string
+	assetsOutDir                           string
+	assetsInDirs, assetsCpuFrequencyInDirs []string
+	ppDir                                  string
+	ppCpuFrequencyDir                      string
+	testDataPath                           string
+	defaultPinnedDir                       string
+	snoLegacyPinnedDir                     string
+	bootstrapPPDir                         string
+	extraMCPDir                            string
 )
 
 var _ = Describe("render command e2e test", func() {
@@ -38,10 +40,12 @@ var _ = Describe("render command e2e test", func() {
 		bootstrapPPDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "bootstrap-cluster", "performance")
 		extraMCPDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "bootstrap-cluster", "extra-mcp")
 		ppDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "manual-cluster", "performance")
+		ppCpuFrequencyDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "manual-cluster", "cpuFrequency")
 		defaultPinnedDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "pinned-cluster", "default")
 		snoLegacyPinnedDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "pinned-cluster", "single-node-legacy")
 		testDataPath = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "testdata")
 		assetsInDirs = []string{assetsInDir, ppDir}
+		assetsCpuFrequencyInDirs = []string{assetsInDir, ppCpuFrequencyDir}
 	})
 
 	Context("With a single performance-profile", func() {
@@ -106,6 +110,20 @@ var _ = Describe("render command e2e test", func() {
 				fmt.Sprintf("ASSET_OUTPUT_DIR=%s", assetsOutDir),
 			)
 			runAndCompare(cmd, noRefExpectedDir)
+		})
+
+		It("Given cpu frequencies, should render appropriate sysfs configs", func() {
+			cmdline := []string{
+				filepath.Join(binPath, "cluster-node-tuning-operator"),
+				"render",
+				"--asset-input-dir", strings.Join(assetsCpuFrequencyInDirs, ","),
+				"--asset-output-dir", assetsOutDir,
+				"--owner-ref", "none",
+			}
+			fmt.Fprintf(GinkgoWriter, "running: %v\n", cmdline)
+
+			cmd := exec.Command(cmdline[0], cmdline[1:]...)
+			runAndCompare(cmd, cpuFrequencyExpectedDir)
 		})
 	})
 
