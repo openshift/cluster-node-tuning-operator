@@ -6,20 +6,16 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/klog"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
@@ -138,26 +134,6 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 
 			By("Waiting when mcp finishes updates")
 			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
-
-			var kubeletConfig machineconfigv1.KubeletConfig
-
-			Eventually(func() error {
-				By("Getting that new KubeletConfig")
-				configKey := types.NamespacedName{
-					Name:      components.GetComponentName(profile.Name, components.ComponentNamePrefix),
-					Namespace: metav1.NamespaceNone,
-				}
-				err := testclient.Client.Get(context.TODO(), configKey, &kubeletConfig)
-				if err != nil {
-					klog.Warningf("Failed to get the KubeletConfig %q", configKey.Name)
-				}
-				return err
-			}).WithPolling(5 * time.Second).WithTimeout(3 * time.Minute).Should(Succeed())
-
-			kubeletConfigString := string(kubeletConfig.Spec.KubeletConfig.Raw)
-			Expect(kubeletConfigString).To(ContainSubstring(`"kubeReserved":{"memory":"768Mi"}`))
-			Expect(kubeletConfigString).To(ContainSubstring(`"systemReserved":{"memory":"300Mi"}`))
-
 			for _, node := range workerRTNodes {
 				kubeletConfig, err := nodes.GetKubeletConfig(&node)
 				Expect(err).ToNot(HaveOccurred())

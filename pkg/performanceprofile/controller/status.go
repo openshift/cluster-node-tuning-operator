@@ -29,7 +29,6 @@ const (
 	conditionFailedGettingKubeletStatus      = "GettingKubeletStatusFailed"
 	conditionReasonTunedDegraded             = "TunedProfileDegraded"
 	conditionFailedGettingTunedProfileStatus = "GettingTunedStatusFailed"
-	conditionReasonCgroupsV1NotEnabled       = "CgroupsV1NotEnabled"
 )
 
 func (r *PerformanceProfileReconciler) updateStatus(profile *performancev2.PerformanceProfile, conditions []conditionsv1.Condition) error {
@@ -83,13 +82,12 @@ func (r *PerformanceProfileReconciler) updateStatus(profile *performancev2.Perfo
 	return r.Status().Update(context.TODO(), profileCopy)
 }
 
-func (r *PerformanceProfileReconciler) getAvailableConditions(message string) []conditionsv1.Condition {
+func (r *PerformanceProfileReconciler) getAvailableConditions() []conditionsv1.Condition {
 	now := time.Now()
 	return []conditionsv1.Condition{
 		{
 			Type:               conditionsv1.ConditionAvailable,
 			Status:             corev1.ConditionTrue,
-			Message:            message,
 			LastTransitionTime: metav1.Time{Time: now},
 			LastHeartbeatTime:  metav1.Time{Time: now},
 		},
