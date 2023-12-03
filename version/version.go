@@ -1,8 +1,9 @@
 package version
 
 const (
-	OperandFilename  = "openshift-tuned"
-	OperatorFilename = "cluster-node-tuning-operator"
+	OperandFilename          = "openshift-tuned"
+	OperatorFilename         = "cluster-node-tuning-operator"
+	ReleaseVersionEnvVarName = "RELEASE_VERSION"
 )
 
 var (
