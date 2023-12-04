@@ -133,7 +133,7 @@ func tunedRenderedProfiles(tuned *tunedv1.Tuned, m map[string]tunedv1.TunedProfi
 					if *v.Data == *existingProfile.Data {
 						klog.Infof("duplicate profiles names %s but they have the same contents", *v.Name)
 					} else {
-						klog.Warningf("WARNING: duplicate profiles named %s with different contents", *v.Name)
+						klog.Errorf("ERROR: duplicate profiles named %s with different contents found in Tuned CR %q", *v.Name, tuned.Name)
 					}
 				}
 				m[*v.Name] = v
