@@ -6,6 +6,11 @@
 
 set -euo pipefail
 
+if test "$(stat -f -c%T /sys/fs/cgroup)" = "cgroup2fs"; then
+	echo "Node is using cgroup v2, no configuration needed"
+	exit 0
+fi
+
 root=/sys/fs/cgroup/cpuset
 system="$root"/system.slice
 machine="$root"/machine.slice
