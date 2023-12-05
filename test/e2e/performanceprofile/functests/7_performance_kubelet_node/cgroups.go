@@ -288,7 +288,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				testpod1Cpus, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod1, tasksetcmd)
 				testlog.Infof("%v pod is using %v cpus", testpod1.Name, string(testpod1Cpus))
 
-				// Create testpod1
+				// Create testpod2
 				testpod2 = pods.GetTestPod()
 				testpod2.Namespace = testutils.NamespaceTesting
 				testpod2.Spec.Containers[0].Resources = corev1.ResourceRequirements{
