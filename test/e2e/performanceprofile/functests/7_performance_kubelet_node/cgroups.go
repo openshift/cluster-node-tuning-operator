@@ -35,17 +35,22 @@ import (
 )
 
 var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
+	const (
+		activation_file string = "/rootfs/var/lib/ovn-ic/etc/enable_dynamic_cpu_affinity"
+	)
 	var (
 		onlineCPUSet            cpuset.CPUSet
 		workerRTNode            *corev1.Node
 		workerRTNodes           []corev1.Node
 		profile, initialProfile *performancev2.PerformanceProfile
-		activation_file         string = "/rootfs/var/lib/ovn-ic/etc/enable_dynamic_cpu_affinity"
 		performanceMCP          string
 		ovsSliceCgroup          string
 	)
 
 	BeforeAll(func() {
+		if discovery.Enabled() && testutils.ProfileNotFound {
+		Skip("Discovery mode enabled, performance profile not found")
+		}
 		workerRTNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 
@@ -69,9 +74,6 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 	})
 
 	BeforeEach(func() {
-		if discovery.Enabled() && testutils.ProfileNotFound {
-			Skip("Discovery mode enabled, performance profile not found")
-		}
 		var err error
 		By(fmt.Sprintf("Checking the profile %s with cpus %s", profile.Name, cpuSpecToString(profile.Spec.CPU)))
 
@@ -139,7 +141,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 					Expect(testclient.Client.Patch(context.TODO(), profile,
 						client.RawPatch(
 							types.JSONPatchType,
-							[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
+							[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %v }]`, spec)),
 						),
 					)).ToNot(HaveOccurred())
 
@@ -196,7 +198,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				initialProfile = profile.DeepCopy()
 			})
 			It("[test_id:64100] matches with ovs process affinity", Label("fun1"), func() {
-				ovnPod, err := getOvnPod(workerRTNode)
+				ovnPod, err := getOvnPod(context.TODO(), workerRTNode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get ovnPod")
 
 				ovnContainersids, err := getOvnPodContainers(&ovnPod)
@@ -278,7 +280,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				}
 
 				testpod1.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
-				err = testclient.Client.Create(context.TODO(), testpod1)
+				err = testclient.Cliebytes.Equalnt.Create(context.TODO(), testpod1)
 				Expect(err).ToNot(HaveOccurred())
 				testpod1, err = pods.WaitForCondition(client.ObjectKeyFromObject(testpod1), corev1.PodConditionType(corev1.PodReady), corev1.ConditionTrue, 5*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
@@ -478,7 +480,7 @@ func deleteTestPod(ctx context.Context, testpod *corev1.Pod) {
 		return
 	}
 
-	err = testclient.Client.Delete(context.TODO(), testpod)
+	err = testclient.Client.Delete(ctx, testpod)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = pods.WaitForDeletion(testpod, pods.DefaultDeletionTimeout*time.Second)
@@ -486,13 +488,13 @@ func deleteTestPod(ctx context.Context, testpod *corev1.Pod) {
 }
 
 // getOvnPod Get OVN Kubenode pods running on the worker cnf node
-func getOvnPod(workerNode *corev1.Node) (corev1.Pod, error) {
+func getOvnPod(ctx context.Context, workerNode *corev1.Node) (corev1.Pod, error) {
 	var ovnKubeNodePod corev1.Pod
 	ovnpods := &corev1.PodList{}
 	options := &client.ListOptions{
 		Namespace: "openshift-ovn-kubernetes",
 	}
-	err := testclient.Client.List(context.TODO(), ovnpods, options)
+	err := testclient.Client.List(ctx, ovnpods, options)
 	if err != nil {
 		return ovnKubeNodePod, err
 	}
@@ -519,7 +521,7 @@ func getOvnPodContainers(ovnKubeNodePod *corev1.Pod) ([]string, error) {
 		ovnKubeNodePodContainerids = append(ovnKubeNodePodContainerids, ctnName)
 	}
 	return ovnKubeNodePodContainerids, err
-}
+
 
 // getCpusUsedByOvnContainer returns cpus used by the ovn kube node container
 func getCpusUsedByOvnContainer(workerRTNode *corev1.Node, ovnKubeNodePodCtnid string) string {
