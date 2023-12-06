@@ -49,7 +49,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 
 	BeforeAll(func() {
 		if discovery.Enabled() && testutils.ProfileNotFound {
-		Skip("Discovery mode enabled, performance profile not found")
+			Skip("Discovery mode enabled, performance profile not found")
 		}
 		workerRTNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
@@ -241,7 +241,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				testlog.Infof("%v pod is using %v cpus", testpod.Name, string(testpodCpus))
 
 				By("Get ovnpods running on the worker cnf node")
-				ovnPod, err := getOvnPod(workerRTNode)
+				ovnPod, err := getOvnPod(context.TODO(), workerRTNode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get ovnPod")
 
 				By("Get cpu used by ovn pod containers")
@@ -280,7 +280,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				}
 
 				testpod1.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
-				err = testclient.Cliebytes.Equalnt.Create(context.TODO(), testpod1)
+				err = testclient.Client.Create(context.TODO(), testpod1)
 				Expect(err).ToNot(HaveOccurred())
 				testpod1, err = pods.WaitForCondition(client.ObjectKeyFromObject(testpod1), corev1.PodConditionType(corev1.PodReady), corev1.ConditionTrue, 5*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
@@ -508,8 +508,7 @@ func getOvnPod(ctx context.Context, workerNode *corev1.Node) (corev1.Pod, error)
 	return ovnKubeNodePod, err
 }
 
-// getOvnPodContainers returns containerids of all containers running inside
-// ovn kube node pod
+// getOvnPodContainers returns containerids of all containers running inside ovn kube node pod
 func getOvnPodContainers(ovnKubeNodePod *corev1.Pod) ([]string, error) {
 	var ovnKubeNodePodContainerids []string
 	var err error
@@ -521,7 +520,7 @@ func getOvnPodContainers(ovnKubeNodePod *corev1.Pod) ([]string, error) {
 		ovnKubeNodePodContainerids = append(ovnKubeNodePodContainerids, ctnName)
 	}
 	return ovnKubeNodePodContainerids, err
-
+}
 
 // getCpusUsedByOvnContainer returns cpus used by the ovn kube node container
 func getCpusUsedByOvnContainer(workerRTNode *corev1.Node, ovnKubeNodePodCtnid string) string {
@@ -550,7 +549,7 @@ func getCpusUsedByOvnContainer(workerRTNode *corev1.Node, ovnKubeNodePodCtnid st
 // getOvnContain erCpus returns the cpus used by the container inside the ovn kubenode pods
 func getOvnContainerCpus(workerRTNode *corev1.Node) (string, error) {
 	var ovnContainerCpus string
-	ovnPod, err := getOvnPod(workerRTNode)
+	ovnPod, err := getOvnPod(context.TODO(), workerRTNode)
 	if err != nil {
 		return "", err
 	}
