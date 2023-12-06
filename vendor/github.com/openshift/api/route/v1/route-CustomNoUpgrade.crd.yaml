@@ -128,9 +128,9 @@ spec:
                                   - rule: 'has(self.type) && self.type == ''Set'' ?  has(self.set) : !has(self.set)'
                                     message: set is required when type is Set, and forbidden otherwise
                               name:
-                                description: 'name specifies the name of a header on which to perform an action. Its value must be a valid HTTP header name as defined in RFC 2616 section 4.2. The name must consist only of alphanumeric and the following special characters, "-!#$%&''*+.^_`". The following header names are reserved and may not be modified via this API: Strict-Transport-Security, Proxy, Cookie, Set-Cookie. It must be no more than 1024 characters in length. Header name must be unique.'
+                                description: 'name specifies the name of a header on which to perform an action. Its value must be a valid HTTP header name as defined in RFC 2616 section 4.2. The name must consist only of alphanumeric and the following special characters, "-!#$%&''*+.^_`". The following header names are reserved and may not be modified via this API: Strict-Transport-Security, Proxy, Cookie, Set-Cookie. It must be no more than 255 characters in length. Header name must be unique.'
                                 type: string
-                                maxLength: 1024
+                                maxLength: 255
                                 minLength: 1
                                 pattern: ^[-!#$%&'*+.0-9A-Z^_`a-z|~]+$
                                 x-kubernetes-validations:
@@ -186,9 +186,9 @@ spec:
                                   - rule: 'has(self.type) && self.type == ''Set'' ?  has(self.set) : !has(self.set)'
                                     message: set is required when type is Set, and forbidden otherwise
                               name:
-                                description: 'name specifies the name of a header on which to perform an action. Its value must be a valid HTTP header name as defined in RFC 2616 section 4.2. The name must consist only of alphanumeric and the following special characters, "-!#$%&''*+.^_`". The following header names are reserved and may not be modified via this API: Strict-Transport-Security, Proxy, Cookie, Set-Cookie. It must be no more than 1024 characters in length. Header name must be unique.'
+                                description: 'name specifies the name of a header on which to perform an action. Its value must be a valid HTTP header name as defined in RFC 2616 section 4.2. The name must consist only of alphanumeric and the following special characters, "-!#$%&''*+.^_`". The following header names are reserved and may not be modified via this API: Strict-Transport-Security, Proxy, Cookie, Set-Cookie. It must be no more than 255 characters in length. Header name must be unique.'
                                 type: string
-                                maxLength: 1024
+                                maxLength: 255
                                 minLength: 1
                                 pattern: ^[-!#$%&'*+.0-9A-Z^_`a-z|~]+$
                                 x-kubernetes-validations:

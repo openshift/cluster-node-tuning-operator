@@ -14,7 +14,7 @@ require (
 	github.com/onsi/gomega v1.27.7
 	github.com/openshift-kni/debug-tools v0.1.11
 	github.com/openshift-kni/k8sreporter v1.0.4
-	github.com/openshift/api v0.0.0-20230807121159-a81c3efc8824
+	github.com/openshift/api v0.0.0-20231130134125-f6ae1072b499
 	github.com/openshift/build-machinery-go v0.0.0-20230306181456-d321ffa04533
 	github.com/openshift/client-go v0.0.0-20230807132528-be5346fb33cb
 	github.com/openshift/custom-resource-status v1.1.3-0.20220503160415-f2fdb4999d87
@@ -187,7 +187,7 @@ require (
 	k8s.io/gengo v0.0.0-20220902162205-c0856e24416d // indirect
 	k8s.io/kms v0.27.4 // indirect
 	k8s.io/kube-aggregator v0.27.4 // indirect
-	k8s.io/kube-openapi v0.0.0-20230515203736-54b630e78af5 // indirect
+	k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9 // indirect
 	k8s.io/kube-scheduler v0.0.0 // indirect
 	k8s.io/mount-utils v0.0.0 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.1.2 // indirect
@@ -215,6 +215,8 @@ replace (
 	k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.27.4
 	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.27.4
 	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.27.4
+	//needed until moving to client-go 1.28
+	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20230515203736-54b630e78af5
 	k8s.io/kube-proxy => k8s.io/kube-proxy v0.27.4
 	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.27.4
 	k8s.io/kubectl => k8s.io/kubectl v0.27.4

@@ -163,28 +163,32 @@ var FeatureSets = map[FeatureSet]*FeatureGateEnabledDisabled{
 		Disabled: []FeatureGateDescription{},
 	},
 	TechPreviewNoUpgrade: newDefaultFeatures().
-		with(externalCloudProvider).
-		with(externalCloudProviderGCP).
+		with(validatingAdmissionPolicy).
 		with(csiDriverSharedResource).
-		with(buildCSIVolumes).
 		with(nodeSwap).
 		with(machineAPIProviderOpenStack).
 		with(insightsConfigAPI).
-		with(retroactiveDefaultStorageClass).
-		with(pdbUnhealthyPodEvictionPolicy).
 		with(dynamicResourceAllocation).
-		with(admissionWebhookMatchConditions).
-		with(azureWorkloadIdentity).
 		with(gateGatewayAPI).
 		with(maxUnavailableStatefulSet).
 		without(eventedPleg).
 		with(sigstoreImageVerification).
 		with(gcpLabelsTags).
+		with(gcpClusterHostedDNS).
 		with(vSphereStaticIPs).
 		with(routeExternalCertificate).
 		with(automatedEtcdBackup).
+		with(vSphereControlPlaneMachineset).
 		without(machineAPIOperatorDisableMachineHealthCheckController).
 		with(adminNetworkPolicy).
+		with(dnsNameResolver).
+		with(machineConfigNodes).
+		with(metricsServer).
+		with(installAlternateInfrastructureAWS).
+		without(clusterAPIInstall).
+		with(sdnLiveMigration).
+		with(mixedCPUsAllocation).
+		with(managedBootImages).
 		toFeatures(defaultFeatures),
 	LatencySensitive: newDefaultFeatures().
 		toFeatures(defaultFeatures),
@@ -194,14 +198,16 @@ var defaultFeatures = &FeatureGateEnabledDisabled{
 	Enabled: []FeatureGateDescription{
 		openShiftPodSecurityAdmission,
 		alibabaPlatform, // This is a bug, it should be TechPreviewNoUpgrade. This must be downgraded before 4.14 is shipped.
+		azureWorkloadIdentity,
 		cloudDualStackNodeIPs,
+		externalCloudProvider,
 		externalCloudProviderAzure,
+		externalCloudProviderGCP,
 		externalCloudProviderExternal,
 		privateHostedZoneAWS,
+		buildCSIVolumes,
 	},
-	Disabled: []FeatureGateDescription{
-		retroactiveDefaultStorageClass,
-	},
+	Disabled: []FeatureGateDescription{},
 }
 
 type featureSetBuilder struct {
