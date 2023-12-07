@@ -105,15 +105,16 @@ const (
 )
 
 const (
-	templateReservedCpus           = "ReservedCpus"
-	templateSharedCpus             = "SharedCpus"
-	templateContainersLimit        = "ContainersLimit"
-	templateOvsSliceName           = "OvsSliceName"
-	templateOvsSliceDefinitionFile = "ovs.slice"
-	templateOvsSliceUsageFile      = "01-use-ovs-slice.conf"
-	templateWorkload               = "Workload"
-	templateRuntimePath            = "RuntimePath"
-	templateRuntimeRoot            = "RuntimeRoot"
+	templateReservedCpus             = "ReservedCpus"
+	templateSharedCpus               = "SharedCpus"
+	templateContainersLimit          = "ContainersLimit"
+	templateOvsSliceName             = "OvsSliceName"
+	templateOvsSliceDefinitionFile   = "ovs.slice"
+	templateOvsSliceUsageFile        = "01-use-ovs-slice.conf"
+	templateWorkload                 = "Workload"
+	templateRuntimePath              = "RuntimePath"
+	templateRuntimeRoot              = "RuntimeRoot"
+	templateCrioSharedCPUsAnnotation = "CrioSharedCPUsAnnotation"
 )
 
 // New returns new machine configuration object for performance sensitive workloads
@@ -568,6 +569,7 @@ func renderCrioConfigSnippet(profile *performancev2.PerformanceProfile, src stri
 
 	if opts.MixedCPUsEnabled {
 		templateArgs[templateSharedCpus] = string(*profile.Spec.CPU.Shared)
+		templateArgs[templateCrioSharedCPUsAnnotation] = "cpu-shared.crio.io"
 	}
 
 	if opts.DefaultRuntime == machineconfigv1.ContainerRuntimeDefaultRuntimeCrun {
