@@ -141,7 +141,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 					Expect(testclient.Client.Patch(context.TODO(), profile,
 						client.RawPatch(
 							types.JSONPatchType,
-							[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %v }]`, spec)),
+							[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
 						),
 					)).ToNot(HaveOccurred())
 
