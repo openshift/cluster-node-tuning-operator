@@ -19,7 +19,7 @@ const (
 	MachineConfigPrefix                       string = "50-nto"
 )
 
-func newMachineConfig(name string, annotations map[string]string, labels map[string]string, kernelArguments []string) *mcfgv1.MachineConfig {
+func NewMachineConfig(name string, annotations map[string]string, labels map[string]string, kernelArguments []string) *mcfgv1.MachineConfig {
 	if labels == nil {
 		labels = map[string]string{}
 	}
@@ -43,7 +43,7 @@ func newMachineConfig(name string, annotations map[string]string, labels map[str
 	}
 }
 
-func getMachineConfigNameForPools(pools []*mcfgv1.MachineConfigPool) string {
+func GetMachineConfigNameForPools(pools []*mcfgv1.MachineConfigPool) string {
 	var (
 		sb        strings.Builder
 		sbPrimary strings.Builder
@@ -211,7 +211,7 @@ func (pc *ProfileCalculator) getPrimaryPoolForNode(node *corev1.Node) (*mcfgv1.M
 	return pools[0], nil
 }
 
-func machineConfigGenerationLogLine(bCmdline bool, bootcmdline string) string {
+func MachineConfigGenerationLogLine(bCmdline bool, bootcmdline string) string {
 	var (
 		sb strings.Builder
 	)
