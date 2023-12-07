@@ -27,6 +27,7 @@ import (
 	apiconfigv1 "github.com/openshift/api/config/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
@@ -472,7 +473,14 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	// apply components
-	result, err := r.applyComponents(instance, profileMCP, &pinningMode, ctrRuntime)
+	result, err := r.applyComponents(instance, &components.Options{
+		ProfileMCP: profileMCP,
+		MachineConfig: components.MachineConfigOptions{
+			PinningMode:      &pinningMode,
+			DefaultRuntime:   ctrRuntime,
+			MixedCPUsEnabled: r.isMixedCPUsEnabled(instance),
+		},
+	})
 	if err != nil {
 		klog.Errorf("failed to deploy performance profile %q components: %v", instance.Name, err)
 		r.Recorder.Eventf(instance, corev1.EventTypeWarning, "Creation failed", "Failed to create all components: %v", err)
@@ -619,13 +627,12 @@ func (r *PerformanceProfileReconciler) updateDegradedCondition(instance *perform
 	return reconcile.Result{}, conditionError
 }
 
-func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.PerformanceProfile, profileMCP *mcov1.MachineConfigPool, pinningMode *apiconfigv1.CPUPartitioningMode, defaultRuntime mcov1.ContainerRuntimeDefaultRuntime) (*reconcile.Result, error) {
+func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.PerformanceProfile, opts *components.Options) (*reconcile.Result, error) {
 	if profileutil.IsPaused(profile) {
 		klog.Infof("Ignoring reconcile loop for pause performance profile %s", profile.Name)
 		return nil, nil
 	}
-
-	components, err := manifestset.GetNewComponents(profile, profileMCP, pinningMode, defaultRuntime)
+	components, err := manifestset.GetNewComponents(profile, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -743,6 +750,16 @@ func (r *PerformanceProfileReconciler) isComponentsExist(profile *performancev2.
 	}
 
 	return false
+}
+
+func (r *PerformanceProfileReconciler) isMixedCPUsEnabled(profile *performancev2.PerformanceProfile) bool {
+	if !r.FeatureGate.Enabled(apiconfigv1.FeatureGateMixedCPUsAllocation) {
+		return false
+	}
+	if config.InHyperShift() {
+		return false
+	}
+	return profileutil.IsMixedCPUsEnabled(profile)
 }
 
 func hasFinalizer(profile *performancev2.PerformanceProfile, finalizer string) bool {

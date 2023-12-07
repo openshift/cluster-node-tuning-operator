@@ -1473,11 +1473,11 @@ type IngressControllerHTTPHeader struct {
 	// The name must consist only of alphanumeric and the following special characters, "-!#$%&'*+.^_`".
 	// The following header names are reserved and may not be modified via this API:
 	// Strict-Transport-Security, Proxy, Host, Cookie, Set-Cookie.
-	// It must be no more than 1024 characters in length.
+	// It must be no more than 255 characters in length.
 	// Header name must be unique.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=1024
+	// +kubebuilder:validation:MaxLength=255
 	// +kubebuilder:validation:Pattern="^[-!#$%&'*+.0-9A-Z^_`a-z|~]+$"
 	// +kubebuilder:validation:XValidation:rule="self.lowerAscii() != 'strict-transport-security'",message="strict-transport-security header may not be modified via header actions"
 	// +kubebuilder:validation:XValidation:rule="self.lowerAscii() != 'proxy'",message="proxy header may not be modified via header actions"

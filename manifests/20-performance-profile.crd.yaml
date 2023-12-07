@@ -533,6 +533,12 @@ spec:
                     description: Reserved defines a set of CPUs that will not be used
                       for any container workloads initiated by kubelet.
                     type: string
+                  shared:
+                    description: Shared defines a set of CPUs that will be shared
+                      among guaranteed workloads that needs additional cpus which
+                      are not exclusive, alongside the isolated, exclusive resources
+                      that are being used already by those workloads.
+                    type: string
                 required:
                 - isolated
                 - reserved
@@ -673,6 +679,10 @@ spec:
                       configured in high power consumption mode. The flag will affect
                       the power consumption but will improve the CPUs latency. Defaults
                       to false.
+                    type: boolean
+                  mixedCpus:
+                    description: MixedCpus enables the mixed-cpu-node-plugin on the
+                      node. Defaults to false.
                     type: boolean
                   perPodPowerManagement:
                     description: PerPodPowerManagement defines if the node should

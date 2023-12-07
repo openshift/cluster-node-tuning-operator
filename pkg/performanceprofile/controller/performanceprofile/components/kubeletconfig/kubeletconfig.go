@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
+	"k8s.io/utils/cpuset"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
@@ -43,7 +44,7 @@ const (
 )
 
 // New returns new KubeletConfig object for performance sensetive workflows
-func New(profile *performancev2.PerformanceProfile, profileMCPLabels map[string]string) (*machineconfigv1.KubeletConfig, error) {
+func New(profile *performancev2.PerformanceProfile, opts *components.KubeletConfigOptions) (*machineconfigv1.KubeletConfig, error) {
 	name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
 	kubeletConfig := &kubeletconfigv1beta1.KubeletConfiguration{}
 	if v, ok := profile.Annotations[experimentalKubeletSnippetAnnotation]; ok {
@@ -96,6 +97,18 @@ func New(profile *performancev2.PerformanceProfile, profileMCPLabels map[string]
 
 	if profile.Spec.CPU != nil && profile.Spec.CPU.Reserved != nil {
 		kubeletConfig.ReservedSystemCPUs = string(*profile.Spec.CPU.Reserved)
+	}
+
+	if opts.MixedCPUsEnabled {
+		sharedCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Shared))
+		if err != nil {
+			return nil, err
+		}
+		reservedCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
+		if err != nil {
+			return nil, err
+		}
+		kubeletConfig.ReservedSystemCPUs = reservedCPUs.Union(sharedCPUs).String()
 	}
 
 	if profile.Spec.NUMA != nil {
@@ -162,7 +175,7 @@ func New(profile *performancev2.PerformanceProfile, profileMCPLabels map[string]
 		},
 		Spec: machineconfigv1.KubeletConfigSpec{
 			MachineConfigPoolSelector: &metav1.LabelSelector{
-				MatchLabels: profileMCPLabels,
+				MatchLabels: opts.MachineConfigPoolSelector,
 			},
 			KubeletConfig: &runtime.RawExtension{
 				Raw: raw,

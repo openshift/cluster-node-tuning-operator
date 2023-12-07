@@ -54,6 +54,11 @@ const (
 	crioPartitioningConfig = "99-workload-pinning.conf"
 	ocpPartitioningConfig  = "openshift-workload-pinning"
 
+	// MixedCPUs config
+	mixedCPUsConfig = "openshift-workload-mixed-cpus"
+	// TBD
+	defaultContainersLimit = "256"
+
 	udevRulesDir         = "/etc/udev/rules.d"
 	udevPhysicalRpsRules = "99-netdev-physical-rps.rules"
 	// scripts
@@ -100,17 +105,20 @@ const (
 )
 
 const (
-	templateReservedCpus           = "ReservedCpus"
-	templateOvsSliceName           = "OvsSliceName"
-	templateOvsSliceDefinitionFile = "ovs.slice"
-	templateOvsSliceUsageFile      = "01-use-ovs-slice.conf"
-	templateWorkload               = "Workload"
-	templateRuntimePath            = "RuntimePath"
-	templateRuntimeRoot            = "RuntimeRoot"
+	templateReservedCpus             = "ReservedCpus"
+	templateSharedCpus               = "SharedCpus"
+	templateContainersLimit          = "ContainersLimit"
+	templateOvsSliceName             = "OvsSliceName"
+	templateOvsSliceDefinitionFile   = "ovs.slice"
+	templateOvsSliceUsageFile        = "01-use-ovs-slice.conf"
+	templateWorkload                 = "Workload"
+	templateRuntimePath              = "RuntimePath"
+	templateRuntimeRoot              = "RuntimeRoot"
+	templateCrioSharedCPUsAnnotation = "CrioSharedCPUsAnnotation"
 )
 
 // New returns new machine configuration object for performance sensitive workloads
-func New(profile *performancev2.PerformanceProfile, pinningMode *apiconfigv1.CPUPartitioningMode, defaultRuntime machineconfigv1.ContainerRuntimeDefaultRuntime) (*machineconfigv1.MachineConfig, error) {
+func New(profile *performancev2.PerformanceProfile, opts *components.MachineConfigOptions) (*machineconfigv1.MachineConfig, error) {
 	name := GetMachineConfigName(profile)
 	mc := &machineconfigv1.MachineConfig{
 		TypeMeta: metav1.TypeMeta{
@@ -124,7 +132,7 @@ func New(profile *performancev2.PerformanceProfile, pinningMode *apiconfigv1.CPU
 		Spec: machineconfigv1.MachineConfigSpec{},
 	}
 
-	ignitionConfig, err := getIgnitionConfig(profile, pinningMode, defaultRuntime)
+	ignitionConfig, err := getIgnitionConfig(profile, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +162,7 @@ func GetMachineConfigName(profile *performancev2.PerformanceProfile) string {
 	return fmt.Sprintf("50-%s", name)
 }
 
-func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *apiconfigv1.CPUPartitioningMode, defaultRuntime machineconfigv1.ContainerRuntimeDefaultRuntime) (*igntypes.Config, error) {
+func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *components.MachineConfigOptions) (*igntypes.Config, error) {
 	var scripts []string
 	ignitionConfig := &igntypes.Config{
 		Ignition: igntypes.Ignition{
@@ -185,7 +193,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 
 	// add crio config snippet under the node /etc/crio/crio.conf.d/ directory
 	crioConfdRuntimesMode := 0644
-	crioConfigSnippetContent, err := renderCrioConfigSnippet(profile, defaultRuntime, filepath.Join("configs", crioRuntimesConfig))
+	crioConfigSnippetContent, err := renderCrioConfigSnippet(profile, filepath.Join("configs", crioRuntimesConfig), opts)
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +268,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 
 	if profile.Spec.CPU != nil && profile.Spec.CPU.Reserved != nil {
 		// Workload partitioning specific configuration
-		clusterIsPinned := pinningMode != nil && *pinningMode == apiconfigv1.CPUPartitioningAllNodes
+		clusterIsPinned := opts.PinningMode != nil && *opts.PinningMode == apiconfigv1.CPUPartitioningAllNodes
 		if clusterIsPinned {
 			crioPartitionFileData, err := renderManagementCPUPinningConfig(profile.Spec.CPU, crioPartitioningConfig)
 			if err != nil {
@@ -358,6 +366,14 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 		addContent(ignitionConfig, content, ovsDynamicPinningTriggerHostFile, &ovsMode)
 	}
 
+	if opts.MixedCPUsEnabled {
+		// ContainersLimit should be exposed as user-facing API in future updates
+		content, err := renderMixedCPUsConfig(defaultContainersLimit, filepath.Join("configs", mixedCPUsConfig))
+		if err != nil {
+			return nil, err
+		}
+		addContent(ignitionConfig, content, filepath.Join(kubernetesConfDir, mixedCPUsConfig), pointer.Int(0644))
+	}
 	return ignitionConfig, nil
 }
 
@@ -541,7 +557,7 @@ func addContent(ignitionConfig *igntypes.Config, content []byte, dst string, mod
 	})
 }
 
-func renderCrioConfigSnippet(profile *performancev2.PerformanceProfile, defaultRuntime machineconfigv1.ContainerRuntimeDefaultRuntime, src string) ([]byte, error) {
+func renderCrioConfigSnippet(profile *performancev2.PerformanceProfile, src string, opts *components.MachineConfigOptions) ([]byte, error) {
 	templateArgs := map[string]string{
 		templateRuntimePath: "/bin/runc",
 		templateRuntimeRoot: "/run/runc",
@@ -551,7 +567,12 @@ func renderCrioConfigSnippet(profile *performancev2.PerformanceProfile, defaultR
 		templateArgs[templateReservedCpus] = string(*profile.Spec.CPU.Reserved)
 	}
 
-	if defaultRuntime == machineconfigv1.ContainerRuntimeDefaultRuntimeCrun {
+	if opts.MixedCPUsEnabled {
+		templateArgs[templateSharedCpus] = string(*profile.Spec.CPU.Shared)
+		templateArgs[templateCrioSharedCPUsAnnotation] = "cpu-shared.crio.io"
+	}
+
+	if opts.DefaultRuntime == machineconfigv1.ContainerRuntimeDefaultRuntimeCrun {
 		templateArgs[templateRuntimePath] = "/usr/bin/crun"
 		templateArgs[templateRuntimeRoot] = "/run/crun"
 	}
@@ -704,4 +725,19 @@ func renderSysctlConf(profile *performancev2.PerformanceProfile, src string) ([]
 	}
 
 	return sysctlConfig.Bytes(), nil
+}
+
+func renderMixedCPUsConfig(containersLimitValue string, src string) ([]byte, error) {
+	templateArgs := map[string]string{
+		templateContainersLimit: containersLimitValue,
+	}
+	mixedCPUsConfigTemplate, err := template.ParseFS(assets.Configs, src)
+	if err != nil {
+		return nil, err
+	}
+	mixedCpusConfig := &bytes.Buffer{}
+	if err = mixedCPUsConfigTemplate.Execute(mixedCpusConfig, templateArgs); err != nil {
+		return nil, err
+	}
+	return mixedCpusConfig.Bytes(), nil
 }

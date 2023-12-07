@@ -22,12 +22,11 @@ var cpuListToMask = []listToMask{
 }
 
 func intersectHelper(cpuListA, cpuListB string) ([]int, error) {
-	offlined := ""
-	cpuLists, err := NewCPULists(cpuListA, cpuListB, offlined)
+	cpuLists, err := NewCPULists(cpuListA, cpuListB, "", "")
 	if err != nil {
 		return nil, err
 	}
-	return Intersect(cpuLists.isolated, cpuLists.reserved), nil
+	return Intersect(cpuLists.GetIsolated(), cpuLists.GetReserved()), nil
 }
 
 var _ = Describe("Components utils", func() {

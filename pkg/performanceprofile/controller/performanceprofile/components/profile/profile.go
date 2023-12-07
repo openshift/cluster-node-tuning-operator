@@ -96,3 +96,13 @@ func IsRpsEnabled(profile *performancev2.PerformanceProfile) bool {
 
 	return false
 }
+
+func IsMixedCPUsEnabled(profile *performancev2.PerformanceProfile) bool {
+	if profile.Spec.CPU.Shared == nil || *profile.Spec.CPU.Shared == "" {
+		return false
+	}
+	if profile.Spec.WorkloadHints == nil || profile.Spec.WorkloadHints.MixedCpus == nil {
+		return false
+	}
+	return *profile.Spec.WorkloadHints.MixedCpus
+}

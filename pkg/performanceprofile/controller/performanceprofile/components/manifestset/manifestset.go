@@ -4,6 +4,7 @@ import (
 	apiconfigv1 "github.com/openshift/api/config/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/kubeletconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	profilecomponent "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
@@ -54,15 +55,19 @@ func (ms *ManifestResultSet) ToManifestTable() ManifestTable {
 }
 
 // GetNewComponents return a list of all component's instances that should be created according to profile
-func GetNewComponents(profile *performancev2.PerformanceProfile, profileMCP *mcov1.MachineConfigPool, pinningMode *apiconfigv1.CPUPartitioningMode, defaultRuntime mcov1.ContainerRuntimeDefaultRuntime) (*ManifestResultSet, error) {
-	machineConfigPoolSelector := profilecomponent.GetMachineConfigPoolSelector(profile, profileMCP)
+func GetNewComponents(profile *performancev2.PerformanceProfile, opts *components.Options) (*ManifestResultSet, error) {
+	machineConfigPoolSelector := profilecomponent.GetMachineConfigPoolSelector(profile, opts.ProfileMCP)
 
-	mc, err := machineconfig.New(profile, pinningMode, defaultRuntime)
+	mc, err := machineconfig.New(profile, &opts.MachineConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	kc, err := kubeletconfig.New(profile, machineConfigPoolSelector)
+	kc, err := kubeletconfig.New(profile,
+		&components.KubeletConfigOptions{
+			MachineConfigPoolSelector: machineConfigPoolSelector,
+			MixedCPUsEnabled:          opts.MachineConfig.MixedCPUsEnabled,
+		})
 	if err != nil {
 		return nil, err
 	}
