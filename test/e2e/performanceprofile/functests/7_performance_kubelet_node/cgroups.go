@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -197,7 +198,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 			testutils.CustomBeforeAll(func() {
 				initialProfile = profile.DeepCopy()
 			})
-			It("[test_id:64100] matches with ovs process affinity", Label("fun1"), func() {
+			It("[test_id:64100] matches with ovs process affinity", func() {
 				ovnPod, err := getOvnPod(context.TODO(), workerRTNode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get ovnPod")
 
@@ -261,14 +262,9 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 			})
 
 			It("[test_id:64102] Create and remove gu pods to verify affinity of ovs are changed appropriately", func() {
-				cpuID := onlineCPUSet.UnsortedList()[0]
-				smtLevel := nodes.GetSMTLevel(cpuID, workerRTNode)
-				if smtLevel < 2 {
-					Skip(fmt.Sprintf("designated worker node %q has SMT level %d - minimum required 2", workerRTNode.Name, smtLevel))
-				}
 				var testpod1, testpod2 *corev1.Pod
 				var err error
-
+				checkCpuCount(workerRTNode)
 				// Create testpod1
 				testpod1 = pods.GetTestPod()
 				testpod1.Namespace = testutils.NamespaceTesting
@@ -295,7 +291,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				testpod2.Namespace = testutils.NamespaceTesting
 				testpod2.Spec.Containers[0].Resources = corev1.ResourceRequirements{
 					Limits: corev1.ResourceList{
-						corev1.ResourceCPU:    resource.MustParse("2"),
+						corev1.ResourceCPU:    resource.MustParse("1"),
 						corev1.ResourceMemory: resource.MustParse("200Mi"),
 					},
 				}
@@ -346,12 +342,8 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 			})
 
 			It("[test_id:64103] ovs process affinity still excludes guaranteed pods after reboot", func() {
+				checkCpuCount(workerRTNode)
 				var dp *appsv1.Deployment
-				cpuID := onlineCPUSet.UnsortedList()[0]
-				smtLevel := nodes.GetSMTLevel(cpuID, workerRTNode)
-				if smtLevel < 2 {
-					Skip(fmt.Sprintf("designated worker node %q has SMT level %d - minimum required 2", workerRTNode.Name, smtLevel))
-				}
 				// create a deployment to deploy gu pods
 				dp = newDeployment()
 				testNode := make(map[string]string)
@@ -470,6 +462,17 @@ func cpuSpecToString(cpus *performancev2.CPU) string {
 		fmt.Fprintf(&sb, " balanceIsolated=%t", *cpus.BalanceIsolated)
 	}
 	return sb.String()
+}
+
+// checkCpuCount check if the node has sufficient cpus for executing deleteTestPod
+func checkCpuCount(workerNode *corev1.Node) {
+	onlineCPUCount, err := nodes.ExecCommandOnNode([]string{"nproc", "--all"}, workerNode)
+	Expect(err).ToNot(HaveOccurred(), "unable to fetch online cpus")
+	onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
+	Expect(err).ToNot(HaveOccurred())
+	if onlineCPUInt <= 8 {
+		Skip(fmt.Sprintf("This test requires more than 4 isolated cpus, current available cpus is %s", onlineCPUCount))
+	}
 }
 
 // deleteTestPod removes guaranteed pod
