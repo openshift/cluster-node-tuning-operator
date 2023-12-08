@@ -35,6 +35,8 @@ import (
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
 
+const minRequiredCPUs = 8
+
 var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 	const (
 		activation_file string = "/rootfs/var/lib/ovn-ic/etc/enable_dynamic_cpu_affinity"
@@ -464,14 +466,18 @@ func cpuSpecToString(cpus *performancev2.CPU) string {
 	return sb.String()
 }
 
-// checkCpuCount check if the node has sufficient cpus for executing deleteTestPod
+// checkCpuCount check if the node has sufficient cpus
 func checkCpuCount(workerNode *corev1.Node) {
 	onlineCPUCount, err := nodes.ExecCommandOnNode([]string{"nproc", "--all"}, workerNode)
-	Expect(err).ToNot(HaveOccurred(), "unable to fetch online cpus")
+	if err != nil {
+		Fail(fmt.Sprintf("Failed to fetch online CPUs: %v", err))
+	}
 	onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
-	Expect(err).ToNot(HaveOccurred())
-	if onlineCPUInt <= 8 {
-		Skip(fmt.Sprintf("This test requires more than 4 isolated cpus, current available cpus is %s", onlineCPUCount))
+	if err != nil {
+		Fail(fmt.Sprintf("failed to convert online CPU count to integer: %v", err))
+	}
+	if onlineCPUInt <= minRequiredCPUs {
+		Skip(fmt.Sprintf("This test requires more than %d isolated CPUs, current available CPUs: %s", minRequiredCPUs, onlineCPUCount))
 	}
 }
 
