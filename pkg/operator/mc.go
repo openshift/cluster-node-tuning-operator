@@ -2,6 +2,7 @@ package operator
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -43,28 +44,30 @@ func NewMachineConfig(name string, annotations map[string]string, labels map[str
 	}
 }
 
+// GetMachineConfigNameForPools takes pools a slice of MachineConfigPools and returns
+// a MachineConfig name to be used for MachineConfigPool based matching.
 func GetMachineConfigNameForPools(pools []*mcfgv1.MachineConfigPool) string {
 	var (
 		sb        strings.Builder
-		sbPrimary strings.Builder
+		poolNames []string
 	)
 
-	sb.WriteString(MachineConfigPrefix)
 	for _, pool := range pools {
 		if pool == nil {
 			continue
 		}
-
-		sb.WriteString("-")
-		if pool.Name == "master" || pool.Name == "worker" {
-			sbPrimary.WriteString(pool.ObjectMeta.Name)
-		} else {
-			// This is a custom pool; a node can be a member of only one custom pool => return its name.
-			sb.WriteString(pool.ObjectMeta.Name)
-			return sb.String()
-		}
+		poolNames = append(poolNames, pool.ObjectMeta.Name)
 	}
-	sb.WriteString(sbPrimary.String())
+	// See OCPBUGS-24792: the slice of MCP objects can be passed in random order.
+	sort.Strings(poolNames)
+
+	sb.WriteString(MachineConfigPrefix)
+	if len(poolNames) > 0 {
+		sb.WriteString("-")
+		// Use the first MCP's name out of all alphabetically sorted MCP names. This will either be a custom pool name
+		// or master/worker in that order.
+		sb.WriteString(poolNames[0])
+	}
 
 	return sb.String()
 }
@@ -147,16 +150,18 @@ func (pc *ProfileCalculator) getPoolsForNode(node *corev1.Node) ([]*mcfgv1.Machi
 		klog.Errorf("node %s belongs to %d custom roles, cannot proceed with this Node", node.Name, len(custom))
 		return nil, nil
 	} else if len(custom) == 1 {
-		// We don't support making custom pools for masters
+		pls := []*mcfgv1.MachineConfigPool{}
 		if master != nil {
-			klog.Errorf("node %s has both master role and custom role %s", node.Name, custom[0].Name)
-			return nil, nil
+			// If we have a custom pool and master, defer to master and return.
+			pls = append(pls, master)
+		} else {
+			pls = append(pls, custom[0])
 		}
-		// One custom role, let's use its pool
-		pls := []*mcfgv1.MachineConfigPool{custom[0]}
 		if worker != nil {
 			pls = append(pls, worker)
 		}
+		// This allows us to have master, worker, infra but be in the master pool;
+		// or if !worker and !master then we just use the custom pool.
 		return pls, nil
 	} else if master != nil {
 		// In the case where a node is both master/worker, have it live under
