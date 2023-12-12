@@ -1,5 +1,5 @@
 # Node Tuning Operator
-
+xxx
 The Node Tuning Operator (NTO) manages cluster node-level tuning for
 [OpenShift](https://openshift.io/).
 
@@ -22,8 +22,8 @@ containerized TuneD daemon handles termination signals by rolling back any
 node-level settings it has applied before gracefully shutting down.
 
 ## Perfomance Profile Controller
-[Performance Profile Controller](docs/performanceprofile/performance_controller.md), 
-previously known as Performance Addon Operator and now a part of the Node Tuning Operator, 
+[Performance Profile Controller](docs/performanceprofile/performance_controller.md),
+previously known as Performance Addon Operator and now a part of the Node Tuning Operator,
 optimizes OpenShift clusters for applications sensitive to cpu and network latency.
 
 ## Deploying the Node Tuning Operator
