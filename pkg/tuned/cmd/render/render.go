@@ -191,12 +191,26 @@ func render(inputDir []string, outputDir string) error {
 			fileName := fmt.Sprintf("%s_%s_kargs.yaml", profile.Name, strings.ToLower(mc.Kind))
 			fullFilePath := filepath.Join(outputDir, fileName)
 			klog.Info("Writing file: ", fullFilePath)
-			err = os.WriteFile(fullFilePath, byteOutput, 0644)
+			// err = os.WriteFile(fullFilePath, byteOutput, 0644)
+			// if err != nil {
+			// 	klog.Errorf("Unable to write output file %s. error : %v", fullFilePath, err)
+			// 	return err
+			// }
+			file, err := os.Create(fullFilePath)
 			if err != nil {
-				klog.Errorf("Unable to write output file %s. error : %v", fullFilePath, err)
+				klog.Errorf("unable to create output file %s. error : %v", fullFilePath, err)
 				return err
 			}
-
+			_, err = file.Write(byteOutput)
+			if err != nil {
+				klog.Errorf("unable to write output file %s. error : %v", fullFilePath, err)
+				return err
+			}
+			err = file.Sync()
+			if err != nil {
+				klog.Errorf("unable to sync output file %s. error : %v", fullFilePath, err)
+				return err
+			}
 			klog.Infof("MachineConfig written at : %s", fullFilePath)
 		}
 	}
