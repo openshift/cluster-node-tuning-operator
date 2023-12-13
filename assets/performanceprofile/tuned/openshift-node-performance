@@ -109,9 +109,11 @@ vm.dirty_background_ratio=3
 vm.swappiness=10
 
 # also configured via a sysctl.d file
-# placed here for better reflection of the change
+# placed here for documentation purposes and commented out due
+# to a tuned logging bug complaining about duplicate sysctl:
+#   https://issues.redhat.com/browse/RHEL-18972
 #> rps configuration
-net.core.rps_default_mask=${not_isolated_cpumask}
+# net.core.rps_default_mask=${not_isolated_cpumask}
 
 
 [selinux]
