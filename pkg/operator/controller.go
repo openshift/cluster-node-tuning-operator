@@ -781,30 +781,38 @@ func (c *Controller) syncMachineConfig(labels map[string]string, profile *tunedv
 		kernelArguments []string
 	)
 
-	pools, err := c.pc.getPoolsForMachineConfigLabels(labels)
+	pools, err := c.pc.getPoolsForMachineConfigLabelsSorted(labels)
 	if err != nil {
 		return err
+	}
+
+	// The following enforces per-pool machineConfigLabels selectors.
+	if len(pools) > 1 {
+		// Log an error and do not requeue, this is a configuration issue.
+		klog.Errorf("profile %v uses machineConfigLabels that match across multiple MCPs (%v); this is not supported",
+			profile.Name, printMachineConfigPoolsNames(pools))
+		return nil
 	}
 
 	name := GetMachineConfigNameForPools(pools)
 	klog.V(2).Infof("syncMachineConfig(): %v", name)
 
-	for _, pool := range pools {
-		var bootcmdlineSet bool
-		nodes, err := c.pc.getNodesForPool(pool)
-		if err != nil {
-			return err
-		}
+	var bootcmdlineSet bool
+	nodes, err := c.pc.getNodesForPool(pools[0])
+	if err != nil {
+		return err
+	}
 
-		bootcmdline, bootcmdlineSet = c.pc.state.bootcmdline[profile.Name]
-		if !bootcmdlineSet {
-			klog.V(2).Infof("syncMachineConfig(): bootcmdline for %s not cached, sync canceled", profile.Name)
-			return nil
-		}
+	bootcmdline, bootcmdlineSet = c.pc.state.bootcmdline[profile.Name]
+	if !bootcmdlineSet {
+		klog.V(2).Infof("syncMachineConfig(): bootcmdline for %s not cached, sync canceled", profile.Name)
+		return nil
+	}
 
-		if ok := c.allNodesAgreeOnBootcmdline(nodes); !ok {
-			return fmt.Errorf("not all %d Nodes in MCP %v agree on bootcmdline: %s", len(nodes), pools[0].ObjectMeta.Name, bootcmdline)
-		}
+	if ok := c.allNodesAgreeOnBootcmdline(nodes); !ok {
+		// Log an error and do not requeue, this is a configuration issue.
+		klog.Errorf("not all %d Nodes in MCP %v agree on bootcmdline: %s", len(nodes), pools[0].ObjectMeta.Name, bootcmdline)
+		return nil
 	}
 
 	kernelArguments = util.SplitKernelArguments(bootcmdline)

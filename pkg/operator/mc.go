@@ -44,6 +44,30 @@ func NewMachineConfig(name string, annotations map[string]string, labels map[str
 	}
 }
 
+func printMachineConfigPoolsNames(pools []*mcfgv1.MachineConfigPool) string {
+	var (
+		sb        strings.Builder
+		poolNames []string
+	)
+
+	for _, pool := range pools {
+		if pool == nil {
+			continue
+		}
+		poolNames = append(poolNames, pool.ObjectMeta.Name)
+	}
+	sort.Strings(poolNames)
+
+	for i, poolName := range poolNames {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(poolName)
+	}
+
+	return sb.String()
+}
+
 // GetMachineConfigNameForPools takes pools a slice of MachineConfigPools and returns
 // a MachineConfig name to be used for MachineConfigPool based matching.
 func GetMachineConfigNameForPools(pools []*mcfgv1.MachineConfigPool) string {
@@ -99,6 +123,21 @@ func (pc *ProfileCalculator) getPoolsForMachineConfigLabels(mcLabels map[string]
 
 		pools = append(pools, p)
 	}
+
+	return pools, nil
+}
+
+// getPoolsForMachineConfigLabelsSorted is the same as getPoolsForMachineConfigLabels, but
+// returns the MCPs alphabetically sorted by their names.
+func (pc *ProfileCalculator) getPoolsForMachineConfigLabelsSorted(mcLabels map[string]string) ([]*mcfgv1.MachineConfigPool, error) {
+	pools, err := pc.getPoolsForMachineConfigLabels(mcLabels)
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Slice(pools, func(i, j int) bool {
+		return pools[i].Name < pools[j].Name
+	})
 
 	return pools, nil
 }
