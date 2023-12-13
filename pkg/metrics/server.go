@@ -88,7 +88,7 @@ func buildServer(port int) *http.Server {
 			}
 			tlsConfig.NextProtos = []string{"http/1.1"} // CVE-2023-44487
 		} else {
-			klog.Error("failed to parse %q", authCAFile)
+			klog.Errorf("failed to parse %q", authCAFile)
 		}
 	} else {
 		klog.Errorf("failed to read %q: %v", authCAFile, err)
