@@ -67,13 +67,8 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 		performanceMCP, err = mcps.GetByProfile(profile)
 		Expect(err).ToNot(HaveOccurred())
 
-		cgfs, err := nodes.GetCgroupFs(workerRTNode)
-		if cgfs == "tmpfs" {
-			ovsSliceCgroup = "/rootfs/sys/fs/cgroup/cpuset/ovs.slice/"
-		} else {
-			ovsSliceCgroup = "/rootfs/sys/fs/cgroup/ovs.slice"
-		}
-
+		// TODO: This path is not compatible with cgroupv2.
+		ovsSliceCgroup = "/rootfs/sys/fs/cgroup/cpuset/ovs.slice/"
 	})
 
 	BeforeEach(func() {
@@ -161,17 +156,21 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 	Context("Verification of cgroup layout on the worker node", func() {
 		chkOvsCgrpProcs := func(node *corev1.Node) (string, error) {
 			testlog.Info("Verify cgroup.procs is not empty")
+			// TODO: This path is not compatible with cgroupv2.
 			ovsCgroupPath := filepath.Join(ovsSliceCgroup, "cgroup.procs")
 			cmd := []string{"cat", ovsCgroupPath}
 			return nodes.ExecCommandOnNode(cmd, node)
 		}
 		chkOvsCgrpCpuset := func(node *corev1.Node) (string, error) {
+			// TODO: This path is not compatible with cgroupv2.
 			ovsCgroupPath := filepath.Join(ovsSliceCgroup, "cpuset.cpus")
 			cmd := []string{"cat", ovsCgroupPath}
 			return nodes.ExecCommandOnNode(cmd, node)
 		}
 
 		chkOvsCgroupLoadBalance := func(node *corev1.Node) (string, error) {
+			// TODO: This path is not compatible with cgroupv2.
+			// cpuset.sched_load_balance is not available under cgroupv2
 			ovsCgroupPath := filepath.Join(ovsSliceCgroup, "cpuset.sched_load_balance")
 			cmd := []string{"cat", ovsCgroupPath}
 			return nodes.ExecCommandOnNode(cmd, node)
@@ -537,6 +536,7 @@ func getCpusUsedByOvnContainer(workerRTNode *corev1.Node, ovnKubeNodePodCtnid st
 	var err error
 	var containerCgroup = ""
 	Eventually(func() string {
+		// TODO: This path is not compatible with cgroupv2.
 		cmd := []string{"/bin/bash", "-c", fmt.Sprintf("find /rootfs/sys/fs/cgroup/cpuset/ -name '*%s*'", ovnKubeNodePodCtnid)}
 		containerCgroup, err = nodes.ExecCommandOnNode(cmd, workerRTNode)
 		Expect(err).ToNot(HaveOccurred(), "failed to run %s cmd", cmd)
@@ -574,6 +574,7 @@ func getOvnContainerCpus(workerRTNode *corev1.Node) (string, error) {
 // getOVSServicesPid returns the pid of ovs-vswitchd and ovsdb-server
 func getOVSServicesPid(workerNode *corev1.Node) ([]string, error) {
 	var pids []string
+	// TODO: This path is not compatible with cgroupv2.
 	cmd := []string{"cat", "/rootfs/sys/fs/cgroup/cpuset/ovs.slice/cgroup.procs"}
 	output, err := nodes.ExecCommandOnNode(cmd, workerNode)
 	pids = strings.Split(string(output), "\n")
