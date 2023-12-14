@@ -148,7 +148,7 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			cmd2 := []string{"/bin/bash", "-c", "tmux new -d 'LD_PRELOAD=libhugetlbfs.so HUGETLB_MORECORE=yes top -b > /dev/null'"}
-			_, err = pods.ExecCommandOnPod(testclient.K8sClient, testpod, cmd2)
+			_, err = pods.ExecCommandOnPod(testclient.K8sClient, testpod, "", cmd2)
 			Expect(err).ToNot(HaveOccurred())
 
 			By("checking free hugepages - one should be used by pod")
