@@ -3,6 +3,7 @@ package __performance_config
 import (
 	"context"
 	"fmt"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"os"
 	"time"
 
@@ -64,12 +65,11 @@ var _ = Describe("[performance][config] Performance configuration", Ordered, fun
 	})
 
 	It("Should successfully deploy the performance profile", func() {
-
-		performanceProfile := testProfile()
+		var performanceProfile *performancev2.PerformanceProfile
 		profileAlreadyExists := false
+		var err error
 
 		performanceManifest, foundOverride := os.LookupEnv("PERFORMANCE_PROFILE_MANIFEST_OVERRIDE")
-		var err error
 		if foundOverride {
 			performanceProfile, err = externalPerformanceProfile(performanceManifest)
 			Expect(err).ToNot(HaveOccurred(), "Failed overriding performance profile", performanceManifest)
@@ -80,6 +80,12 @@ var _ = Describe("[performance][config] Performance configuration", Ordered, fun
 			Expect(err).ToNot(HaveOccurred(), "Failed finding a performance profile in discovery mode using selector %v", testutils.NodeSelectorLabels)
 			testlog.Info("Discovery mode: consuming a deployed performance profile from the cluster")
 			profileAlreadyExists = true
+		}
+		if performanceProfile == nil {
+			performanceProfile, err = testProfile()
+			if err != nil {
+				Skip(fmt.Sprintf("can't create performance profile: %v", err))
+			}
 		}
 
 		By("Getting MCP for profile")
@@ -158,9 +164,18 @@ func externalPerformanceProfile(performanceManifest string) (*performancev2.Perf
 	return profile, nil
 }
 
-func testProfile() *performancev2.PerformanceProfile {
-	reserved := performancev2.CPUSet("0")
-	isolated := performancev2.CPUSet("1-3")
+func testProfile() (*performancev2.PerformanceProfile, error) {
+	//Get cpus capacity on a node; typically it is same for all nodes
+	workerNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
+	Expect(err).ToNot(HaveOccurred())
+	capacityCPU, _ := workerNodes[0].Status.Capacity.Cpu().AsInt64()
+	//consider cpu siblings - avoid noisy neighbor case
+	if capacityCPU < 4 {
+		//should never reach but still
+		return nil, fmt.Errorf("insufficient cpus on a node to create a valid performanceprofile for the tests, found %d cpus, expects at least 4", capacityCPU)
+	}
+	reserved := performancev2.CPUSet(fmt.Sprintf("0,%d", capacityCPU/2))
+	isolated := performancev2.CPUSet(fmt.Sprintf("1-%d,%d-%d", capacityCPU/2-1, capacityCPU/2+1, capacityCPU-1))
 	hugePagesSize := performancev2.HugePageSize("1G")
 
 	profile := &performancev2.PerformanceProfile{
@@ -215,5 +230,5 @@ func testProfile() *performancev2.PerformanceProfile {
 			"pools.operator.machineconfiguration.openshift.io/master": "",
 		}
 	}
-	return profile
+	return profile, nil
 }
