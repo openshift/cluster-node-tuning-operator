@@ -239,7 +239,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				Expect(testpod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
 
 				cmd := []string{"taskset", "-pc", "1"}
-				testpodCpus, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod, cmd)
+				testpodCpus, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod, "", cmd)
 				testlog.Infof("%v pod is using %v cpus", testpod.Name, string(testpodCpus))
 
 				By("Get ovnpods running on the worker cnf node")
@@ -284,7 +284,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				Expect(testpod1.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
 
 				tasksetcmd := []string{"taskset", "-pc", "1"}
-				testpod1Cpus, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod1, tasksetcmd)
+				testpod1Cpus, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod1, "", tasksetcmd)
 				testlog.Infof("%v pod is using %v cpus", testpod1.Name, string(testpod1Cpus))
 
 				// Create testpod2
@@ -304,7 +304,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				Expect(testpod1.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
 
 				By("Getting the container cpuset.cpus cgroup")
-				testpod2Cpus, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod2, tasksetcmd)
+				testpod2Cpus, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod2, "", tasksetcmd)
 				testlog.Infof("%v pod is using %v cpus", testpod2.Name, string(testpod2Cpus))
 
 				// Get cpus used by the ovnkubenode-pods containers

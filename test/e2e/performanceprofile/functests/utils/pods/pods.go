@@ -128,9 +128,13 @@ func GetLogs(c *kubernetes.Clientset, pod *corev1.Pod) (string, error) {
 }
 
 // ExecCommandOnPod runs command in the pod and returns buffer output
-func ExecCommandOnPod(c *kubernetes.Clientset, pod *corev1.Pod, command []string) ([]byte, error) {
+func ExecCommandOnPod(c *kubernetes.Clientset, pod *corev1.Pod, containerName string, command []string) ([]byte, error) {
 	var outputBuf bytes.Buffer
 	var errorBuf bytes.Buffer
+	// if no name provided, take the first container from the pod
+	if containerName == "" {
+		containerName = pod.Spec.Containers[0].Name
+	}
 
 	req := c.CoreV1().RESTClient().
 		Post().
@@ -139,7 +143,7 @@ func ExecCommandOnPod(c *kubernetes.Clientset, pod *corev1.Pod, command []string
 		Name(pod.Name).
 		SubResource("exec").
 		VersionedParams(&corev1.PodExecOptions{
-			Container: pod.Spec.Containers[0].Name,
+			Container: containerName,
 			Command:   command,
 			Stdin:     true,
 			Stdout:    true,
@@ -177,7 +181,7 @@ func ExecCommandOnPod(c *kubernetes.Clientset, pod *corev1.Pod, command []string
 func WaitForPodOutput(ctx context.Context, c *kubernetes.Clientset, pod *corev1.Pod, command []string) ([]byte, error) {
 	var out []byte
 	if err := wait.PollUntilContextTimeout(ctx, 15*time.Second, time.Minute, true, func(ctx context.Context) (done bool, err error) {
-		out, err = ExecCommandOnPod(c, pod, command)
+		out, err = ExecCommandOnPod(c, pod, "", command)
 		if err != nil {
 			return false, err
 		}
