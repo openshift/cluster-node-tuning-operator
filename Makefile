@@ -249,6 +249,12 @@ pao-functests-latency-testing: dist-latency-tests
 	hack/show-cluster-version.sh
 	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/5_latency_testing" -p "-v -r --fail-fast --flake-attempts=2 --timeout=5h --junit-report=report.xml" -m "Running Functionalconfiguration latency Tests"
 
+.PHONY: pao-functests-mixedcpus
+pao-functests-mixedcpus:
+	@echo "Cluster Version"
+	hack/show-cluster-version.sh
+	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/11_mixedcpus" -p "-v -r --fail-fast --flake-attempts=2 --junit-report=report.xml" -m "Running MixedCPUs Tests"
+
 .PHONY: cluster-clean-pao
 cluster-clean-pao:
 	@echo "Cleaning up performance addons artifacts"
