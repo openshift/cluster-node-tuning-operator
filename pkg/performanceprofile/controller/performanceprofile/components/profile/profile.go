@@ -56,6 +56,21 @@ func IsPaused(profile *performancev2.PerformanceProfile) bool {
 	return false
 }
 
+// IsCgroupsVersionIgnored returns whether or not the performance profile's cgroup
+// downgrade logic should be executed
+func IsCgroupsVersionIgnored(profile *performancev2.PerformanceProfile) bool {
+	if profile.Annotations == nil {
+		return false
+	}
+
+	isIgnored, ok := profile.Annotations[performancev2.PerformanceProfileIgnoreCgroupsVersion]
+	if ok && isIgnored == "true" {
+		return true
+	}
+
+	return false
+}
+
 // IsPhysicalRpsEnabled checks if RPS mask should be set for all physical net devices
 func IsPhysicalRpsEnabled(profile *performancev2.PerformanceProfile) bool {
 	if profile.Annotations == nil {
