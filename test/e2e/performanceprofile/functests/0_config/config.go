@@ -3,7 +3,7 @@ package __performance_config
 import (
 	"context"
 	"fmt"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator"
 	"os"
 	"time"
 
@@ -165,17 +165,34 @@ func externalPerformanceProfile(performanceManifest string) (*performancev2.Perf
 }
 
 func testProfile() (*performancev2.PerformanceProfile, error) {
-	//Get cpus capacity on a node; typically it is same for all nodes
-	workerNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
-	Expect(err).ToNot(HaveOccurred())
-	capacityCPU, _ := workerNodes[0].Status.Capacity.Cpu().AsInt64()
-	//consider cpu siblings - avoid noisy neighbor case
-	if capacityCPU < 4 {
-		//should never reach but still
-		return nil, fmt.Errorf("insufficient cpus on a node to create a valid performanceprofile for the tests, found %d cpus, expects at least 4", capacityCPU)
+	////Get cpus capacity on a node; typically it is same for all nodes
+	//workerNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
+	//Expect(err).ToNot(HaveOccurred())
+	//capacityCPU, _ := workerNodes[0].Status.Capacity.Cpu().AsInt64()
+	////consider cpu siblings - avoid noisy neighbor case
+	//if capacityCPU < 4 {
+	//	//should never reach but still
+	//	return nil, fmt.Errorf("insufficient cpus on a node to create a valid performanceprofile for the tests, found %d cpus, expects at least 4", capacityCPU)
+	//}
+	//reserved := performancev2.CPUSet(fmt.Sprintf("0,%d", capacityCPU/2))
+	//isolated := performancev2.CPUSet(fmt.Sprintf("1-%d,%d-%d", capacityCPU/2-1, capacityCPU/2+1, capacityCPU-1))
+	//the system infofor PPC is provided by the MG but here since we need only the CPU distribution we'll try to build a system info instance that
+	//matches teh system on which the tests are running
+	systemInfo := getSysInfoForPPC()
+	reservedCpus, isolatedCpus, offlinedCPUs, err := profilecreator.CalculateCPUSets(
+		&systemInfo,
+		4,
+		0,
+		false,
+		false,
+		false,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute the reserved and isolated CPUs: %v", err)
 	}
-	reserved := performancev2.CPUSet(fmt.Sprintf("0,%d", capacityCPU/2))
-	isolated := performancev2.CPUSet(fmt.Sprintf("1-%d,%d-%d", capacityCPU/2-1, capacityCPU/2+1, capacityCPU-1))
+	reserved := performancev2.CPUSet(reservedCpus.String())
+	isolated := performancev2.CPUSet(isolatedCpus.String())
+	offlined := performancev2.CPUSet(offlinedCPUs.String())
 	hugePagesSize := performancev2.HugePageSize("1G")
 
 	profile := &performancev2.PerformanceProfile{
@@ -188,8 +205,10 @@ func testProfile() (*performancev2.PerformanceProfile, error) {
 		},
 		Spec: performancev2.PerformanceProfileSpec{
 			CPU: &performancev2.CPU{
+				//github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2
 				Reserved: &reserved,
 				Isolated: &isolated,
+				Offlined: &offlined,
 			},
 			HugePages: &performancev2.HugePages{
 				DefaultHugePagesSize: &hugePagesSize,
@@ -231,4 +250,8 @@ func testProfile() (*performancev2.PerformanceProfile, error) {
 		}
 	}
 	return profile, nil
+}
+
+func getSysInfoForPPC() profilecreator.SystemInfo {
+	return nil
 }

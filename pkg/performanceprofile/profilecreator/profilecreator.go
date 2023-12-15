@@ -331,13 +331,13 @@ type extendedCPUInfo struct {
 	LogicalProcessorsUsed    map[int]struct{}
 }
 
-type systemInfo struct {
+type SystemInfo struct {
 	CpuInfo      *extendedCPUInfo
 	TopologyInfo *topology.Info
 	HtEnabled    bool
 }
 
-func (ghwHandler GHWHandler) GatherSystemInfo() (*systemInfo, error) {
+func (ghwHandler GHWHandler) GatherSystemInfo() (*SystemInfo, error) {
 	cpuInfo, err := ghwHandler.SortedCPU()
 	if err != nil {
 		return nil, err
@@ -353,7 +353,7 @@ func (ghwHandler GHWHandler) GatherSystemInfo() (*systemInfo, error) {
 		return nil, err
 	}
 
-	return &systemInfo{
+	return &SystemInfo{
 		CpuInfo: &extendedCPUInfo{
 			CpuInfo:                  cpuInfo,
 			NumLogicalProcessorsUsed: make(map[int]int, len(cpuInfo.Processors)),
@@ -365,7 +365,7 @@ func (ghwHandler GHWHandler) GatherSystemInfo() (*systemInfo, error) {
 }
 
 // Calculates the resevered, isolated and offlined cpuSets.
-func CalculateCPUSets(systemInfo *systemInfo, reservedCPUCount int, offlinedCPUCount int, splitReservedCPUsAcrossNUMA bool, disableHTFlag bool, highPowerConsumptionMode bool) (cpuset.CPUSet, cpuset.CPUSet, cpuset.CPUSet, error) {
+func CalculateCPUSets(systemInfo *SystemInfo, reservedCPUCount int, offlinedCPUCount int, splitReservedCPUsAcrossNUMA bool, disableHTFlag bool, highPowerConsumptionMode bool) (cpuset.CPUSet, cpuset.CPUSet, cpuset.CPUSet, error) {
 	topologyInfo := systemInfo.TopologyInfo
 	htEnabled := systemInfo.HtEnabled
 

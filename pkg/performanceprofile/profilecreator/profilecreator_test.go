@@ -249,7 +249,7 @@ var _ = Describe("PerformanceProfileCreator: Consuming GHW Snapshot from Must Ga
 var _ = Describe("Performance profile creator: test with a simple cpu architecture to see algorithm easely", func() {
 	Context("With 16 cores, 32 Threads, 2 sockets 2 NUMA zones", func() {
 
-		var sysInfo systemInfo
+		var sysInfo SystemInfo
 
 		BeforeEach(func() {
 			core0 := cpu.ProcessorCore{
@@ -443,7 +443,7 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 				LogicalProcessorsUsed:    make(map[int]struct{}),
 			}
 
-			sysInfo = systemInfo{
+			sysInfo = SystemInfo{
 				CpuInfo:      &extCpuInfo,
 				TopologyInfo: &topologyInfo,
 				HtEnabled:    true,
