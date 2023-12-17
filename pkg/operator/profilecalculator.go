@@ -167,55 +167,100 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[stri
 		return "", nil, operand, fmt.Errorf("failed to list Tuned: %v", err)
 	}
 
-	for _, recommend := range TunedRecommend(tunedList) {
-		var (
-			pools []*mcfgv1.MachineConfigPool
-			node  *corev1.Node
-		)
+	recommendAll := TunedRecommend(tunedList)
+	recommendProfile := func(nodeName string, iStart int) (int, string, map[string]string, tunedv1.OperandConfig, error) {
+		var i int
+		for i = iStart; i < len(recommendAll); i++ {
+			var (
+				pools []*mcfgv1.MachineConfigPool
+				node  *corev1.Node
+			)
+			recommend := recommendAll[i]
 
-		// Start with node/pod label based matching to MachineConfig matching when
-		// both the match section and MachineConfigLabels are specified.
-		// Also note the catch-all functionality when "recommend.Match == nil",
-		// we do not want to call profileMatches() in that case unless machineConfigLabels
-		// is undefined.
-		if (recommend.Match != nil || recommend.MachineConfigLabels == nil) && pc.profileMatches(recommend.Match, nodeName) {
-			return *recommend.Profile, nil, recommend.Operand, nil
+			// Start with node/pod label based matching to MachineConfig matching when
+			// both the match section and MachineConfigLabels are specified.
+			// Also note the catch-all functionality when "recommend.Match == nil",
+			// we do not want to call profileMatches() in that case unless machineConfigLabels
+			// is undefined.
+			if (recommend.Match != nil || recommend.MachineConfigLabels == nil) && pc.profileMatches(recommend.Match, nodeName) {
+				return i, *recommend.Profile, nil, recommend.Operand, nil
+			}
+
+			if recommend.MachineConfigLabels == nil {
+				// Speed things up, empty labels (used as selectors) match/select nothing.
+				continue
+			}
+
+			if node == nil {
+				// We did not retrieve the node object from cache yet -- get it and also the pools
+				// for this node.  Do not move this code outside the for loop, fetching the node/pools
+				// is often unneeded and would likely have a performance impact.
+				node, err = pc.listers.Nodes.Get(nodeName)
+				if err != nil {
+					return i, "", nil, operand, err
+				}
+
+				pools, err = pc.getPoolsForNode(node)
+				if err != nil {
+					return i, "", nil, operand, err
+				}
+			}
+
+			// MachineConfigLabels based matching
+			if pc.machineConfigLabelsMatch(recommend.MachineConfigLabels, pools) {
+				return i, *recommend.Profile, recommend.MachineConfigLabels, recommend.Operand, nil
+			}
+		}
+		// No profile matches.  This is not necessarily a problem, e.g. when we check for matching profiles with the same priority.
+		return i, defaultProfile, nil, operand, nil
+	}
+	iStop, tunedProfileName, mcLabels, operand, err := recommendProfile(nodeName, 0)
+
+	if iStop == len(recommendAll) {
+		// This should never happen; the default Tuned CR should always be accessible and with a catch-all rule
+		// in the "recommend" section to select the default profile for the tuned daemon.
+		_, err = pc.listers.TunedResources.Get(tunedv1.TunedDefaultResourceName)
+		if err != nil {
+			return defaultProfile, nil, operand, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
 		}
 
-		if recommend.MachineConfigLabels == nil {
-			// Speed things up, empty labels (used as selectors) match/select nothing.
+		return defaultProfile, nil, operand, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
+	}
+
+	// Make sure we do not have multiple matching profiles with the same priority.  If so, report a warning.
+	for i := iStop + 1; i < len(recommendAll); i++ {
+		j, tunedProfileNameDup, _, _, err := recommendProfile(nodeName, i)
+		if err != nil {
+			// Duplicate matching profile priority detection failed, likely due to a failure to retrieve a k8s object.
+			// This is not fatal, do not spam the logs, as we will retry later during a periodic resync.
 			continue
 		}
-
-		if node == nil {
-			// We did not retrieve the node object from cache yet -- get it and also the pools
-			// for this node.  Do not move this code outside the for loop, fetching the node/pools
-			// is often unneeded and would likely have a performance impact.
-			node, err = pc.listers.Nodes.Get(nodeName)
-			if err != nil {
-				return "", nil, operand, err
-			}
-
-			pools, err = pc.getPoolsForNode(node)
-			if err != nil {
-				return "", nil, operand, err
-			}
+		if j == len(recommendAll) {
+			// No other profile matched.
+			break
 		}
+		i = j // This will also ensure we do not go through the same recommend rules when calling r() again.
 
-		// MachineConfigLabels based matching
-		if pc.machineConfigLabelsMatch(recommend.MachineConfigLabels, pools) {
-			return *recommend.Profile, recommend.MachineConfigLabels, recommend.Operand, nil
+		if recommendAll[iStop].Priority == nil || recommendAll[i].Priority == nil {
+			// This should never happen as Priority is a required field, but just in case -- we don't want to crash below.
+			klog.Warningf("one or both of profiles %s/%s have undefined priority", recommendAll[iStop].Profile, recommendAll[i].Profile)
+			continue
+		}
+		// Warn if two profiles have the same priority, and different names.
+		// If they have the same name and different contents a separate warning
+		// will be issued by manifests.tunedRenderedProfiles()
+		if *recommendAll[iStop].Priority == *recommendAll[i].Priority {
+			if tunedProfileName != tunedProfileNameDup {
+				klog.Warningf("profiles %s/%s have the same priority %d and match %s; please use a different priority for your custom profiles!",
+					tunedProfileName, tunedProfileNameDup, *recommendAll[i].Priority, nodeName)
+			}
+		} else {
+			// We no longer have recommend rules with the same priority -- do not go through the entire (priority-ordered) list.
+			break
 		}
 	}
 
-	// This should never happen; the default Tuned CR should always be accessible and with a catch-all rule
-	// in the "recommend" section to select the default profile for the tuned daemon.
-	_, err = pc.listers.TunedResources.Get(tunedv1.TunedDefaultResourceName)
-	if err != nil {
-		return defaultProfile, nil, operand, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
-	}
-
-	return defaultProfile, nil, operand, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
+	return tunedProfileName, mcLabels, operand, err
 }
 
 // calculateProfileHyperShift calculates a tuned profile for Node nodeName.
@@ -255,25 +300,71 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (string
 	}
 	tunedList = append(tunedList, defaultTuned)
 
-	for _, recommend := range TunedRecommend(tunedList) {
-		// Start with node/pod label based matching
-		if recommend.Match != nil && pc.profileMatches(recommend.Match, nodeName) {
-			klog.V(3).Infof("calculateProfileHyperShift: node / pod label matching used for node: %s, tunedProfileName: %s, nodePoolName: %s, operand: %v", nodeName, *recommend.Profile, "", recommend.Operand)
-			return *recommend.Profile, "", recommend.Operand, nil
-		}
+	recommendAll := TunedRecommend(tunedList)
+	recommendProfile := func(nodeName string, iStart int) (int, string, string, tunedv1.OperandConfig, error) {
+		var i int
+		for i = iStart; i < len(recommendAll); i++ {
+			recommend := recommendAll[i]
 
-		// If recommend.Match is empty, NodePool based matching is assumed
-		if recommend.Match == nil {
-			if *recommend.Profile == defaultProfile {
-				// Don't set nodepool for default profile, no MachineConfigs should be generated.
-				return *recommend.Profile, "", recommend.Operand, nil
+			// Start with node/pod label based matching
+			if recommend.Match != nil && pc.profileMatches(recommend.Match, nodeName) {
+				klog.V(3).Infof("calculateProfileHyperShift: node / pod label matching used for node: %s, tunedProfileName: %s, nodePoolName: %s, operand: %v", nodeName, *recommend.Profile, "", recommend.Operand)
+				return i, *recommend.Profile, "", recommend.Operand, nil
 			}
-			klog.V(3).Infof("calculateProfileHyperShift: NodePool based matching used for node: %s, tunedProfileName: %s, nodePoolName: %s", nodeName, *recommend.Profile, nodePoolName)
-			return *recommend.Profile, nodePoolName, recommend.Operand, nil
+
+			// If recommend.Match is empty, NodePool based matching is assumed
+			if recommend.Match == nil {
+				if *recommend.Profile == defaultProfile {
+					// Don't set nodepool for default profile, no MachineConfigs should be generated.
+					return i, *recommend.Profile, "", recommend.Operand, nil
+				}
+				klog.V(3).Infof("calculateProfileHyperShift: NodePool based matching used for node: %s, tunedProfileName: %s, nodePoolName: %s", nodeName, *recommend.Profile, nodePoolName)
+				return i, *recommend.Profile, nodePoolName, recommend.Operand, nil
+			}
+		}
+		// No profile matches.  This is not necessarily a problem, e.g. when we check for matching profiles with the same priority.
+		return i, defaultProfile, "", operand, nil
+	}
+	iStop, tunedProfileName, nodePoolName, operand, err := recommendProfile(nodeName, 0)
+
+	if iStop == len(recommendAll) {
+		return defaultProfile, "", operand, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
+	}
+
+	// Make sure we do not have multiple matching profiles with the same priority.  If so, report a warning.
+	for i := iStop + 1; i < len(recommendAll); i++ {
+		j, tunedProfileNameDup, _, _, err := recommendProfile(nodeName, i)
+		if err != nil {
+			// Duplicate matching profile priority detection failed, likely due to a failure to retrieve a k8s object.
+			// This is not fatal, do not spam the logs, as we will retry later during a periodic resync.
+			continue
+		}
+		if j == len(recommendAll) {
+			// No other profile matched.
+			break
+		}
+		i = j // This will also ensure we do not go through the same recommend rules when calling r() again.
+
+		if recommendAll[iStop].Priority == nil || recommendAll[i].Priority == nil {
+			// This should never happen as Priority is a required field, but just in case -- we don't want to crash below.
+			klog.Warningf("one or both of profiles %s/%s have undefined priority", recommendAll[iStop].Profile, recommendAll[i].Profile)
+			continue
+		}
+		// Warn if two profiles have the same priority, and different names.
+		// If they have the same name and different contents a separate warning
+		// will be issued by manifests.tunedRenderedProfiles()
+		if *recommendAll[iStop].Priority == *recommendAll[i].Priority {
+			if tunedProfileName != tunedProfileNameDup {
+				klog.Warningf("profiles %s/%s have the same priority %d and match %s; please use a different priority for your custom profiles!",
+					tunedProfileName, tunedProfileNameDup, *recommendAll[i].Priority, nodeName)
+			}
+		} else {
+			// We no longer have recommend rules with the same priority -- do not go through the entire (priority-ordered) list.
+			break
 		}
 	}
 
-	return defaultProfile, "", operand, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
+	return tunedProfileName, nodePoolName, operand, err
 }
 
 // profileMatches returns true, if Node 'nodeName' fulfills all the necessary
@@ -560,20 +651,6 @@ func TunedRecommend(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedRecommend {
 		}
 		return recommendAll[i].Priority != nil // undefined priority has the lowest priority
 	})
-
-	for i := 0; i < len(recommendAll)-1; i++ {
-		if recommendAll[i].Priority == nil || recommendAll[i+1].Priority == nil {
-			continue
-		}
-		// Warn if two profiles have the same priority, and different names.
-		// If they have the same name and different contents a separate warning
-		// will be issued by manifests.tunedRenderedProfiles()
-		if *recommendAll[i].Priority == *recommendAll[i+1].Priority &&
-			*recommendAll[i].Profile != *recommendAll[i+1].Profile {
-			klog.Warningf("profiles %s/%s have the same priority %d, please use a different priority for your custom profiles!",
-				*recommendAll[i].Profile, *recommendAll[i+1].Profile, *recommendAll[i].Priority)
-		}
-	}
 
 	return recommendAll
 }
