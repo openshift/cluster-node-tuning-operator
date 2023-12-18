@@ -30,6 +30,7 @@ import (
 type renderOpts struct {
 	assetsInDir  []string
 	assetsOutDir string
+	mcpName      string
 }
 
 func NewRenderBootCmdMCCommand() *cobra.Command {
@@ -57,6 +58,7 @@ func NewRenderBootCmdMCCommand() *cobra.Command {
 func (r *renderOpts) AddFlags(fs *pflag.FlagSet) {
 	fs.StringArrayVar(&r.assetsInDir, "asset-input-dir", []string{components.AssetsDir}, "Input path for the assets directory. (Can use it more than one to define multiple directories)")
 	fs.StringVar(&r.assetsOutDir, "asset-output-dir", r.assetsOutDir, "Output path for the rendered manifests.")
+	fs.StringVar(&r.mcpName, "mcp-name", r.mcpName, "MachineConfigPool name for the current node.")
 }
 
 func (r *renderOpts) Validate() error {
@@ -67,6 +69,9 @@ func (r *renderOpts) Validate() error {
 	if len(r.assetsOutDir) == 0 {
 		err += "asset-output-dir must be specified. "
 	}
+	if len(r.mcpName) == 0 {
+		err += "mcp-name must be specified. "
+	}
 
 	if len(err) == 0 {
 		return nil
@@ -75,7 +80,7 @@ func (r *renderOpts) Validate() error {
 }
 
 func (r *renderOpts) Run() error {
-	return render(r.assetsInDir, r.assetsOutDir)
+	return render(r.assetsInDir, r.assetsOutDir, r.mcpName)
 }
 
 func addKlogFlags(cmd *cobra.Command) {
