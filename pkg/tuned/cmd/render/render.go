@@ -32,6 +32,8 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/version"
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -56,9 +58,10 @@ func init() {
 	)
 }
 
-func render(inputDir []string, outputDir string) error {
+func render(inputDir []string, outputDir string, mcpName string) error {
 	klog.Info("Rendering files from: ", inputDir)
 	klog.Info("Rendering files into: ", outputDir)
+	klog.Info("Using MachineConfigPool: ", mcpName)
 
 	bootstrapSafeEnv := os.Getenv("CLUSTER_NODE_TUNED_BOOTSTRAP_SAFE_ENV")
 	if len(bootstrapSafeEnv) == 0 {
@@ -126,17 +129,37 @@ func render(inputDir []string, outputDir string) error {
 		}
 	}
 
-	perfProfilesTuneDProfiles := make(map[*performancev2.PerformanceProfile]*tunedv1.Tuned, len(perfProfiles))
-	for _, profile := range perfProfiles {
-		tunedFromPP, err := tuned.NewNodePerformance(profile)
-		if err != nil {
-			klog.Errorf("Unable to get tuned. error : %v", err)
-			return fmt.Errorf("unable to get tuned from profile: %w", err)
-		}
-		perfProfilesTuneDProfiles[profile] = tunedFromPP
-		// add tuned from PP to the list
-		tuneD = append(tuneD, tunedFromPP)
+	mcp := findMachineConfigPoolByName(mcPools, mcpName)
+	if mcp == nil {
+		klog.Errorf("Unable to find MachineConfigPool:%q in input folders", mcpName)
+		return fmt.Errorf("Unable to find MachineConfigPool:%q in input folders", mcpName)
 	}
+
+	filteredPerformanceProfiles, err := filterPerformanceProfilesByMachineConfigPool(perfProfiles, mcp)
+	if err != nil {
+		klog.Errorf("Unable to find a PerformanceProfile that matches the MachineConfigPool %s. error : %v", mcpName, err)
+		return fmt.Errorf("Unable to get PerformanceProfile to apply using MachineConfigPool %s. error : %w", mcpName, err)
+	}
+
+	if len(filteredPerformanceProfiles) == 0 {
+		klog.Warningf("Cannot find any PerformanceProfile applicable to MachineConfigPool %s.", mcpName)
+		return fmt.Errorf("Cannot find any PerformanceProfile complying with MachineConfigPool %s.", mcpName)
+	}
+
+	if len(filteredPerformanceProfiles) > 1 {
+		klog.Warningf("Found %d PerformanceProfiles for MachineConfigPool %s, only ONE is allowed.", len(filteredPerformanceProfiles), mcpName)
+		return fmt.Errorf("Found %d PerformanceProfiles for MachineConfigPool %s, only ONE is allowed.", len(filteredPerformanceProfiles), mcpName)
+	}
+
+	perfProfile := filteredPerformanceProfiles[0]
+
+	tunedFromPP, err := tuned.NewNodePerformance(perfProfile)
+	if err != nil {
+		klog.Errorf("Unable to get tuned from PerformanceProfile %s. error : %v", perfProfile.Name, err)
+		return fmt.Errorf("unable to get tuned from PerformanceProfile:%s. error: %w", perfProfile.Name, err)
+	}
+	// add tuned from PP to the list
+	tuneD = append(tuneD, tunedFromPP)
 
 	tuneDrecommended := operator.TunedRecommend(tuneD)
 	if len(tuneDrecommended) == 0 {
@@ -173,42 +196,42 @@ func render(inputDir []string, outputDir string) error {
 		return err
 	}
 
-	for profile, tunedFromPP := range perfProfilesTuneDProfiles {
-		mc, err := renderMachineConfig(mcPools, bootcmdline, mcConfigs, profile, tunedFromPP)
-		if err != nil {
-			klog.Errorf("error while rendering machine config  %v", err)
-			return fmt.Errorf("error while rendering machine config: %w", err)
-		}
-
-		if mc != nil {
-			//Render mc in output dir
-			byteOutput, err := yaml.Marshal(mc)
-			if err != nil {
-				klog.Errorf("Unable to render output machineconfig. error : %v", err)
-				return err
-			}
-
-			fileName := fmt.Sprintf("%s_%s_kargs.yaml", profile.Name, strings.ToLower(mc.Kind))
-			fullFilePath := filepath.Join(outputDir, fileName)
-			klog.Info("Writing file: ", fullFilePath)
-			err = os.WriteFile(fullFilePath, byteOutput, 0644)
-			if err != nil {
-				klog.Errorf("Unable to write output file %s. error : %v", fullFilePath, err)
-				return err
-			}
-
-			klog.Infof("MachineConfig written at : %s", fullFilePath)
-		}
+	mc, err := renderMachineConfig(mcp, bootcmdline, mcConfigs, perfProfile, tunedFromPP)
+	if err != nil {
+		klog.Errorf("error while rendering machine config  %v", err)
+		return fmt.Errorf("error while rendering machine config: %w", err)
 	}
+
+	if mc != nil {
+		//Render mc in output dir
+		byteOutput, err := yaml.Marshal(mc)
+		if err != nil {
+			klog.Errorf("Unable to render output machineconfig. error : %v", err)
+			return err
+		}
+
+		fileName := fmt.Sprintf("%s_%s_kargs.yaml", perfProfile.Name, strings.ToLower(mc.Kind))
+		fullFilePath := filepath.Join(outputDir, fileName)
+		klog.Info("Writing file: ", fullFilePath)
+		err = os.WriteFile(fullFilePath, byteOutput, 0644)
+		if err != nil {
+			klog.Errorf("Unable to write output file %s. error : %v", fullFilePath, err)
+			return err
+		}
+
+		klog.Infof("MachineConfig written at : %s", fullFilePath)
+	}
+
 	return nil
 }
 
-func renderMachineConfig(pools []*mcfgv1.MachineConfigPool, bootcmdline string, mConfigs []*mcfgv1.MachineConfig, profile *performancev2.PerformanceProfile, tunedMf *tunedv1.Tuned) (*mcfgv1.MachineConfig, error) {
+func renderMachineConfig(pool *mcfgv1.MachineConfigPool, bootcmdline string, mConfigs []*mcfgv1.MachineConfig, profile *performancev2.PerformanceProfile, tunedMf *tunedv1.Tuned) (*mcfgv1.MachineConfig, error) {
 	if len(bootcmdline) == 0 {
 		klog.Info("Empty cmdbootline. Avoid creating MachineConfig")
 		return nil, nil
 	}
 
+	pools := []*mcfgv1.MachineConfigPool{pool}
 	mcName := operator.GetMachineConfigNameForPools(pools)
 	kernelArgs := util.SplitKernelArguments(bootcmdline)
 	annotations := map[string]string{operator.GeneratedByControllerVersionAnnotationKey: version.Version}
@@ -261,4 +284,37 @@ func removeDuplicates[T string | int](sliceList []T) []T {
 		}
 	}
 	return list
+}
+
+func findMachineConfigPoolByName(mcPools []*mcfgv1.MachineConfigPool, mcpName string) *mcfgv1.MachineConfigPool {
+	for _, mcp := range mcPools {
+		if mcp.Name == mcpName {
+			return mcp
+		}
+	}
+	return nil
+}
+
+func filterPerformanceProfilesByMachineConfigPool(performanceProfiles []*performancev2.PerformanceProfile, mcp *mcfgv1.MachineConfigPool) ([]*performancev2.PerformanceProfile, error) {
+	mcpSelector, err := metav1.LabelSelectorAsSelector(mcp.Spec.NodeSelector)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to get NodeSelector from MachineConfigPool: %s. error: %w", mcp.Name, err)
+	}
+
+	result := make([]*performancev2.PerformanceProfile, 0, len(performanceProfiles))
+
+	for _, perfProfile := range performanceProfiles {
+		if perfProfile.Spec.NodeSelector == nil {
+			//NOTE - this is not a valid PerformanceProfile as NodeSelect should not be empty
+			continue
+		}
+
+		perfProfileNodeSelector := labels.Set(perfProfile.Spec.NodeSelector)
+
+		if mcpSelector.Matches(perfProfileNodeSelector) {
+			result = append(result, perfProfile)
+		}
+	}
+
+	return result, nil
 }
