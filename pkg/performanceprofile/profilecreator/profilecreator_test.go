@@ -437,7 +437,7 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 				Processors:   processors,
 			}
 
-			extCpuInfo := extendedCPUInfo{
+			extCpuInfo := ExtendedCPUInfo{
 				CpuInfo:                  &cpuInfo,
 				NumLogicalProcessorsUsed: make(map[int]int),
 				LogicalProcessorsUsed:    make(map[int]struct{}),

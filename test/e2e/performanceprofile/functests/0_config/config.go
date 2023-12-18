@@ -3,6 +3,7 @@ package __performance_config
 import (
 	"context"
 	"fmt"
+	"github.com/jaypipes/ghw/pkg/cpu"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator"
 	"os"
 	"time"
@@ -253,5 +254,30 @@ func testProfile() (*performancev2.PerformanceProfile, error) {
 }
 
 func getSysInfoForPPC() profilecreator.SystemInfo {
-	return nil
+	cpuInfo := cpu.Info{
+		TotalCores:   getTotalcores(),
+		TotalThreads: getTotalThreads(),
+		Processors:   processors,
+	}
+
+	extCpuInfo := profilecreator.ExtendedCPUInfo{
+		CpuInfo:                  &cpuInfo,
+		NumLogicalProcessorsUsed: make(map[int]int),
+		LogicalProcessorsUsed:    make(map[int]struct{}),
+	}
+
+	sysInfo := profilecreator.SystemInfo{
+		CpuInfo:      &extCpuInfo,
+		TopologyInfo: &topologyInfo,
+		HtEnabled:    true,
+	}
+	return sysInfo
+}
+
+func getTotalcores() uint32 {
+
+}
+
+func getTotalThreads() uint32 {
+
 }

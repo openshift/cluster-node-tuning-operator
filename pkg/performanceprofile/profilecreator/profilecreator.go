@@ -324,7 +324,7 @@ func topologyHTDisabled(info *topology.Info) *topology.Info {
 	return disabledHTTopology
 }
 
-type extendedCPUInfo struct {
+type ExtendedCPUInfo struct {
 	CpuInfo *cpu.Info
 	// Number of logicalprocessors already reserved for each Processor (aka Socket)
 	NumLogicalProcessorsUsed map[int]int
@@ -332,7 +332,7 @@ type extendedCPUInfo struct {
 }
 
 type SystemInfo struct {
-	CpuInfo      *extendedCPUInfo
+	CpuInfo      *ExtendedCPUInfo
 	TopologyInfo *topology.Info
 	HtEnabled    bool
 }
@@ -354,7 +354,7 @@ func (ghwHandler GHWHandler) GatherSystemInfo() (*SystemInfo, error) {
 	}
 
 	return &SystemInfo{
-		CpuInfo: &extendedCPUInfo{
+		CpuInfo: &ExtendedCPUInfo{
 			CpuInfo:                  cpuInfo,
 			NumLogicalProcessorsUsed: make(map[int]int, len(cpuInfo.Processors)),
 			LogicalProcessorsUsed:    make(map[int]struct{}),
@@ -433,7 +433,7 @@ func getIsolatedCPUs(topologyInfoNodes []*topology.Node, reserved, offlined cpus
 	return total.Difference(reserved.Union(offlined)), nil
 }
 
-func AreAllLogicalProcessorsFromSocketUnused(extCpuInfo *extendedCPUInfo, socketId int) bool {
+func AreAllLogicalProcessorsFromSocketUnused(extCpuInfo *ExtendedCPUInfo, socketId int) bool {
 	if val, ok := extCpuInfo.NumLogicalProcessorsUsed[socketId]; ok {
 		return val == 0
 	} else {
@@ -441,7 +441,7 @@ func AreAllLogicalProcessorsFromSocketUnused(extCpuInfo *extendedCPUInfo, socket
 	}
 }
 
-func getOfflinedCPUs(extCpuInfo *extendedCPUInfo, offlinedCPUCount int, disableHTFlag bool, htEnabled bool, highPowerConsumption bool) (cpuset.CPUSet, error) {
+func getOfflinedCPUs(extCpuInfo *ExtendedCPUInfo, offlinedCPUCount int, disableHTFlag bool, htEnabled bool, highPowerConsumption bool) (cpuset.CPUSet, error) {
 	offlined := newCPUAccumulator()
 	lpOfflined := 0
 
@@ -748,13 +748,13 @@ func GetAdditionalKernelArgs(disableHT bool) []string {
 	return kernelArgs
 }
 
-func updateExtendedCPUInfo(extCpuInfo *extendedCPUInfo, used cpuset.CPUSet, disableHT, htEnabled bool) (*extendedCPUInfo, error) {
+func updateExtendedCPUInfo(extCpuInfo *ExtendedCPUInfo, used cpuset.CPUSet, disableHT, htEnabled bool) (*ExtendedCPUInfo, error) {
 	retCpuInfo := &cpu.Info{
 		TotalCores:   0,
 		TotalThreads: 0,
 	}
 
-	ret := &extendedCPUInfo{
+	ret := &ExtendedCPUInfo{
 		CpuInfo:                  retCpuInfo,
 		NumLogicalProcessorsUsed: make(map[int]int, len(extCpuInfo.NumLogicalProcessorsUsed)),
 		LogicalProcessorsUsed:    make(map[int]struct{}),
@@ -821,7 +821,7 @@ func updateExtendedCPUInfo(extCpuInfo *extendedCPUInfo, used cpuset.CPUSet, disa
 	return ret, nil
 }
 
-func IsLogicalProcessorUsed(extCPUInfo *extendedCPUInfo, logicalProcessor int) bool {
+func IsLogicalProcessorUsed(extCPUInfo *ExtendedCPUInfo, logicalProcessor int) bool {
 	_, ok := extCPUInfo.LogicalProcessorsUsed[logicalProcessor]
 	return ok
 }
