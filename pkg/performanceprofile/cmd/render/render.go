@@ -87,11 +87,14 @@ func render(inputDir, outputDir string) error {
 	}
 
 	var (
-		perfProfiles []*performancev2.PerformanceProfile
-		mcPools      []*mcfgv1.MachineConfigPool
-		mcConfigs    []*mcfgv1.MachineConfig
-		infra        *apicfgv1.Infrastructure
-		ctrcfgs      []*mcfgv1.ContainerRuntimeConfig
+		perfProfiles []struct {
+			string
+			*performancev2.PerformanceProfile
+		}
+		mcPools   []*mcfgv1.MachineConfigPool
+		mcConfigs []*mcfgv1.MachineConfig
+		infra     *apicfgv1.Infrastructure
+		ctrcfgs   []*mcfgv1.ContainerRuntimeConfig
 	)
 	// Iterate through the file paths and read in desired files
 	for _, path := range filePaths {
@@ -100,8 +103,8 @@ func render(inputDir, outputDir string) error {
 			return fmt.Errorf("error opening %s: %w", file.Name(), err)
 		}
 		defer file.Close()
-
 		manifests, err := util.ParseManifests(file.Name(), file)
+
 		if err != nil {
 			return fmt.Errorf("error parsing manifests from %s: %w", file.Name(), err)
 		}
@@ -119,7 +122,10 @@ func render(inputDir, outputDir string) error {
 
 			switch obj := obji.(type) {
 			case *performancev2.PerformanceProfile:
-				perfProfiles = append(perfProfiles, obj)
+				perfProfiles = append(perfProfiles, struct {
+					string
+					*performancev2.PerformanceProfile
+				}{filepath.Base(path), obj})
 			case *mcfgv1.MachineConfigPool:
 				mcPools = append(mcPools, obj)
 			case *mcfgv1.MachineConfig:
@@ -161,7 +167,8 @@ func render(inputDir, outputDir string) error {
 		}
 	}
 
-	for _, pp := range perfProfiles {
+	for _, ppData := range perfProfiles {
+		pp := ppData.PerformanceProfile
 		mcp, err := selectMachineConfigPool(mcPools, pp.Spec.NodeSelector)
 		if err != nil {
 			return err
@@ -191,6 +198,7 @@ func render(inputDir, outputDir string) error {
 		uid := pp.UID
 		if uid == types.UID("") {
 			uid = uuid.NewUUID()
+			pp.UID = uid
 		}
 
 		or := []v1.OwnerReference{
@@ -222,6 +230,20 @@ func render(inputDir, outputDir string) error {
 			}
 			klog.Info(fileName)
 		}
+
+		//write PerformanceProfile to output
+		ppBin, err := yaml.Marshal(pp)
+		if err != nil {
+			return fmt.Errorf("unable to marshal PerformanceProfile %s. error: %w", pp.Name, err)
+		}
+		fullFilePath := filepath.Join(outputDir, ppData.string)
+		klog.Info("Writing file: ", fullFilePath)
+
+		err = os.WriteFile(fullFilePath, ppBin, 0644)
+		if err != nil {
+			return fmt.Errorf("unable to marshal PerformanceProfile %s. error: %w", pp.Name, err)
+		}
+		klog.Info(ppData.string)
 	}
 
 	return nil
