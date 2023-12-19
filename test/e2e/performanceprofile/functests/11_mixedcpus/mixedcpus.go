@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	kubeletconfig "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/cpuset"
 	"k8s.io/utils/pointer"
@@ -20,25 +22,33 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/controller"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/runtime"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/namespaces"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	testprofiles "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
 
 const (
-	crioRuntimeConfigFile      = "/etc/crio/crio.conf.d/99-runtimes.conf"
 	kubeletMixedCPUsConfigFile = "/etc/kubernetes/openshift-workload-mixed-cpus"
+	sharedCpusResource         = "workload.openshift.io/enable-shared-cpus"
 )
 
 var _ = Describe("Mixedcpus", Ordered, func() {
 	ctx := context.Background()
 	BeforeAll(func() {
 		var err error
+		if discovery.Enabled() && testutils.ProfileNotFound {
+			Skip("discovery mode enabled, performance profile not found")
+		}
 		profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 
@@ -110,6 +120,62 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 				shared.String(), crioShared.String())
 		})
 	})
+
+	When("workloads requests access for shared cpus", func() {
+		var profile *performancev2.PerformanceProfile
+		var getter cgroup.ControllersGetter
+		BeforeEach(func() {
+			var err error
+			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+			// create test namespace
+			ns := getTestingNamespace()
+			Expect(testclient.Client.Create(ctx, &ns)).ToNot(HaveOccurred())
+			DeferCleanup(func() {
+				Expect(testclient.Client.Delete(ctx, &ns)).ToNot(HaveOccurred())
+				Expect(namespaces.WaitForDeletion(testutils.NamespaceTesting, 5*time.Minute)).ToNot(HaveOccurred())
+			})
+			getter, err = cgroup.BuildGetter(ctx, testclient.Client, testclient.K8sClient)
+			Expect(err).ToNot(HaveOccurred())
+		})
+		It("should have the shared cpus under its cgroups", func() {
+			rl := &corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("1"),
+				corev1.ResourceMemory: resource.MustParse("100Mi"),
+				sharedCpusResource:    resource.MustParse("1"),
+			}
+			p, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+				withRequests(rl),
+				withLimits(rl),
+				withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
+			Expect(err).ToNot(HaveOccurred())
+			cfg := &controller.CpuSet{}
+			err = getter.Container(ctx, p, p.Spec.Containers[0].Name, cfg)
+			Expect(err).ToNot(HaveOccurred())
+			cgroupCpuSet, err := cpuset.Parse(cfg.Cpus)
+			Expect(err).ToNot(HaveOccurred())
+			shared, _ := cpuset.Parse(string(*profile.Spec.CPU.Shared))
+			Expect(cgroupCpuSet.Intersection(shared).List()).ToNot(BeEmpty(), "shared cpus are not in the pod cgroups; pod=%q, cgroupscpuset=%q sharedcpuset=%q",
+				fmt.Sprintf("%s/%s", p.Namespace, p.Name), cgroupCpuSet.String(), shared.String())
+		})
+		It("should be able to disable cfs_quota", func() {
+			rl := &corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("1"),
+				corev1.ResourceMemory: resource.MustParse("100Mi"),
+				sharedCpusResource:    resource.MustParse("1"),
+			}
+			p, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+				withRequests(rl),
+				withLimits(rl),
+				withAnnotations(map[string]string{"cpu-quota.crio.io": "disable"}),
+				withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
+			Expect(err).ToNot(HaveOccurred())
+			cfg := &controller.Cpu{}
+			err = getter.Container(ctx, p, p.Spec.Containers[0].Name, cfg)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(cfg.Quota).To(Or(Equal("max"), Equal("-1")))
+		})
+	})
 })
 
 func setup(ctx context.Context, profile *performancev2.PerformanceProfile) func(ctx2 context.Context) {
@@ -161,4 +227,53 @@ func isFileExistCmd(absoluteFileName string) []string {
 		"-c",
 		fmt.Sprintf("if [[ -s %s ]]; then echo true; else echo false; fi", absoluteFileName),
 	}
+}
+
+func createPod(ctx context.Context, c client.Client, ns string, opts ...func(pod *corev1.Pod)) (*corev1.Pod, error) {
+	p := pods.GetTestPod()
+	p.Namespace = ns
+	for _, opt := range opts {
+		opt(p)
+	}
+	if err := c.Create(ctx, p); err != nil {
+		return nil, err
+	}
+	p, err := pods.WaitForCondition(client.ObjectKeyFromObject(p), corev1.PodReady, corev1.ConditionTrue, time.Minute)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pod. pod=%s, podStatus=%v err=%v", client.ObjectKeyFromObject(p).String(), p.Status, err)
+	}
+	return p, nil
+}
+
+func withRequests(rl *corev1.ResourceList) func(p *corev1.Pod) {
+	return func(p *corev1.Pod) {
+		p.Spec.Containers[0].Resources.Requests = *rl
+	}
+}
+
+func withLimits(rl *corev1.ResourceList) func(p *corev1.Pod) {
+	return func(p *corev1.Pod) {
+		p.Spec.Containers[0].Resources.Limits = *rl
+	}
+}
+
+func withAnnotations(annot map[string]string) func(p *corev1.Pod) {
+	return func(p *corev1.Pod) {
+		if p.Annotations == nil {
+			p.Annotations = map[string]string{}
+		}
+		for k, v := range annot {
+			p.Annotations[k] = v
+		}
+	}
+}
+
+func withRuntime(name string) func(p *corev1.Pod) {
+	return func(p *corev1.Pod) {
+		p.Spec.RuntimeClassName = &name
+	}
+}
+
+func getTestingNamespace() corev1.Namespace {
+	return *namespaces.TestingNamespace
 }
