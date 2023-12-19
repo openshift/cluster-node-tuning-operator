@@ -1,1 +1,4 @@
-SUBSYSTEM=="queues", ACTION=="add", ENV{DEVPATH}=="/devices/pci*/queues/rx*", TAG+="systemd", ENV{SYSTEMD_WANTS}="update-rps@%p.service"
+SUBSYSTEM=="queues", ACTION=="add", ENV{DEVPATH}=="/devices/pci*/queues/rx*", TAG+="systemd", PROGRAM="/bin/systemd-escape --path --template=update-rps@.service $env{DEVPATH}", ENV{SYSTEMD_WANTS}="%c"
+
+# SR-IOV devices are moved (renamed), hence we want to catch this event as well
+SUBSYSTEM=="net", ACTION=="move", ENV{DEVPATH}!="/devices/virtual/net/*", TAG+="systemd", PROGRAM="/bin/systemd-escape --path --template=update-rps@.service $env{DEVPATH}", ENV{SYSTEMD_WANTS}="%c"
