@@ -175,6 +175,30 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(cfg.Quota).To(Or(Equal("max"), Equal("-1")))
 		})
+		It("should have OPENSHIFT_ISOLATED_CPUS and OPENSHIFT_SHARED_CPUS env variables under the container", func() {
+			rl := &corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("1"),
+				corev1.ResourceMemory: resource.MustParse("100Mi"),
+				sharedCpusResource:    resource.MustParse("1"),
+			}
+			p, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+				withRequests(rl),
+				withLimits(rl),
+				withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
+			Expect(err).ToNot(HaveOccurred())
+			cmd := printMixedCPUsEnvCmd()
+			output, err := pods.ExecCommandOnPod(testclient.K8sClient, p, "", cmd)
+			Expect(err).ToNot(HaveOccurred(), "failed to execute command on pod; cmd=%q pod=%q", cmd, client.ObjectKeyFromObject(p).String())
+			isolatedAndShared := strings.Split(string(output), "\r\n")
+			isolated, err := cpuset.Parse(isolatedAndShared[0])
+			Expect(err).ToNot(HaveOccurred())
+			Expect(isolated.IsEmpty()).ToNot(BeTrue())
+			shared, err := cpuset.Parse(isolatedAndShared[1])
+			ppShared, _ := cpuset.Parse(string(*profile.Spec.CPU.Shared))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(shared.Equals(ppShared)).To(BeTrue(), "OPENSHIFT_SHARED_CPUS value not equal to what configure in the performance profile."+
+				"OPENSHIFT_SHARED_CPUS=%s spec.cpu.shared=%s", shared.String(), ppShared.String())
+		})
 	})
 })
 
@@ -216,6 +240,14 @@ func setup(ctx context.Context, profile *performancev2.PerformanceProfile) func(
 func cpuSetToPerformanceCPUSet(set *cpuset.CPUSet) *performancev2.CPUSet {
 	c := performancev2.CPUSet(set.String())
 	return &c
+}
+
+func printMixedCPUsEnvCmd() []string {
+	return []string{
+		"/bin/printenv",
+		"OPENSHIFT_ISOLATED_CPUS",
+		"OPENSHIFT_SHARED_CPUS",
+	}
 }
 
 // checks whether file exists and not empty
