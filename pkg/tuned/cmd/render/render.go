@@ -33,6 +33,7 @@ import (
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -131,8 +132,30 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 
 	mcp := findMachineConfigPoolByName(mcPools, mcpName)
 	if mcp == nil {
-		klog.Errorf("Unable to find MachineConfigPool:%q in input folders", mcpName)
-		return fmt.Errorf("Unable to find MachineConfigPool:%q in input folders", mcpName)
+		if mcpName == "master" {
+			masterPool := mcfgv1.MachineConfigPool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "master",
+				},
+				Spec: mcfgv1.MachineConfigPoolSpec{
+					MachineConfigSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"machineconfiguration.openshift.io/role": "master",
+						},
+					},
+					NodeSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"node-role.kubernetes.io/master": "",
+						},
+					},
+					Paused: false,
+				},
+			}
+			mcp = &masterPool
+		} else {
+			klog.Errorf("Unable to find MachineConfigPool:%q in input folders", mcpName)
+			return fmt.Errorf("Unable to find MachineConfigPool:%q in input folders", mcpName)
+		}
 	}
 
 	filteredPerformanceProfiles, err := filterPerformanceProfilesByMachineConfigPool(perfProfiles, mcp)
@@ -143,7 +166,8 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 
 	if len(filteredPerformanceProfiles) == 0 {
 		klog.Warningf("Cannot find any PerformanceProfile applicable to MachineConfigPool %s.", mcpName)
-		return fmt.Errorf("Cannot find any PerformanceProfile complying with MachineConfigPool %s.", mcpName)
+		return nil
+		// return fmt.Errorf("Cannot find any PerformanceProfile complying with MachineConfigPool %s.", mcpName)
 	}
 
 	if len(filteredPerformanceProfiles) > 1 {

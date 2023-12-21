@@ -135,6 +135,26 @@ func render(inputDir, outputDir string) error {
 			}
 		}
 	}
+	masterPool := mcfgv1.MachineConfigPool{
+		ObjectMeta: v1.ObjectMeta{
+			Name: "master",
+		},
+		Spec: mcfgv1.MachineConfigPoolSpec{
+			MachineConfigSelector: &v1.LabelSelector{
+				MatchLabels: map[string]string{
+					"machineconfiguration.openshift.io/role": "master",
+				},
+			},
+			NodeSelector: &v1.LabelSelector{
+				MatchLabels: map[string]string{
+					"node-role.kubernetes.io/master": "",
+				},
+			},
+			Paused: false,
+		},
+	}
+
+	mcPools = append(mcPools, &masterPool)
 
 	if len(perfProfiles) == 0 {
 		klog.Warning("zero performance profiles were found")
