@@ -338,11 +338,12 @@ func migratePinnedSingleNodeInfraStatus(cfg *rest.Config, scheme *apiruntime.Sch
 func setupFeatureGates(ctx context.Context, config *rest.Config, operatorNamespace string) (featuregates.FeatureGate, error) {
 	missingVersion := "0.0.1-snapshot"
 	desiredVersion := missingVersion
-	if val, ok := os.LookupEnv(version.OverrideReleaseVersionVarName); !ok || (ok && val != "true") {
-		if v, ok := os.LookupEnv(version.ReleaseVersionEnvVarName); ok {
-			desiredVersion = v
-		}
-	}	
+	if v, ok := os.LookupEnv(version.ReleaseVersionEnvVarName); ok {
+		desiredVersion = v
+	}
+	if v, ok := os.LookupEnv(version.OverrideReleaseVersionVarName); ok && v == "true" {
+		desiredVersion = missingVersion
+	}
 	configClient, err := configclient.NewForConfig(config)
 	if err != nil {
 		return nil, err
