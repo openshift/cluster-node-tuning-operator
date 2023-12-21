@@ -4,6 +4,7 @@ const (
 	OperandFilename          = "openshift-tuned"
 	OperatorFilename         = "cluster-node-tuning-operator"
 	ReleaseVersionEnvVarName = "RELEASE_VERSION"
+	OverrideReleaseVersionVarName = "OVERRIDE_RELEASE_VERSION"
 )
 
 var (
