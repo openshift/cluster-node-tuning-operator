@@ -5,7 +5,11 @@ import (
 	"fmt"
 	"github.com/jaypipes/ghw/pkg/cpu"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"os"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -253,10 +257,15 @@ func testProfile() (*performancev2.PerformanceProfile, error) {
 	return profile, nil
 }
 
-func getSysInfoForPPC() profilecreator.SystemInfo {
+func getSysInfoForPPC() (profilecreator.SystemInfo, error) {
+	totalCores, totalThreads, err := getTotalCPUInfo()
+	if err != nil {
+		return profilecreator.SystemInfo{}, err
+	}
+
 	cpuInfo := cpu.Info{
-		TotalCores:   getTotalcores(),
-		TotalThreads: getTotalThreads(),
+		TotalCores:   uint32(totalCores),
+		TotalThreads: uint32(totalThreads),
 		Processors:   processors,
 	}
 
@@ -274,10 +283,85 @@ func getSysInfoForPPC() profilecreator.SystemInfo {
 	return sysInfo
 }
 
-func getTotalcores() uint32 {
+func getTotalCPUInfo() (int, int, error) { //cores, threads, []processors{}
+	cmd := []string{"cat", "/proc/cpuinfo"}
+	cpuinfo, err := nodes.ExecCommandOnNode(cmd, workerRTNode)
+	Expect(err).ToNot(HaveOccurred())
 
+	re := regexp.MustCompile(fmt.Sprintf(`%s/s+:/s+(.*)`, "physical id"))
+	physicalIds := re.FindStringSubmatch(cpuinfo)
+
+	procPerSockets := make(map[string]int)
+	for _, id := range physicalIds {
+		if _, err := strconv.Atoi(id); err != nil {
+			return 0, 0, fmt.Errorf("failed to fetch processor socket: %v", err)
+		}
+		procPerSockets[item]++
+	}
+	totalCores := procPerSockets[physicalIds[0]] * len(procPerSockets)
+	totalThreads := len(physicalIds)
+	physicalCoreNum := len(procPerSockets)
+	threadsPerCore := totalThreads / totalCores
+
+	//processors
+	processorsStr := strings.Split(cpuinfo, "\\n\\s*\\n")
+	var socketInfo []*cpu.Processor
+	for idx, pstr := range processorsStr {
+		/*type ProcessorCore struct {
+		    ID                int    `json:"id"`
+		    Index             int    `json:"index"`
+		    NumThreads        uint32 `json:"total_threads"`
+		    LogicalProcessors []int  `json:"logical_processors"`
+		}*/
+		pCore := cpu.ProcessorCore{
+			ID:                idx,
+			Index:             idx,
+			NumThreads:        uint32(threadsPerCore),
+			LogicalProcessors: []int{in},
+		}
+		//logicalCores = append(logicalCores, &pCore)
+		match := fetchValueFromCpuinfo(fmt.Sprintf(`%s/s+:/s+(.*)`, "physical id"), pstr)
+		socketId, err := strconv.Atoi(match[0])
+		if err != nil {
+			return 0, 0, fmt.Errorf("failed to fetch processor socket: %v /n %s", err, pstr)
+		}
+
+		if socketId < len(socketInfo) {
+			//fill existing element
+		} else {
+			//append new element
+			match := fetchValueFromCpuinfo(fmt.Sprintf(`%s/s+:/s+(.*)`, "cpu cores"), pstr)
+			corePerSocket, err := strconv.Atoi(match[0])
+			if err != nil {
+				return 0, 0, fmt.Errorf("failed to fetch cores per socket: %v /n %s", err, pstr)
+			}
+
+			vendorId := fetchValueFromCpuinfo(fmt.Sprintf(`%s/s+:/s+(.*)`, "vendor_id"), pstr)
+			model := fetchValueFromCpuinfo(fmt.Sprintf(`%s/s+:/s+(.*)`, "model"), pstr)
+
+			newSocket := cpu.Processor{
+				ID:         socketId,
+				NumCores:   uint32(corePerSocket),
+				NumThreads: uint32(totalThreads / physicalCoreNum),
+				Vendor:     vendorId[0],
+				Model:      model[0],
+				Cores:      []*cpu.ProcessorCore{&pCore},
+			}
+			socketInfo = append(socketInfo, &newSocket)
+		}
+	}
+	return procPerSockets[match[0]] * len(procPerSockets), len(processorsStr), nil
 }
 
-func getTotalThreads() uint32 {
+func getTotalThreads() int {
+	cmd := []string{"cat", "/proc/cpuinfo"}
+	cpuinfo, err := nodes.ExecCommandOnNode(cmd, workerRTNode)
+	Expect(err).ToNot(HaveOccurred())
+	return strings.Count(cpuinfo, "processor")
+}
 
+func fetchValueFromCpuinfo(keyRgx string, from string) []string {
+	re := regexp.MustCompile(keyRgx)
+	match := re.FindStringSubmatch(from)
+	return match
 }
