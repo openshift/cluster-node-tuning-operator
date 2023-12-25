@@ -85,7 +85,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				profile.Spec.WorkloadHints = nil
 
 				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.BoolPtr(false),
+					Enabled: pointer.Bool(false),
 				}
 
 				By("Updating the performance profile")
@@ -143,7 +143,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				}
 
 				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.BoolPtr(false),
+					Enabled: pointer.Bool(false),
 				}
 
 				By("Updating the performance profile")
@@ -201,7 +201,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				}
 
 				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.BoolPtr(false),
+					Enabled: pointer.Bool(false),
 				}
 
 				By("Updating the performance profile")
@@ -252,9 +252,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		When("realtime and high power consumption enabled", func() {
 			It("[test_id:50993][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					HighPowerConsumption:  pointer.BoolPtr(true),
-					RealTime:              pointer.BoolPtr(true),
-					PerPodPowerManagement: pointer.BoolPtr(false),
+					HighPowerConsumption:  pointer.Bool(true),
+					RealTime:              pointer.Bool(true),
+					PerPodPowerManagement: pointer.Bool(false),
 				}
 				By("Patching the performance profile with workload hints")
 				workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
@@ -314,9 +314,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		When("perPodPowerManagent enabled", func() {
 			It("[test_id:54177]should update kernel arguments and tuned accordingly", func() {
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					PerPodPowerManagement: pointer.BoolPtr(true),
-					HighPowerConsumption:  pointer.BoolPtr(false),
-					RealTime:              pointer.BoolPtr(true),
+					PerPodPowerManagement: pointer.Bool(true),
+					HighPowerConsumption:  pointer.Bool(false),
+					RealTime:              pointer.Bool(true),
 				}
 				By("Patching the performance profile with workload hints")
 				workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
@@ -365,11 +365,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption:  pointer.Bool(true),
 					RealTime:              pointer.Bool(true),
-					PerPodPowerManagement: pointer.BoolPtr(false),
+					PerPodPowerManagement: pointer.Bool(false),
 				}
 				if !*profile.Spec.RealTimeKernel.Enabled {
 					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-						Enabled: pointer.BoolPtr(true),
+						Enabled: pointer.Bool(true),
 					}
 				}
 
@@ -430,11 +430,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption:  pointer.Bool(false),
 					RealTime:              pointer.Bool(true),
-					PerPodPowerManagement: pointer.BoolPtr(true),
+					PerPodPowerManagement: pointer.Bool(true),
 				}
 				if !*profile.Spec.RealTimeKernel.Enabled {
 					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-						Enabled: pointer.BoolPtr(true),
+						Enabled: pointer.Bool(true),
 					}
 				}
 
@@ -501,11 +501,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption:  pointer.Bool(false),
 					RealTime:              pointer.Bool(true),
-					PerPodPowerManagement: pointer.BoolPtr(true),
+					PerPodPowerManagement: pointer.Bool(true),
 				}
 				if !*profile.Spec.RealTimeKernel.Enabled {
 					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-						Enabled: pointer.BoolPtr(true),
+						Enabled: pointer.Bool(true),
 					}
 				}
 
@@ -565,11 +565,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption:  pointer.Bool(true),
 					RealTime:              pointer.Bool(true),
-					PerPodPowerManagement: pointer.BoolPtr(false),
+					PerPodPowerManagement: pointer.Bool(false),
 				}
 				if !*profile.Spec.RealTimeKernel.Enabled {
 					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-						Enabled: pointer.BoolPtr(true),
+						Enabled: pointer.Bool(true),
 					}
 				}
 
@@ -630,9 +630,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 			It("[test_id:54184]Verify enabling both HighPowerConsumption and PerPodPowerManagment fails", func() {
 
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					PerPodPowerManagement: pointer.BoolPtr(true),
-					HighPowerConsumption:  pointer.BoolPtr(true),
-					RealTime:              pointer.BoolPtr(true),
+					PerPodPowerManagement: pointer.Bool(true),
+					HighPowerConsumption:  pointer.Bool(true),
+					RealTime:              pointer.Bool(true),
 				}
 				EventuallyWithOffset(1, func() string {
 					err := testclient.Client.Update(context.TODO(), profile)
@@ -650,9 +650,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				// Using numa nodes to check if we are running on real hardware.
 				checkHardwareCapability(workerRTNodes)
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					PerPodPowerManagement: pointer.BoolPtr(true),
-					HighPowerConsumption:  pointer.BoolPtr(false),
-					RealTime:              pointer.BoolPtr(true),
+					PerPodPowerManagement: pointer.Bool(true),
+					HighPowerConsumption:  pointer.Bool(false),
+					RealTime:              pointer.Bool(true),
 				}
 				By("Patching the performance profile with workload hints")
 				workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
@@ -744,9 +744,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				// Using numa nodes to check if we are running on real hardware
 				checkHardwareCapability(workerRTNodes)
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					PerPodPowerManagement: pointer.BoolPtr(false),
-					HighPowerConsumption:  pointer.BoolPtr(true),
-					RealTime:              pointer.BoolPtr(true),
+					PerPodPowerManagement: pointer.Bool(false),
+					HighPowerConsumption:  pointer.Bool(true),
+					RealTime:              pointer.Bool(true),
 				}
 				By("Patching the performance profile with workload hints")
 				workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)

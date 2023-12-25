@@ -79,13 +79,13 @@ func NewPerformanceProfile(name string) *PerformanceProfile {
 				},
 			},
 			RealTimeKernel: &RealTimeKernel{
-				Enabled: pointer.BoolPtr(true),
+				Enabled: pointer.Bool(true),
 			},
 			NUMA: &NUMA{
 				TopologyPolicy: &numaPolicy,
 			},
 			Net: &Net{
-				UserLevelNetworking: pointer.BoolPtr(true),
+				UserLevelNetworking: pointer.Bool(true),
 				Devices: []Device{
 					{
 						InterfaceName: &netDeviceName,
@@ -279,7 +279,7 @@ var _ = Describe("PerformanceProfile", func() {
 		It("should reject hugepages allocation with unexpected page size", func() {
 			profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 				Count: 128,
-				Node:  pointer.Int32Ptr(0),
+				Node:  pointer.Int32(0),
 				Size:  "14M",
 			})
 			errors := profile.validateHugePages()
@@ -293,12 +293,12 @@ var _ = Describe("PerformanceProfile", func() {
 					profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 						Count: 128,
 						Size:  hugepagesSize1G,
-						Node:  pointer.Int32Ptr(0),
+						Node:  pointer.Int32(0),
 					})
 					profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 						Count: 64,
 						Size:  hugepagesSize1G,
-						Node:  pointer.Int32Ptr(0),
+						Node:  pointer.Int32(0),
 					})
 					errors := profile.validateHugePages()
 					Expect(errors).NotTo(BeEmpty())
@@ -347,9 +347,9 @@ var _ = Describe("PerformanceProfile", func() {
 			It("should raise the validation syntax errors", func() {
 				invalidVendor := "123"
 				invalidDevice := "0x12345"
-				profile.Spec.Net.Devices[0].InterfaceName = pointer.StringPtr("")
-				profile.Spec.Net.Devices[0].VendorID = pointer.StringPtr(invalidVendor)
-				profile.Spec.Net.Devices[0].DeviceID = pointer.StringPtr(invalidDevice)
+				profile.Spec.Net.Devices[0].InterfaceName = pointer.String("")
+				profile.Spec.Net.Devices[0].VendorID = pointer.String(invalidVendor)
+				profile.Spec.Net.Devices[0].DeviceID = pointer.String(invalidDevice)
 				errors := profile.validateNet()
 				Expect(len(errors)).To(Equal(3))
 				Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("device name cannot be empty")))
@@ -359,7 +359,7 @@ var _ = Describe("PerformanceProfile", func() {
 			})
 			It("should raise the validation errors for missing fields", func() {
 				profile.Spec.Net.Devices[0].VendorID = nil
-				profile.Spec.Net.Devices[0].DeviceID = pointer.StringPtr("0x1")
+				profile.Spec.Net.Devices[0].DeviceID = pointer.String("0x1")
 				errors := profile.validateNet()
 				Expect(errors).NotTo(BeEmpty())
 				Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("device model ID can not be used without specifying the device vendor ID.")))
@@ -370,10 +370,10 @@ var _ = Describe("PerformanceProfile", func() {
 			When("realtime kernel is enabled and realtime workload hint is explicitly disabled", func() {
 				It("should raise validation error", func() {
 					profile.Spec.WorkloadHints = &WorkloadHints{
-						RealTime: pointer.BoolPtr(false),
+						RealTime: pointer.Bool(false),
 					}
 					profile.Spec.RealTimeKernel = &RealTimeKernel{
-						Enabled: pointer.BoolPtr(true),
+						Enabled: pointer.Bool(true),
 					}
 					errors := profile.validateWorkloadHints()
 					Expect(errors).NotTo(BeEmpty())
@@ -383,8 +383,8 @@ var _ = Describe("PerformanceProfile", func() {
 			When("HighPowerConsumption hint is enabled and PerPodPowerManagement hint is enabled", func() {
 				It("should raise validation error", func() {
 					profile.Spec.WorkloadHints = &WorkloadHints{
-						HighPowerConsumption:  pointer.BoolPtr(true),
-						PerPodPowerManagement: pointer.BoolPtr(true),
+						HighPowerConsumption:  pointer.Bool(true),
+						PerPodPowerManagement: pointer.Bool(true),
 					}
 					errors := profile.validateWorkloadHints()
 					Expect(errors).NotTo(BeEmpty())
@@ -421,17 +421,17 @@ var _ = Describe("PerformanceProfile", func() {
 			profile.Spec.HugePages.DefaultHugePagesSize = &incorrectDefaultSize
 
 			profile.Spec.WorkloadHints = &WorkloadHints{
-				RealTime: pointer.BoolPtr(false),
+				RealTime: pointer.Bool(false),
 			}
 			profile.Spec.RealTimeKernel = &RealTimeKernel{
-				Enabled: pointer.BoolPtr(true),
+				Enabled: pointer.Bool(true),
 			}
 
 			invalidVendor := "123"
 			invalidDevice := "0x12345"
-			profile.Spec.Net.Devices[0].InterfaceName = pointer.StringPtr("")
-			profile.Spec.Net.Devices[0].VendorID = pointer.StringPtr(invalidVendor)
-			profile.Spec.Net.Devices[0].DeviceID = pointer.StringPtr(invalidDevice)
+			profile.Spec.Net.Devices[0].InterfaceName = pointer.String("")
+			profile.Spec.Net.Devices[0].VendorID = pointer.String(invalidVendor)
+			profile.Spec.Net.Devices[0].DeviceID = pointer.String(invalidDevice)
 
 			errors := profile.validateFields()
 

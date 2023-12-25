@@ -87,7 +87,7 @@ var _ = Describe("Machine Config", func() {
 	Context("machine config creation ", func() {
 		It("should create machine config with valid assets", func() {
 			profile := testutils.NewPerformanceProfile("test")
-			profile.Spec.HugePages.Pages[0].Node = pointer.Int32Ptr(0)
+			profile.Spec.HugePages.Pages[0].Node = pointer.Int32(0)
 
 			_, err := New(profile, &components.MachineConfigOptions{})
 			Expect(err).ToNot(HaveOccurred())
@@ -99,7 +99,7 @@ var _ = Describe("Machine Config", func() {
 
 		BeforeEach(func() {
 			profile := testutils.NewPerformanceProfile("test")
-			profile.Spec.HugePages.Pages[0].Node = pointer.Int32Ptr(0)
+			profile.Spec.HugePages.Pages[0].Node = pointer.Int32(0)
 
 			labelKey, labelValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigLabel)
 			mc, err := New(profile, &components.MachineConfigOptions{})

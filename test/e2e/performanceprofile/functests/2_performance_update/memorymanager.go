@@ -293,12 +293,12 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 					{
 						Count: int32(numaZone0HugepagesCount),
 						Size:  hpSize2M,
-						Node:  pointer.Int32Ptr(0),
+						Node:  pointer.Int32(0),
 					},
 					{
 						Count: int32(numaZone1HugepagesCount),
 						Size:  hpSize2M,
-						Node:  pointer.Int32Ptr(1),
+						Node:  pointer.Int32(1),
 					},
 				},
 			}
@@ -612,12 +612,12 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 					{
 						Count: int32(numaZone0HugepagesCount),
 						Size:  hpSize2M,
-						Node:  pointer.Int32Ptr(0),
+						Node:  pointer.Int32(0),
 					},
 					{
 						Count: int32(numaZone1HugepagesCount),
 						Size:  hpSize1G,
-						Node:  pointer.Int32Ptr(1),
+						Node:  pointer.Int32(1),
 					},
 				},
 			}
