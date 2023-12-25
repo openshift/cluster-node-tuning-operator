@@ -1,6 +1,7 @@
 package __performance
 
 import (
+	"context"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -34,7 +35,7 @@ var _ = Describe("[rfe_id:27350][performance]Topology Manager", Ordered, func() 
 	})
 
 	It("[test_id:26932][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] should be enabled with the policy specified in profile", func() {
-		kubeletConfig, err := nodes.GetKubeletConfig(&workerRTNodes[0])
+		kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), &workerRTNodes[0])
 		Expect(err).ToNot(HaveOccurred())
 
 		// verify topology manager policy
