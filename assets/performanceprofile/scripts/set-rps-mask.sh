@@ -6,16 +6,19 @@ function set_queue_rps_mask() {
 path=${path/x2d/-}
 # set rps affinity for the queue
 echo "${mask}"  2> /dev/null > "/sys/${path}/rps_cpus"
-# the 'echo' command might failed if the device path which the queue belongs to has changes
-# this can happen in case of SRI-OV devices renaming
+# we return 0 because the 'echo' command might fail if the device path to which the queue belongs has changed.
+# this can happen in case of SRI-OV devices renaming.
 return 0
 }
 
 function set_net_dev_rps_mask() {
   # in case of device we want to iterate through all queues
 for i in /sys/"${path}"/queues/rx-*; do
-  echo "${mask}" > "${i}/rps_cpus"
+  echo "${mask}" 2> /dev/null > "${i}/rps_cpus"
 done
+# we return 0 because the 'echo' command might fail if the device path to which the queue belongs has changed.
+# this can happen in case of SRI-OV devices renaming.
+return 0
  }
 
 path=${1}
