@@ -57,7 +57,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 		tunedCmd := []string{"tuned-adm", "profile_info", tunedPaoProfile}
 		for _, node := range workerRTNodes {
 			tunedPod := nodes.TunedForNode(&node, RunningOnSingleNode)
-			_, err := pods.WaitForPodOutput(testclient.K8sClient, tunedPod, tunedCmd)
+			_, err := pods.WaitForPodOutput(context.TODO(), testclient.K8sClient, tunedPod, tunedCmd)
 			Expect(err).ToNot(HaveOccurred())
 		}
 	})
@@ -96,7 +96,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 			if profile.Spec.Net != nil {
 				if profile.Spec.Net.UserLevelNetworking != nil && *profile.Spec.Net.UserLevelNetworking && len(profile.Spec.Net.Devices) == 0 {
 					By("To all non virtual network devices when no devices are specified under profile.Spec.Net.Devices")
-					err := checkDeviceSetWithReservedCPU(workerRTNodes, nodesDevices, *profile)
+					err := checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, *profile)
 					if err != nil {
 						Skip("Skipping Test: Unable to set Network queue size to reserved cpu count")
 					}
@@ -106,7 +106,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 
 		It("[test_id:40542] Verify the number of network queues of all supported network interfaces are equal to reserved cpus count", func() {
 			nodesDevices := make(map[string]map[string]int)
-			err := checkDeviceSetWithReservedCPU(workerRTNodes, nodesDevices, *profile)
+			err := checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, *profile)
 			if err != nil {
 				Skip("Skipping Test: Unable to set Network queue size to reserved cpu count")
 			}
@@ -114,7 +114,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 
 		It("[test_id:40543] Add interfaceName and verify the interface netqueues are equal to reserved cpus count.", func() {
 			nodesDevices := make(map[string]map[string]int)
-			deviceSupport, err := checkDeviceSupport(workerRTNodes, nodesDevices)
+			deviceSupport, err := checkDeviceSupport(context.TODO(), workerRTNodes, nodesDevices)
 			Expect(err).ToNot(HaveOccurred())
 			if !deviceSupport {
 				Skip("Skipping Test: There are no supported Network Devices")
@@ -144,7 +144,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 			tunedPod := nodes.TunedForNode(node, RunningOnSingleNode)
 
 			Eventually(func() bool {
-				out, err := pods.WaitForPodOutput(testclient.K8sClient, tunedPod, tunedCmd)
+				out, err := pods.WaitForPodOutput(context.TODO(), testclient.K8sClient, tunedPod, tunedCmd)
 				if err != nil {
 					return false
 				}
@@ -152,7 +152,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "could not get a tuned profile set with devices_udev_regex")
 
 			nodesDevices = make(map[string]map[string]int)
-			err = checkDeviceSetWithReservedCPU(workerRTNodes, nodesDevices, *profile)
+			err = checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, *profile)
 			if err != nil {
 				Skip("Skipping Test: Unable to set Network queue size to reserved cpu count")
 			}
@@ -161,7 +161,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 		It("[test_id:40545] Verify reserved cpus count is applied to specific supported networking devices using wildcard matches", func() {
 			nodesDevices := make(map[string]map[string]int)
 			var device, devicePattern string
-			deviceSupport, err := checkDeviceSupport(workerRTNodes, nodesDevices)
+			deviceSupport, err := checkDeviceSupport(context.TODO(), workerRTNodes, nodesDevices)
 			Expect(err).ToNot(HaveOccurred())
 			if !deviceSupport {
 				Skip("Skipping Test: There are no supported Network Devices")
@@ -191,7 +191,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 			tunedPod := nodes.TunedForNode(node, RunningOnSingleNode)
 
 			Eventually(func() bool {
-				out, err := pods.WaitForPodOutput(testclient.K8sClient, tunedPod, tunedCmd)
+				out, err := pods.WaitForPodOutput(context.TODO(), testclient.K8sClient, tunedPod, tunedCmd)
 				if err != nil {
 					return false
 				}
@@ -199,7 +199,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "could not get a tuned profile set with devices_udev_regex")
 
 			nodesDevices = make(map[string]map[string]int)
-			err = checkDeviceSetWithReservedCPU(workerRTNodes, nodesDevices, *profile)
+			err = checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, *profile)
 			if err != nil {
 				Skip("Skipping Test: Unable to set Network queue size to reserved cpu count")
 			}
@@ -207,7 +207,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 
 		It("[test_id:40668] Verify reserved cpu count is added to networking devices matched with vendor and Device id", func() {
 			nodesDevices := make(map[string]map[string]int)
-			deviceSupport, err := checkDeviceSupport(workerRTNodes, nodesDevices)
+			deviceSupport, err := checkDeviceSupport(context.TODO(), workerRTNodes, nodesDevices)
 			Expect(err).ToNot(HaveOccurred())
 			if !deviceSupport {
 				Skip("Skipping Test: There are no supported Network Devices")
@@ -215,8 +215,8 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 			nodeName, device := getRandomNodeDevice(nodesDevices)
 			node, err := nodes.GetByName(nodeName)
 			Expect(err).ToNot(HaveOccurred())
-			vid := getVendorID(*node, device)
-			did := getDeviceID(*node, device)
+			vid := getVendorID(context.TODO(), *node, device)
+			did := getDeviceID(context.TODO(), *node, device)
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
 			if profile.Spec.Net.UserLevelNetworking != nil && *profile.Spec.Net.UserLevelNetworking && len(profile.Spec.Net.Devices) == 0 {
@@ -243,7 +243,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 			Expect(err).ToNot(HaveOccurred())
 			tunedPod := nodes.TunedForNode(node, RunningOnSingleNode)
 			Eventually(func() bool {
-				out, err := pods.WaitForPodOutput(testclient.K8sClient, tunedPod, tunedCmd)
+				out, err := pods.WaitForPodOutput(context.TODO(), testclient.K8sClient, tunedPod, tunedCmd)
 				if err != nil {
 					return false
 				}
@@ -251,7 +251,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "could not get a tuned profile set with devices_udev_regex")
 
 			nodesDevices = make(map[string]map[string]int)
-			err = checkDeviceSetWithReservedCPU(workerRTNodes, nodesDevices, *profile)
+			err = checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, *profile)
 			if err != nil {
 				Skip("Skipping Test: Unable to set Network queue size to reserved cpu count")
 			}
@@ -260,9 +260,9 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 })
 
 // Check a device that supports multiple queues and set with with reserved CPU size exists
-func checkDeviceSetWithReservedCPU(workerRTNodes []corev1.Node, nodesDevices map[string]map[string]int, profile performancev2.PerformanceProfile) error {
-	return wait.PollUntilContextTimeout(context.TODO(), 5*time.Second, 90*time.Second, true, func(ctx context.Context) (bool, error) {
-		deviceSupport, err := checkDeviceSupport(workerRTNodes, nodesDevices)
+func checkDeviceSetWithReservedCPU(ctx context.Context, workerRTNodes []corev1.Node, nodesDevices map[string]map[string]int, profile performancev2.PerformanceProfile) error {
+	return wait.PollUntilContextTimeout(ctx, 5*time.Second, 90*time.Second, true, func(ctx context.Context) (bool, error) {
+		deviceSupport, err := checkDeviceSupport(ctx, workerRTNodes, nodesDevices)
 		Expect(err).ToNot(HaveOccurred())
 		if !deviceSupport {
 			return false, nil
@@ -279,7 +279,7 @@ func checkDeviceSetWithReservedCPU(workerRTNodes []corev1.Node, nodesDevices map
 }
 
 // Check if the device support multiple queues
-func checkDeviceSupport(workernodes []corev1.Node, nodesDevices map[string]map[string]int) (bool, error) {
+func checkDeviceSupport(ctx context.Context, workernodes []corev1.Node, nodesDevices map[string]map[string]int) (bool, error) {
 	cmdGetPhysicalDevices := []string{"find", "/sys/class/net", "-type", "l", "-not", "-lname", "*virtual*", "-printf", "%f "}
 	var channelCurrentCombined int
 	var noSupportedDevices = true
@@ -289,17 +289,17 @@ func checkDeviceSupport(workernodes []corev1.Node, nodesDevices map[string]map[s
 			nodesDevices[node.Name] = make(map[string]int)
 		}
 		tunedPod := nodes.TunedForNode(&node, RunningOnSingleNode)
-		phyDevs, err := pods.WaitForPodOutput(testclient.K8sClient, tunedPod, cmdGetPhysicalDevices)
+		phyDevs, err := pods.WaitForPodOutput(ctx, testclient.K8sClient, tunedPod, cmdGetPhysicalDevices)
 		Expect(err).ToNot(HaveOccurred())
 		for _, d := range strings.Split(string(phyDevs), " ") {
 			if d == "" {
 				continue
 			}
-			_, err := pods.WaitForPodOutput(testclient.K8sClient, tunedPod, []string{"ethtool", "-l", d})
+			_, err := pods.WaitForPodOutput(ctx, testclient.K8sClient, tunedPod, []string{"ethtool", "-l", d})
 			if err == nil {
 				cmdCombinedChannelsCurrent := []string{"bash", "-c",
 					fmt.Sprintf("ethtool -l %s | sed -n '/Current hardware settings:/,/Combined:/{s/^Combined:\\s*//p}'", d)}
-				out, err := pods.WaitForPodOutput(testclient.K8sClient, tunedPod, cmdCombinedChannelsCurrent)
+				out, err := pods.WaitForPodOutput(ctx, testclient.K8sClient, tunedPod, cmdCombinedChannelsCurrent)
 				if strings.Contains(string(out), "n/a") {
 					fmt.Printf("Device %s doesn't support multiple queues\n", d)
 				} else {
@@ -331,18 +331,18 @@ func getReservedCPUSize(CPU *performancev2.CPU) int {
 	return reservedCPUs.Size()
 }
 
-func getVendorID(node corev1.Node, device string) string {
+func getVendorID(ctx context.Context, node corev1.Node, device string) string {
 	cmd := []string{"bash", "-c",
 		fmt.Sprintf("cat /sys/class/net/%s/device/vendor", device)}
-	stdout, err := nodes.ExecCommandOnNode(cmd, &node)
+	stdout, err := nodes.ExecCommandOnNode(ctx, cmd, &node)
 	Expect(err).ToNot(HaveOccurred())
 	return stdout
 }
 
-func getDeviceID(node corev1.Node, device string) string {
+func getDeviceID(ctx context.Context, node corev1.Node, device string) string {
 	cmd := []string{"bash", "-c",
 		fmt.Sprintf("cat /sys/class/net/%s/device/device", device)}
-	stdout, err := nodes.ExecCommandOnNode(cmd, &node)
+	stdout, err := nodes.ExecCommandOnNode(ctx, cmd, &node)
 	Expect(err).ToNot(HaveOccurred())
 	return stdout
 }

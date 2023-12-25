@@ -44,10 +44,10 @@ func GetPod(ctx context.Context, node *corev1.Node) (*corev1.Pod, error) {
 	return &podList.Items[0], nil
 }
 
-func WaitForStalldTo(run bool, interval, timeout time.Duration, node *corev1.Node) error {
-	return wait.PollUntilContextTimeout(context.TODO(), interval, timeout, true, func(ctx context.Context) (bool, error) {
+func WaitForStalldTo(ctx context.Context, run bool, interval, timeout time.Duration, node *corev1.Node) error {
+	return wait.PollUntilContextTimeout(ctx, interval, timeout, true, func(ctx context.Context) (bool, error) {
 		cmd := []string{"/bin/bash", "-c", "pidof stalld || echo \"stalld not running\""}
-		stalldPid, err := nodes.ExecCommandOnNode(cmd, node)
+		stalldPid, err := nodes.ExecCommandOnNode(ctx, cmd, node)
 		if err != nil {
 			klog.Errorf("failed to execute command %q on node: %q; %v", cmd, node.Name, err)
 			return false, err
@@ -67,10 +67,10 @@ func WaitForStalldTo(run bool, interval, timeout time.Duration, node *corev1.Nod
 	})
 }
 
-func CheckParameters(node *corev1.Node, sysctlMap map[string]string, kernelParameters []string, stalld, rtkernel bool) {
+func CheckParameters(ctx context.Context, node *corev1.Node, sysctlMap map[string]string, kernelParameters []string, stalld, rtkernel bool) {
 	cmd := []string{"/bin/bash", "-c", "pidof stalld || echo \"stalld not running\""}
 	By(fmt.Sprintf("Executing %q", cmd))
-	stalldPid, err := nodes.ExecCommandOnNode(cmd, node)
+	stalldPid, err := nodes.ExecCommandOnNode(ctx, cmd, node)
 	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to execute command %q on node: %q; %v", cmd, node.Name, err)
 
 	_, err = strconv.Atoi(stalldPid)
@@ -102,14 +102,14 @@ func CheckParameters(node *corev1.Node, sysctlMap map[string]string, kernelParam
 	for param, expected := range sysctlMap {
 		cmd = []string{"sysctl", "-n", param}
 		By(fmt.Sprintf("Executing %q", cmd))
-		out, err := nodes.ExecCommandOnNode(cmd, node)
+		out, err := nodes.ExecCommandOnNode(ctx, cmd, node)
 		ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to execute command %q on node: %q", cmd, node.Name)
 		ExpectWithOffset(1, out).Should(Equal(expected), "parameter %s value is not %s", param, expected)
 	}
 
 	cmd = []string{"cat", "/proc/cmdline"}
 	By(fmt.Sprintf("Executing %q", cmd))
-	cmdline, err := nodes.ExecCommandOnNode(cmd, node)
+	cmdline, err := nodes.ExecCommandOnNode(ctx, cmd, node)
 	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to execute command %q on node: %q", cmd, node.Name)
 
 	for _, param := range kernelParameters {
@@ -119,11 +119,11 @@ func CheckParameters(node *corev1.Node, sysctlMap map[string]string, kernelParam
 	if !rtkernel {
 		cmd = []string{"uname", "-a"}
 		By(fmt.Sprintf("Executing %q", cmd))
-		kernel, err := nodes.ExecCommandOnNode(cmd, node)
+		kernel, err := nodes.ExecCommandOnNode(ctx, cmd, node)
 		ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to execute command %q on node: %q", cmd, node.Name)
 		ExpectWithOffset(1, kernel).To(ContainSubstring("Linux"), "kernel should be Linux")
 
-		err = nodes.HasPreemptRTKernel(node)
+		err = nodes.HasPreemptRTKernel(ctx, node)
 		ExpectWithOffset(1, err).To(HaveOccurred(), "node should have non-RT kernel")
 	}
 }

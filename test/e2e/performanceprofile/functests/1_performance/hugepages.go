@@ -71,10 +71,10 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				availableHugepagesFile := fmt.Sprintf("/sys/devices/system/node/node%d/hugepages/hugepages-%skB/nr_hugepages", *page.Node, hugepagesSize)
-				nrHugepages := checkHugepagesStatus(availableHugepagesFile, workerRTNode)
+				nrHugepages := checkHugepagesStatus(context.TODO(), availableHugepagesFile, workerRTNode)
 
 				freeHugepagesFile := fmt.Sprintf("/sys/devices/system/node/node%d/hugepages/hugepages-%skB/free_hugepages", *page.Node, hugepagesSize)
-				freeHugepages := checkHugepagesStatus(freeHugepagesFile, workerRTNode)
+				freeHugepages := checkHugepagesStatus(context.TODO(), freeHugepagesFile, workerRTNode)
 
 				Expect(int32(nrHugepages)).To(Equal(page.Count), "The number of available hugepages should be equal to the number in performance profile")
 				Expect(nrHugepages).To(Equal(freeHugepages), "On idle system the number of available hugepages should be equal to free hugepages")
@@ -92,7 +92,7 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 				if page.Node != nil {
 					availableHugepagesFile = fmt.Sprintf("/sys/devices/system/node/node%d/hugepages/hugepages-%skB/nr_hugepages", *page.Node, hugepagesSize)
 				}
-				nrHugepages := checkHugepagesStatus(availableHugepagesFile, workerRTNode)
+				nrHugepages := checkHugepagesStatus(context.TODO(), availableHugepagesFile, workerRTNode)
 
 				if discovery.Enabled() && nrHugepages != 0 {
 					Skip("Skipping test since other guests might reside in the cluster affecting results")
@@ -103,7 +103,7 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 					freeHugepagesFile = fmt.Sprintf("/sys/devices/system/node/node%d/hugepages/hugepages-%skB/free_hugepages", *page.Node, hugepagesSize)
 				}
 
-				freeHugepages := checkHugepagesStatus(freeHugepagesFile, workerRTNode)
+				freeHugepages := checkHugepagesStatus(context.TODO(), freeHugepagesFile, workerRTNode)
 
 				Expect(int32(nrHugepages)).To(Equal(page.Count), "The number of available hugepages should be equal to the number in performance profile")
 				Expect(nrHugepages).To(Equal(freeHugepages), "On idle system the number of available hugepages should be equal to free hugepages")
@@ -118,7 +118,7 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 			err := testclient.Client.Delete(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
 
-			err = pods.WaitForDeletion(testpod, pods.DefaultDeletionTimeout*time.Second)
+			err = pods.WaitForDeletion(context.TODO(), testpod, pods.DefaultDeletionTimeout*time.Second)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -129,7 +129,7 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 
 			By("checking hugepages usage in bytes - should be 0 on idle system")
 			usageHugepagesFile := fmt.Sprintf("/rootfs/sys/fs/cgroup/hugetlb/hugetlb.%sB.usage_in_bytes", hpSize)
-			usageHugepages := checkHugepagesStatus(usageHugepagesFile, workerRTNode)
+			usageHugepages := checkHugepagesStatus(context.TODO(), usageHugepagesFile, workerRTNode)
 			if discovery.Enabled() && usageHugepages != 0 {
 				Skip("Skipping test since other guests might reside in the cluster affecting results")
 			}
@@ -144,7 +144,7 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 			}
 			err = testclient.Client.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
-			testpod, err = pods.WaitForCondition(client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+			testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 			Expect(err).ToNot(HaveOccurred())
 
 			cmd2 := []string{"/bin/bash", "-c", "tmux new -d 'LD_PRELOAD=libhugetlbfs.so HUGETLB_MORECORE=yes top -b > /dev/null'"}
@@ -153,24 +153,24 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 
 			By("checking free hugepages - one should be used by pod")
 			availableHugepagesFile := fmt.Sprintf("/sys/kernel/mm/hugepages/hugepages-%skB/nr_hugepages", hpSizeKb)
-			availableHugepages := checkHugepagesStatus(availableHugepagesFile, workerRTNode)
+			availableHugepages := checkHugepagesStatus(context.TODO(), availableHugepagesFile, workerRTNode)
 
 			freeHugepagesFile := fmt.Sprintf("/sys/kernel/mm/hugepages/hugepages-%skB/free_hugepages", hpSizeKb)
 			Eventually(func() int {
-				freeHugepages := checkHugepagesStatus(freeHugepagesFile, workerRTNode)
+				freeHugepages := checkHugepagesStatus(context.TODO(), freeHugepagesFile, workerRTNode)
 				return availableHugepages - freeHugepages
 			}, cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode), time.Second).Should(Equal(1))
 
 			By("checking hugepages usage in bytes")
-			usageHugepages = checkHugepagesStatus(usageHugepagesFile, workerRTNode)
+			usageHugepages = checkHugepagesStatus(context.TODO(), usageHugepagesFile, workerRTNode)
 			Expect(strconv.Itoa(usageHugepages/1024)).To(Equal(hpSizeKb), "usage in bytes should be %s", hpSizeKb)
 		})
 	})
 })
 
-func checkHugepagesStatus(path string, workerRTNode *corev1.Node) int {
+func checkHugepagesStatus(ctx context.Context, path string, workerRTNode *corev1.Node) int {
 	command := []string{"cat", path}
-	out, err := nodes.ExecCommandOnMachineConfigDaemon(workerRTNode, command)
+	out, err := nodes.ExecCommandOnMachineConfigDaemon(ctx, workerRTNode, command)
 	Expect(err).ToNot(HaveOccurred())
 	n, err := strconv.Atoi(strings.Trim(string(out), "\n\r"))
 	Expect(err).ToNot(HaveOccurred())

@@ -122,7 +122,7 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 		// Power loss scenarios, aka hard reboot, deferred to another test.
 		// intentionally ignoring error. We need to tolerate connection error or disconnect
 		// because the node is rebooting.
-		runCommandOnNodeThroughMCD(node, "reboot", rebootNodeCommandMCD)
+		runCommandOnNodeThroughMCD(context.TODO(), node, "reboot", rebootNodeCommandMCD)
 		// this is (likely) a SNO. We need to tolerate connection errors,
 		// because the apiserver is going down as well.
 		// we intentionally use a generous timeout.
@@ -167,7 +167,7 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 
 		// things should be settled now so we can use again a short timeout
 		testlog.Infof("post reboot: running a fresh pod %s/%s resource=%q", wlPod.Namespace, wlPod.Name, sriovDeviceResourceName)
-		updatedPod, err := testpods.WaitForPredicate(client.ObjectKeyFromObject(wlPod), 1*time.Minute, func(pod *corev1.Pod) (bool, error) {
+		updatedPod, err := testpods.WaitForPredicate(context.TODO(), client.ObjectKeyFromObject(wlPod), 1*time.Minute, func(pod *corev1.Pod) (bool, error) {
 			return isPodReady(*pod), nil
 		})
 		Expect(err).ToNot(HaveOccurred(), "error checking the workload pod post reboot")
@@ -192,7 +192,7 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 		Expect(err).ToNot(HaveOccurred(), "error creating workload pod")
 
 		// short timeout: we are on idle cluster
-		updatedPod, err := testpods.WaitForPredicate(client.ObjectKeyFromObject(wlPod), 3*time.Minute, func(pod *corev1.Pod) (bool, error) {
+		updatedPod, err := testpods.WaitForPredicate(context.TODO(), client.ObjectKeyFromObject(wlPod), 3*time.Minute, func(pod *corev1.Pod) (bool, error) {
 			return isPodReady(*pod), nil
 		})
 		Expect(err).ToNot(HaveOccurred(), "error waiting for the workload pod to be ready - pre restart")
@@ -200,7 +200,7 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 		testlog.Infof("pod %q %s/%s ready", podUID, updatedPod.Namespace, updatedPod.Name)
 
 		// phase3: the kubelet restart
-		runCommandOnNodeThroughMCD(node, "kubelet restart", kubeletRestartCommandMCD)
+		runCommandOnNodeThroughMCD(context.TODO(), node, "kubelet restart", kubeletRestartCommandMCD)
 
 		waitForNodeReadyOrFail("post restart", targetNode, 20*time.Minute, 3*time.Second)
 
@@ -214,7 +214,7 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 		testlog.Infof("post restart: finished cooldown time: %v", rebootCooldownTime)
 
 		// longer timeout. We expect things to be still on flux
-		postRestartPod, err := testpods.WaitForPredicate(client.ObjectKeyFromObject(wlPod), 10*time.Minute, func(pod *corev1.Pod) (bool, error) {
+		postRestartPod, err := testpods.WaitForPredicate(context.TODO(), client.ObjectKeyFromObject(wlPod), 10*time.Minute, func(pod *corev1.Pod) (bool, error) {
 			return isPodReady(*pod), nil
 		})
 		Expect(err).ToNot(HaveOccurred(), "error waiting for the workload pod to be ready - post restart")
@@ -230,7 +230,7 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 
 		// things should be settled now so we can use again a short timeout
 		testlog.Infof("post restart: running a fresh pod %s/%s resource=%q", wlPod2.Namespace, wlPod2.Name, sriovDeviceResourceName)
-		updatedPod2, err := testpods.WaitForPredicate(client.ObjectKeyFromObject(wlPod2), 1*time.Minute, func(pod *corev1.Pod) (bool, error) {
+		updatedPod2, err := testpods.WaitForPredicate(context.TODO(), client.ObjectKeyFromObject(wlPod2), 1*time.Minute, func(pod *corev1.Pod) (bool, error) {
 			return isPodReady(*pod), nil
 		})
 		Expect(err).ToNot(HaveOccurred(), "error checking the workload pod post kubelet restart")
@@ -375,9 +375,9 @@ func waitForNodeReadyOrFail(tag, nodeName string, timeout, polling time.Duration
 	testlog.Infof("%s: node %q: reported ready", tag, nodeName)
 }
 
-func runCommandOnNodeThroughMCD(node *corev1.Node, description, command string) (string, error) {
+func runCommandOnNodeThroughMCD(ctx context.Context, node *corev1.Node, description, command string) (string, error) {
 	testlog.Infof("node %q: before %s", node.Name, description)
-	out, err := testnodes.ExecCommandOnMachineConfigDaemon(node, []string{"sh", "-c", command})
+	out, err := testnodes.ExecCommandOnMachineConfigDaemon(ctx, node, []string{"sh", "-c", command})
 	testlog.Infof("node %q: output=[%s]", node.Name, string(out))
 	testlog.Infof("node %q: after %s", node.Name, description)
 	return string(out), err

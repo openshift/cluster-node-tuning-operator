@@ -110,7 +110,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 						return false
 					}).WithPolling(time.Second*10).WithTimeout(3*time.Minute).Should(BeTrue(), "Tuned Profile for node %q was not applied successfully conditionStatus=%q", node.Name, condStatus)
 
-					bannedCPUs, err := getIrqBalanceBannedCPUs(&node)
+					bannedCPUs, err := getIrqBalanceBannedCPUs(context.TODO(), &node)
 					Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %s", node.Name)
 
 					By(fmt.Sprintf("node %q banned CPUs: expected %v detected %v", node.Name, expectedBannedCPUs, bannedCPUs))
@@ -120,10 +120,10 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 							bannedCPUs, expectedBannedCPUs, node.Name)
 					}
 
-					smpAffinitySet, err := nodes.GetDefaultSmpAffinitySet(&node)
+					smpAffinitySet, err := nodes.GetDefaultSmpAffinitySet(context.TODO(), &node)
 					Expect(err).ToNot(HaveOccurred(), "failed to get default smp affinity")
 
-					onlineCPUsSet, err := nodes.GetOnlineCPUsSet(&node)
+					onlineCPUsSet, err := nodes.GetOnlineCPUsSet(context.TODO(), &node)
 					Expect(err).ToNot(HaveOccurred(), "failed to get Online CPUs list")
 
 					By(fmt.Sprintf("node %q SMP affinity set %v online CPUs set %v", node.Name, smpAffinitySet, onlineCPUsSet))
@@ -195,18 +195,18 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			Expect(targetNode).ToNot(BeNil(), "missing target node")
 			By(fmt.Sprintf("verifying worker node %q", targetNode.Name))
 
-			irqAffBegin, err := getIrqDefaultSMPAffinity(targetNode)
+			irqAffBegin, err := getIrqDefaultSMPAffinity(context.TODO(), targetNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to extract the default IRQ affinity from node %q", targetNode.Name)
 			testlog.Infof("IRQ Default affinity on %q when test begins: {%s}", targetNode.Name, irqAffBegin)
 
-			bannedCPUs, err := getIrqBalanceBannedCPUs(targetNode)
+			bannedCPUs, err := getIrqBalanceBannedCPUs(context.TODO(), targetNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %q", targetNode.Name)
 			testlog.Infof("banned CPUs on %q when test begins: {%s}", targetNode.Name, bannedCPUs.String())
 
-			smpAffinitySet, err := nodes.GetDefaultSmpAffinitySet(targetNode)
+			smpAffinitySet, err := nodes.GetDefaultSmpAffinitySet(context.TODO(), targetNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to get default smp affinity")
 
-			onlineCPUsSet, err := nodes.GetOnlineCPUsSet(targetNode)
+			onlineCPUsSet, err := nodes.GetOnlineCPUsSet(context.TODO(), targetNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to get Online CPUs list")
 
 			// Mask the smpAffinitySet according to the current onlineCpuSet
@@ -232,25 +232,25 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			defer func() {
 				if testpod != nil {
 					testlog.Infof("deleting pod %q", testpod.Name)
-					deleteTestPod(testpod)
+					deleteTestPod(context.TODO(), testpod)
 				}
-				bannedCPUs, err := getIrqBalanceBannedCPUs(targetNode)
+				bannedCPUs, err := getIrqBalanceBannedCPUs(context.TODO(), targetNode)
 				Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %q", targetNode.Name)
 
 				testlog.Infof("banned CPUs on %q when test ends: {%s}", targetNode.Name, bannedCPUs.String())
 
-				irqAffBegin, err := getIrqDefaultSMPAffinity(targetNode)
+				irqAffBegin, err := getIrqDefaultSMPAffinity(context.TODO(), targetNode)
 				Expect(err).ToNot(HaveOccurred(), "failed to extract the default IRQ affinity from node %q", targetNode.Name)
 
 				testlog.Infof("IRQ Default affinity on %q when test ends: {%s}", targetNode.Name, irqAffBegin)
 			}()
 
-			testpod, err = pods.WaitForCondition(client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+			testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 			logEventsForPod(testpod)
 			Expect(err).ToNot(HaveOccurred())
 
 			// now we have something in the IRQBalance cpu list. Let's make sure the restart doesn't overwrite this data.
-			postCreateBannedCPUs, err := getIrqBalanceBannedCPUs(targetNode)
+			postCreateBannedCPUs, err := getIrqBalanceBannedCPUs(context.TODO(), targetNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %q", targetNode.Name)
 			testlog.Infof("banned CPUs on %q just before the tuned restart: {%s}", targetNode.Name, postCreateBannedCPUs.String())
 
@@ -277,7 +277,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			}).WithTimeout(5 * time.Minute).WithPolling(10 * time.Second).ShouldNot(HaveOccurred())
 
 			By(fmt.Sprintf("re-verifying worker node %q after TuneD restart", targetNode.Name))
-			postRestartBannedCPUs, err := getIrqBalanceBannedCPUs(targetNode)
+			postRestartBannedCPUs, err := getIrqBalanceBannedCPUs(context.TODO(), targetNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %q", targetNode.Name)
 			testlog.Infof("banned CPUs on %q after the tuned restart: {%s}", targetNode.Name, postRestartBannedCPUs.String())
 
@@ -295,11 +295,11 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			By(fmt.Sprintf("verifying worker node %q", node.Name))
 
 			By(fmt.Sprintf("Checking the default IRQ affinity on node %q", node.Name))
-			smpAffinitySet, err := nodes.GetDefaultSmpAffinitySet(node)
+			smpAffinitySet, err := nodes.GetDefaultSmpAffinitySet(context.TODO(), node)
 			Expect(err).ToNot(HaveOccurred(), "failed to get default smp affinity")
 
 			By(fmt.Sprintf("Checking the online CPU Set on node %q", node.Name))
-			onlineCPUsSet, err := nodes.GetOnlineCPUsSet(node)
+			onlineCPUsSet, err := nodes.GetOnlineCPUsSet(context.TODO(), node)
 			Expect(err).ToNot(HaveOccurred(), "failed to get Online CPUs list")
 
 			// Mask the smpAffinitySet according to the current onlineCpuSet
@@ -313,7 +313,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			origBannedCPUsFile := "/etc/sysconfig/orig_irq_banned_cpus"
 			By(fmt.Sprintf("Checking content of %q on node %q", origBannedCPUsFile, node.Name))
 			fullPath := filepath.Join("/", "rootfs", origBannedCPUsFile)
-			out, err := nodes.ExecCommandOnNode([]string{"/usr/bin/cat", fullPath}, node)
+			out, err := nodes.ExecCommandOnNode(context.TODO(), []string{"/usr/bin/cat", fullPath}, node)
 			Expect(err).ToNot(HaveOccurred())
 			out = strings.TrimSuffix(out, "\r\n")
 			Expect(out).To(Equal("0"), "file %s does not contain the expect output; expected=0 actual=%s", fullPath, out)
@@ -325,9 +325,9 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 // In turn, we do this to at least have a chance to detect failed commands vs failed to execute commands (we had this issue in
 // not-so-distant past, legit command output lost somewhere in the communication). Fixing ExecCommandOnNode isn't trivial and
 // require close attention. For the time being we reimplement a form of nodes.BannedCPUs which can handle empty ban list.
-func getIrqBalanceBannedCPUs(node *corev1.Node) (cpuset.CPUSet, error) {
+func getIrqBalanceBannedCPUs(ctx context.Context, node *corev1.Node) (cpuset.CPUSet, error) {
 	cmd := []string{"cat", "/rootfs/etc/sysconfig/irqbalance"}
-	conf, err := nodes.ExecCommandOnNode(cmd, node)
+	conf, err := nodes.ExecCommandOnNode(ctx, cmd, node)
 	if err != nil {
 		return cpuset.New(), err
 	}
@@ -359,9 +359,9 @@ func getIrqBalanceBannedCPUs(node *corev1.Node) (cpuset.CPUSet, error) {
 	return banned, nil
 }
 
-func getIrqDefaultSMPAffinity(node *corev1.Node) (string, error) {
+func getIrqDefaultSMPAffinity(ctx context.Context, node *corev1.Node) (string, error) {
 	cmd := []string{"cat", "/rootfs/proc/irq/default_smp_affinity"}
-	return nodes.ExecCommandOnNode(cmd, node)
+	return nodes.ExecCommandOnNode(ctx, cmd, node)
 }
 
 func findIrqBalanceBannedCPUsVarFromConf(conf string) string {

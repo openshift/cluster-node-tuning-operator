@@ -66,7 +66,7 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 			// test arbitrary one should be good enough
 			worker := &workers[0]
 			cmd := isFileExistCmd(kubeletMixedCPUsConfigFile)
-			found, err := nodes.ExecCommandOnNode(cmd, worker)
+			found, err := nodes.ExecCommandOnNode(ctx, cmd, worker)
 			Expect(err).ToNot(HaveOccurred(), "failed to execute command on node; cmd=%q node=%q", cmd, worker)
 			Expect(found).To(Equal("true"), "file not found; file=%q", kubeletMixedCPUsConfigFile)
 		})
@@ -98,7 +98,7 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 				"-c",
 				fmt.Sprintf("/bin/awk  -F '\"' '/shared_cpuset.*/ { print $2 }' %s", crioRuntimeConfigFile),
 			}
-			cpus, err := nodes.ExecCommandOnNode(cmd, worker)
+			cpus, err := nodes.ExecCommandOnNode(ctx, cmd, worker)
 			Expect(err).ToNot(HaveOccurred(), "failed to execute command on node; cmd=%q node=%q", cmd, worker)
 			cpus = strings.Trim(cpus, "\n")
 			crioShared, err := cpuset.Parse(cpus)
@@ -111,7 +111,7 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 	})
 })
 
-func setup(ctx context.Context, profile *performancev2.PerformanceProfile) func(ctx context.Context) {
+func setup(ctx context.Context, profile *performancev2.PerformanceProfile) func(ctx2 context.Context) {
 	initialProfile := profile.DeepCopy()
 	isolated, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
 	Expect(err).ToNot(HaveOccurred())
@@ -131,9 +131,9 @@ func setup(ctx context.Context, profile *performancev2.PerformanceProfile) func(
 	mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
 	mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 
-	teardown := func(ctx context.Context) {
+	teardown := func(ctx2 context.Context) {
 		By(fmt.Sprintf("executing teardown - revert profile %q back to its intial state", profile.Name))
-		Expect(testclient.Client.Get(ctx, client.ObjectKeyFromObject(initialProfile), profile))
+		Expect(testclient.Client.Get(ctx2, client.ObjectKeyFromObject(initialProfile), profile))
 		profile.Spec = initialProfile.Spec
 		resourceVersion := profile.ResourceVersion
 		testprofiles.UpdateWithRetry(profile)

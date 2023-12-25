@@ -108,7 +108,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		It("[test_id:37127] Node should point to right tuned profile", func() {
 			for _, node := range workerRTNodes {
 				tuned := nodes.TunedForNode(&node, RunningOnSingleNode)
-				activeProfile, err := pods.WaitForPodOutput(testclient.K8sClient, tuned, []string{"cat", "/etc/tuned/active_profile"})
+				activeProfile, err := pods.WaitForPodOutput(context.TODO(), testclient.K8sClient, tuned, []string{"cat", "/etc/tuned/active_profile"})
 				Expect(err).ToNot(HaveOccurred(), "Error getting the tuned active profile")
 				activeProfileName := string(activeProfile)
 				Expect(strings.TrimSpace(activeProfileName)).To(Equal(tunedExpectedName), "active profile name mismatch got %q expected %q", activeProfileName, tunedExpectedName)
@@ -120,7 +120,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 
 		It("[test_id:31198] Should set CPU affinity kernel argument", func() {
 			for _, node := range workerRTNodes {
-				cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"cat", "/proc/cmdline"})
+				cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"cat", "/proc/cmdline"})
 				Expect(err).ToNot(HaveOccurred())
 				// since systemd.cpu_affinity is calculated on node level using tuned we can check only the key in this context.
 				Expect(string(cmdline)).To(ContainSubstring("systemd.cpu_affinity="))
@@ -129,7 +129,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 
 		It("[test_id:32702] Should set CPU isolcpu's kernel argument managed_irq flag", func() {
 			for _, node := range workerRTNodes {
-				cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"cat", "/proc/cmdline"})
+				cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"cat", "/proc/cmdline"})
 				Expect(err).ToNot(HaveOccurred())
 				if profile.Spec.CPU.BalanceIsolated != nil && *profile.Spec.CPU.BalanceIsolated == false {
 					Expect(string(cmdline)).To(ContainSubstring("isolcpus=domain,managed_irq,"))
@@ -142,7 +142,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		It("[test_id:27081][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Should set workqueue CPU mask", func() {
 			for _, node := range workerRTNodes {
 				By(fmt.Sprintf("Getting tuned.non_isolcpus kernel argument on %q", node.Name))
-				cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"cat", "/proc/cmdline"})
+				cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"cat", "/proc/cmdline"})
 				Expect(err).ToNot(HaveOccurred())
 				re := regexp.MustCompile(`tuned.non_isolcpus=\S+`)
 				nonIsolcpusFullArgument := re.FindString(string(cmdline))
@@ -163,13 +163,13 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				}
 
 				By(fmt.Sprintf("Getting the virtual workqueue mask (/sys/devices/virtual/workqueue/cpumask) on %q", node.Name))
-				workqueueMaskData, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"cat", "/sys/devices/virtual/workqueue/cpumask"})
+				workqueueMaskData, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"cat", "/sys/devices/virtual/workqueue/cpumask"})
 				Expect(err).ToNot(HaveOccurred())
 				workqueueMask := getTrimmedMaskFromData("virtual", workqueueMaskData)
 				expectMasksEqual(nonIsolcpusMaskNoDelimiters, workqueueMask)
 
 				By(fmt.Sprintf("Getting the writeback workqueue mask (/sys/bus/workqueue/devices/writeback/cpumask) on %q", node.Name))
-				workqueueWritebackMaskData, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"cat", "/sys/bus/workqueue/devices/writeback/cpumask"})
+				workqueueWritebackMaskData, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"cat", "/sys/bus/workqueue/devices/writeback/cpumask"})
 				Expect(err).ToNot(HaveOccurred())
 				workqueueWritebackMask := getTrimmedMaskFromData("workqueue", workqueueWritebackMaskData)
 				expectMasksEqual(nonIsolcpusMaskNoDelimiters, workqueueWritebackMask)
@@ -178,12 +178,12 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 
 		It("[test_id:32375][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] initramfs should not have injected configuration", func() {
 			for _, node := range workerRTNodes {
-				rhcosId, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"awk", "-F", "/", "{printf $3}", "/rootfs/proc/cmdline"})
+				rhcosId, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"awk", "-F", "/", "{printf $3}", "/rootfs/proc/cmdline"})
 				Expect(err).ToNot(HaveOccurred())
-				initramfsImagesPath, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"find", filepath.Join("/rootfs/boot/ostree", string(rhcosId)), "-name", "*.img"})
+				initramfsImagesPath, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"find", filepath.Join("/rootfs/boot/ostree", string(rhcosId)), "-name", "*.img"})
 				Expect(err).ToNot(HaveOccurred())
 				modifiedImagePath := strings.TrimPrefix(strings.TrimSpace(string(initramfsImagesPath)), "/rootfs")
-				initrd, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"chroot", "/rootfs", "lsinitrd", modifiedImagePath})
+				initrd, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"chroot", "/rootfs", "lsinitrd", modifiedImagePath})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(string(initrd)).ShouldNot(ContainSubstring("'/etc/systemd/system.conf /etc/systemd/system.conf.d/setAffinity.conf'"))
 			}
@@ -192,16 +192,16 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		It("[test_id:35363][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] stalld daemon is running on the host", func() {
 			for _, node := range workerRTNodes {
 				tuned := nodes.TunedForNode(&node, RunningOnSingleNode)
-				_, err := pods.WaitForPodOutput(testclient.K8sClient, tuned, []string{"pidof", "stalld"})
+				_, err := pods.WaitForPodOutput(context.TODO(), testclient.K8sClient, tuned, []string{"pidof", "stalld"})
 				Expect(err).ToNot(HaveOccurred())
 			}
 		})
 		It("[test_id:42400][crit:medium][vendor:cnf-qe@redhat.com][level:acceptance] stalld daemon is running as sched_fifo", func() {
 			for _, node := range workerRTNodes {
-				pid, err := nodes.ExecCommandOnNode([]string{"pidof", "stalld"}, &node)
+				pid, err := nodes.ExecCommandOnNode(context.TODO(), []string{"pidof", "stalld"}, &node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(pid).ToNot(BeEmpty())
-				sched_tasks, err := nodes.ExecCommandOnNode([]string{"chrt", "-ap", pid}, &node)
+				sched_tasks, err := nodes.ExecCommandOnNode(context.TODO(), []string{"chrt", "-ap", pid}, &node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(sched_tasks).To(ContainSubstring("scheduling policy: SCHED_FIFO"))
 				Expect(sched_tasks).To(ContainSubstring("scheduling priority: 10"))
@@ -209,20 +209,20 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 		It("[test_id:42696][crit:medium][vendor:cnf-qe@redhat.com][level:acceptance] Stalld runs in higher priority than ksoftirq and rcu{c,b}", func() {
 			for _, node := range workerRTNodes {
-				stalld_pid, err := nodes.ExecCommandOnNode([]string{"pidof", "stalld"}, &node)
+				stalld_pid, err := nodes.ExecCommandOnNode(context.TODO(), []string{"pidof", "stalld"}, &node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(stalld_pid).ToNot(BeEmpty())
-				sched_tasks, err := nodes.ExecCommandOnNode([]string{"chrt", "-ap", stalld_pid}, &node)
+				sched_tasks, err := nodes.ExecCommandOnNode(context.TODO(), []string{"chrt", "-ap", stalld_pid}, &node)
 				Expect(err).ToNot(HaveOccurred())
 				re := regexp.MustCompile("scheduling priority: ([0-9]+)")
 				match := re.FindStringSubmatch(sched_tasks)
 				stalld_prio, err := strconv.Atoi(match[1])
 				Expect(err).ToNot(HaveOccurred())
 
-				ksoftirq_pid, err := nodes.ExecCommandOnNode([]string{"pgrep", "-f", "ksoftirqd", "-n"}, &node)
+				ksoftirq_pid, err := nodes.ExecCommandOnNode(context.TODO(), []string{"pgrep", "-f", "ksoftirqd", "-n"}, &node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(ksoftirq_pid).ToNot(BeEmpty())
-				sched_tasks, err = nodes.ExecCommandOnNode([]string{"chrt", "-ap", ksoftirq_pid}, &node)
+				sched_tasks, err = nodes.ExecCommandOnNode(context.TODO(), []string{"chrt", "-ap", ksoftirq_pid}, &node)
 				Expect(err).ToNot(HaveOccurred())
 				match = re.FindStringSubmatch(sched_tasks)
 				ksoftirq_prio, err := strconv.Atoi(match[1])
@@ -237,10 +237,10 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				}
 				//rcuc/n : kthreads that are pinned to CPUs & are responsible to execute the callbacks of rcu threads .
 				//rcub/n : are boosting kthreads ,responsible to monitor per-cpu arrays of lists of tasks that were blocked while in an rcu read-side critical sections.
-				rcu_pid, err := nodes.ExecCommandOnNode([]string{"pgrep", "-f", "rcu[c,b]", "-n"}, &node)
+				rcu_pid, err := nodes.ExecCommandOnNode(context.TODO(), []string{"pgrep", "-f", "rcu[c,b]", "-n"}, &node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(rcu_pid).ToNot(BeEmpty())
-				sched_tasks, err = nodes.ExecCommandOnNode([]string{"chrt", "-ap", rcu_pid}, &node)
+				sched_tasks, err = nodes.ExecCommandOnNode(context.TODO(), []string{"chrt", "-ap", rcu_pid}, &node)
 				Expect(err).ToNot(HaveOccurred())
 				match = re.FindStringSubmatch(sched_tasks)
 				rcu_prio, err := strconv.Atoi(match[1])
@@ -257,7 +257,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		It("[test_id:28611][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Should set additional kernel arguments on the machine", func() {
 			if profile.Spec.AdditionalKernelArgs != nil {
 				for _, node := range workerRTNodes {
-					cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"cat", "/proc/cmdline"})
+					cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"cat", "/proc/cmdline"})
 					Expect(err).ToNot(HaveOccurred())
 					for _, arg := range profile.Spec.AdditionalKernelArgs {
 						Expect(string(cmdline)).To(ContainSubstring(arg))
@@ -284,8 +284,8 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			tuned := &tunedv1.Tuned{}
 			err := testclient.Client.Get(context.TODO(), key, tuned)
 			Expect(err).ToNot(HaveOccurred(), "cannot find the Cluster Node Tuning Operator object "+key.String())
-			validateTunedActiveProfile(workerRTNodes)
-			execSysctlOnWorkers(workerRTNodes, sysctlMap)
+			validateTunedActiveProfile(context.TODO(), workerRTNodes)
+			execSysctlOnWorkers(context.TODO(), workerRTNodes, sysctlMap)
 		})
 	})
 
@@ -306,7 +306,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 
 			for _, node := range workerRTNodes {
 				var vethInterfaces = []string{}
-				allInterfaces, err := nodes.GetNodeInterfaces(node)
+				allInterfaces, err := nodes.GetNodeInterfaces(context.TODO(), node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(allInterfaces).ToNot(BeNil())
 				// collect all veth interfaces in a list
@@ -321,7 +321,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				for _, vethinterface := range vethInterfaces {
 					devicePath := fmt.Sprintf("%s/%s", "/rootfs/sys/devices/virtual/net", vethinterface)
 					getRPSMaskCmd := []string{"find", devicePath, "-type", "f", "-name", "rps_cpus", "-exec", "cat", "{}", ";"}
-					devsRPS, err := nodes.ExecCommandOnNode(getRPSMaskCmd, &node)
+					devsRPS, err := nodes.ExecCommandOnNode(context.TODO(), getRPSMaskCmd, &node)
 					Expect(err).ToNot(HaveOccurred())
 					for _, devRPS := range strings.Split(devsRPS, "\n") {
 						rpsCPUs, err := components.CPUMaskToCPUSet(devRPS)
@@ -361,7 +361,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			for _, node := range workerRTNodes {
 				By("verify the systemd RPS service uses the correct RPS mask")
 				cmd := []string{"sysctl", "-n", "net.core.rps_default_mask"}
-				rpsMaskContent, err := nodes.ExecCommandOnNode(cmd, &node)
+				rpsMaskContent, err := nodes.ExecCommandOnNode(context.TODO(), cmd, &node)
 				Expect(err).ToNot(HaveOccurred(), "failed to exec command %q on node %q", cmd, node)
 				rpsMaskContent = strings.TrimSuffix(rpsMaskContent, "\n")
 				rpsCPUs, err := components.CPUMaskToCPUSet(rpsMaskContent)
@@ -378,7 +378,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					"-printf", "%p ",
 					"-exec", "cat", "{}", ";",
 				}
-				devsRPSContent, err := nodes.ExecCommandOnNode(cmd, &node)
+				devsRPSContent, err := nodes.ExecCommandOnNode(context.TODO(), cmd, &node)
 				Expect(err).ToNot(HaveOccurred(), "failed to exec command %q on node %q", cmd, node.Name)
 				devsRPSMap := makeDevRPSMap(devsRPSContent)
 				for path, mask := range devsRPSMap {
@@ -397,7 +397,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					"-printf", "%p ",
 					"-exec", "cat", "{}", ";",
 				}
-				devsRPSContent, err = nodes.ExecCommandOnNode(cmd, &node)
+				devsRPSContent, err = nodes.ExecCommandOnNode(context.TODO(), cmd, &node)
 				Expect(err).ToNot(HaveOccurred(), "failed to exec command %q on node %q", cmd, node.Name)
 
 				devsRPSMap = makeDevRPSMap(devsRPSContent)
@@ -414,7 +414,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				for _, node := range workerRTNodes {
 					// Verify the systemd RPS services were not created
 					cmd := []string{"ls", "/rootfs/etc/systemd/system/update-rps@.service"}
-					_, err := nodes.ExecCommandOnNode(cmd, &node)
+					_, err := nodes.ExecCommandOnNode(context.TODO(), cmd, &node)
 					Expect(err).To(HaveOccurred())
 				}
 			}
@@ -439,9 +439,9 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			tuned := &tunedv1.Tuned{}
 			err := testclient.Client.Get(context.TODO(), key, tuned)
 			Expect(err).ToNot(HaveOccurred(), "cannot find the Cluster Node Tuning Operator object "+components.ProfileNamePerformance)
-			validateTunedActiveProfile(workerRTNodes)
-			execSysctlOnWorkers(workerRTNodes, sysctlMap)
-			checkSchedKnobs(workerRTNodes, schedulerKnobs)
+			validateTunedActiveProfile(context.TODO(), workerRTNodes)
+			execSysctlOnWorkers(context.TODO(), workerRTNodes, sysctlMap)
+			checkSchedKnobs(context.TODO(), workerRTNodes, schedulerKnobs)
 		})
 	})
 
@@ -989,7 +989,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 
 	It("[test_id:54083] Should have kernel param rcutree.kthread", func() {
 		for _, node := range workerRTNodes {
-			cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"cat", "/proc/cmdline"})
+			cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"cat", "/proc/cmdline"})
 			Expect(err).ToNot(HaveOccurred(), "Failed to read /proc/cmdline")
 			Expect(string(cmdline)).To(ContainSubstring("rcutree.kthread_prio=11"), "Boot Parameters should contain rctree.kthread_prio=11")
 		}
@@ -1273,13 +1273,13 @@ func verifyV2Conversion(v2Profile *performancev2.PerformanceProfile, v1Profile *
 	return nil
 }
 
-func execSysctlOnWorkers(workerNodes []corev1.Node, sysctlMap map[string]string) {
+func execSysctlOnWorkers(ctx context.Context, workerNodes []corev1.Node, sysctlMap map[string]string) {
 	var err error
 	var out []byte
 	for _, node := range workerNodes {
 		for param, expected := range sysctlMap {
 			By(fmt.Sprintf("executing the command \"sysctl -n %s\"", param))
-			out, err = nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"sysctl", "-n", param})
+			out, err = nodes.ExecCommandOnMachineConfigDaemon(ctx, &node, []string{"sysctl", "-n", param})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(strings.TrimSpace(string(out))).Should(Equal(expected), "parameter %s value is not %s.", param, expected)
 		}
@@ -1287,14 +1287,14 @@ func execSysctlOnWorkers(workerNodes []corev1.Node, sysctlMap map[string]string)
 }
 
 // check scheduler settings. on RHCOS9.2 all scheduler settings are moved to /sys/kernel/debug/sched/
-func checkSchedKnobs(workerNodes []corev1.Node, schedKnobs map[string]string) {
+func checkSchedKnobs(ctx context.Context, workerNodes []corev1.Node, schedKnobs map[string]string) {
 	var err error
 	var out []byte
 	for _, node := range workerNodes {
 		for param, expected := range schedKnobs {
 			By(fmt.Sprintf("Checking scheduler knob %s", param))
 			knob := fmt.Sprintf("/rootfs/sys/kernel/debug/sched/%s", param)
-			out, err = nodes.ExecCommandOnMachineConfigDaemon(&node, []string{"cat", knob})
+			out, err = nodes.ExecCommandOnMachineConfigDaemon(ctx, &node, []string{"cat", knob})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(strings.TrimSpace(string(out))).Should(Equal(expected), "parameter %s value is not %s.", param, expected)
 		}
@@ -1302,14 +1302,14 @@ func checkSchedKnobs(workerNodes []corev1.Node, schedKnobs map[string]string) {
 }
 
 // execute sysctl command inside container in a tuned pod
-func validateTunedActiveProfile(wrknodes []corev1.Node) {
+func validateTunedActiveProfile(ctx context.Context, wrknodes []corev1.Node) {
 	var err error
 	var out []byte
 	activeProfileName := components.GetComponentName(testutils.PerformanceProfileName, components.ProfileNamePerformance)
 
 	// check if some another Tuned profile overwrites PAO profile
 	tunedList := &tunedv1.TunedList{}
-	err = testclient.Client.List(context.TODO(), tunedList)
+	err = testclient.Client.List(ctx, tunedList)
 	Expect(err).NotTo(HaveOccurred())
 
 	for _, t := range tunedList.Items {
@@ -1326,7 +1326,7 @@ func validateTunedActiveProfile(wrknodes []corev1.Node) {
 		tunedName := tuned.ObjectMeta.Name
 		By(fmt.Sprintf("executing the command cat /etc/tuned/active_profile inside the pod %s", tunedName))
 		Eventually(func() string {
-			out, err = pods.WaitForPodOutput(testclient.K8sClient, tuned, []string{"cat", "/etc/tuned/active_profile"})
+			out, err = pods.WaitForPodOutput(ctx, testclient.K8sClient, tuned, []string{"cat", "/etc/tuned/active_profile"})
 			return strings.TrimSpace(string(out))
 		}, cluster.ComputeTestTimeout(testTimeout*time.Second, RunningOnSingleNode), testPollInterval*time.Second).Should(Equal(activeProfileName),
 			fmt.Sprintf("active_profile is not set to %s. %v", activeProfileName, err))
