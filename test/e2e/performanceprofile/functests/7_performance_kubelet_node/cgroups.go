@@ -652,7 +652,7 @@ func newDeployment() *appsv1.Deployment {
 func waitForCondition(deployment *appsv1.Deployment, status appsv1.DeploymentStatus) error {
 	var err error
 	var val bool
-	err = wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
+	err = wait.PollUntilContextTimeout(context.TODO(), 5*time.Second, 5*time.Minute, true, func(ctx context.Context) (bool, error) {
 		if err != nil {
 			if errors.IsNotFound(err) {
 				return false, fmt.Errorf("deployment not found")

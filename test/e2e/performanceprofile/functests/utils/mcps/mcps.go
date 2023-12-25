@@ -276,7 +276,7 @@ func WaitForProfilePickedUp(mcpName string, profile *performancev2.PerformancePr
 
 // WaitForDeletion waits until the pod will be removed from the cluster
 func WaitForDeletion(ctx context.Context, mcpKey types.NamespacedName, timeout time.Duration) error {
-	return wait.PollImmediate(5*time.Second, timeout, func() (bool, error) {
+	return wait.PollUntilContextTimeout(ctx, 5*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		mcp := &machineconfigv1.MachineConfigPool{}
 		if err := testclient.Client.Get(ctx, mcpKey, mcp); apierrors.IsNotFound(err) {
 			return true, nil

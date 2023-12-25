@@ -261,7 +261,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 
 // Check a device that supports multiple queues and set with with reserved CPU size exists
 func checkDeviceSetWithReservedCPU(workerRTNodes []corev1.Node, nodesDevices map[string]map[string]int, profile performancev2.PerformanceProfile) error {
-	return wait.PollImmediate(5*time.Second, 90*time.Second, func() (bool, error) {
+	return wait.PollUntilContextTimeout(context.TODO(), 5*time.Second, 90*time.Second, true, func(ctx context.Context) (bool, error) {
 		deviceSupport, err := checkDeviceSupport(workerRTNodes, nodesDevices)
 		Expect(err).ToNot(HaveOccurred())
 		if !deviceSupport {

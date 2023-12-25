@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -146,7 +147,7 @@ var _ = ginkgo.Describe("[basic][netdev_set_channels] Node Tuning Operator adjus
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("ensuring the number of multi-purpose channels is set to %d for %s on node %s", chLen, phyDev, node.Name))
-			err = wait.PollImmediate(pollInterval, waitDuration, func() (bool, error) {
+			err = wait.PollUntilContextTimeout(context.TODO(), pollInterval, waitDuration, true, func(ctx context.Context) (bool, error) {
 				out, err = util.ExecCmdInPod(pod, cmdCombinedChannelsCurrent...)
 				if err != nil {
 					explain = err.Error()
@@ -170,7 +171,7 @@ var _ = ginkgo.Describe("[basic][netdev_set_channels] Node Tuning Operator adjus
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("ensuring the number of multi-purpose channels was rolled back to 1 for %s on node %s", phyDev, node.Name))
-			err = wait.PollImmediate(pollInterval, waitDuration, func() (bool, error) {
+			err = wait.PollUntilContextTimeout(context.TODO(), pollInterval, waitDuration, true, func(ctx context.Context) (bool, error) {
 				out, err = util.ExecCmdInPod(pod, cmdCombinedChannelsCurrent...)
 				if err != nil {
 					explain = err.Error()

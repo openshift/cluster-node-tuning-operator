@@ -45,9 +45,9 @@ func WaitForDeletion(name string, timeout time.Duration) error {
 		Name:      name,
 		Namespace: metav1.NamespaceNone,
 	}
-	return wait.PollImmediate(time.Second, timeout, func() (bool, error) {
+	return wait.PollUntilContextTimeout(context.TODO(), time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		ns := &corev1.Namespace{}
-		if err := testclient.Client.Get(context.TODO(), key, ns); errors.IsNotFound(err) {
+		if err := testclient.Client.Get(ctx, key, ns); errors.IsNotFound(err) {
 			return true, nil
 		}
 		return false, nil

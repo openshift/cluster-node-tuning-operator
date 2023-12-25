@@ -164,8 +164,8 @@ func setupNamespace(cli client.Client, baseName string, randomize bool) (corev1.
 
 	// again we do like the k8s e2e framework does and we try to be robust
 	var updatedNs corev1.Namespace
-	err = wait.PollImmediate(1*time.Second, 30*time.Second, func() (bool, error) {
-		err := cli.Get(context.TODO(), client.ObjectKeyFromObject(ns), &updatedNs)
+	err = wait.PollUntilContextTimeout(context.TODO(), 1*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
+		err := cli.Get(ctx, client.ObjectKeyFromObject(ns), &updatedNs)
 		if err != nil {
 			return false, err
 		}

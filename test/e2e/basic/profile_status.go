@@ -27,8 +27,8 @@ var _ = ginkgo.Describe("[basic][profile_status] Profile status conditions appli
 	var explain string
 
 	ginkgo.It("Profile status conditions applied and not degraded", func() {
-		err := wait.PollImmediate(pollInterval, waitDuration, func() (bool, error) {
-			profileList, err := cs.Profiles(ntoconfig.WatchNamespace()).List(context.TODO(), metav1.ListOptions{})
+		err := wait.PollUntilContextTimeout(context.TODO(), pollInterval, waitDuration, true, func(ctx context.Context) (bool, error) {
+			profileList, err := cs.Profiles(ntoconfig.WatchNamespace()).List(ctx, metav1.ListOptions{})
 			if err != nil {
 				explain = err.Error()
 				return false, nil

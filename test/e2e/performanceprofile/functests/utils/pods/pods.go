@@ -53,8 +53,8 @@ func GetTestPod() *corev1.Pod {
 
 // WaitForDeletion waits until the pod will be removed from the cluster
 func WaitForDeletion(pod *corev1.Pod, timeout time.Duration) error {
-	return wait.PollImmediate(time.Second, timeout, func() (bool, error) {
-		if err := testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(pod), pod); errors.IsNotFound(err) {
+	return wait.PollUntilContextTimeout(context.TODO(), time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		if err := testclient.Client.Get(ctx, client.ObjectKeyFromObject(pod), pod); errors.IsNotFound(err) {
 			return true, nil
 		}
 		return false, nil
@@ -64,8 +64,8 @@ func WaitForDeletion(pod *corev1.Pod, timeout time.Duration) error {
 // WaitForCondition waits until the pod will have specified condition type with the expected status
 func WaitForCondition(podKey client.ObjectKey, conditionType corev1.PodConditionType, conditionStatus corev1.ConditionStatus, timeout time.Duration) (*corev1.Pod, error) {
 	updatedPod := &corev1.Pod{}
-	err := wait.PollImmediate(time.Second, timeout, func() (bool, error) {
-		if err := testclient.Client.Get(context.TODO(), podKey, updatedPod); err != nil {
+	err := wait.PollUntilContextTimeout(context.TODO(), time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		if err := testclient.Client.Get(ctx, podKey, updatedPod); err != nil {
 			return false, nil
 		}
 		for _, c := range updatedPod.Status.Conditions {
@@ -81,8 +81,8 @@ func WaitForCondition(podKey client.ObjectKey, conditionType corev1.PodCondition
 // WaitForPredicate waits until the given predicate against the pod returns true or error.
 func WaitForPredicate(podKey client.ObjectKey, timeout time.Duration, pred func(pod *corev1.Pod) (bool, error)) (*corev1.Pod, error) {
 	updatedPod := &corev1.Pod{}
-	err := wait.PollImmediate(time.Second, timeout, func() (bool, error) {
-		if err := testclient.Client.Get(context.TODO(), podKey, updatedPod); err != nil {
+	err := wait.PollUntilContextTimeout(context.TODO(), time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		if err := testclient.Client.Get(ctx, podKey, updatedPod); err != nil {
 			return false, nil
 		}
 
@@ -98,8 +98,8 @@ func WaitForPredicate(podKey client.ObjectKey, timeout time.Duration, pred func(
 // WaitForPhase waits until the pod will have specified phase
 func WaitForPhase(podKey client.ObjectKey, phase corev1.PodPhase, timeout time.Duration) (*corev1.Pod, error) {
 	updatedPod := &corev1.Pod{}
-	err := wait.PollImmediate(time.Second, timeout, func() (bool, error) {
-		if err := testclient.Client.Get(context.TODO(), podKey, updatedPod); err != nil {
+	err := wait.PollUntilContextTimeout(context.TODO(), time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		if err := testclient.Client.Get(ctx, podKey, updatedPod); err != nil {
 			return false, nil
 		}
 
@@ -157,7 +157,7 @@ func ExecCommandOnPod(c *kubernetes.Clientset, pod *corev1.Pod, command []string
 		return nil, err
 	}
 
-	err = exec.Stream(remotecommand.StreamOptions{
+	err = exec.StreamWithContext(context.TODO(), remotecommand.StreamOptions{
 		Stdin:  os.Stdin,
 		Stdout: &outputBuf,
 		Stderr: &errorBuf,
@@ -176,7 +176,7 @@ func ExecCommandOnPod(c *kubernetes.Clientset, pod *corev1.Pod, command []string
 
 func WaitForPodOutput(c *kubernetes.Clientset, pod *corev1.Pod, command []string) ([]byte, error) {
 	var out []byte
-	if err := wait.PollImmediate(15*time.Second, time.Minute, func() (done bool, err error) {
+	if err := wait.PollUntilContextTimeout(context.TODO(), 15*time.Second, time.Minute, true, func(ctx context.Context) (done bool, err error) {
 		out, err = ExecCommandOnPod(c, pod, command)
 		if err != nil {
 			return false, err

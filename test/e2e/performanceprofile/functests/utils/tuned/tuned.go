@@ -45,7 +45,7 @@ func GetPod(ctx context.Context, node *corev1.Node) (*corev1.Pod, error) {
 }
 
 func WaitForStalldTo(run bool, interval, timeout time.Duration, node *corev1.Node) error {
-	return wait.PollImmediate(interval, timeout, func() (bool, error) {
+	return wait.PollUntilContextTimeout(context.TODO(), interval, timeout, true, func(ctx context.Context) (bool, error) {
 		cmd := []string{"/bin/bash", "-c", "pidof stalld || echo \"stalld not running\""}
 		stalldPid, err := nodes.ExecCommandOnNode(cmd, node)
 		if err != nil {
