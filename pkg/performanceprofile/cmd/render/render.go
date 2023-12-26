@@ -223,10 +223,16 @@ func render(inputDir, outputDir string) error {
 		}
 
 		for _, componentObj := range components.ToObjects() {
+
 			componentObj.SetOwnerReferences(or)
 		}
 
 		for kind, manifest := range components.ToManifestTable() {
+			// This is a workaround for https://issues.redhat.com/browse/CNF-10716
+			if kind == "KubeletConfig" {
+				kubeletConf := manifest.(*mcfgv1.KubeletConfig).GetObjectMeta()
+				kubeletConf.SetOwnerReferences([]v1.OwnerReference{})
+			}
 			b, err := yaml.Marshal(manifest)
 			if err != nil {
 				return err
