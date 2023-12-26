@@ -841,7 +841,7 @@ func deleteTestPod(ctx context.Context, testpod *corev1.Pod) (types.UID, bool) {
 	// it possible that the pod already was deleted as part of the test, in this case we want to skip teardown
 	err := testclient.Client.Get(ctx, client.ObjectKeyFromObject(testpod), testpod)
 	if errors.IsNotFound(err) {
-		return types.UID(""), false
+		return "", false
 	}
 
 	testpodUID := testpod.UID

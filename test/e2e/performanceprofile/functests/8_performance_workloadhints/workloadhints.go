@@ -708,7 +708,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					containerCgroup, err = nodes.ExecCommandOnNode(context.TODO(), cmd, &workerRTNodes[0])
 					Expect(err).ToNot(HaveOccurred())
 					return containerCgroup
-				}, (cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode)), 5*time.Second).ShouldNot(BeEmpty(),
+				}, cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode), 5*time.Second).ShouldNot(BeEmpty(),
 					fmt.Sprintf("cannot find cgroup for container %q", containerID))
 
 				By("Verify powersetting of cpus used by the pod")
@@ -805,7 +805,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					containerCgroup, err = nodes.ExecCommandOnNode(context.TODO(), cmd, &workerRTNodes[0])
 					Expect(err).ToNot(HaveOccurred())
 					return containerCgroup
-				}, (cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode)), 5*time.Second).ShouldNot(BeEmpty(),
+				}, cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode), 5*time.Second).ShouldNot(BeEmpty(),
 					fmt.Sprintf("cannot find cgroup for container %q", containerID))
 
 				By("Verify powersetting of cpus used by the pod")

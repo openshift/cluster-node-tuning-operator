@@ -234,7 +234,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
 				err = testclient.Client.Create(context.TODO(), testpod)
 				Expect(err).ToNot(HaveOccurred())
-				testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodConditionType(corev1.PodReady), corev1.ConditionTrue, 5*time.Minute)
+				testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(testpod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
 
@@ -279,7 +279,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				testpod1.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
 				err = testclient.Client.Create(context.TODO(), testpod1)
 				Expect(err).ToNot(HaveOccurred())
-				testpod1, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod1), corev1.PodConditionType(corev1.PodReady), corev1.ConditionTrue, 5*time.Minute)
+				testpod1, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod1), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(testpod1.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
 
@@ -299,7 +299,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				testpod2.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
 				err = testclient.Client.Create(context.TODO(), testpod2)
 				Expect(err).ToNot(HaveOccurred())
-				testpod2, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod2), corev1.PodConditionType(corev1.PodReady), corev1.ConditionTrue, 5*time.Minute)
+				testpod2, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod2), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(testpod1.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
 
@@ -577,7 +577,7 @@ func getOVSServicesPid(ctx context.Context, workerNode *corev1.Node) ([]string, 
 	// TODO: This path is not compatible with cgroupv2.
 	cmd := []string{"cat", "/rootfs/sys/fs/cgroup/cpuset/ovs.slice/cgroup.procs"}
 	output, err := nodes.ExecCommandOnNode(ctx, cmd, workerNode)
-	pids = strings.Split(string(output), "\n")
+	pids = strings.Split(output, "\n")
 	return pids, err
 }
 
@@ -659,7 +659,7 @@ func waitForCondition(deployment *appsv1.Deployment, status appsv1.DeploymentSta
 			}
 			return false, err
 		}
-		val = (deployment.Status.Replicas == status.Replicas && deployment.Status.AvailableReplicas == status.AvailableReplicas)
+		val = deployment.Status.Replicas == status.Replicas && deployment.Status.AvailableReplicas == status.AvailableReplicas
 		return val, err
 	})
 
