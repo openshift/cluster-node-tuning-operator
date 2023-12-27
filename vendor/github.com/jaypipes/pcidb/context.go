@@ -12,22 +12,22 @@ import (
 // Concrete merged set of configuration switches that get passed to pcidb
 // internal functions
 type context struct {
-	chroot              string
-	cacheOnly           bool
-	cachePath           string
-	path                string
-	disableNetworkFetch bool
-	searchPaths         []string
+	chroot             string
+	cacheOnly          bool
+	cachePath          string
+	path               string
+	enableNetworkFetch bool
+	searchPaths        []string
 }
 
 func contextFromOptions(merged *WithOption) *context {
 	ctx := &context{
-		chroot:              *merged.Chroot,
-		cacheOnly:           *merged.CacheOnly,
-		cachePath:           getCachePath(),
-		disableNetworkFetch: *merged.DisableNetworkFetch,
-		path:                *merged.Path,
-		searchPaths:         make([]string, 0),
+		chroot:             *merged.Chroot,
+		cacheOnly:          *merged.CacheOnly,
+		cachePath:          getCachePath(),
+		enableNetworkFetch: *merged.EnableNetworkFetch,
+		path:               *merged.Path,
+		searchPaths:        make([]string, 0),
 	}
 	ctx.setSearchPaths()
 	return ctx
