@@ -1,0 +1,14 @@
+# https://docs.snyk.io/scan-applications/snyk-code/using-snyk-code-from-the-cli/excluding-directories-and-files-from-the-snyk-code-cli-test
+exclude:
+  global:
+    - vendor/github.com/onsi/ginkgo/v2/internal/suite.go:
+      reason: Temporarily ignoring until a fix is ready.
+      expires: 2024-03-01
+      created: 2024-01-01
+    - vendor/sigs.k8s.io/controller-runtime/pkg/log/log.go:
+      reason: Ignoring as the issue in the code is expected.
+      created: 2024-01-01
+    - vendor/github.com/jaypipes/ghw/pkg/block/block_linux.go:
+      reason: Temporarily ignoring until a fix is ready.
+      expires: 2024-03-01
+      created: 2024-01-01
