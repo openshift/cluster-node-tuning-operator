@@ -41,7 +41,6 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/openshift/cluster-node-tuning-operator/version"
 
-	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	mcfgclientset "github.com/openshift/machine-config-operator/pkg/generated/clientset/versioned"
 	mcfginformers "github.com/openshift/machine-config-operator/pkg/generated/informers/externalversions"
 )
@@ -622,7 +621,6 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	var (
 		tunedProfileName string
 		mcLabels         map[string]string
-		pools            []*mcfgv1.MachineConfigPool
 		operand          tunedv1.OperandConfig
 		nodePoolName     string
 	)
@@ -661,7 +659,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 			return err
 		}
 	} else {
-		tunedProfileName, mcLabels, pools, operand, err = c.pc.calculateProfile(nodeName)
+		tunedProfileName, mcLabels, operand, err = c.pc.calculateProfile(nodeName)
 		if err != nil {
 			return err
 		}
@@ -732,12 +730,12 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	} else {
 		if mcLabels != nil {
 			// The TuneD daemon profile 'tunedProfileName' for nodeName matched with MachineConfig
-			// labels set for additional machine configuration.  Sync the operator-created
-			// MachineConfig for MachineConfigPools 'pools'.
+			// labels 'mcLabels' set for additional machine configuration.  Sync the operator-created
+			// MachineConfig based on 'mcLabels'.
 			if profile.Status.TunedProfile == tunedProfileName && profileApplied(profile) {
 				// Synchronize MachineConfig only once the (calculated) TuneD profile 'tunedProfileName'
 				// has been successfully applied.
-				err := c.syncMachineConfig(pools, mcLabels, profile)
+				err := c.syncMachineConfig(mcLabels, profile)
 				if err != nil {
 					return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
 				}
@@ -779,25 +777,44 @@ func (c *Controller) getProviderName(nodeName string) (string, error) {
 	return util.GetProviderName(node.Spec.ProviderID), nil
 }
 
-func (c *Controller) syncMachineConfig(pools []*mcfgv1.MachineConfigPool, labels map[string]string, profile *tunedv1.Profile) error {
+func (c *Controller) syncMachineConfig(labels map[string]string, profile *tunedv1.Profile) error {
 	var (
+		bootcmdline     string
 		kernelArguments []string
 	)
 
+	pools, err := c.pc.getPoolsForMachineConfigLabelsSorted(labels)
+	if err != nil {
+		return err
+	}
+
+	// The following enforces per-pool machineConfigLabels selectors.
+	if len(pools) > 1 {
+		// Log an error and do not requeue, this is a configuration issue.
+		klog.Errorf("profile %v uses machineConfigLabels that match across multiple MCPs (%v); this is not supported",
+			profile.Name, printMachineConfigPoolsNames(pools))
+		return nil
+	}
+
 	name := getMachineConfigNameForPools(pools)
+	klog.V(2).Infof("syncMachineConfig(): %v", name)
+
+	var bootcmdlineSet bool
 	nodes, err := c.pc.getNodesForPool(pools[0])
 	if err != nil {
 		return err
 	}
 
-	bootcmdline, bootcmdlineSet := c.pc.state.bootcmdline[profile.Name]
+	bootcmdline, bootcmdlineSet = c.pc.state.bootcmdline[profile.Name]
 	if !bootcmdlineSet {
-		klog.V(2).Infof("syncMachineConfig(): bootcmdline for %s not cached, sync cancelled", profile.Name)
+		klog.V(2).Infof("syncMachineConfig(): bootcmdline for %s not cached, sync canceled", profile.Name)
 		return nil
 	}
 
 	if ok := c.allNodesAgreeOnBootcmdline(nodes); !ok {
-		return fmt.Errorf("not all %d Nodes in MCP %v agree on bootcmdline: %s", len(nodes), pools[0].ObjectMeta.Name, bootcmdline)
+		// Log an error and do not requeue, this is a configuration issue.
+		klog.Errorf("not all %d Nodes in MCP %v agree on bootcmdline: %s", len(nodes), pools[0].ObjectMeta.Name, bootcmdline)
+		return nil
 	}
 
 	kernelArguments = util.SplitKernelArguments(bootcmdline)
@@ -943,7 +960,7 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 	// If mcfgs are equivalent don't update
 	if kernelArgsEq && cmLabelsAndAnnotationsCorrect {
 		// No update needed
-		klog.V(2).Infof("syncMachineConfig(): MachineConfig %s doesn't need updating", mc.ObjectMeta.Name)
+		klog.V(2).Infof("syncMachineConfigHyperShift(): MachineConfig %s doesn't need updating", mc.ObjectMeta.Name)
 		return nil
 	}
 
@@ -954,7 +971,7 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 	mc.Spec.Config = mcNew.Spec.Config
 
 	l := machineConfigGenerationLogLine(false, !kernelArgsEq, bootcmdline)
-	klog.V(2).Infof("syncMachineConfig(): updating MachineConfig %s with%s", mc.ObjectMeta.Name, l)
+	klog.V(2).Infof("syncMachineConfigHyperShift(): updating MachineConfig %s with%s", mc.ObjectMeta.Name, l)
 
 	newData, err := serializeMachineConfig(mc)
 	if err != nil {
