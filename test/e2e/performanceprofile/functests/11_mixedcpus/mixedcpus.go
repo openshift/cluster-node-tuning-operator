@@ -45,6 +45,7 @@ const (
 	// reserved = one core, shared = one core, infra workload = one core, test pod = one core - 4 in total
 	// smt alignment won't allow us to run the test pod with a single core, hence we should cancel it.
 	numberOfCoresThatRequiredCancelingSMTAlignment = 4
+	restartCooldownTime                            = 1 * time.Minute
 )
 
 var _ = Describe("Mixedcpus", Ordered, func() {
@@ -192,6 +193,50 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(shared.Equals(*ppShared)).To(BeTrue(), "OPENSHIFT_SHARED_CPUS value not equal to what configure in the performance profile."+
 					"OPENSHIFT_SHARED_CPUS=%s spec.cpu.shared=%s", shared.String(), ppShared.String())
+			})
+			It("should contains the shared cpus after Kubelet restarts", func() {
+				rl := &corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("1"),
+					corev1.ResourceMemory: resource.MustParse("100Mi"),
+					sharedCpusResource:    resource.MustParse("1"),
+				}
+				p, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+					withRequests(rl),
+					withLimits(rl),
+					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
+				Expect(err).ToNot(HaveOccurred())
+				cfg := &controller.CpuSet{}
+				err = getter.Container(ctx, p, p.Spec.Containers[0].Name, cfg)
+				Expect(err).ToNot(HaveOccurred())
+				cgroupCpuSet, err := cpuset.Parse(cfg.Cpus)
+				Expect(err).ToNot(HaveOccurred())
+				shared, _ := cpuset.Parse(string(*profile.Spec.CPU.Shared))
+				Expect(cgroupCpuSet.Intersection(shared).List()).ToNot(BeEmpty(), "shared cpus are not in the pod cgroups; pod=%q, cgroupscpuset=%q sharedcpuset=%q",
+					fmt.Sprintf("%s/%s", p.Namespace, p.Name), cgroupCpuSet.String(), shared.String())
+
+				node := &corev1.Node{}
+				err = testclient.Client.Get(ctx, client.ObjectKey{Name: p.Spec.NodeName}, node)
+				Expect(err).ToNot(HaveOccurred())
+
+				cmd := kubeletRestartCmd()
+				// The command would fail since it aborts all the pods during restart
+				_, _ = nodes.ExecCommandOnNode(ctx, cmd, node)
+				// check that the node is ready after we restart Kubelet
+				nodes.WaitForReadyOrFail("post restart", node.Name, 20*time.Minute, 3*time.Second)
+
+				// giving kubelet more time to stabilize and initialize itself before
+				// moving on with the testing.
+				testlog.Infof("post restart: entering cooldown time: %v", restartCooldownTime)
+				time.Sleep(restartCooldownTime)
+				testlog.Infof("post restart: finished cooldown time: %v", restartCooldownTime)
+
+				By("verifying that shared cpus are in the container's cgroup after kubelet restart")
+				err = getter.Container(ctx, p, p.Spec.Containers[0].Name, cfg)
+				Expect(err).ToNot(HaveOccurred())
+				cgroupCpuSet, err = cpuset.Parse(cfg.Cpus)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(cgroupCpuSet.Intersection(shared).List()).ToNot(BeEmpty(), "shared cpus are not in the pod cgroups; pod=%q, cgroupscpuset=%q sharedcpuset=%q",
+					fmt.Sprintf("%s/%s", p.Namespace, p.Name), cgroupCpuSet.String(), shared.String())
 			})
 		})
 
@@ -344,6 +389,16 @@ func isFileExistCmd(absoluteFileName string) []string {
 		"/bin/bash",
 		"-c",
 		fmt.Sprintf("if [[ -s %s ]]; then echo true; else echo false; fi", absoluteFileName),
+	}
+}
+
+func kubeletRestartCmd() []string {
+	return []string{
+		"chroot",
+		"/rootfs",
+		"/bin/bash",
+		"-c",
+		"systemctl restart kubelet",
 	}
 }
 
