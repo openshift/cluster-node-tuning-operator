@@ -3,10 +3,13 @@ package runtime
 import (
 	"context"
 	"fmt"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
-	corev1 "k8s.io/api/core/v1"
 	"path/filepath"
+
+	corev1 "k8s.io/api/core/v1"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 )
 
 const (
@@ -31,7 +34,7 @@ func GetContainerRuntimeTypeFor(ctx context.Context, c client.Client, pod *corev
 	}
 	out, err := nodes.ExecCommandOnNode(ctx, cmd, node)
 	if err != nil {
-		return "", fmt.Errorf("failed to execute command on node; cmd=%q node=%q", cmd, node.Name)
+		return "", fmt.Errorf("failed to execute command on node; cmd=%q node=%q err=%v", cmd, node.Name, err)
 	}
 	return filepath.Base(out), nil
 }
