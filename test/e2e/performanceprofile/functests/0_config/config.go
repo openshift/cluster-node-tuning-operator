@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/cpuset"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -65,11 +66,11 @@ var _ = Describe("[performance][config] Performance configuration", Ordered, fun
 
 	It("Should successfully deploy the performance profile", func() {
 
-		performanceProfile := testProfile()
+		performanceProfile, err := testProfile()
+		Expect(err).ToNot(HaveOccurred(), "failed to build performance profile: %v", err)
 		profileAlreadyExists := false
 
 		performanceManifest, foundOverride := os.LookupEnv("PERFORMANCE_PROFILE_MANIFEST_OVERRIDE")
-		var err error
 		if foundOverride {
 			performanceProfile, err = externalPerformanceProfile(performanceManifest)
 			Expect(err).ToNot(HaveOccurred(), "Failed overriding performance profile", performanceManifest)
@@ -158,9 +159,42 @@ func externalPerformanceProfile(performanceManifest string) (*performancev2.Perf
 	return profile, nil
 }
 
-func testProfile() *performancev2.PerformanceProfile {
+func testProfile() (*performancev2.PerformanceProfile, error) {
 	reserved := performancev2.CPUSet("0")
 	isolated := performancev2.CPUSet("1-3")
+	profileCpus := &performancev2.CPU{
+		Reserved: &reserved,
+		Isolated: &isolated,
+	}
+
+	customReserved, foundReserved := os.LookupEnv("RESERVED_CPU_SET")
+	customIsolated, foundIsolated := os.LookupEnv("ISOLATED_CPU_SET")
+	if foundReserved != foundIsolated {
+		return nil, fmt.Errorf("overriding default profile CPU setting requires both environment variables RESERVED_CPU_SET and ISOLATED_CPU_SET to be set")
+	}
+
+	if foundReserved {
+		if _, err := cpuset.Parse(customReserved); err != nil {
+			return nil, fmt.Errorf("failed to parse the provided reserved cpu set %s: %v. Using default values", customReserved, err)
+		}
+		reserved = performancev2.CPUSet(customReserved)
+	}
+
+	if foundIsolated {
+		if _, err := cpuset.Parse(customIsolated); err != nil {
+			return nil, fmt.Errorf("failed to parse the provided isolated cpu set %s: %v. Using default values", customIsolated, err)
+		}
+		isolated = performancev2.CPUSet(customIsolated)
+	}
+	customOfflined, foundOfflined := os.LookupEnv("OFFLINED_CPU_SET")
+	if foundOfflined {
+		if _, err := cpuset.Parse(customOfflined); err != nil {
+			return nil, fmt.Errorf("failed to parse the provided offlined cpu set %s: %v. Using default values", customOfflined, err)
+		}
+		offlined := performancev2.CPUSet(customOfflined)
+		profileCpus.Offlined = &offlined
+	}
+
 	hugePagesSize := performancev2.HugePageSize("1G")
 
 	profile := &performancev2.PerformanceProfile{
@@ -172,10 +206,7 @@ func testProfile() *performancev2.PerformanceProfile {
 			Name: utils.PerformanceProfileName,
 		},
 		Spec: performancev2.PerformanceProfileSpec{
-			CPU: &performancev2.CPU{
-				Reserved: &reserved,
-				Isolated: &isolated,
-			},
+			CPU: profileCpus,
 			HugePages: &performancev2.HugePages{
 				DefaultHugePagesSize: &hugePagesSize,
 				Pages: []performancev2.HugePage{
@@ -215,5 +246,5 @@ func testProfile() *performancev2.PerformanceProfile {
 			"pools.operator.machineconfiguration.openshift.io/master": "",
 		}
 	}
-	return profile
+	return profile, nil
 }
