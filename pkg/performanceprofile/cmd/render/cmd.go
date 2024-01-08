@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 
@@ -31,6 +32,7 @@ import (
 type renderOpts struct {
 	assetsInDir  string
 	assetsOutDir string
+	addOwnerRef  bool
 }
 
 // NewRenderCommand creates a render command.
@@ -62,6 +64,7 @@ func NewRenderCommand() *cobra.Command {
 func (r *renderOpts) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&r.assetsInDir, "asset-input-dir", components.AssetsDir, "Input path for the assets directory. (Can be a comma separated list of directories.)")
 	fs.StringVar(&r.assetsOutDir, "asset-output-dir", r.assetsOutDir, "Output path for the rendered manifests.")
+	fs.BoolVar(&r.addOwnerRef, "add-owner-ref", r.addOwnerRef, "Add Owner Reference to rendered manifests.")
 	// environment variables has precedence over standard input
 	r.readFlagsFromEnv()
 }
@@ -74,6 +77,11 @@ func (r *renderOpts) readFlagsFromEnv() {
 	if assetsOutDir := os.Getenv("ASSET_OUTPUT_DIR"); len(assetsOutDir) > 0 {
 		r.assetsOutDir = assetsOutDir
 	}
+	if addOwnerRef := os.Getenv("ADD_OWNER_REF"); len(addOwnerRef) > 0 {
+		if val, err := strconv.ParseBool(addOwnerRef); err == nil {
+			r.addOwnerRef = val
+		}
+	}
 }
 
 func (r *renderOpts) Validate() error {
@@ -85,7 +93,7 @@ func (r *renderOpts) Validate() error {
 }
 
 func (r *renderOpts) Run() error {
-	return render(r.assetsInDir, r.assetsOutDir)
+	return render(r.addOwnerRef, r.assetsInDir, r.assetsOutDir)
 }
 
 func addKlogFlags(cmd *cobra.Command) {

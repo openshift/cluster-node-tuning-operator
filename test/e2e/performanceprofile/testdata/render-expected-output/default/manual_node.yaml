@@ -3,11 +3,6 @@ kind: Node
 metadata:
   creationTimestamp: null
   name: cluster
-  ownerReferences:
-  - apiVersion: performance.openshift.io/v2
-    kind: PerformanceProfile
-    name: manual
-    uid: ""
 spec:
   cgroupMode: v1
 status: {}

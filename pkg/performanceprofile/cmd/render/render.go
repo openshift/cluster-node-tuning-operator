@@ -40,7 +40,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/uuid"
 
 	"k8s.io/klog"
 )
@@ -70,7 +69,7 @@ func init() {
 
 // Render will traverse the input directory and generate the proper performance profile files
 // in to the output dir based on PerformanceProfile manifests contained in the input directory.
-func render(inputDir, outputDir string) error {
+func render(addOwnerRef bool, inputDir, outputDir string) error {
 	klog.Info("Rendering files into: ", outputDir)
 
 	// Read asset directory fileInfo
@@ -191,22 +190,11 @@ func render(inputDir, outputDir string) error {
 			return err
 		}
 
-		uid := pp.UID
-		if uid == types.UID("") {
-			uid = uuid.NewUUID()
-		}
-
-		or := []v1.OwnerReference{
-			{
-				Kind:       pp.Kind,
-				Name:       pp.Name,
-				APIVersion: pp.APIVersion,
-				UID:        uid,
-			},
-		}
-
-		for _, componentObj := range components.ToObjects() {
-			componentObj.SetOwnerReferences(or)
+		if addOwnerRef {
+			err = addOwnerReference(components, pp)
+			if err != nil {
+				return err
+			}
 		}
 
 		for kind, manifest := range components.ToManifestTable() {
@@ -217,14 +205,34 @@ func render(inputDir, outputDir string) error {
 
 			fileName := fmt.Sprintf("%s_%s.yaml", pp.Name, strings.ToLower(kind))
 			fullFilePath := filepath.Join(outputDir, fileName)
-			klog.Info("Writing file: ", fullFilePath)
+			klog.Infof("Writing file: %s -> %s", fileName, fullFilePath)
 
 			err = os.WriteFile(fullFilePath, b, 0644)
 			if err != nil {
 				return err
 			}
-			klog.Info(fileName)
 		}
+	}
+
+	return nil
+}
+
+func addOwnerReference(components *manifestset.ManifestResultSet, pp *performancev2.PerformanceProfile) error {
+	if pp == nil || pp.UID == types.UID("") {
+		return fmt.Errorf("Missing UID from performance profile")
+	}
+
+	or := []v1.OwnerReference{
+		{
+			Kind:       pp.Kind,
+			Name:       pp.Name,
+			APIVersion: pp.APIVersion,
+			UID:        pp.UID,
+		},
+	}
+
+	for _, componentObj := range components.ToObjects() {
+		componentObj.SetOwnerReferences(or)
 	}
 
 	return nil
