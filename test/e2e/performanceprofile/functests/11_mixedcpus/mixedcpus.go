@@ -40,26 +40,20 @@ import (
 const (
 	kubeletMixedCPUsConfigFile = "/etc/kubernetes/openshift-workload-mixed-cpus"
 	sharedCpusResource         = "workload.openshift.io/enable-shared-cpus"
+	// the minimal number of cores for running the test is as follows:
+	// reserved = one core, shared = one core, infra workload = one core, test pod = one core - 4 in total
+	// smt alignment won't allow us to run the test pod with a single core, hence we should cancel it.
+	numberOfCoresThatRequiredCancelingSMTAlignment = 4
 )
 
 var _ = Describe("Mixedcpus", Ordered, func() {
 	ctx := context.Background()
 	BeforeAll(func() {
-		var err error
 		if discovery.Enabled() && testutils.ProfileNotFound {
 			Skip("discovery mode enabled, performance profile not found")
 		}
-		profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-		Expect(err).ToNot(HaveOccurred())
-
-		if profileutil.IsMixedCPUsEnabled(profile) {
-			testlog.Infof("mixed cpus already enabled for profile %q", profile.Name)
-		}
-		if !profileutil.IsMixedCPUsEnabled(profile) {
-			testlog.Infof("enable mixed cpus for profile %q", profile.Name)
-			teardown := setup(ctx, profile)
-			DeferCleanup(teardown, ctx)
-		}
+		teardown := setup(ctx)
+		DeferCleanup(teardown, ctx)
 	})
 
 	Context("configuration files integrity", func() {
@@ -202,18 +196,48 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 	})
 })
 
-func setup(ctx context.Context, profile *performancev2.PerformanceProfile) func(ctx2 context.Context) {
-	initialProfile := profile.DeepCopy()
-	isolated, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+func setup(ctx context.Context) func(ctx2 context.Context) {
+	var updateNeeded bool
+	profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 	Expect(err).ToNot(HaveOccurred())
+	initialProfile := profile.DeepCopy()
 
-	// arbitrary take the first one
-	sharedcpu := cpuset.New(isolated.List()[0])
-	testlog.Infof("shared cpu ids are: %q", sharedcpu.String())
-	updatedIsolated := isolated.Difference(sharedcpu)
-	profile.Spec.CPU.Isolated = cpuSetToPerformanceCPUSet(&updatedIsolated)
-	profile.Spec.CPU.Shared = cpuSetToPerformanceCPUSet(&sharedcpu)
-	profile.Spec.WorkloadHints.MixedCpus = pointer.Bool(true)
+	if !profileutil.IsMixedCPUsEnabled(profile) {
+		isolated, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+		Expect(err).ToNot(HaveOccurred())
+
+		// arbitrary take the first one
+		sharedcpu := cpuset.New(isolated.List()[0])
+		testlog.Infof("shared cpu ids are: %q", sharedcpu.String())
+		updatedIsolated := isolated.Difference(sharedcpu)
+		profile.Spec.CPU.Isolated = cpuSetToPerformanceCPUSet(&updatedIsolated)
+		profile.Spec.CPU.Shared = cpuSetToPerformanceCPUSet(&sharedcpu)
+		profile.Spec.WorkloadHints.MixedCpus = pointer.Bool(true)
+		testlog.Infof("enable mixed cpus for profile %q", profile.Name)
+		updateNeeded = true
+	} else {
+		testlog.Infof("mixed cpus already enabled for profile %q", profile.Name)
+	}
+
+	workers, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
+	Expect(err).ToNot(HaveOccurred())
+	for _, worker := range workers {
+		//node cpu numbers are integral
+		numOfCores, _ := worker.Status.Capacity.Cpu().AsInt64()
+		if numOfCores <= numberOfCoresThatRequiredCancelingSMTAlignment {
+			profile.Annotations = map[string]string{
+				"kubeletconfig.experimental": "{\"cpuManagerPolicyOptions\": {\"full-pcpus-only\": \"false\"}}",
+			}
+			testlog.Infof("canceling SMT alignment for nodes under profile %q", profile.Name)
+			updateNeeded = true
+		}
+	}
+
+	if !updateNeeded {
+		return func(ctx context.Context) {
+			By(fmt.Sprintf("skipping teardown - no changes to profile %q were applied", profile.Name))
+		}
+	}
 	testprofiles.UpdateWithRetry(profile)
 	mcp, err := mcps.GetByProfile(profile)
 	Expect(err).ToNot(HaveOccurred())
@@ -224,12 +248,10 @@ func setup(ctx context.Context, profile *performancev2.PerformanceProfile) func(
 	teardown := func(ctx2 context.Context) {
 		By(fmt.Sprintf("executing teardown - revert profile %q back to its intial state", profile.Name))
 		Expect(testclient.Client.Get(ctx2, client.ObjectKeyFromObject(initialProfile), profile))
-		profile.Spec = initialProfile.Spec
-		resourceVersion := profile.ResourceVersion
-		testprofiles.UpdateWithRetry(profile)
+		testprofiles.UpdateWithRetry(initialProfile)
 
 		// do not wait if nothing has changed
-		if resourceVersion != profile.ResourceVersion {
+		if initialProfile.ResourceVersion != profile.ResourceVersion {
 			mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
 			mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 		}
