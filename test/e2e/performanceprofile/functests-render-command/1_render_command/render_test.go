@@ -16,6 +16,7 @@ const (
 	defaultExpectedDir   = "default"
 	pinnedExpectedDir    = "pinned"
 	bootstrapExpectedDir = "bootstrap"
+	noRefExpectedDir     = "no-ref"
 )
 
 var (
@@ -73,6 +74,39 @@ var _ = Describe("render command e2e test", func() {
 			)
 			runAndCompare(cmd, defaultExpectedDir)
 		})
+
+		It("Must fail to restore legacy and wrong legacy owner reference if uid is missing", func() {
+			cmdline := []string{
+				filepath.Join(binPath, "cluster-node-tuning-operator"),
+				"render",
+				"--asset-input-dir", strings.Join(assetsInDirs, ","),
+				"--asset-output-dir", assetsOutDir,
+				"--owner-ref", "k8s",
+			}
+			fmt.Fprintf(GinkgoWriter, "running: %v\n", cmdline)
+
+			cmd := exec.Command(cmdline[0], cmdline[1:]...)
+			_, err := cmd.Output()
+			Expect(err).To(HaveOccurred(), logStderr(err))
+		})
+
+		It("Must not set any owner reference if disabled explicitely", func() {
+			cmdline := []string{
+				filepath.Join(binPath, "cluster-node-tuning-operator"),
+				"render",
+				"--asset-input-dir", strings.Join(assetsInDirs, ","),
+				"--asset-output-dir", assetsOutDir,
+				"--owner-ref", "none",
+			}
+			fmt.Fprintf(GinkgoWriter, "running: %v\n", cmdline)
+
+			cmd := exec.Command(cmdline[0], cmdline[1:]...)
+			cmd.Env = append(cmd.Env,
+				fmt.Sprintf("ASSET_INPUT_DIR=%s", strings.Join(assetsInDirs, ",")),
+				fmt.Sprintf("ASSET_OUTPUT_DIR=%s", assetsOutDir),
+			)
+			runAndCompare(cmd, noRefExpectedDir)
+		})
 	})
 
 	Context("With pinned cluster resources", func() {
@@ -88,7 +122,6 @@ var _ = Describe("render command e2e test", func() {
 
 			cmd := exec.Command(cmdline[0], cmdline[1:]...)
 			runAndCompare(cmd, pinnedExpectedDir)
-
 		})
 
 		It("Given legacy SNO pinned infrastructure status, should render cpu partitioning configs", func() {
@@ -164,7 +197,7 @@ func cleanArtifacts() {
 
 func runAndCompare(cmd *exec.Cmd, dir string) {
 	_, err := cmd.Output()
-	Expect(err).ToNot(HaveOccurred())
+	Expect(err).ToNot(HaveOccurred(), logStderr(err))
 
 	outputAssetsFiles, err := os.ReadDir(assetsOutDir)
 	Expect(err).ToNot(HaveOccurred())
@@ -185,4 +218,11 @@ func runAndCompare(cmd *exec.Cmd, dir string) {
 			f.Name(),
 			diff)
 	}
+}
+
+func logStderr(err error) string {
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		return fmt.Sprintf("error running the command: [[%s]]", exitErr.Stderr)
+	}
+	return fmt.Sprintf("error running the command: [[%s]]", err)
 }
