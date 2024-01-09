@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/klog/v2"
@@ -238,14 +237,9 @@ func parseNamespacedName(namespacedName string) string {
 	return parts[0]
 }
 
-func getMachineConfigFromConfigMap(config *corev1.ConfigMap) (*mcfgv1.MachineConfig, error) {
-	scheme := runtime.NewScheme()
-	if err := mcfgv1.Install(scheme); err != nil {
-		return nil, err
-	}
-
+func (c *Controller) getMachineConfigFromConfigMap(config *corev1.ConfigMap) (*mcfgv1.MachineConfig, error) {
 	YamlSerializer := serializer.NewSerializerWithOptions(
-		serializer.DefaultMetaFactory, scheme, scheme,
+		serializer.DefaultMetaFactory, c.scheme, c.scheme,
 		serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true},
 	)
 
@@ -262,8 +256,8 @@ func getMachineConfigFromConfigMap(config *corev1.ConfigMap) (*mcfgv1.MachineCon
 	return mcObj, nil
 }
 
-func newConfigMapForMachineConfig(configMapName string, nodePoolName string, mc *mcfgv1.MachineConfig) (*corev1.ConfigMap, error) {
-	mcManifest, err := serializeMachineConfig(mc)
+func (c *Controller) newConfigMapForMachineConfig(configMapName string, nodePoolName string, mc *mcfgv1.MachineConfig) (*corev1.ConfigMap, error) {
+	mcManifest, err := c.serializeMachineConfig(mc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize ConfigMap for MachineConfig %s: %v", mc.Name, err)
 	}
@@ -289,14 +283,9 @@ func newConfigMapForMachineConfig(configMapName string, nodePoolName string, mc 
 	return ret, nil
 }
 
-func serializeMachineConfig(mc *mcfgv1.MachineConfig) ([]byte, error) {
-	scheme := runtime.NewScheme()
-	if err := mcfgv1.Install(scheme); err != nil {
-		return nil, err
-	}
-
+func (c *Controller) serializeMachineConfig(mc *mcfgv1.MachineConfig) ([]byte, error) {
 	YamlSerializer := serializer.NewSerializerWithOptions(
-		serializer.DefaultMetaFactory, scheme, scheme,
+		serializer.DefaultMetaFactory, c.scheme, c.scheme,
 		serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true},
 	)
 	buff := bytes.Buffer{}
