@@ -1153,7 +1153,7 @@ func verifyV2Conversion(v2Profile *performancev2.PerformanceProfile, v1Profile *
 		}
 
 		if (specCPU.Offlined == nil) != (v1Profile.Spec.CPU.Offlined == nil) {
-			return fmt.Errorf("spec CPUs Isolated field is different")
+			return fmt.Errorf("spec CPUs Offlined field is different")
 		}
 		if specCPU.Offlined != nil {
 			if string(*specCPU.Offlined) != string(*v1Profile.Spec.CPU.Offlined) {
