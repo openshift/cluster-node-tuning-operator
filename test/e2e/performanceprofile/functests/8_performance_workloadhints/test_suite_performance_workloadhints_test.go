@@ -5,14 +5,19 @@ package __performance_workloadhints_test
 
 import (
 	"context"
+	"log"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/go-logr/stdr"
 	. "github.com/onsi/ginkgo/v2"
 	"github.com/onsi/ginkgo/v2/reporters"
 	. "github.com/onsi/gomega"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 
 	qe_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 
@@ -39,6 +44,8 @@ var _ = AfterSuite(func() {
 })
 
 func TestPerformanceUpdate(t *testing.T) {
+	ctrllog.SetLogger(stdr.New(log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile)))
+
 	RegisterFailHandler(Fail)
 
 	RunSpecs(t, "Performance Addon Operator WorkloadHints")
