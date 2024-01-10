@@ -1,0 +1,12 @@
+apiVersion: performance.openshift.io/v2
+kind: PerformanceProfile
+metadata:
+  name: openshift-bootstrap-master
+spec:
+  cpu:
+    isolated: 0-1
+    reserved: 2-7
+  machineConfigPoolSelector:
+    pools.operator.machineconfiguration.openshift.io/master: ""
+  nodeSelector:
+    node-role.kubernetes.io/master: ""
