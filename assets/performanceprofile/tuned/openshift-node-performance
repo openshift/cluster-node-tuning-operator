@@ -170,6 +170,12 @@ cmdline_pstate=+intel_pstate=active
 cmdline_pstate=+intel_pstate=${automatic_pstate}
 {{end}}
 
+# In case a smartpqi device is present, make sure the interrupt affinity
+# can be managed by userspace services. This driver does not obey
+# the isolcpus=managed_irq hint and is causing interference.
+# See: https://issues.redhat.com/browse/OCPBUGS-25860
+cmdline_smartpqi=+${f:regex_search_ternary:${f:exec:/usr/sbin/lsmod}:\bsmartpqi\b:smartpqi.disable_managed_interrupts=1:}
+
 [rtentsk]
 
 {{ if .HardwareTuning }}
