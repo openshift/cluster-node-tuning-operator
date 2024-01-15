@@ -433,7 +433,7 @@ var _ = Describe("PerformanceProfile", func() {
 			profile.Spec.Net.Devices[0].VendorID = pointer.StringPtr(invalidVendor)
 			profile.Spec.Net.Devices[0].DeviceID = pointer.StringPtr(invalidDevice)
 
-			errors := profile.validateFields()
+			errors := profile.ValidateBasicFields()
 
 			type void struct{}
 			var member void
