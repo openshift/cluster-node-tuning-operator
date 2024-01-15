@@ -190,6 +190,13 @@ func operatorRun() {
 		}).SetupWithManager(mgr); err != nil {
 			klog.Exitf("unable to create PerformanceProfile controller: %v", err)
 		}
+		if err = (&performancev1.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
+			klog.Exitf("unable to create PerformanceProfile v1 webhook: %v", err)
+		}
+
+		if err = (&performancev2.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
+			klog.Exitf("unable to create PerformanceProfile v2 webhook: %v", err)
+		}
 	} else {
 		// Hypershift configuration
 		restConfig, err := ntoclient.GetInClusterConfig()
@@ -220,14 +227,6 @@ func operatorRun() {
 		}).HypershiftSetupWithManager(mgr, managementCluster); err != nil {
 			klog.Exitf("unable to create PerformanceProfile controller: %v", err)
 		}
-	}
-
-	if err = (&performancev1.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
-		klog.Exitf("unable to create PerformanceProfile v1 webhook: %v", err)
-	}
-
-	if err = (&performancev2.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
-		klog.Exitf("unable to create PerformanceProfile v2 webhook: %v", err)
 	}
 
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
