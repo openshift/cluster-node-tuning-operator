@@ -13,6 +13,7 @@ import (
 	kmeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	kubeinformers "k8s.io/client-go/informers"
 	corev1informers "k8s.io/client-go/informers/core/v1"
@@ -42,6 +43,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/openshift/cluster-node-tuning-operator/version"
 
+	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	mcfgclientset "github.com/openshift/machine-config-operator/pkg/generated/clientset/versioned"
 	mcfginformers "github.com/openshift/machine-config-operator/pkg/generated/informers/externalversions"
 )
@@ -79,6 +81,8 @@ type Controller struct {
 
 	pc *ProfileCalculator
 
+	scheme *runtime.Scheme // used by the HyperShift code
+
 	// bootcmdlineConflict is the internal operator's cache of Profiles
 	// tracked as having kernel command-line conflict due to belonging
 	// to the same MCP.
@@ -100,12 +104,17 @@ func NewController() (*Controller, error) {
 
 	listers := &ntoclient.Listers{}
 	clients := &ntoclient.Clients{}
+	scheme := runtime.NewScheme()
+	if err := mcfgv1.Install(scheme); err != nil {
+		return nil, err
+	}
 	controller := &Controller{
 		kubeconfig: kubeconfig,
 		workqueue:  workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		listers:    listers,
 		clients:    clients,
 		pc:         NewProfileCalculator(listers, clients),
+		scheme:     scheme,
 	}
 
 	controller.bootcmdlineConflict = map[string]bool{}
@@ -920,7 +929,7 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 			mc := NewMachineConfig(mcName, annotations, nil, kernelArguments)
 
 			// put the MC into a ConfigMap and create that instead
-			mcConfigMap, err = newConfigMapForMachineConfig(configMapName, nodePoolName, mc)
+			mcConfigMap, err = c.newConfigMapForMachineConfig(configMapName, nodePoolName, mc)
 			if err != nil {
 				klog.Errorf("failed to generate ConfigMap %s for MachineConfig %s: %v", configMapName, mc.ObjectMeta.Name, err)
 				return nil
@@ -937,7 +946,7 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 
 	// A ConfigMap with the same name was found
 	// we need to make sure the contents are up-to-date.
-	mc, err := getMachineConfigFromConfigMap(mcConfigMap)
+	mc, err := c.getMachineConfigFromConfigMap(mcConfigMap)
 	if err != nil {
 		klog.Errorf("failed to get MachineConfig from ConfigMap %s: %v", mcConfigMap.Name, err)
 		return nil
@@ -971,7 +980,7 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 	l := MachineConfigGenerationLogLine(!kernelArgsEq, bootcmdline)
 	klog.V(2).Infof("syncMachineConfigHyperShift(): updating MachineConfig %s with%s", mc.ObjectMeta.Name, l)
 
-	newData, err := serializeMachineConfig(mc)
+	newData, err := c.serializeMachineConfig(mc)
 	if err != nil {
 		klog.Errorf("failed to serialize ConfigMap for MachineConfig %s: %v", mc.Name, err)
 		return nil
