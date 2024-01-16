@@ -85,7 +85,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				profile.Spec.WorkloadHints = nil
 
 				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.BoolPtr(false),
+					Enabled: pointer.Bool(false),
 				}
 
 				By("Updating the performance profile")
@@ -123,11 +123,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+						Expect(utilstuned.WaitForStalldTo(context.TODO(), stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
 							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+						utilstuned.CheckParameters(context.TODO(), node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
 					}()
 				}
 				wg.Wait()
@@ -143,7 +143,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				}
 
 				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.BoolPtr(false),
+					Enabled: pointer.Bool(false),
 				}
 
 				By("Updating the performance profile")
@@ -181,11 +181,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+						Expect(utilstuned.WaitForStalldTo(context.TODO(), stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
 							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+						utilstuned.CheckParameters(context.TODO(), node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
 					}()
 				}
 				wg.Wait()
@@ -201,7 +201,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				}
 
 				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.BoolPtr(false),
+					Enabled: pointer.Bool(false),
 				}
 
 				By("Updating the performance profile")
@@ -238,11 +238,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to NOT be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+						Expect(utilstuned.WaitForStalldTo(context.TODO(), stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
 							fmt.Sprintf("stalld should not running on node %q ", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+						utilstuned.CheckParameters(context.TODO(), node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
 					}()
 				}
 				wg.Wait()
@@ -252,9 +252,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		When("realtime and high power consumption enabled", func() {
 			It("[test_id:50993][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					HighPowerConsumption:  pointer.BoolPtr(true),
-					RealTime:              pointer.BoolPtr(true),
-					PerPodPowerManagement: pointer.BoolPtr(false),
+					HighPowerConsumption:  pointer.Bool(true),
+					RealTime:              pointer.Bool(true),
+					PerPodPowerManagement: pointer.Bool(false),
 				}
 				By("Patching the performance profile with workload hints")
 				workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
@@ -300,11 +300,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+						Expect(utilstuned.WaitForStalldTo(context.TODO(), stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
 							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+						utilstuned.CheckParameters(context.TODO(), node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
 					}()
 				}
 				wg.Wait()
@@ -314,9 +314,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		When("perPodPowerManagent enabled", func() {
 			It("[test_id:54177]should update kernel arguments and tuned accordingly", func() {
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					PerPodPowerManagement: pointer.BoolPtr(true),
-					HighPowerConsumption:  pointer.BoolPtr(false),
-					RealTime:              pointer.BoolPtr(true),
+					PerPodPowerManagement: pointer.Bool(true),
+					HighPowerConsumption:  pointer.Bool(false),
+					RealTime:              pointer.Bool(true),
 				}
 				By("Patching the performance profile with workload hints")
 				workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
@@ -336,7 +336,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 
 				By("Verifying node kernel arguments")
-				cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(&workerRTNodes[0], []string{"cat", "/proc/cmdline"})
+				cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &workerRTNodes[0], []string{"cat", "/proc/cmdline"})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(cmdline).To(ContainSubstring("intel_pstate=passive"))
 				Expect(cmdline).ToNot(ContainSubstring("intel_pstate=disable"))
@@ -359,17 +359,17 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware.
-				checkHardwareCapability(workerRTNodes)
+				checkHardwareCapability(context.TODO(), workerRTNodes)
 				// First enable HighPowerConsumption
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption:  pointer.Bool(true),
 					RealTime:              pointer.Bool(true),
-					PerPodPowerManagement: pointer.BoolPtr(false),
+					PerPodPowerManagement: pointer.Bool(false),
 				}
 				if !*profile.Spec.RealTimeKernel.Enabled {
 					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-						Enabled: pointer.BoolPtr(true),
+						Enabled: pointer.Bool(true),
 					}
 				}
 
@@ -417,11 +417,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+						Expect(utilstuned.WaitForStalldTo(context.TODO(), stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
 							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+						utilstuned.CheckParameters(context.TODO(), node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
 					}()
 				}
 				wg.Wait()
@@ -430,11 +430,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption:  pointer.Bool(false),
 					RealTime:              pointer.Bool(true),
-					PerPodPowerManagement: pointer.BoolPtr(true),
+					PerPodPowerManagement: pointer.Bool(true),
 				}
 				if !*profile.Spec.RealTimeKernel.Enabled {
 					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-						Enabled: pointer.BoolPtr(true),
+						Enabled: pointer.Bool(true),
 					}
 				}
 
@@ -481,11 +481,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+						Expect(utilstuned.WaitForStalldTo(context.TODO(), stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
 							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+						utilstuned.CheckParameters(context.TODO(), node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
 					}()
 				}
 				wg.Wait()
@@ -495,17 +495,17 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware.
-				checkHardwareCapability(workerRTNodes)
+				checkHardwareCapability(context.TODO(), workerRTNodes)
 				// First enable HighPowerConsumption
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption:  pointer.Bool(false),
 					RealTime:              pointer.Bool(true),
-					PerPodPowerManagement: pointer.BoolPtr(true),
+					PerPodPowerManagement: pointer.Bool(true),
 				}
 				if !*profile.Spec.RealTimeKernel.Enabled {
 					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-						Enabled: pointer.BoolPtr(true),
+						Enabled: pointer.Bool(true),
 					}
 				}
 
@@ -552,11 +552,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+						Expect(utilstuned.WaitForStalldTo(context.TODO(), stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
 							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+						utilstuned.CheckParameters(context.TODO(), node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
 					}()
 				}
 				wg.Wait()
@@ -565,11 +565,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption:  pointer.Bool(true),
 					RealTime:              pointer.Bool(true),
-					PerPodPowerManagement: pointer.BoolPtr(false),
+					PerPodPowerManagement: pointer.Bool(false),
 				}
 				if !*profile.Spec.RealTimeKernel.Enabled {
 					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-						Enabled: pointer.BoolPtr(true),
+						Enabled: pointer.Bool(true),
 					}
 				}
 
@@ -617,11 +617,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 						Expect(err).ToNot(HaveOccurred())
 
 						By(fmt.Sprintf("Waiting for stalld to be running on %q", node.Name))
-						Expect(utilstuned.WaitForStalldTo(stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
+						Expect(utilstuned.WaitForStalldTo(context.TODO(), stalldEnabled, 10*time.Second, 1*time.Minute, node)).ToNot(HaveOccurred(),
 							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-						utilstuned.CheckParameters(node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
+						utilstuned.CheckParameters(context.TODO(), node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
 					}()
 				}
 				wg.Wait()
@@ -630,9 +630,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 			It("[test_id:54184]Verify enabling both HighPowerConsumption and PerPodPowerManagment fails", func() {
 
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					PerPodPowerManagement: pointer.BoolPtr(true),
-					HighPowerConsumption:  pointer.BoolPtr(true),
-					RealTime:              pointer.BoolPtr(true),
+					PerPodPowerManagement: pointer.Bool(true),
+					HighPowerConsumption:  pointer.Bool(true),
+					RealTime:              pointer.Bool(true),
 				}
 				EventuallyWithOffset(1, func() string {
 					err := testclient.Client.Update(context.TODO(), profile)
@@ -648,11 +648,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware.
-				checkHardwareCapability(workerRTNodes)
+				checkHardwareCapability(context.TODO(), workerRTNodes)
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					PerPodPowerManagement: pointer.BoolPtr(true),
-					HighPowerConsumption:  pointer.BoolPtr(false),
-					RealTime:              pointer.BoolPtr(true),
+					PerPodPowerManagement: pointer.Bool(true),
+					HighPowerConsumption:  pointer.Bool(false),
+					RealTime:              pointer.Bool(true),
 				}
 				By("Patching the performance profile with workload hints")
 				workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
@@ -694,7 +694,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				By("creating test pod")
 				err = testclient.Client.Create(context.TODO(), testpod)
 				Expect(err).ToNot(HaveOccurred())
-				testpod, err = pods.WaitForCondition(client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+				testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(testpod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed), "Test pod does not have QoS class of Guaranteed")
 
@@ -705,23 +705,23 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				containerCgroup := ""
 				Eventually(func() string {
 					cmd := []string{"/bin/bash", "-c", fmt.Sprintf("find /rootfs/sys/fs/cgroup/cpuset/ -name *%s*", containerID)}
-					containerCgroup, err = nodes.ExecCommandOnNode(cmd, &workerRTNodes[0])
+					containerCgroup, err = nodes.ExecCommandOnNode(context.TODO(), cmd, &workerRTNodes[0])
 					Expect(err).ToNot(HaveOccurred())
 					return containerCgroup
-				}, (cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode)), 5*time.Second).ShouldNot(BeEmpty(),
+				}, cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode), 5*time.Second).ShouldNot(BeEmpty(),
 					fmt.Sprintf("cannot find cgroup for container %q", containerID))
 
 				By("Verify powersetting of cpus used by the pod")
 				cmd := []string{"/bin/bash", "-c", fmt.Sprintf("cat %s/cpuset.cpus", containerCgroup)}
-				output, err := nodes.ExecCommandOnNode(cmd, &workerRTNodes[0])
+				output, err := nodes.ExecCommandOnNode(context.TODO(), cmd, &workerRTNodes[0])
 				Expect(err).ToNot(HaveOccurred())
 				cpus, err := cpuset.Parse(output)
 				targetCpus := cpus.List()
-				err = checkCpuGovernorsAndResumeLatency(targetCpus, &workerRTNodes[0], "0", "schedutil")
+				err = checkCpuGovernorsAndResumeLatency(context.TODO(), targetCpus, &workerRTNodes[0], "0", "schedutil")
 				Expect(err).ToNot(HaveOccurred())
 				//verify the rest of the cpus do not have powersave cpu governors
 				By("Verify the rest of the cpus donot haver powersave settings")
-				numaInfo, err := nodes.GetNumaNodes(&workerRTNodes[0])
+				numaInfo, err := nodes.GetNumaNodes(context.TODO(), &workerRTNodes[0])
 				Expect(err).ToNot(HaveOccurred())
 				var otherCpus []int
 				for _, cpusiblings := range numaInfo {
@@ -731,22 +731,22 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 						}
 					}
 				}
-				err = checkCpuGovernorsAndResumeLatency(otherCpus, &workerRTNodes[0], "0", "performance")
-				deleteTestPod(testpod)
+				err = checkCpuGovernorsAndResumeLatency(context.TODO(), otherCpus, &workerRTNodes[0], "0", "performance")
+				deleteTestPod(context.TODO(), testpod)
 				//Verify after the pod is deleted the cpus assigned to container have default powersave settings
 				By("Verify after pod is delete cpus assigned to container have default powersave settings")
-				err = checkCpuGovernorsAndResumeLatency(targetCpus, &workerRTNodes[0], "0", "performance")
+				err = checkCpuGovernorsAndResumeLatency(context.TODO(), targetCpus, &workerRTNodes[0], "0", "performance")
 			})
 
 			It("[test_id:54186] Verify sysfs paramters of guaranteed pod with performance annotiations", func() {
 
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware
-				checkHardwareCapability(workerRTNodes)
+				checkHardwareCapability(context.TODO(), workerRTNodes)
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					PerPodPowerManagement: pointer.BoolPtr(false),
-					HighPowerConsumption:  pointer.BoolPtr(true),
-					RealTime:              pointer.BoolPtr(true),
+					PerPodPowerManagement: pointer.Bool(false),
+					HighPowerConsumption:  pointer.Bool(true),
+					RealTime:              pointer.Bool(true),
 				}
 				By("Patching the performance profile with workload hints")
 				workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
@@ -791,7 +791,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				By("creating test pod")
 				err = testclient.Client.Create(context.TODO(), testpod)
 				Expect(err).ToNot(HaveOccurred())
-				testpod, err = pods.WaitForCondition(client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+				testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(testpod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed), "Test pod does not have QoS class of Guaranteed")
 
@@ -802,23 +802,23 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				containerCgroup := ""
 				Eventually(func() string {
 					cmd := []string{"/bin/bash", "-c", fmt.Sprintf("find /rootfs/sys/fs/cgroup/cpuset/ -name *%s*", containerID)}
-					containerCgroup, err = nodes.ExecCommandOnNode(cmd, &workerRTNodes[0])
+					containerCgroup, err = nodes.ExecCommandOnNode(context.TODO(), cmd, &workerRTNodes[0])
 					Expect(err).ToNot(HaveOccurred())
 					return containerCgroup
-				}, (cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode)), 5*time.Second).ShouldNot(BeEmpty(),
+				}, cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode), 5*time.Second).ShouldNot(BeEmpty(),
 					fmt.Sprintf("cannot find cgroup for container %q", containerID))
 
 				By("Verify powersetting of cpus used by the pod")
 				cmd := []string{"/bin/bash", "-c", fmt.Sprintf("cat %s/cpuset.cpus", containerCgroup)}
-				output, err := nodes.ExecCommandOnNode(cmd, &workerRTNodes[0])
+				output, err := nodes.ExecCommandOnNode(context.TODO(), cmd, &workerRTNodes[0])
 				Expect(err).ToNot(HaveOccurred())
 				cpus, err := cpuset.Parse(output)
 				targetCpus := cpus.List()
-				err = checkCpuGovernorsAndResumeLatency(targetCpus, &workerRTNodes[0], "n/a", "performance")
+				err = checkCpuGovernorsAndResumeLatency(context.TODO(), targetCpus, &workerRTNodes[0], "n/a", "performance")
 				Expect(err).ToNot(HaveOccurred())
 				By("Verify the rest of cpus have default power setting")
 				var otherCpus []int
-				numaInfo, err := nodes.GetNumaNodes(&workerRTNodes[0])
+				numaInfo, err := nodes.GetNumaNodes(context.TODO(), &workerRTNodes[0])
 				for _, cpusiblings := range numaInfo {
 					for _, cpu := range cpusiblings {
 						if cpu != targetCpus[0] && cpu != targetCpus[1] {
@@ -827,11 +827,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					}
 				}
 				//Verify cpus not assigned to the pod have default power settings
-				err = checkCpuGovernorsAndResumeLatency(otherCpus, &workerRTNodes[0], "0", "performance")
-				deleteTestPod(testpod)
+				err = checkCpuGovernorsAndResumeLatency(context.TODO(), otherCpus, &workerRTNodes[0], "0", "performance")
+				deleteTestPod(context.TODO(), testpod)
 				//Test after pod is deleted the governors are set back to default for the cpus that were alloted to containers.
 				By("Verify after pod is delete cpus assigned to container have default powersave settings")
-				err = checkCpuGovernorsAndResumeLatency(targetCpus, &workerRTNodes[0], "0", "performance")
+				err = checkCpuGovernorsAndResumeLatency(context.TODO(), targetCpus, &workerRTNodes[0], "0", "performance")
 			})
 		})
 
@@ -896,31 +896,31 @@ func getTunedStructuredData(profile *performancev2.PerformanceProfile) *ini.File
 }
 
 // deleteTestPod removes guaranteed pod
-func deleteTestPod(testpod *corev1.Pod) {
+func deleteTestPod(ctx context.Context, testpod *corev1.Pod) {
 	// it possible that the pod already was deleted as part of the test, in this case we want to skip teardown
-	err := testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(testpod), testpod)
+	err := testclient.Client.Get(ctx, client.ObjectKeyFromObject(testpod), testpod)
 	if errors.IsNotFound(err) {
 		return
 	}
 
-	err = testclient.Client.Delete(context.TODO(), testpod)
+	err = testclient.Client.Delete(ctx, testpod)
 	Expect(err).ToNot(HaveOccurred())
 
-	err = pods.WaitForDeletion(testpod, pods.DefaultDeletionTimeout*time.Second)
+	err = pods.WaitForDeletion(ctx, testpod, pods.DefaultDeletionTimeout*time.Second)
 	Expect(err).ToNot(HaveOccurred())
 }
 
 // checkCpuGovernorsAndResumeLatency  Checks power and latency settings of the cpus
-func checkCpuGovernorsAndResumeLatency(cpus []int, targetNode *corev1.Node, pm_qos string, governor string) error {
+func checkCpuGovernorsAndResumeLatency(ctx context.Context, cpus []int, targetNode *corev1.Node, pm_qos string, governor string) error {
 	for _, cpu := range cpus {
 		cmd := []string{"/bin/bash", "-c", fmt.Sprintf("cat /sys/devices/system/cpu/cpu%d/power/pm_qos_resume_latency_us", cpu)}
-		output, err := nodes.ExecCommandOnNode(cmd, targetNode)
+		output, err := nodes.ExecCommandOnNode(ctx, cmd, targetNode)
 		if err != nil {
 			return err
 		}
 		Expect(output).To(Equal(pm_qos))
 		cmd = []string{"/bin/bash", "-c", fmt.Sprintf("cat /sys/devices/system/cpu/cpu%d/cpufreq/scaling_governor", cpu)}
-		output, err = nodes.ExecCommandOnNode(cmd, targetNode)
+		output, err = nodes.ExecCommandOnNode(ctx, cmd, targetNode)
 		if err != nil {
 			return err
 		}
@@ -930,16 +930,16 @@ func checkCpuGovernorsAndResumeLatency(cpus []int, targetNode *corev1.Node, pm_q
 }
 
 // checkHardwareCapability Checks if test is run on baremetal worker
-func checkHardwareCapability(workerRTNodes []corev1.Node) {
+func checkHardwareCapability(ctx context.Context, workerRTNodes []corev1.Node) {
 	const totalCpus = 32
 	for _, node := range workerRTNodes {
-		numaInfo, err := nodes.GetNumaNodes(&node)
+		numaInfo, err := nodes.GetNumaNodes(ctx, &node)
 		Expect(err).ToNot(HaveOccurred())
 		if len(numaInfo) < 2 {
 			Skip(fmt.Sprintf("This test need 2 NUMA nodes.The number of NUMA nodes on node %s < 2", node.Name))
 		}
 		// Additional check so that test gets skipped on vm with fake numa
-		onlineCPUCount, err := nodes.ExecCommandOnNode([]string{"nproc", "--all"}, &node)
+		onlineCPUCount, err := nodes.ExecCommandOnNode(ctx, []string{"nproc", "--all"}, &node)
 		Expect(err).ToNot(HaveOccurred())
 		onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
 		Expect(err).ToNot(HaveOccurred())

@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -82,7 +83,7 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("waiting for a new TuneD Pod to be ready on node %s", node.Name))
-			err = wait.PollImmediate(pollInterval, waitDuration, func() (bool, error) {
+			err = wait.PollUntilContextTimeout(context.TODO(), pollInterval, waitDuration, true, func(ctx context.Context) (bool, error) {
 				pod, err = util.GetTunedForNode(cs, node)
 				if err != nil {
 					explain = err.Error()

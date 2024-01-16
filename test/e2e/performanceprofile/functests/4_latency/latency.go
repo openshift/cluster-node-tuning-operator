@@ -109,7 +109,7 @@ var _ = Describe("[performance] Latency Test", Ordered, func() {
 				testlog.Error(err)
 			}
 
-			err = pods.WaitForDeletion(latencyTestPod, pods.DefaultDeletionTimeout*time.Second)
+			err = pods.WaitForDeletion(context.TODO(), latencyTestPod, pods.DefaultDeletionTimeout*time.Second)
 			if err != nil {
 				testlog.Error(err)
 			}
@@ -434,7 +434,7 @@ func createLatencyTestPod(testPod *corev1.Pod) {
 
 	By("Waiting two minutes to download the latencyTest image")
 	podKey := fmt.Sprintf("%s/%s", testPod.Namespace, testPod.Name)
-	currentPod, err := pods.WaitForPredicate(client.ObjectKeyFromObject(testPod), 2*time.Minute, func(pod *corev1.Pod) (bool, error) {
+	currentPod, err := pods.WaitForPredicate(context.TODO(), client.ObjectKeyFromObject(testPod), 2*time.Minute, func(pod *corev1.Pod) (bool, error) {
 		if pod.Status.Phase == corev1.PodRunning {
 			return true, nil
 		}
@@ -456,7 +456,7 @@ func createLatencyTestPod(testPod *corev1.Pod) {
 
 	By("Waiting another two minutes to give enough time for the cluster to move the pod to Succeeded phase")
 	podTimeout := time.Duration(timeout + latencyTestDelay + 120)
-	testPod, err = pods.WaitForPhase(client.ObjectKeyFromObject(testPod), corev1.PodSucceeded, podTimeout*time.Second)
+	testPod, err = pods.WaitForPhase(context.TODO(), client.ObjectKeyFromObject(testPod), corev1.PodSucceeded, podTimeout*time.Second)
 	if err != nil {
 		logEventsForPod(testPod)
 	}

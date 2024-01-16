@@ -19,7 +19,7 @@ func WaitToBeRunning(cli client.Client, namespace, name string) error {
 
 func WaitToBeRunningWithTimeout(cli client.Client, namespace, name string, timeout time.Duration) error {
 	testlog.Infof("wait for the daemonset %q %q to be running", namespace, name)
-	return wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
+	return wait.PollUntilContextTimeout(context.TODO(), 10*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		return IsRunning(cli, namespace, name)
 	})
 }

@@ -154,7 +154,7 @@ func waitForCmdOutputInPod(interval, duration time.Duration, pod *corev1.Pod, va
 		err, explain  error
 	)
 	startTime := time.Now()
-	err = wait.PollImmediate(interval, duration, func() (bool, error) {
+	err = wait.PollUntilContextTimeout(context.TODO(), interval, duration, true, func(ctx context.Context) (bool, error) {
 		val, err = ExecCmdInPod(pod, cmd...)
 
 		if err != nil {
@@ -245,8 +245,8 @@ func WaitForClusterOperatorConditionStatus(cs *framework.ClientSet, interval, du
 	var explain error
 
 	startTime := time.Now()
-	if err := wait.PollImmediate(interval, duration, func() (bool, error) {
-		co, err := cs.ClusterOperators().Get(context.TODO(), tunedv1.TunedClusterOperatorResourceName, metav1.GetOptions{})
+	if err := wait.PollUntilContextTimeout(context.TODO(), interval, duration, true, func(ctx context.Context) (bool, error) {
+		co, err := cs.ClusterOperators().Get(ctx, tunedv1.TunedClusterOperatorResourceName, metav1.GetOptions{})
 		if err != nil {
 			explain = err
 			return false, nil
@@ -275,8 +275,8 @@ func WaitForClusterOperatorConditionReason(cs *framework.ClientSet, interval, du
 	var explain error
 
 	startTime := time.Now()
-	if err := wait.PollImmediate(interval, duration, func() (bool, error) {
-		co, err := cs.ClusterOperators().Get(context.TODO(), tunedv1.TunedClusterOperatorResourceName, metav1.GetOptions{})
+	if err := wait.PollUntilContextTimeout(context.TODO(), interval, duration, true, func(ctx context.Context) (bool, error) {
+		co, err := cs.ClusterOperators().Get(ctx, tunedv1.TunedClusterOperatorResourceName, metav1.GetOptions{})
 		if err != nil {
 			explain = err
 			return false, nil
@@ -306,8 +306,8 @@ func WaitForProfileConditionStatus(cs *framework.ClientSet, interval, duration t
 	var explain error
 
 	startTime := time.Now()
-	if err := wait.PollImmediate(interval, duration, func() (bool, error) {
-		p, err := cs.Profiles(ntoconfig.WatchNamespace()).Get(context.TODO(), profile, metav1.GetOptions{})
+	if err := wait.PollUntilContextTimeout(context.TODO(), interval, duration, true, func(ctx context.Context) (bool, error) {
+		p, err := cs.Profiles(ntoconfig.WatchNamespace()).Get(ctx, profile, metav1.GetOptions{})
 		if err != nil {
 			explain = err
 			return false, nil

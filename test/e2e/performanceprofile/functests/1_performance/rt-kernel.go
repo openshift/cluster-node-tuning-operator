@@ -1,6 +1,7 @@
 package __performance
 
 import (
+	"context"
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -49,7 +50,7 @@ var _ = Describe("[performance]RT Kernel", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("error looking for the optional selector: %v", err))
 		Expect(workerRTNodes).ToNot(BeEmpty(), "No RT worker node found!")
 
-		err = nodes.HasPreemptRTKernel(&workerRTNodes[0])
+		err = nodes.HasPreemptRTKernel(context.TODO(), &workerRTNodes[0])
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -64,11 +65,11 @@ var _ = Describe("[performance]RT Kernel", Ordered, func() {
 		}
 
 		cmd := []string{"uname", "-a"}
-		kernel, err := nodes.ExecCommandOnNode(cmd, &nonPerformancesWorkers[0])
+		kernel, err := nodes.ExecCommandOnNode(context.TODO(), cmd, &nonPerformancesWorkers[0])
 		Expect(err).ToNot(HaveOccurred(), "failed to execute uname")
 		Expect(kernel).To(ContainSubstring("Linux"), "Node should have Linux string")
 
-		err = nodes.HasPreemptRTKernel(&nonPerformancesWorkers[0])
+		err = nodes.HasPreemptRTKernel(context.TODO(), &nonPerformancesWorkers[0])
 		Expect(err).To(HaveOccurred(), "Node should have non-RT kernel")
 	})
 })

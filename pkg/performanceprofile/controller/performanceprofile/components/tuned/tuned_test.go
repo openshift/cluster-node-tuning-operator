@@ -116,7 +116,7 @@ var _ = Describe("Tuned", func() {
 
 		When("realtime hint disabled", func() {
 			It("should not contain realtime related parameters", func() {
-				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{RealTime: pointer.BoolPtr(false)}
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{RealTime: pointer.Bool(false)}
 				tunedData := getTunedStructuredData(profile)
 				service, err := tunedData.GetSection("service")
 				Expect(err).ToNot(HaveOccurred())
@@ -139,7 +139,7 @@ var _ = Describe("Tuned", func() {
 
 		When("realtime hint enabled", func() {
 			It("should contain realtime related parameters", func() {
-				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{RealTime: pointer.BoolPtr(true)}
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{RealTime: pointer.Bool(true)}
 				tunedData := getTunedStructuredData(profile)
 				service, err := tunedData.GetSection("service")
 				Expect(err).ToNot(HaveOccurred())
@@ -157,7 +157,7 @@ var _ = Describe("Tuned", func() {
 		Context("high power consumption hint enabled", func() {
 			When("default realtime workload settings", func() {
 				It("should contain high power consumption related parameters", func() {
-					profile.Spec.WorkloadHints = &performancev2.WorkloadHints{HighPowerConsumption: pointer.BoolPtr(true)}
+					profile.Spec.WorkloadHints = &performancev2.WorkloadHints{HighPowerConsumption: pointer.Bool(true)}
 					tunedData := getTunedStructuredData(profile)
 					bootLoader, err := tunedData.GetSection("bootloader")
 					Expect(err).ToNot(HaveOccurred())
@@ -169,8 +169,8 @@ var _ = Describe("Tuned", func() {
 			When("realtime workload enabled", func() {
 				It("should not contain idle=poll cmdline", func() {
 					profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-						HighPowerConsumption: pointer.BoolPtr(true),
-						RealTime:             pointer.BoolPtr(true),
+						HighPowerConsumption: pointer.Bool(true),
+						RealTime:             pointer.Bool(true),
 					}
 					tunedData := getTunedStructuredData(profile)
 					bootLoader, err := tunedData.GetSection("bootloader")
@@ -182,8 +182,8 @@ var _ = Describe("Tuned", func() {
 			When("realtime workload disabled", func() {
 				It("should contain idle=poll cmdline", func() {
 					profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-						HighPowerConsumption: pointer.BoolPtr(true),
-						RealTime:             pointer.BoolPtr(false),
+						HighPowerConsumption: pointer.Bool(true),
+						RealTime:             pointer.Bool(false),
 					}
 					tunedData := getTunedStructuredData(profile)
 					bootLoader, err := tunedData.GetSection("bootloader")
@@ -195,8 +195,8 @@ var _ = Describe("Tuned", func() {
 			When("perPodPowerManagement Hint to true", func() {
 				It("should fail as PerPodPowerManagement and HighPowerConsumption can not be set to true", func() {
 					profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-						HighPowerConsumption:  pointer.BoolPtr(true),
-						PerPodPowerManagement: pointer.BoolPtr(true),
+						HighPowerConsumption:  pointer.Bool(true),
+						PerPodPowerManagement: pointer.Bool(true),
 					}
 					_, err := NewNodePerformance(profile)
 					Expect(err.Error()).To(ContainSubstring("Invalid WorkloadHints configuration: HighPowerConsumption is true and PerPodPowerManagement is true"))
@@ -206,8 +206,8 @@ var _ = Describe("Tuned", func() {
 
 		When("perPodPowerManagement Hint is false realTime Hint false", func() {
 			It("should not contain perPodPowerManagement related parameters", func() {
-				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.BoolPtr(false)
-				profile.Spec.WorkloadHints.RealTime = pointer.BoolPtr(false)
+				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.Bool(false)
+				profile.Spec.WorkloadHints.RealTime = pointer.Bool(false)
 				tunedData := getTunedStructuredData(profile)
 				cpuSection, err := tunedData.GetSection("cpu")
 				Expect(err).ToNot(HaveOccurred())
@@ -221,8 +221,8 @@ var _ = Describe("Tuned", func() {
 
 		When("perPodPowerManagement Hint is false realTime Hint true", func() {
 			It("should not contain perPodPowerManagement related parameters but intel_pstate=disable", func() {
-				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.BoolPtr(false)
-				profile.Spec.WorkloadHints.RealTime = pointer.BoolPtr(true)
+				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.Bool(false)
+				profile.Spec.WorkloadHints.RealTime = pointer.Bool(true)
 				tunedData := getTunedStructuredData(profile)
 				cpuSection, err := tunedData.GetSection("cpu")
 				Expect(err).ToNot(HaveOccurred())
@@ -236,7 +236,7 @@ var _ = Describe("Tuned", func() {
 
 		When("perPodPowerManagement Hint to true", func() {
 			It("should contain perPodPowerManagement related parameters", func() {
-				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.BoolPtr(true)
+				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.Bool(true)
 				tunedData := getTunedStructuredData(profile)
 				cpuSection, err := tunedData.GetSection("cpu")
 				Expect(err).ToNot(HaveOccurred())
@@ -249,7 +249,7 @@ var _ = Describe("Tuned", func() {
 		})
 
 		It("should generate yaml with expected parameters for Isolated balancing disabled", func() {
-			profile.Spec.CPU.BalanceIsolated = pointer.BoolPtr(false)
+			profile.Spec.CPU.BalanceIsolated = pointer.Bool(false)
 			tunedData := getTunedStructuredData(profile)
 			bootLoader, err := tunedData.GetSection("bootloader")
 			Expect(err).ToNot(HaveOccurred())
@@ -257,7 +257,7 @@ var _ = Describe("Tuned", func() {
 		})
 
 		It("should generate yaml with expected parameters for Isolated balancing enabled", func() {
-			profile.Spec.CPU.BalanceIsolated = pointer.BoolPtr(true)
+			profile.Spec.CPU.BalanceIsolated = pointer.Bool(true)
 			tunedData := getTunedStructuredData(profile)
 			bootLoader, err := tunedData.GetSection("bootloader")
 			Expect(err).ToNot(HaveOccurred())
@@ -286,7 +286,7 @@ var _ = Describe("Tuned", func() {
 			Expect(strings.Count(manifest, "hugepagesz=")).To(BeNumerically("==", 2))
 			Expect(strings.Count(manifest, "hugepages=")).To(BeNumerically("==", 3))
 
-			profile.Spec.HugePages.Pages[0].Node = pointer.Int32Ptr(1)
+			profile.Spec.HugePages.Pages[0].Node = pointer.Int32(1)
 			manifest = getTunedManifest(profile)
 			Expect(strings.Count(manifest, "hugepagesz=")).To(BeNumerically("==", 1))
 			Expect(strings.Count(manifest, "hugepages=")).To(BeNumerically("==", 2))
@@ -298,7 +298,7 @@ var _ = Describe("Tuned", func() {
 					profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, performancev2.HugePage{
 						Size:  components.HugepagesSize2M,
 						Count: 128,
-						Node:  pointer.Int32Ptr(0),
+						Node:  pointer.Int32(0),
 					})
 
 					tunedData := getTunedStructuredData(profile)
@@ -337,7 +337,7 @@ var _ = Describe("Tuned", func() {
 					profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, performancev2.HugePage{
 						Size:  components.HugepagesSize2M,
 						Count: 128,
-						Node:  pointer.Int32Ptr(0),
+						Node:  pointer.Int32(0),
 					})
 					profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, performancev2.HugePage{
 						Size:  components.HugepagesSize2M,
@@ -361,7 +361,7 @@ var _ = Describe("Tuned", func() {
 					profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, performancev2.HugePage{
 						Size:  components.HugepagesSize2M,
 						Count: 128,
-						Node:  pointer.Int32Ptr(0),
+						Node:  pointer.Int32(0),
 					})
 
 					tunedData := getTunedStructuredData(profile)
@@ -377,7 +377,7 @@ var _ = Describe("Tuned", func() {
 			Context("with default net device queues (all devices set)", func() {
 				It("should set the default netqueues count to reserved CPUs count", func() {
 					profile.Spec.Net = &performancev2.Net{
-						UserLevelNetworking: pointer.BoolPtr(true),
+						UserLevelNetworking: pointer.Bool(true),
 					}
 					manifest := getTunedManifest(profile)
 					reservedSet, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
@@ -392,7 +392,7 @@ var _ = Describe("Tuned", func() {
 					devicesUdevRegex := "\\^INTERFACE=" + strings.Replace(netDeviceName, "*", "\\.\\*", -1)
 
 					profile.Spec.Net = &performancev2.Net{
-						UserLevelNetworking: pointer.BoolPtr(true),
+						UserLevelNetworking: pointer.Bool(true),
 						Devices: []performancev2.Device{
 							{
 								InterfaceName: &netDeviceName,
@@ -411,7 +411,7 @@ var _ = Describe("Tuned", func() {
 					devicesUdevRegex := "\\^INTERFACE=\\(\\?!" + strings.Replace(netDeviceName, "*", "\\.\\*", -1) + "\\)"
 
 					profile.Spec.Net = &performancev2.Net{
-						UserLevelNetworking: pointer.BoolPtr(true),
+						UserLevelNetworking: pointer.Bool(true),
 						Devices: []performancev2.Device{
 							{
 								InterfaceName: &netDeviceName,
@@ -430,7 +430,7 @@ var _ = Describe("Tuned", func() {
 					devicesUdevRegex := "\\^ID_VENDOR_ID=" + netDeviceVendorID
 
 					profile.Spec.Net = &performancev2.Net{
-						UserLevelNetworking: pointer.BoolPtr(true),
+						UserLevelNetworking: pointer.Bool(true),
 						Devices: []performancev2.Device{
 							{
 								VendorID: &netDeviceVendorID,
@@ -450,7 +450,7 @@ var _ = Describe("Tuned", func() {
 					devicesUdevRegex := `\^ID_MODEL_ID=` + netDeviceModelID + `\[\\\\s\\\\S]\*\^ID_VENDOR_ID=` + netDeviceVendorID
 
 					profile.Spec.Net = &performancev2.Net{
-						UserLevelNetworking: pointer.BoolPtr(true),
+						UserLevelNetworking: pointer.Bool(true),
 						Devices: []performancev2.Device{
 							{
 								DeviceID: &netDeviceModelID,
@@ -472,7 +472,7 @@ var _ = Describe("Tuned", func() {
 					devicesUdevRegex := `\^ID_MODEL_ID=` + netDeviceModelID + `\[\\\\s\\\\S]\*\^ID_VENDOR_ID=` + netDeviceVendorID + `\[\\\\s\\\\S]\*\^INTERFACE=` + netDeviceName
 
 					profile.Spec.Net = &performancev2.Net{
-						UserLevelNetworking: pointer.BoolPtr(true),
+						UserLevelNetworking: pointer.Bool(true),
 						Devices: []performancev2.Device{
 							{
 								InterfaceName: &netDeviceName,
@@ -495,7 +495,7 @@ var _ = Describe("Tuned", func() {
 					devicesUdevRegex := `\^ID_MODEL_ID=` + netDeviceModelID + `\[\\\\s\\\\S]\*\^ID_VENDOR_ID=` + netDeviceVendorID + `\[\\\\s\\\\S]\*\^INTERFACE=\(\?!` + netDeviceName + `\)`
 
 					profile.Spec.Net = &performancev2.Net{
-						UserLevelNetworking: pointer.BoolPtr(true),
+						UserLevelNetworking: pointer.Bool(true),
 						Devices: []performancev2.Device{
 							{
 								InterfaceName: &netDeviceName,

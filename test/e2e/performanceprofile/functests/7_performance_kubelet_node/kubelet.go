@@ -77,7 +77,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			By("Waiting when mcp finishes updates")
 			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 			for _, node := range workerRTNodes {
-				kubeletConfig, err := nodes.GetKubeletConfig(&node)
+				kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), &node)
 				Expect(err).ToNot(HaveOccurred())
 				sysctlsValue := kubeletConfig.AllowedUnsafeSysctls
 				Expect(sysctlsValue).Should(ContainElements("net.core.somaxconn", "kernel.msg*"))
@@ -86,7 +86,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			}
 			kubeletArguments := []string{"/bin/bash", "-c", "ps -ef | grep kubelet | grep config"}
 			for _, node := range workerRTNodes {
-				stdout, err := nodes.ExecCommandOnNode(kubeletArguments, &node)
+				stdout, err := nodes.ExecCommandOnNode(context.TODO(), kubeletArguments, &node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(strings.Contains(stdout, "300Mi")).To(BeTrue())
 			}
@@ -110,7 +110,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 				By("Waiting when mcp finishes updates")
 				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 				for _, node := range workerRTNodes {
-					kubeletConfig, err := nodes.GetKubeletConfig(&node)
+					kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), &node)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(kubeletConfig.CPUManagerPolicy).Should(Equal("static"))
 					Expect(kubeletConfig.CPUManagerReconcilePeriod.Seconds()).To(Equal(5))
@@ -159,7 +159,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			Expect(kubeletConfigString).To(ContainSubstring(`"systemReserved":{"memory":"300Mi"}`))
 
 			for _, node := range workerRTNodes {
-				kubeletConfig, err := nodes.GetKubeletConfig(&node)
+				kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), &node)
 				Expect(err).ToNot(HaveOccurred())
 				totalCapactity := node.Status.Capacity.Memory().MilliValue()
 				evictionMemory := kubeletConfig.EvictionHard["memory.available"]
@@ -193,7 +193,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			By("Waiting when mcp finishes updates")
 			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 			for _, node := range workerRTNodes {
-				kubeletConfig, err := nodes.GetKubeletConfig(&node)
+				kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), &node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(kubeletConfig.TopologyManagerPolicy).To(Equal("single-numa-node"))
 			}
@@ -209,14 +209,14 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 			kubeletArguments := []string{"/bin/bash", "-c", "ps -ef | grep kubelet | grep config"}
 			for _, node := range workerRTNodes {
-				kubeletConfig, err := nodes.GetKubeletConfig(&node)
+				kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), &node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(kubeletConfig.AllowedUnsafeSysctls).To(Equal(nil))
 				Expect(kubeletConfig.KubeReserved["memory"]).ToNot(Equal("768Mi"))
 				Expect(kubeletConfig.ImageMinimumGCAge.Seconds()).ToNot(Equal(180))
 			}
 			for _, node := range workerRTNodes {
-				stdout, err := nodes.ExecCommandOnNode(kubeletArguments, &node)
+				stdout, err := nodes.ExecCommandOnNode(context.TODO(), kubeletArguments, &node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(strings.Contains(stdout, "300Mi")).To(BeTrue())
 			}

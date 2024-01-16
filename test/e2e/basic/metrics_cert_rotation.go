@@ -50,8 +50,8 @@ var _ = ginkgo.Describe("[basic][metrics] Node Tuning Operator certificate rotat
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By("checking if server TLS certificate matches TLS certificate in Secret")
-			err = wait.PollImmediate(pollInterval, waitDuration, func() (bool, error) {
-				tlsSecret, err := cs.Secrets(ntoconfig.WatchNamespace()).Get(context.TODO(), "node-tuning-operator-tls", metav1.GetOptions{})
+			err = wait.PollUntilContextTimeout(context.TODO(), pollInterval, waitDuration, true, func(ctx context.Context) (bool, error) {
+				tlsSecret, err := cs.Secrets(ntoconfig.WatchNamespace()).Get(ctx, "node-tuning-operator-tls", metav1.GetOptions{})
 				if err != nil {
 					util.Logf("error getting secret/node-tuning-operator-tls. May not exist yet. Err: %v", err)
 					return false, nil
@@ -94,8 +94,8 @@ func rotateTLSCertSecret() error {
 	}
 
 	// Wait for new certificate to be injected into the Secret.
-	err = wait.PollImmediate(2*time.Second, 2*time.Minute, func() (bool, error) {
-		tlsSecret, err = cs.Secrets(ntoconfig.WatchNamespace()).Get(context.TODO(), "node-tuning-operator-tls", metav1.GetOptions{})
+	err = wait.PollUntilContextTimeout(context.TODO(), 2*time.Second, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
+		tlsSecret, err = cs.Secrets(ntoconfig.WatchNamespace()).Get(ctx, "node-tuning-operator-tls", metav1.GetOptions{})
 		if err != nil {
 			util.Logf("Error getting secret/node-tuning-operator-tls. May not exist yet. Err: %v", err)
 			return false, nil

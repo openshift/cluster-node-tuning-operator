@@ -386,7 +386,7 @@ var _ = Describe("Controller", func() {
 			})
 
 			It("should update MC when RT kernel gets disabled", func() {
-				profile.Spec.RealTimeKernel.Enabled = pointer.BoolPtr(false)
+				profile.Spec.RealTimeKernel.Enabled = pointer.Bool(false)
 				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
@@ -444,7 +444,7 @@ var _ = Describe("Controller", func() {
 				profile.Spec.CPU = &performancev2.CPU{
 					Reserved:        &reserved,
 					Isolated:        &isolated,
-					BalanceIsolated: pointer.BoolPtr(true),
+					BalanceIsolated: pointer.Bool(true),
 				}
 
 				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
@@ -468,7 +468,7 @@ var _ = Describe("Controller", func() {
 				profile.Spec.CPU = &performancev2.CPU{
 					Reserved:        &reserved,
 					Isolated:        &isolated,
-					BalanceIsolated: pointer.BoolPtr(false),
+					BalanceIsolated: pointer.Bool(false),
 				}
 
 				r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
@@ -522,7 +522,7 @@ var _ = Describe("Controller", func() {
 						{
 							Count: 8,
 							Size:  size,
-							Node:  pointer.Int32Ptr(0),
+							Node:  pointer.Int32(0),
 						},
 					},
 				}
