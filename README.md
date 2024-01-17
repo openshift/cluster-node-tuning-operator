@@ -115,7 +115,7 @@ The `profile:` section lists TuneD profiles and their names.
 ```
 
 Refer to a list of
-(TuneD plug-ins supported by the Operator)[#supported-tuned-daemon-plug-ins].
+[TuneD plug-ins supported by the Operator](#supported-tuned-daemon-plug-ins).
 
 
 ### Recommended profiles
@@ -203,18 +203,18 @@ its recommend.conf file based on the profile priorities. The profile
 with the highest priority (10) is openshift-control-plane-es and,
 therefore, it is considered first. The containerized TuneD daemon
 running on a given node looks to see if there is a pod running on the
-same node with the tuned.openshift.io/elasticsearch label set. If not,
+same node with the `tuned.openshift.io/elasticsearch` label set. If not,
 the entire `<match>` section evaluates as _false_. If there is such a
 pod with the label, in order for the `<match>` section to evaluate to
-_true_, the node label also needs to be node-role.kubernetes.io/master
-OR node-role.kubernetes.io/infra.
+_true_, the node label also needs to be `node-role.kubernetes.io/master`
+OR `node-role.kubernetes.io/infra`.
 
 If the labels for the profile with priority 10 matched,
 openshift-control-plane-es profile is applied and no other profile is
 considered. If the node/pod label combination did not match,
 the second highest priority profile (openshift-control-plane) is considered.
 This profile is applied if the containerized TuneD pod runs on a node with
-labels node-role.kubernetes.io/master OR node-role.kubernetes.io/infra.
+labels `node-role.kubernetes.io/master` OR `node-role.kubernetes.io/infra`.
 
 Finally, the profile `openshift-node` has the lowest priority of 30.
 It lacks the `<match>` section and, therefore, will always match. It
