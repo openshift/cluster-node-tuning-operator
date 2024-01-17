@@ -129,6 +129,9 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 		}
 	}
 
+	// Append any missing default manifests (i.e. `master`/`worker`)
+	mcPools = util.AppendMissingDefaultMCPManifests(mcPools)
+
 	mcp := findMachineConfigPoolByName(mcPools, mcpName)
 	if mcp == nil {
 		klog.Errorf("Unable to find MachineConfigPool:%q in input folders", mcpName)
