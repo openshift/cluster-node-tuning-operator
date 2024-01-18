@@ -2,13 +2,17 @@ package pao_mustgather
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"testing"
 
+	"github.com/go-logr/stdr"
 	. "github.com/onsi/ginkgo/v2"
 	"github.com/onsi/ginkgo/v2/reporters"
 	. "github.com/onsi/gomega"
+
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 
 	qe_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 )
@@ -43,6 +47,8 @@ var _ = AfterSuite(func() {
 })
 
 func TestPaoMustgatherTests(t *testing.T) {
+	ctrllog.SetLogger(stdr.New(log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile)))
+
 	RegisterFailHandler(Fail)
 
 	RunSpecs(t, "Performance Profile must gather tests")
