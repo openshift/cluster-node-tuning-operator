@@ -14,6 +14,7 @@ limitations under the License.
 package render
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,9 +42,10 @@ import (
 )
 
 var (
-	manifestScheme = runtime.NewScheme()
-	codecFactory   serializer.CodecFactory
-	runtimeDecoder runtime.Decoder
+	manifestScheme                 = runtime.NewScheme()
+	codecFactory                   serializer.CodecFactory
+	runtimeDecoder                 runtime.Decoder
+	ErrorNoPerformanceProfileFound = errors.New("PerformanceProfile Not Found")
 )
 
 func init() {
@@ -146,7 +148,7 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 
 	if len(filteredPerformanceProfiles) == 0 {
 		klog.Warningf("Cannot find any PerformanceProfile applicable to MachineConfigPool %s.", mcpName)
-		return fmt.Errorf("Cannot find any PerformanceProfile complying with MachineConfigPool %s.", mcpName)
+		return fmt.Errorf("%w: Cannot find any PerformanceProfile applicable to MachineConfigPool %s.", ErrorNoPerformanceProfileFound, mcpName)
 	}
 
 	if len(filteredPerformanceProfiles) > 1 {

@@ -37,16 +37,20 @@ func NewRenderBootCmdMCCommand() *cobra.Command {
 	renderOpts := renderOpts{}
 
 	cmd := &cobra.Command{
-		Use:   "render-bootcmd-mc",
-		Short: "Render MC with kernel args",
-		Run: func(cmd *cobra.Command, args []string) {
+		Use:          "render-bootcmd-mc",
+		Short:        "Render MC with kernel args",
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := renderOpts.Validate(); err != nil {
-				klog.Fatal(err)
+				klog.Error(err)
+				return err
 			}
 
 			if err := renderOpts.Run(); err != nil {
-				klog.Fatal(err)
+				klog.Error(err)
+				return err
 			}
+			return nil
 		},
 	}
 

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	coreerrors "errors"
 	"flag"
 	"fmt"
 	"os"
@@ -381,7 +382,13 @@ func main() {
 	switch runAs {
 	case version.OperatorFilename:
 		prepareCommands()
-		_ = rootCmd.Execute()
+		if err := rootCmd.Execute(); err != nil {
+			klog.Error("error found con command", err)
+			if coreerrors.Is(err, tunedrender.ErrorNoPerformanceProfileFound) {
+				os.Exit(69)
+			}
+			os.Exit(255)
+		}
 	case version.OperandFilename:
 		tunedOperandRun()
 	default:
