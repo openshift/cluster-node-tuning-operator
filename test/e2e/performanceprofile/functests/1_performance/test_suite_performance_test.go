@@ -6,13 +6,18 @@ package __performance_test
 import (
 	"context"
 	"flag"
+	"log"
+	"os"
 	"path"
 	"testing"
 	"time"
 
+	"github.com/go-logr/stdr"
 	. "github.com/onsi/ginkgo/v2"
 	"github.com/onsi/ginkgo/v2/reporters"
 	. "github.com/onsi/gomega"
+
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 
 	kniK8sReporter "github.com/openshift-kni/k8sreporter"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -52,6 +57,7 @@ var _ = AfterSuite(func() {
 })
 
 func TestPerformance(t *testing.T) {
+	ctrllog.SetLogger(stdr.New(log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile)))
 	// We want to collect logs before any resource is deleted in AfterEach, so we register the global fail handler
 	// in a way such that the reporter's Dump is always called before the default Fail.
 	RegisterFailHandler(func(message string, callerSkip ...int) {
