@@ -144,25 +144,21 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 		return fmt.Errorf("Unable to get PerformanceProfile to apply using MachineConfigPool %s. error : %w", mcpName, err)
 	}
 
-	if len(filteredPerformanceProfiles) == 0 {
-		klog.Warningf("Cannot find any PerformanceProfile applicable to MachineConfigPool %s.", mcpName)
-		return fmt.Errorf("Cannot find any PerformanceProfile complying with MachineConfigPool %s.", mcpName)
-	}
-
 	if len(filteredPerformanceProfiles) > 1 {
 		klog.Warningf("Found %d PerformanceProfiles for MachineConfigPool %s, only ONE is allowed.", len(filteredPerformanceProfiles), mcpName)
 		return fmt.Errorf("Found %d PerformanceProfiles for MachineConfigPool %s, only ONE is allowed.", len(filteredPerformanceProfiles), mcpName)
 	}
 
-	perfProfile := filteredPerformanceProfiles[0]
-
-	tunedFromPP, err := tuned.NewNodePerformance(perfProfile)
-	if err != nil {
-		klog.Errorf("Unable to get tuned from PerformanceProfile %s. error : %v", perfProfile.Name, err)
-		return fmt.Errorf("unable to get tuned from PerformanceProfile:%s. error: %w", perfProfile.Name, err)
+	if len(filteredPerformanceProfiles) > 0 {
+		perfProfile := filteredPerformanceProfiles[0]
+		tunedFromPP, err := tuned.NewNodePerformance(perfProfile)
+		if err != nil {
+			klog.Errorf("Unable to get tuned from PerformanceProfile %s. error : %v", perfProfile.Name, err)
+			return fmt.Errorf("unable to get tuned from PerformanceProfile:%s. error: %w", perfProfile.Name, err)
+		}
+		// add tuned from PP to the list
+		tuneD = append(tuneD, tunedFromPP)
 	}
-	// add tuned from PP to the list
-	tuneD = append(tuneD, tunedFromPP)
 
 	tuneDrecommended := operator.TunedRecommend(tuneD)
 	if len(tuneDrecommended) == 0 {
@@ -199,7 +195,7 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 		return err
 	}
 
-	mc, err := renderMachineConfig(mcp, bootcmdline, mcConfigs, perfProfile, tunedFromPP)
+	mc, err := renderMachineConfig(mcp, bootcmdline, mcConfigs, tuneDrecommended[0].MachineConfigLabels)
 	if err != nil {
 		klog.Errorf("error while rendering machine config  %v", err)
 		return fmt.Errorf("error while rendering machine config: %w", err)
@@ -213,7 +209,7 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 			return err
 		}
 
-		fileName := fmt.Sprintf("%s_%s_kargs.yaml", perfProfile.Name, strings.ToLower(mc.Kind))
+		fileName := fmt.Sprintf("%s_%s_kargs.yaml", recommendedProfile, strings.ToLower(mc.Kind))
 		fullFilePath := filepath.Join(outputDir, fileName)
 		klog.Info("Writing file: ", fullFilePath)
 		err = os.WriteFile(fullFilePath, byteOutput, 0644)
@@ -228,7 +224,7 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 	return nil
 }
 
-func renderMachineConfig(pool *mcfgv1.MachineConfigPool, bootcmdline string, mConfigs []*mcfgv1.MachineConfig, profile *performancev2.PerformanceProfile, tunedMf *tunedv1.Tuned) (*mcfgv1.MachineConfig, error) {
+func renderMachineConfig(pool *mcfgv1.MachineConfigPool, bootcmdline string, mConfigs []*mcfgv1.MachineConfig, mcLabels map[string]string) (*mcfgv1.MachineConfig, error) {
 	if len(bootcmdline) == 0 {
 		klog.Info("Empty cmdbootline. Avoid creating MachineConfig")
 		return nil, nil
@@ -238,18 +234,17 @@ func renderMachineConfig(pool *mcfgv1.MachineConfigPool, bootcmdline string, mCo
 	mcName := operator.GetMachineConfigNameForPools(pools)
 	kernelArgs := util.SplitKernelArguments(bootcmdline)
 	annotations := map[string]string{operator.GeneratedByControllerVersionAnnotationKey: version.Version}
-	labels := tunedMf.Spec.Recommend[0].MachineConfigLabels
 
 	mc := getMachineConfigByName(mConfigs, mcName)
 	if mc == nil { //not found
 		// Expect only one PerformanceProfile => one TuneD
-		mc = operator.NewMachineConfig(mcName, annotations, labels, kernelArgs)
+		mc = operator.NewMachineConfig(mcName, annotations, mcLabels, kernelArgs)
 		klog.Infof("rendered MachineConfig %s with%s", mc.ObjectMeta.Name, operator.MachineConfigGenerationLogLine(len(bootcmdline) != 0, bootcmdline))
 		return mc, nil
 	}
 
 	// found a MC need to modify it
-	mcNew := operator.NewMachineConfig(mcName, annotations, labels, kernelArgs)
+	mcNew := operator.NewMachineConfig(mcName, annotations, mcLabels, kernelArgs)
 
 	kernelArgsEq := util.StringSlicesEqual(mc.Spec.KernelArguments, kernelArgs)
 	if kernelArgsEq {
