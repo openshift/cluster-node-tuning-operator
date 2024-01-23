@@ -61,7 +61,7 @@ clone-tuned:
 	  cd $(TUNED_DIR) && git checkout $(TUNED_COMMIT) && cd .. && \
 	  rm -rf $(TUNED_DIR)/.git)
 
-build: $(BINDATA) pkg/generated build-performance-profile-creator build-gather-sysinfo
+build: $(BINDATA) pkg/generated build-performance-profile-creator build-gather-sysinfo build-init-container
 	$(GO_BUILD_RECIPE)
 	ln -sf $(PACKAGE_BIN) $(OUT_DIR)/openshift-tuned
 
@@ -271,6 +271,12 @@ build-performance-profile-creator:
 performance-profile-creator-tests: build-performance-profile-creator
 	@echo "Running Performance Profile Creator Tests"
 	hack/run-test.sh -t "test/e2e/performanceprofile/functests-performance-profile-creator" -p "--v -r --fail-fast --flake-attempts=2" -m "Running Functional Tests" -r "--junit-report=/tmp/artifacts"
+
+# Init container
+.PHONY: build-init-container
+build-init-container:
+	@echo "Building Init Container (PPC)"
+	$(GO) build  -v -o $(OUT_DIR)/init-webhook ./cmd/init-container
 
 # Gather sysinfo binary for use in must-gather
 .PHONY: build-gather-sysinfo

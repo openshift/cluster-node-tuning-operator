@@ -107,6 +107,10 @@ rules:
 - apiGroups: ["apps"]
   resources: ["replicasets"]
   verbs: ["get"]
+# Needed for init container
+- apiGroups: ["admissionregistration.k8s.io"]
+  resources: ["validatingwebhookconfigurations"]
+  verbs: ["get","create"]
 ---
 
 # Bind the operator cluster role to its Service Account.

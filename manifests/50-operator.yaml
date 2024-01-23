@@ -39,9 +39,18 @@ spec:
         operator: "Exists"
         effect: "NoExecute"
         tolerationSeconds: 120 # Evict pods within 2 mins.
+      initContainers:
+        - name: create-validating-webhook
+          image: quay.io/vgrinber/cluster-node-tuning-operator:init
+          imagePullPolicy: Always
+          command:
+          - bash
+          - -c
+          args:
+          - init-webhook
       containers:
         - name: cluster-node-tuning-operator
-          image: registry.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuning-operator
+          image: quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:37244fa8e239e3aac7b555bb6742703f88de247671d87f2efaf9619f7b01ed45
           command:
           - cluster-node-tuning-operator
           args:
@@ -60,7 +69,7 @@ spec:
           - name: RESYNC_PERIOD
             value: "600"
           - name: CLUSTER_NODE_TUNED_IMAGE
-            value: registry.ci.openshift.org/openshift/origin-v4.0:cluster-node-tuning-operator
+            value: quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:37244fa8e239e3aac7b555bb6742703f88de247671d87f2efaf9619f7b01ed45
           ports:
           - containerPort: 60000
             name: metrics
