@@ -73,6 +73,7 @@ const (
 	// we do not care about the actual system latency because CI systems are not tuned well enough to be an example for
 	// latency measuring, besides this suite only cares about testing the test executable with different values of env vars.
 	untunedLatencyThreshold = "10000000" //10s
+	windowSize              = "1000000"
 	negativeTesting         = false
 	positiveTesting         = true
 )
@@ -147,7 +148,7 @@ var _ = DescribeTable("Test latency measurement tools tests", func(testGroup []l
 					if test.hwlatdetectMaxLatency != "" {
 						thr = test.hwlatdetectMaxLatency
 					}
-					passedArgs = []string{"--duration " + test.testRuntime, "--threshold " + thr, "--hardlimit " + thr, "--window ", "--width "}
+					passedArgs = []string{"--duration " + test.testRuntime, "--threshold " + thr, "--hardlimit " + thr, "--window " + windowSize, "--width "}
 				default:
 					testlog.Error("the tool to test was not set")
 				}
