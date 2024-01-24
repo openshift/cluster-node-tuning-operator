@@ -65,7 +65,7 @@ func (r *PerformanceProfile) validateCreateOrUpdate() (admission.Warnings, error
 	allErrs = append(allErrs, r.validateNodeSelectorDuplication(ppList)...)
 
 	// validate basic fields
-	allErrs = append(allErrs, r.validateFields()...)
+	allErrs = append(allErrs, r.ValidateBasicFields()...)
 
 	if len(allErrs) == 0 {
 		return admission.Warnings{}, nil
@@ -102,7 +102,7 @@ func (r *PerformanceProfile) validateNodeSelectorDuplication(ppList *Performance
 	return allErrs
 }
 
-func (r *PerformanceProfile) validateFields() field.ErrorList {
+func (r *PerformanceProfile) ValidateBasicFields() field.ErrorList {
 	var allErrs field.ErrorList
 
 	allErrs = append(allErrs, r.validateCPUs()...)
