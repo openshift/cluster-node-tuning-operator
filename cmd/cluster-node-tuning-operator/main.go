@@ -47,6 +47,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/metrics"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/operator"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/cmd/render"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/cmd/validate"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/signals"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/tuned"
 	tunedrender "github.com/openshift/cluster-node-tuning-operator/pkg/tuned/cmd/render"
@@ -108,6 +109,7 @@ func prepareCommands() {
 
 	if !config.InHyperShift() {
 		rootCmd.AddCommand(render.NewRenderCommand())
+		rootCmd.AddCommand(validate.NewValidateCommand())
 		rootCmd.AddCommand(tunedrender.NewRenderBootCmdMCCommand())
 	}
 }
