@@ -84,10 +84,12 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = nil
 
-				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.Bool(false),
+				// set realtimekernel to false only if its enabled
+				if profile.Spec.RealTimeKernel.Enabled == pointer.Bool(true) {
+					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
+						Enabled: pointer.Bool(false),
+					}
 				}
-
 				By("Updating the performance profile")
 				profiles.UpdateWithRetry(profile)
 
@@ -141,9 +143,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					HighPowerConsumption: pointer.Bool(false),
 					RealTime:             pointer.Bool(true),
 				}
-
-				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.Bool(false),
+				// set realtimekernel to false only if its enabled
+				if profile.Spec.RealTimeKernel.Enabled == pointer.Bool(true) {
+					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
+						Enabled: pointer.Bool(false),
+					}
 				}
 
 				By("Updating the performance profile")
@@ -199,11 +203,12 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					HighPowerConsumption: pointer.Bool(true),
 					RealTime:             pointer.Bool(false),
 				}
-
-				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.Bool(false),
+				// set realtimekernel to false only if its enabled
+				if profile.Spec.RealTimeKernel.Enabled == pointer.Bool(true) {
+					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
+						Enabled: pointer.Bool(false),
+					}
 				}
-
 				By("Updating the performance profile")
 				profiles.UpdateWithRetry(profile)
 
