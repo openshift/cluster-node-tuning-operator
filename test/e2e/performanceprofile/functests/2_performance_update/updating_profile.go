@@ -1179,7 +1179,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		When("updates the default runtime to crun", func() {
 			It("should run high-performance runtimes class with crun as container-runtime", func() {
-				testutils.KnownIssueJira("OCPBUGS-26589")
 				const ContainerRuntimeConfigName = "ctrcfg-test"
 
 				key := types.NamespacedName{
