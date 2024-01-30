@@ -100,27 +100,18 @@ func All() (*performancev2.PerformanceProfileList, error) {
 
 func UpdateWithRetry(profile *performancev2.PerformanceProfile) {
 	EventuallyWithOffset(1, func() error {
-		updatedProfile := &performancev2.PerformanceProfile{}
-		key := types.NamespacedName{
-			Name:      profile.Name,
-			Namespace: profile.Namespace,
-		}
-		// We should get the updated version of the performance profile.
-		// Otherwise, we will always try to update the profile with the old resource version
-		// and will always get the conflict error
-		if err := testclient.Client.Get(context.TODO(), key, updatedProfile); err != nil {
+		profileFromAPIServer := &performancev2.PerformanceProfile{}
+		// get the current resourceVersion
+		if err := testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(profile), profileFromAPIServer); err != nil {
 			return err
 		}
-
-		updatedProfile.Spec = *profile.Spec.DeepCopy()
-		if err := testclient.Client.Update(context.TODO(), updatedProfile); err != nil {
+		prepared := prepareForUpdate(profile, profileFromAPIServer)
+		if err := testclient.Client.Update(context.TODO(), prepared); err != nil {
 			if !errors.IsConflict(err) {
 				testlog.Errorf("failed to update the profile %q: %v", profile.Name, err)
 			}
-
 			return err
 		}
-
 		return nil
 	}, time.Minute, 5*time.Second).Should(BeNil())
 }
@@ -148,4 +139,16 @@ func Delete(name string) error {
 		Name: name,
 	}
 	return WaitForDeletion(key, 2*time.Minute)
+}
+
+func prepareForUpdate(updated, current *performancev2.PerformanceProfile) *performancev2.PerformanceProfile {
+	current.Spec = updated.Spec
+	if updated.Labels != nil {
+		current.Labels = updated.Labels
+	}
+	if updated.Annotations != nil {
+		current.Annotations = updated.Annotations
+	}
+	// we return current since it has the most updated data from the API server
+	return current
 }
