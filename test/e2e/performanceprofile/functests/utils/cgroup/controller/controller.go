@@ -10,7 +10,7 @@ type CpuSet struct {
 	Partition string
 	Exclusive string
 	// SchedLoadBalance true if enabled, only applicable for cgroupv1
-	SchedLoadBalance bool
+	SchedLoadBalance string
 }
 
 type Cpu struct {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/controller"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/runtime"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 )
 
@@ -26,35 +27,28 @@ func NewManager(c client.Client, k8sClient *kubernetes.Clientset) *ControllersMa
 
 func (cm *ControllersManager) CpuSet(ctx context.Context, pod *corev1.Pod, containerName, childName, runtimeType string) (*controller.CpuSet, error) {
 	cfg := &controller.CpuSet{}
-	dirPath := path.Join(controller.CgroupMountPoint, childName)
-	cmd := []string{
-		"/bin/cat",
-		dirPath + "/cpuset/cpuset.cpus",
-		dirPath + "/cpuset/cpuset.cpu_exclusive",
-		dirPath + "/cpuset/cpuset.effective_cpus",
-		dirPath + "/cpuset/cpuset.mems",
-		dirPath + "/cpuset/cpuset.sched_load_balance",
+	dirPath := path.Join(controller.CgroupMountPoint, "cpuset", childName)
+	store := map[string]*string{
+		"cpuset.cpus":               &cfg.Cpus,
+		"cpuset.cpus.exclusive":     &cfg.Exclusive,
+		"cpuset.cpus.effective":     &cfg.Effective,
+		"cpuset.sched_load_balance": &cfg.SchedLoadBalance,
+		"cpuset.mems":               &cfg.Mems,
 	}
-	b, err := pods.ExecCommandOnPod(cm.k8sClient, pod, containerName, cmd)
+	err := cm.execAndStore(pod, containerName, dirPath, store)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve cgroup config for pod. pod=%q, container=%q; %w", client.ObjectKeyFromObject(pod).String(), containerName, err)
 	}
-	output := strings.Split(string(b), "\r\n")
-	cfg.Cpus = output[0]
-	cfg.Exclusive = output[1]
-	cfg.Effective = output[2]
-	cfg.Mems = output[3]
-	cfg.SchedLoadBalance = output[4] == "1"
 	return cfg, nil
 }
 
 func (cm *ControllersManager) Cpu(ctx context.Context, pod *corev1.Pod, containerName, childName, runtimeType string) (*controller.Cpu, error) {
 	cfg := &controller.Cpu{}
-	dirPath := path.Join(controller.CgroupMountPoint, childName)
+	dirPath := path.Join(controller.CgroupMountPoint, "cpu", childName)
 	cmd := []string{
 		"/bin/cat",
-		dirPath + "/cpu/cpu.cfs_quota_us",
-		dirPath + "/cpu/cpu.cfs_period_us",
+		dirPath + "/cpu.cfs_quota_us",
+		dirPath + "/cpu.cfs_period_us",
 	}
 	b, err := pods.ExecCommandOnPod(cm.k8sClient, pod, containerName, cmd)
 	if err != nil {
@@ -97,5 +91,27 @@ func (cm *ControllersManager) Container(ctx context.Context, pod *corev1.Pod, co
 
 func (cm *ControllersManager) Child(ctx context.Context, pod *corev1.Pod, containerName, childName string, controllerConfig interface{}) error {
 	// TODO
+	return nil
+}
+
+func (cm *ControllersManager) execAndStore(pod *corev1.Pod, containerName, dirPath string, store map[string]*string) error {
+	for k, v := range store {
+		fullPath := dirPath + "/" + k
+		cmd := []string{
+			"/bin/cat",
+			fullPath,
+		}
+		b, err := pods.ExecCommandOnPod(cm.k8sClient, pod, containerName, cmd)
+		if err != nil {
+			return err
+		}
+		if len(b) == 0 {
+			log.Warningf("empty value in cgroupv1 controller file; pod=%q,container=%q,file=%q", pod.Name, containerName, fullPath)
+			*v = ""
+			continue
+		}
+		output := strings.Trim(string(b), "\r\n")
+		*v = output
+	}
 	return nil
 }
