@@ -38,13 +38,22 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/uuid"
 
 	"k8s.io/klog"
 )
 
 const (
 	clusterConfigResourceName = "cluster"
+)
+
+const (
+	ownerRefModeNone      = "none"
+	ownerRefModeK8S       = "k8s"
+	ownerRefModeLabelName = "label-name"
+)
+
+const (
+	weakOwnerReferenceNameLabel = "performance.openshift.io/weak-owner-reference-name"
 )
 
 var (
@@ -68,9 +77,8 @@ func init() {
 
 // Render will traverse the input directory and generate the proper performance profile files
 // in to the output dir based on PerformanceProfile manifests contained in the input directory.
-func render(inputDir, outputDir string) error {
-
-	klog.Info("Rendering files into: ", outputDir)
+func render(ownerRefMode, inputDir, outputDir string) error {
+	klog.Infof("Rendering files into: %s (ownerRefMode=%v)", outputDir, ownerRefMode)
 
 	// Read asset directory fileInfo
 	filePaths, err := listFiles(inputDir)
@@ -181,43 +189,89 @@ func render(inputDir, outputDir string) error {
 			return err
 		}
 
-		uid := pp.UID
-		if uid == types.UID("") {
-			uid = uuid.NewUUID()
-		}
-
-		or := []v1.OwnerReference{
-			{
-				Kind:       pp.Kind,
-				Name:       pp.Name,
-				APIVersion: pp.APIVersion,
-				UID:        uid,
-			},
-		}
-
-		for _, componentObj := range components.ToObjects() {
-			componentObj.SetOwnerReferences(or)
+		if ownerRefMode == ownerRefModeK8S {
+			err = addOwnerReference(components, pp)
+			if err != nil {
+				return err
+			}
+		} else if ownerRefMode == ownerRefModeLabelName {
+			err = addWeakOwnerReferenceLabel(components, pp)
+			if err != nil {
+				return err
+			}
+			err = writeObject(outputDir, fmt.Sprintf("%s_%s.yaml", pp.Name, "annotated"), pp)
+			if err != nil {
+				return err
+			}
 		}
 
 		for kind, manifest := range components.ToManifestTable() {
-			b, err := yaml.Marshal(manifest)
+			err = writeObject(outputDir, fmt.Sprintf("%s_%s.yaml", pp.Name, strings.ToLower(kind)), manifest)
 			if err != nil {
 				return err
 			}
-
-			fileName := fmt.Sprintf("%s_%s.yaml", pp.Name, strings.ToLower(kind))
-			fullFilePath := filepath.Join(outputDir, fileName)
-			klog.Info("Writing file: ", fullFilePath)
-
-			err = os.WriteFile(fullFilePath, b, 0644)
-			if err != nil {
-				return err
-			}
-			klog.Info(fileName)
 		}
 	}
 
 	return nil
+}
+
+func writeObject(outputDir, fileName string, manifest interface{}) error {
+	fullFilePath := filepath.Join(outputDir, fileName)
+	klog.Infof("Writing file: %s -> %s", fileName, fullFilePath)
+
+	b, err := yaml.Marshal(manifest)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(fullFilePath, b, 0644)
+}
+
+func addOwnerReference(components *manifestset.ManifestResultSet, pp *performancev2.PerformanceProfile) error {
+	if pp == nil || pp.UID == types.UID("") {
+		return fmt.Errorf("Missing UID from performance profile")
+	}
+
+	or := []v1.OwnerReference{
+		{
+			Kind:       pp.Kind,
+			Name:       pp.Name,
+			APIVersion: pp.APIVersion,
+			UID:        pp.UID,
+		},
+	}
+
+	for _, componentObj := range components.ToObjects() {
+		componentObj.SetOwnerReferences(or)
+	}
+
+	return nil
+}
+
+func addWeakOwnerReferenceLabel(components *manifestset.ManifestResultSet, pp *performancev2.PerformanceProfile) error {
+	lab := weakOwnerReferenceNameLabel // shortcut
+	val := pp.Name                     // shortcut
+
+	if pp.Labels == nil {
+		pp.Labels = make(map[string]string)
+	}
+	pp.Labels[lab] = val
+
+	for _, componentObj := range components.ToObjects() {
+		labels := componentObj.GetLabels()
+		if labels == nil {
+			labels = make(map[string]string)
+		}
+		labels[lab] = val
+		componentObj.SetLabels(labels)
+	}
+
+	return nil
+}
+
+func isValidOwnerRefMode(val string) bool {
+	return val == ownerRefModeNone || val == ownerRefModeK8S || val == ownerRefModeLabelName
 }
 
 // isLegacySNOWorkloadPinningMethod provides a check for situations where the user is creating an SNO cluster with the

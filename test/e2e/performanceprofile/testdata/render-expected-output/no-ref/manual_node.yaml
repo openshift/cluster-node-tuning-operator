@@ -3,8 +3,6 @@ kind: Node
 metadata:
   creationTimestamp: null
   name: cluster
-  labels:
-    performance.openshift.io/weak-owner-reference-name: "manual"
 spec:
   cgroupMode: v1
 status: {}
