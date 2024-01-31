@@ -4,8 +4,6 @@ kind: RuntimeClass
 metadata:
   creationTimestamp: null
   name: performance-manual
-  labels:
-    performance.openshift.io/weak-owner-reference-name: "manual"
 scheduling:
   nodeSelector:
     node-role.kubernetes.io/worker-cnf: ""

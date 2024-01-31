@@ -4,11 +4,8 @@ metadata:
   creationTimestamp: null
   name: openshift-node-performance-openshift-bootstrap-worker
   namespace: openshift-cluster-node-tuning-operator
-  ownerReferences:
-  - apiVersion: performance.openshift.io/v2
-    kind: PerformanceProfile
-    name: openshift-bootstrap-worker
-    uid: ce7f2308-f46e-42e2-ba5b-ef3afb629bcc
+  labels:
+    performance.openshift.io/weak-owner-reference-name: "openshift-bootstrap-worker"
 spec:
   profile:
   - data: "[main]\nsummary=Openshift node optimized for deterministic performance

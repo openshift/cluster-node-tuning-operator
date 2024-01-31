@@ -4,11 +4,8 @@ kind: RuntimeClass
 metadata:
   creationTimestamp: null
   name: performance-openshift-bootstrap-master
-  ownerReferences:
-  - apiVersion: performance.openshift.io/v2
-    kind: PerformanceProfile
-    name: openshift-bootstrap-master
-    uid: ce7f2308-f46e-42e2-ba5b-ef3afb629bcc
+  labels:
+    performance.openshift.io/weak-owner-reference-name: "openshift-bootstrap-master"
 scheduling:
   nodeSelector:
     node-role.kubernetes.io/master: ""
