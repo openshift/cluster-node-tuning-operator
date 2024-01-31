@@ -3,9 +3,9 @@ handler: high-performance
 kind: RuntimeClass
 metadata:
   creationTimestamp: null
-  name: performance-openshift-bootstrap-master
   labels:
-    performance.openshift.io/weak-owner-reference-name: "openshift-bootstrap-master"
+    performance.openshift.io/weak-owner-reference-name: openshift-bootstrap-master
+  name: performance-openshift-bootstrap-master
 scheduling:
   nodeSelector:
     node-role.kubernetes.io/master: ""

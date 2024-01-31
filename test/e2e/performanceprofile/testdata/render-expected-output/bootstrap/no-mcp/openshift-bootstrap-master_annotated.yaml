@@ -2,9 +2,9 @@ apiVersion: performance.openshift.io/v2
 kind: PerformanceProfile
 metadata:
   creationTimestamp: null
-  name: openshift-bootstrap-master
   labels:
-    performance.openshift.io/weak-owner-reference-name: "openshift-bootstrap-master"
+    performance.openshift.io/weak-owner-reference-name: openshift-bootstrap-master
+  name: openshift-bootstrap-master
 spec:
   cpu:
     isolated: 0-1
