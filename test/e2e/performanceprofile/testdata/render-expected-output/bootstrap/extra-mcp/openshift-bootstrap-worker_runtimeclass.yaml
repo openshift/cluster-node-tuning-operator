@@ -4,11 +4,8 @@ kind: RuntimeClass
 metadata:
   creationTimestamp: null
   name: performance-openshift-bootstrap-worker
-  ownerReferences:
-  - apiVersion: performance.openshift.io/v2
-    kind: PerformanceProfile
-    name: openshift-bootstrap-worker
-    uid: ""
+  labels:
+    performance.openshift.io/weak-owner-reference-name: "openshift-bootstrap-worker"
 scheduling:
   nodeSelector:
     node-role.kubernetes.io/worker: ""

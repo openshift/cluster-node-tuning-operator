@@ -4,12 +4,8 @@ metadata:
   creationTimestamp: null
   labels:
     machineconfiguration.openshift.io/role: worker
+    performance.openshift.io/weak-owner-reference-name: "openshift-bootstrap-worker"
   name: 50-performance-openshift-bootstrap-worker
-  ownerReferences:
-  - apiVersion: performance.openshift.io/v2
-    kind: PerformanceProfile
-    name: openshift-bootstrap-worker
-    uid: ""
 spec:
   baseOSExtensionsContainerImage: ""
   config:
