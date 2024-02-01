@@ -1,31 +1,31 @@
 apiVersion: performance.openshift.io/v2
 kind: PerformanceProfile
 metadata:
-  name: manual
   creationTimestamp: null
   labels:
-    performance.openshift.io/weak-owner-reference-name: "manual"
+    performance.openshift.io/weak-owner-reference-name: manual
+  name: manual
 spec:
   cpu:
     isolated: "1"
+    offlined: 2,3
     reserved: "0"
-    offlined: "2,3"
   hugepages:
-    defaultHugepagesSize: "1G"
+    defaultHugepagesSize: 1G
     pages:
-      - size: "1G"
-        count: 1
-        node: 0
-      - size: "2M"
-        count: 128
-  realTimeKernel:
-    enabled: true
-  numa:
-    topologyPolicy: "single-numa-node"
+    - count: 1
+      node: 0
+      size: 1G
+    - count: 128
+      size: 2M
   nodeSelector:
     node-role.kubernetes.io/worker-cnf: ""
+  numa:
+    topologyPolicy: single-numa-node
+  realTimeKernel:
+    enabled: true
   workloadHints:
     highPowerConsumption: false
-    realTime: true
     perPodPowerManagement: false
+    realTime: true
 status: {}

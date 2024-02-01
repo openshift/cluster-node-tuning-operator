@@ -2,9 +2,9 @@ apiVersion: machineconfiguration.openshift.io/v1
 kind: KubeletConfig
 metadata:
   creationTimestamp: null
-  name: performance-manual
   labels:
-    performance.openshift.io/weak-owner-reference-name: "manual"
+    performance.openshift.io/weak-owner-reference-name: manual
+  name: performance-manual
 spec:
   kubeletConfig:
     apiVersion: kubelet.config.k8s.io/v1beta1

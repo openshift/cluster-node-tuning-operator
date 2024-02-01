@@ -2,9 +2,9 @@ apiVersion: machineconfiguration.openshift.io/v1
 kind: KubeletConfig
 metadata:
   creationTimestamp: null
-  name: performance-openshift-bootstrap-worker
   labels:
-    performance.openshift.io/weak-owner-reference-name: "openshift-bootstrap-worker"
+    performance.openshift.io/weak-owner-reference-name: openshift-bootstrap-worker
+  name: performance-openshift-bootstrap-worker
 spec:
   kubeletConfig:
     apiVersion: kubelet.config.k8s.io/v1beta1
