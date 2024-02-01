@@ -43,7 +43,7 @@ webhooks:
         namespace: openshift-cluster-node-tuning-operator
         path: /validate-performance-openshift-io-v2-performanceprofile
         port: 443
-    failurePolicy: Fail
+    failurePolicy: Ignore
     matchPolicy: Equivalent
     name: vwb.performance.openshift.io
     rules:
