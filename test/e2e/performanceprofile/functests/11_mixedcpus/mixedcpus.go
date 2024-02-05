@@ -84,11 +84,10 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 			Expect(testclient.Client.Get(ctx, key, kc)).ToNot(HaveOccurred())
 			k8sKc := &kubeletconfig.KubeletConfiguration{}
 			Expect(json.Unmarshal(kc.Spec.KubeletConfig.Raw, k8sKc)).ToNot(HaveOccurred())
-			// don't need to check the error, the values were already validated.
-			reserved, _ := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
-			shared, _ := cpuset.Parse(string(*profile.Spec.CPU.Shared))
-			reservedSystemCpus, _ := cpuset.Parse(k8sKc.ReservedSystemCPUs)
-			Expect(reservedSystemCpus.Equals(reserved.Union(shared))).To(BeTrue(), "reservedSystemCPUs should contain the shared cpus; reservedSystemCPUs=%q reserved=%q shared=%q",
+			reserved := mustParse(string(*profile.Spec.CPU.Reserved))
+			shared := mustParse(string(*profile.Spec.CPU.Shared))
+			reservedSystemCpus := mustParse(k8sKc.ReservedSystemCPUs)
+			Expect(reservedSystemCpus.Equals(reserved.Union(*shared))).To(BeTrue(), "reservedSystemCPUs should contain the shared cpus; reservedSystemCPUs=%q reserved=%q shared=%q",
 				reservedSystemCpus.String(), reserved.String(), shared.String())
 		})
 
@@ -107,11 +106,10 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 			cpus, err := nodes.ExecCommandOnNode(ctx, cmd, worker)
 			Expect(err).ToNot(HaveOccurred(), "failed to execute command on node; cmd=%q node=%q", cmd, worker)
 			cpus = strings.Trim(cpus, "\n")
-			crioShared, err := cpuset.Parse(cpus)
-			Expect(err).ToNot(HaveOccurred())
+			crioShared := mustParse(cpus)
 			// don't need to check the error, the values were already validated.
-			shared, _ := cpuset.Parse(string(*profile.Spec.CPU.Shared))
-			Expect(shared.Equals(crioShared)).To(BeTrue(), "crio config file does not contain the expected shared cpuset; shared=%q crioShared=%q",
+			shared := mustParse(string(*profile.Spec.CPU.Shared))
+			Expect(shared.Equals(*crioShared)).To(BeTrue(), "crio config file does not contain the expected shared cpuset; shared=%q crioShared=%q",
 				shared.String(), crioShared.String())
 		})
 	})
@@ -149,10 +147,10 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 				cfg := &controller.CpuSet{}
 				err = getter.Container(ctx, p, p.Spec.Containers[0].Name, cfg)
 				Expect(err).ToNot(HaveOccurred())
-				cgroupCpuSet, err := cpuset.Parse(cfg.Cpus)
+				cgroupCpuSet := mustParse(cfg.Cpus)
 				Expect(err).ToNot(HaveOccurred())
-				shared, _ := cpuset.Parse(string(*profile.Spec.CPU.Shared))
-				Expect(cgroupCpuSet.Intersection(shared).List()).ToNot(BeEmpty(), "shared cpus are not in the pod cgroups; pod=%q, cgroupscpuset=%q sharedcpuset=%q",
+				shared := mustParse(string(*profile.Spec.CPU.Shared))
+				Expect(cgroupCpuSet.Intersection(*shared).List()).ToNot(BeEmpty(), "shared cpus are not in the pod cgroups; pod=%q, cgroupscpuset=%q sharedcpuset=%q",
 					fmt.Sprintf("%s/%s", p.Namespace, p.Name), cgroupCpuSet.String(), shared.String())
 			})
 			It("should be able to disable cfs_quota", func() {
@@ -187,13 +185,12 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 				output, err := pods.ExecCommandOnPod(testclient.K8sClient, p, "", cmd)
 				Expect(err).ToNot(HaveOccurred(), "failed to execute command on pod; cmd=%q pod=%q", cmd, client.ObjectKeyFromObject(p).String())
 				isolatedAndShared := strings.Split(string(output), "\r\n")
-				isolated, err := cpuset.Parse(isolatedAndShared[0])
-				Expect(err).ToNot(HaveOccurred())
+				isolated := mustParse(isolatedAndShared[0])
 				Expect(isolated.IsEmpty()).ToNot(BeTrue())
-				shared, err := cpuset.Parse(isolatedAndShared[1])
-				ppShared, _ := cpuset.Parse(string(*profile.Spec.CPU.Shared))
+				shared := mustParse(isolatedAndShared[1])
+				ppShared := mustParse(string(*profile.Spec.CPU.Shared))
 				Expect(err).ToNot(HaveOccurred())
-				Expect(shared.Equals(ppShared)).To(BeTrue(), "OPENSHIFT_SHARED_CPUS value not equal to what configure in the performance profile."+
+				Expect(shared.Equals(*ppShared)).To(BeTrue(), "OPENSHIFT_SHARED_CPUS value not equal to what configure in the performance profile."+
 					"OPENSHIFT_SHARED_CPUS=%s spec.cpu.shared=%s", shared.String(), ppShared.String())
 			})
 		})
@@ -268,8 +265,7 @@ func setup(ctx context.Context) func(ctx2 context.Context) {
 	initialProfile := profile.DeepCopy()
 
 	if !profileutil.IsMixedCPUsEnabled(profile) {
-		isolated, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
-		Expect(err).ToNot(HaveOccurred())
+		isolated := mustParse(string(*profile.Spec.CPU.Isolated))
 
 		// arbitrary take the first one
 		sharedcpu := cpuset.New(isolated.List()[0])
