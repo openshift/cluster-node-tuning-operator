@@ -103,6 +103,23 @@ spec:
                   per pod CPUs when using irq-load-balancing.crio.io/cpu-quota.crio.io
                   annotations. Defaults to "false"
                 type: boolean
+              hardwareTuning:
+                description: HardwareTuning defines a set of CPU frequencies for isolated
+                  and reserved cpus. It is an optional parameter and requires vendor
+                  recommendation to find suitable frequencies. The intention is to
+                  set higher frequency for reserved cpus where platform application
+                  is running while setting isolated cpus frequency to match vendor
+                  recommendation.
+                properties:
+                  isolatedCpuFreq:
+                    description: IsolatedCpuFreq defines a minimum frequency to be
+                      set across isolated cpus
+                    type: integer
+                  reservedCpuFreq:
+                    description: ReservedCpuFreq defines a maximum frequency to be
+                      set across reserved cpus
+                    type: integer
+                type: object
               hugepages:
                 description: HugePages defines a set of huge pages related parameters.
                   It is possible to set huge pages with multiple size values at the
@@ -552,6 +569,19 @@ spec:
                   per pod CPUs when using irq-load-balancing.crio.io/cpu-quota.crio.io
                   annotations. Defaults to "false"
                 type: boolean
+              hardwareTuning:
+                description: HardwareTuning defines a set of CPU frequencies for isolated
+                  and reserved cpus.
+                properties:
+                  isolatedCpuFreq:
+                    description: IsolatedCpuFreq defines a minimum frequency to be
+                      set across isolated cpus
+                    type: integer
+                  reservedCpuFreq:
+                    description: ReservedCpuFreq defines a maximum frequency to be
+                      set across reserved cpus
+                    type: integer
+                type: object
               hugepages:
                 description: HugePages defines a set of huge pages related parameters.
                   It is possible to set huge pages with multiple size values at the

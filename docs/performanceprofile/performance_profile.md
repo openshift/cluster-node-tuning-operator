@@ -13,6 +13,8 @@ This document documents the PerformanceProfile API introduced by the Performance
 * [HugePage](#hugepage)
 * [HugePageSize](#hugepagesize)
 * [HugePages](#hugepages)
+* [CPUfrequency](#cpufrequency)
+* [HardwareTuning](#hardwaretuning)
 * [NUMA](#numa)
 * [Net](#net)
 * [PerformanceProfile](#performanceprofile)
@@ -75,6 +77,14 @@ HugePageSize is of type `string`.
 
 [Back to TOC](#table-of-contents)
 
+## CPUfrequency
+
+CPUfrequency defines cpu frequencies for isolated and reserved cpus
+
+CPUfrequency is a type of `int`.
+
+[Back to TOC](#table-of-contents)
+
 ## HugePages
 
 HugePages defines a set of huge pages that we want to allocate at boot.
@@ -86,6 +96,16 @@ HugePages defines a set of huge pages that we want to allocate at boot.
 
 [Back to TOC](#table-of-contents)
 
+## HardwareTuning
+
+HardwareTuning defines cpu frequencies for isolated and reserved cpus. 
+
+| Field | Description | Scheme | Required |
+| ----- | ----------- | ------ | -------- |
+| isolatedCpuFreq | IsolatedCpuFreq defines the maximum cpu frequency for isolated CPUs. | *[CPUfrequency](#cpufrequency) | true |
+| reservedCpuFreq | ReservedCpuFreq defines the maximum cpu frequency for reserved CPUs. | *[CPUfrequency](#cpufrequency) | true |
+
+[Back to TOC](#table-of-contents)
 ## NUMA
 
 NUMA defines parameters related to topology awareness and affinity.
@@ -138,6 +158,7 @@ PerformanceProfileSpec defines the desired state of PerformanceProfile.
 | ----- | ----------- | ------ | -------- |
 | cpu | CPU defines a set of CPU related parameters. | *[CPU](#cpu) | true |
 | hugepages | HugePages defines a set of huge pages related parameters. It is possible to set huge pages with multiple size values at the same time. For example, hugepages can be set with 1G and 2M, both values will be set on the node by the Performance Profile Controller. It is important to notice that setting hugepages default size to 1G will remove all 2M related folders from the node and it will be impossible to configure 2M hugepages under the node. | *[HugePages](#hugepages) | false |
+| hardwareTuning | HardwareTuning defines cpu frequencies for isolated and reserved cpus. It is an optional parameter and requires vendor recommendation to find suitable frequencies. The intention is to set higher frequencies for reserved cpus where platform application is running while setting isolated cpu frequencies to match vendor recommendation. | [HardwareTuning](#hardwaretuning) | false
 | machineConfigLabel | MachineConfigLabel defines the label to add to the MachineConfigs the operator creates. It has to be used in the MachineConfigSelector of the MachineConfigPool which targets this performance profile. Defaults to \"machineconfiguration.openshift.io/role=&lt;same role as in NodeSelector label key&gt;\" | map[string]string | false |
 | machineConfigPoolSelector | MachineConfigPoolSelector defines the MachineConfigPool label to use in the MachineConfigPoolSelector of resources like KubeletConfigs created by the operator. Defaults to \"machineconfiguration.openshift.io/role=&lt;same role as in NodeSelector label key&gt;\" | map[string]string | false |
 | nodeSelector | NodeSelector defines the Node label to use in the NodeSelectors of resources like Tuned created by the operator. It most likely should, but does not have to match the node label in the NodeSelector of the MachineConfigPool which targets this performance profile. In the case when machineConfigLabels or machineConfigPoolSelector are not set, we are expecting a certain NodeSelector format &lt;domain&gt;/&lt;role&gt;: \"\" in order to be able to calculate the default values for the former mentioned fields. | map[string]string | true |

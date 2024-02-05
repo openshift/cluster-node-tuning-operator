@@ -51,7 +51,7 @@ spec:
       tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded}
       intel_iommu=on iommu=pt\n\n\ncmdline_isolation=+isolcpus=managed_irq,${isolated_cores}\n\n\n\ncmdline_realtime=+nohz_full=${isolated_cores}
       tsc=reliable nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11\n\n\n\n\n\n\n\ncmdline_hugepages=+
-      default_hugepagesz=1G   hugepagesz=2M hugepages=128 \n\n\n\n\ncmdline_pstate=+intel_pstate=disable\n\n\n[rtentsk]\n"
+      default_hugepagesz=1G   hugepagesz=2M hugepages=128 \n\n\n\n\ncmdline_pstate=+intel_pstate=disable\n\n\n[rtentsk]\n\n\n"
     name: openshift-node-performance-manual
   recommend:
   - machineConfigLabels:

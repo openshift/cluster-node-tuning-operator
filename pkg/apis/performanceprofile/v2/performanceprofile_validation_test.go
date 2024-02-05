@@ -27,7 +27,6 @@ const (
 	OfflinedCPUs = CPUSet("7")
 	// SingleNUMAPolicy defines the topologyManager policy used for tests
 	SingleNUMAPolicy = "single-numa-node"
-
 	//MachineConfigLabelKey defines the MachineConfig label key of the test profile
 	MachineConfigLabelKey = "mcKey"
 	//MachineConfigLabelValue defines the MachineConfig label value of the test profile
@@ -36,7 +35,6 @@ const (
 	MachineConfigPoolLabelKey = "mcpKey"
 	//MachineConfigPoolLabelValue defines the MachineConfigPool label value of the test profile
 	MachineConfigPoolLabelValue = "mcpValue"
-
 	//NetDeviceName defines a net device name for the test profile
 	NetDeviceName = "enp0s4"
 	//NetDeviceVendorID defines a net device vendor ID for the test profile
@@ -219,6 +217,65 @@ var _ = Describe("PerformanceProfile", func() {
 			Expect(errors).NotTo(BeEmpty(), "should have validation error when isolated and shared CPUs have overlap")
 			Expect(errors[0].Error()).To(Or(ContainSubstring("isolated and shared cpus overlap"), ContainSubstring("shared and isolated cpus overlap")))
 		})
+	})
+
+	Describe("CPU Frequency validation", func() {
+		It("should reject if isolated CPU frequency is declared, while reserved CPU frequency is empty", func() {
+			isolatedCpuFrequency := CPUfrequency(2500000)
+			profile.Spec.HardwareTuning = &HardwareTuning{
+				IsolatedCpuFreq: &isolatedCpuFrequency,
+			}
+
+			errors := profile.validateCpuFrequency()
+			Expect(errors[0].Error()).To(ContainSubstring("both isolated and reserved cpu frequency must be declared"))
+		})
+
+		It("should reject if reserved CPU frequency isdeclared, while isolated CPU frequency is empty", func() {
+			reservedCpuFrequency := CPUfrequency(2800000)
+			profile.Spec.HardwareTuning = &HardwareTuning{
+				ReservedCpuFreq: &reservedCpuFrequency,
+			}
+
+			errors := profile.validateCpuFrequency()
+			Expect(errors[0].Error()).To(ContainSubstring("both isolated and reserved cpu frequency must be declared"))
+		})
+
+		It("should have CPU frequency fields populated", func() {
+			isolatedCpuFrequency := CPUfrequency(2500000)
+			reservedCpuFrequency := CPUfrequency(2800000)
+			profile.Spec.HardwareTuning = &HardwareTuning{
+				IsolatedCpuFreq: &isolatedCpuFrequency,
+				ReservedCpuFreq: &reservedCpuFrequency,
+			}
+
+			errors := profile.validateCpuFrequency()
+			Expect(errors).To(BeEmpty(), "should not have validation errors with populated CPU fields")
+		})
+
+		It("should reject invalid(0) frequency for isolated CPUs", func() {
+			isolatedCpuFrequency := CPUfrequency(0)
+			reservedCpuFrequency := CPUfrequency(2800000)
+			profile.Spec.HardwareTuning = &HardwareTuning{
+				IsolatedCpuFreq: &isolatedCpuFrequency,
+				ReservedCpuFreq: &reservedCpuFrequency,
+			}
+			errors := profile.validateCpuFrequency()
+			Expect(errors).NotTo(BeEmpty(), "should have validation error when isolated CPU frequency has invalid format")
+			Expect(errors[0].Error()).To(ContainSubstring("isolated cpu frequency can not be equal to 0"))
+		})
+
+		It("should reject invalid(0) frequency for reserved CPUs", func() {
+			isolatedCpuFrequency := CPUfrequency(2500000)
+			reservedCpuFrequency := CPUfrequency(0)
+			profile.Spec.HardwareTuning = &HardwareTuning{
+				IsolatedCpuFreq: &isolatedCpuFrequency,
+				ReservedCpuFreq: &reservedCpuFrequency,
+			}
+			errors := profile.validateCpuFrequency()
+			Expect(errors).NotTo(BeEmpty(), "should have validation error when reserved CPU frequency has invalid format")
+			Expect(errors[0].Error()).To(ContainSubstring("reserved cpu frequency can not be equal to 0"))
+		})
+
 	})
 
 	Describe("Label selectors validation", func() {

@@ -30,6 +30,13 @@ const PerformanceProfilePauseAnnotation = "performance.openshift.io/pause-reconc
 type PerformanceProfileSpec struct {
 	// CPU defines a set of CPU related parameters.
 	CPU *CPU `json:"cpu"`
+	// HardwareTuning defines a set of CPU frequencies for isolated and reserved cpus.
+	// It is an optional parameter and requires vendor recommendation to find suitable frequencies.
+	// The intention is to set higher frequency for reserved cpus where
+	// platform application is running while setting isolated cpus frequency to match
+	// vendor recommendation.
+	// +optional
+	HardwareTuning *HardwareTuning `json:"hardwareTuning,omitempty"`
 	// HugePages defines a set of huge pages related parameters.
 	// It is possible to set huge pages with multiple size values at the same time.
 	// For example, hugepages can be set with 1G and 2M, both values will be set on the node by the performance-addon-operator.
@@ -102,6 +109,17 @@ type CPU struct {
 	// Offline defines a set of CPUs that will be unused and set offline
 	// +optional
 	Offlined *CPUSet `json:"offlined,omitempty"`
+}
+
+// CPUfrequency defines cpu frequencies for isolated and reserved cpus
+type CPUfrequency int
+
+// HardwareTuning defines a set of CPU frequency related features.
+type HardwareTuning struct {
+	// IsolatedCpuFreq defines a minimum frequency to be set across isolated cpus
+	IsolatedCpuFreq *CPUfrequency `json:"isolatedCpuFreq,omitempty"`
+	// ReservedCpuFreq defines a maximum frequency to be set across reserved cpus
+	ReservedCpuFreq *CPUfrequency `json:"reservedCpuFreq,omitempty"`
 }
 
 // HugePageSize defines size of huge pages, can be 2M or 1G.

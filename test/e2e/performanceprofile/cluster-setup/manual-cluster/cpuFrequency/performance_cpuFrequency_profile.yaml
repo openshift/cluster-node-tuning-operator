@@ -1,0 +1,29 @@
+apiVersion: performance.openshift.io/v2
+kind: PerformanceProfile
+metadata:
+  name: manual
+spec:
+  cpu:
+    isolated: "2-3"
+    reserved: "0-1"
+  hardwareTuning:
+    isolatedCpuFreq: 2500000
+    reservedCpuFreq: 2800000
+  hugepages:
+    defaultHugepagesSize: "1G"
+    pages:
+      - size: "1G"
+        count: 1
+        node: 0
+      - size: "2M"
+        count: 128
+  realTimeKernel:
+    enabled: true
+  numa:
+    topologyPolicy: "single-numa-node"
+  nodeSelector:
+    node-role.kubernetes.io/worker-cnf: ""
+  workloadHints:
+    highPowerConsumption: false
+    realTime: true
+    perPodPowerManagement: false
