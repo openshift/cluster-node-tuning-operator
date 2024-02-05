@@ -20,6 +20,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/runtime"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
@@ -96,7 +97,7 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 				"/rootfs",
 				"/bin/bash",
 				"-c",
-				fmt.Sprintf("/bin/awk  -F '\"' '/shared_cpuset.*/ { print $2 }' %s", crioRuntimeConfigFile),
+				fmt.Sprintf("/bin/awk  -F '\"' '/shared_cpuset.*/ { print $2 }' %s", runtime.CRIORuntimeConfigFile),
 			}
 			cpus, err := nodes.ExecCommandOnNode(ctx, cmd, worker)
 			Expect(err).ToNot(HaveOccurred(), "failed to execute command on node; cmd=%q node=%q", cmd, worker)
@@ -124,7 +125,6 @@ func setup(ctx context.Context, profile *performancev2.PerformanceProfile) func(
 	profile.Spec.CPU.Shared = cpuSetToPerformanceCPUSet(&sharedcpu)
 	profile.Spec.WorkloadHints.MixedCpus = pointer.Bool(true)
 	testprofiles.UpdateWithRetry(profile)
-
 	mcp, err := mcps.GetByProfile(profile)
 	Expect(err).ToNot(HaveOccurred())
 
