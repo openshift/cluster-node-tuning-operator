@@ -247,9 +247,12 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 				output, err := pods.ExecCommandOnPod(testclient.K8sClient, p, "", cmd)
 				Expect(err).ToNot(HaveOccurred(), "failed to execute command on pod; cmd=%q pod=%q", cmd, client.ObjectKeyFromObject(p).String())
 				isolatedAndShared := strings.Split(string(output), "\r\n")
+				// We expect three - two environment variables and one empty string appended by split
+				Expect(len(isolatedAndShared)).To(Equal(3), "failed to split output; output=%q isolatedAndShared=%v len=%d", string(output), isolatedAndShared, len(isolatedAndShared))
 				isolatedFromEnv := mustParse(isolatedAndShared[0])
 				Expect(isolatedFromEnv.IsEmpty()).ToNot(BeTrue())
 				sharedFromEnv := mustParse(isolatedAndShared[1])
+				Expect(sharedFromEnv.IsEmpty()).ToNot(BeTrue())
 				Expect(sharedFromEnv.Equals(newShared)).To(BeTrue(), "OPENSHIFT_SHARED_CPUS value not equal to what configure in the performance profile."+
 					"OPENSHIFT_SHARED_CPUS=%s spec.cpu.shared=%s", sharedFromEnv.String(), newShared.String())
 
@@ -394,7 +397,8 @@ func getTestingNamespace() corev1.Namespace {
 }
 
 func mustParse(cpus string) *cpuset.CPUSet {
+	GinkgoHelper()
 	set, err := cpuset.Parse(cpus)
-	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to parse cpuset; cpus=%q", cpus)
+	Expect(err).ToNot(HaveOccurred(), "failed to parse cpuset; cpus=%q", cpus)
 	return &set
 }
