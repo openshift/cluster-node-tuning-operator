@@ -1177,7 +1177,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			})
 		})
 
-		When("updates the default runtime to crun", func() {
+		When("updates the default runtime to crun", Ordered, func() {
 			BeforeAll(func() {
 				const ContainerRuntimeConfigName = "ctrcfg-test"
 
