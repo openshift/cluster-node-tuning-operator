@@ -115,6 +115,7 @@ func AppendMissingDefaultMCPManifests(currentMCPs []*mcfgv1.MachineConfigPool) [
 		workerLabels       = labelPrefix + worker
 		masterNodeSelector = components.NodeRoleLabelPrefix + master
 		workerNodeSelector = components.NodeRoleLabelPrefix + worker
+		mcSelectorLabel    = "machineconfiguration.openshift.io/role"
 	)
 	var (
 		finalMCPList = []*mcfgv1.MachineConfigPool{}
@@ -127,7 +128,8 @@ func AppendMissingDefaultMCPManifests(currentMCPs []*mcfgv1.MachineConfigPool) [
 					Name: master,
 				},
 				Spec: mcfgv1.MachineConfigPoolSpec{
-					NodeSelector: v1.AddLabelToSelector(&v1.LabelSelector{}, masterNodeSelector, ""),
+					NodeSelector:          v1.AddLabelToSelector(&v1.LabelSelector{}, masterNodeSelector, ""),
+					MachineConfigSelector: v1.AddLabelToSelector(&v1.LabelSelector{}, mcSelectorLabel, master),
 				},
 			},
 			{
@@ -138,7 +140,8 @@ func AppendMissingDefaultMCPManifests(currentMCPs []*mcfgv1.MachineConfigPool) [
 					Name: worker,
 				},
 				Spec: mcfgv1.MachineConfigPoolSpec{
-					NodeSelector: v1.AddLabelToSelector(&v1.LabelSelector{}, workerNodeSelector, ""),
+					NodeSelector:          v1.AddLabelToSelector(&v1.LabelSelector{}, workerNodeSelector, ""),
+					MachineConfigSelector: v1.AddLabelToSelector(&v1.LabelSelector{}, mcSelectorLabel, worker),
 				},
 			},
 		}
