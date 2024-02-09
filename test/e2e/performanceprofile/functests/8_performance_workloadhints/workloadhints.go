@@ -84,6 +84,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = nil
 
+				if profile.Spec.RealTimeKernel.Enabled == pointer.Bool(false) {
+					testutils.KnownIssueJira("OCPBUGS-28828")
+				}
 				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
 					Enabled: pointer.Bool(false),
 				}
@@ -137,6 +140,10 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		When("RealTime Workload with RealTime Kernel set to false", func() {
 			It("[test_id:50991][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
 				By("Modifying profile")
+
+				if profile.Spec.RealTimeKernel.Enabled == pointer.Bool(false) {
+					testutils.KnownIssueJira("OCPBUGS-28828")
+				}
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption: pointer.Bool(false),
 					RealTime:             pointer.Bool(true),
