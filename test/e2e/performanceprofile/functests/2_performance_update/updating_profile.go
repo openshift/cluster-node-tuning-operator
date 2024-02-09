@@ -1177,8 +1177,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			})
 		})
 
-		When("updates the default runtime to crun", func() {
-			It("should run high-performance runtimes class with crun as container-runtime", func() {
+		When("updates the default runtime to crun", Ordered, func() {
+			BeforeAll(func() {
 				const ContainerRuntimeConfigName = "ctrcfg-test"
 
 				key := types.NamespacedName{
@@ -1190,26 +1190,28 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				By("checking if ContainerRuntimeConfig object already exists")
 				ctrcfg, err := getContainerRuntimeConfigFrom(context.TODO(), profile, mcp)
 				Expect(err).ToNot(HaveOccurred(), "failed to get ContainerRuntimeConfig from profile %q mcp %q", profile.Name, mcp.Name)
+				if ctrcfg == nil {
+					testlog.Infof("ContainerRuntimeConfig not exist")
+					ctrcfg = newContainerRuntimeConfig(ContainerRuntimeConfigName, profile, mcp)
+					By(fmt.Sprintf("creating ContainerRuntimeConfig %q", ctrcfg.Name))
+					Expect(testclient.Client.Create(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to create ctrcfg %#v", ctrcfg)
 
-				Expect(ctrcfg).To(BeNil(), "unexpected ContainerRuntimeConfig: %#v", ctrcfg)
-				testlog.Infof("ContainerRuntimeConfig not exist")
-				ctrcfg = newContainerRuntimeConfig(ContainerRuntimeConfigName, profile, mcp)
-				By(fmt.Sprintf("creating ContainerRuntimeConfig %q", ctrcfg.Name))
-				Expect(testclient.Client.Create(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to create ctrcfg %#v", ctrcfg)
+					DeferCleanup(func() {
+						Expect(testclient.Client.Delete(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to delete ctfcfg %#v", ctrcfg)
+						By(fmt.Sprintf("waiting for mcp %q transition to UPDATING state", performanceMCP))
+						mcps.WaitForConditionFunc(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue, getMCPConditionStatus)
+						By(fmt.Sprintf("waiting for mcp %q transition to UPDATED state", performanceMCP))
+						mcps.WaitForConditionFunc(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue, getMCPConditionStatus)
+					})
 
-				DeferCleanup(func() {
-					Expect(testclient.Client.Delete(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to delete ctfcfg %#v", ctrcfg)
 					By(fmt.Sprintf("waiting for mcp %q transition to UPDATING state", performanceMCP))
 					mcps.WaitForConditionFunc(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue, getMCPConditionStatus)
 					By(fmt.Sprintf("waiting for mcp %q transition to UPDATED state", performanceMCP))
 					mcps.WaitForConditionFunc(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue, getMCPConditionStatus)
-				})
-
-				By(fmt.Sprintf("waiting for mcp %q transition to UPDATING state", performanceMCP))
-				mcps.WaitForConditionFunc(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue, getMCPConditionStatus)
-				By(fmt.Sprintf("waiting for mcp %q transition to UPDATED state", performanceMCP))
-				mcps.WaitForConditionFunc(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue, getMCPConditionStatus)
-
+				}
+				Expect(ctrcfg.Spec.ContainerRuntimeConfig.DefaultRuntime == machineconfigv1.ContainerRuntimeDefaultRuntimeCrun).To(BeTrue())
+			})
+			It("should run high-performance runtimes class with crun as container-runtime", func() {
 				cmd := []string{"cat", "/rootfs/etc/crio/crio.conf.d/99-runtimes.conf"}
 				for i := 0; i < len(workerRTNodes); i++ {
 					out, err := nodes.ExecCommandOnNode(context.TODO(), cmd, &workerRTNodes[i])
