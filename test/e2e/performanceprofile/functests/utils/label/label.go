@@ -41,9 +41,9 @@ const (
 	PerformanceProfileCreator Feature = "performance-profile-creator"
 )
 
-// Tire is a label to classify tests under specific grade/level
+// Tier is a label to classify tests under specific grade/level
 // that should roughly describe the execution complexity, maintainer identity and processing criteria.
-type Tire string
+type Tier string
 
 const (
 	// Tier0 are automated unit tests
@@ -51,7 +51,7 @@ const (
 	// Process criteria:
 	// 100% automated, must-pass 100%
 	// Development maintains tests, and reviews result
-	Tier0 Tire = "tier-0"
+	Tier0 Tier = "tier-0"
 
 	// Tier1 are component level functional tests
 	// Minimal time needed to execute (minutes to hours)
@@ -59,7 +59,7 @@ const (
 	// Executed after tier 0 passing
 	// 100% automated and must pass 100%
 	// QE / Development maintains tests and reviews results
-	Tier1 Tire = "tier-1"
+	Tier1 Tier = "tier-1"
 
 	// Tier2 are integration level functional tests
 	// May include basic non-functional tests (security, performance regression, install, compose validation)
@@ -68,7 +68,7 @@ const (
 	// Executed after components pass tier 1 testing
 	// 100% automated and must pass 100%
 	// QE maintains tests and reviews result
-	Tier2 Tire = "tier-2"
+	Tier2 Tier = "tier-2"
 
 	// Tier3 are system, scenario and non-functional tests (which includes Fault Tolerance / Recovery / Fail over)
 	// Test that don't fit in tier 2 due to time, complexity, and other factors
@@ -77,5 +77,5 @@ const (
 	// System or scenario testing doesn't block Non-functional tests.They can be executed in parallel.
 	// 100% automated
 	// QE maintains tests and reviews result
-	Tier3 Tire = "tier-3"
+	Tier3 Tier = "tier-3"
 )
