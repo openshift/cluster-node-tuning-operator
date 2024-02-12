@@ -160,10 +160,8 @@ cmdline_additionalArg=+{{.AdditionalArgs}}
 
 {{if .PerPodPowerManagement}}
 cmdline_pstate=+intel_pstate=passive
-{{else if .HardwareTuning}}
+{{else}}
 cmdline_pstate=+intel_pstate=active
-{{else if .RealTimeHint}}
-cmdline_pstate=+intel_pstate=disable
 {{end}}
 
 [rtentsk]
