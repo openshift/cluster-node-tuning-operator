@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	kubeletconfig "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/cpuset"
 	"k8s.io/utils/pointer"
@@ -20,36 +23,38 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/controller"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/runtime"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/namespaces"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	testprofiles "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
 
 const (
-	crioRuntimeConfigFile      = "/etc/crio/crio.conf.d/99-runtimes.conf"
 	kubeletMixedCPUsConfigFile = "/etc/kubernetes/openshift-workload-mixed-cpus"
+	sharedCpusResource         = "workload.openshift.io/enable-shared-cpus"
+	// the minimal number of cores for running the test is as follows:
+	// reserved = one core, shared = one core, infra workload = one core, test pod = one core - 4 in total
+	// smt alignment won't allow us to run the test pod with a single core, hence we should cancel it.
+	numberOfCoresThatRequiredCancelingSMTAlignment = 4
 )
 
 var _ = Describe("Mixedcpus", Ordered, func() {
 	ctx := context.Background()
 	BeforeAll(func() {
-		var err error
-		profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-		Expect(err).ToNot(HaveOccurred())
-
-		if profileutil.IsMixedCPUsEnabled(profile) {
-			testlog.Infof("mixed cpus already enabled for profile %q", profile.Name)
+		if discovery.Enabled() && testutils.ProfileNotFound {
+			Skip("discovery mode enabled, performance profile not found")
 		}
-		if !profileutil.IsMixedCPUsEnabled(profile) {
-			testlog.Infof("enable mixed cpus for profile %q", profile.Name)
-			teardown := setup(ctx, profile)
-			DeferCleanup(teardown, ctx)
-		}
+		teardown := setup(ctx)
+		DeferCleanup(teardown, ctx)
 	})
 
 	Context("configuration files integrity", func() {
@@ -79,11 +84,10 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 			Expect(testclient.Client.Get(ctx, key, kc)).ToNot(HaveOccurred())
 			k8sKc := &kubeletconfig.KubeletConfiguration{}
 			Expect(json.Unmarshal(kc.Spec.KubeletConfig.Raw, k8sKc)).ToNot(HaveOccurred())
-			// don't need to check the error, the values were already validated.
-			reserved, _ := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
-			shared, _ := cpuset.Parse(string(*profile.Spec.CPU.Shared))
-			reservedSystemCpus, _ := cpuset.Parse(k8sKc.ReservedSystemCPUs)
-			Expect(reservedSystemCpus.Equals(reserved.Union(shared))).To(BeTrue(), "reservedSystemCPUs should contain the shared cpus; reservedSystemCPUs=%q reserved=%q shared=%q",
+			reserved := mustParse(string(*profile.Spec.CPU.Reserved))
+			shared := mustParse(string(*profile.Spec.CPU.Shared))
+			reservedSystemCpus := mustParse(k8sKc.ReservedSystemCPUs)
+			Expect(reservedSystemCpus.Equals(reserved.Union(*shared))).To(BeTrue(), "reservedSystemCPUs should contain the shared cpus; reservedSystemCPUs=%q reserved=%q shared=%q",
 				reservedSystemCpus.String(), reserved.String(), shared.String())
 		})
 
@@ -102,28 +106,202 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 			cpus, err := nodes.ExecCommandOnNode(ctx, cmd, worker)
 			Expect(err).ToNot(HaveOccurred(), "failed to execute command on node; cmd=%q node=%q", cmd, worker)
 			cpus = strings.Trim(cpus, "\n")
-			crioShared, err := cpuset.Parse(cpus)
-			Expect(err).ToNot(HaveOccurred())
+			crioShared := mustParse(cpus)
 			// don't need to check the error, the values were already validated.
-			shared, _ := cpuset.Parse(string(*profile.Spec.CPU.Shared))
-			Expect(shared.Equals(crioShared)).To(BeTrue(), "crio config file does not contain the expected shared cpuset; shared=%q crioShared=%q",
+			shared := mustParse(string(*profile.Spec.CPU.Shared))
+			Expect(shared.Equals(*crioShared)).To(BeTrue(), "crio config file does not contain the expected shared cpuset; shared=%q crioShared=%q",
 				shared.String(), crioShared.String())
+		})
+	})
+
+	Context("single workload - request validation", func() {
+		var profile *performancev2.PerformanceProfile
+		var getter cgroup.ControllersGetter
+		BeforeEach(func() {
+			var err error
+			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+			// create test namespace
+			ns := getTestingNamespace()
+			Expect(testclient.Client.Create(ctx, &ns)).ToNot(HaveOccurred())
+			DeferCleanup(func() {
+				Expect(testclient.Client.Delete(ctx, &ns)).ToNot(HaveOccurred())
+				Expect(namespaces.WaitForDeletion(testutils.NamespaceTesting, 5*time.Minute)).ToNot(HaveOccurred())
+			})
+			getter, err = cgroup.BuildGetter(ctx, testclient.Client, testclient.K8sClient)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		When("workloads requests access for shared cpus", func() {
+			It("should have the shared cpus under its cgroups", func() {
+				rl := &corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("1"),
+					corev1.ResourceMemory: resource.MustParse("100Mi"),
+					sharedCpusResource:    resource.MustParse("1"),
+				}
+				p, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+					withRequests(rl),
+					withLimits(rl),
+					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
+				Expect(err).ToNot(HaveOccurred())
+				cfg := &controller.CpuSet{}
+				err = getter.Container(ctx, p, p.Spec.Containers[0].Name, cfg)
+				Expect(err).ToNot(HaveOccurred())
+				cgroupCpuSet := mustParse(cfg.Cpus)
+				Expect(err).ToNot(HaveOccurred())
+				shared := mustParse(string(*profile.Spec.CPU.Shared))
+				Expect(cgroupCpuSet.Intersection(*shared).List()).ToNot(BeEmpty(), "shared cpus are not in the pod cgroups; pod=%q, cgroupscpuset=%q sharedcpuset=%q",
+					fmt.Sprintf("%s/%s", p.Namespace, p.Name), cgroupCpuSet.String(), shared.String())
+			})
+			It("should be able to disable cfs_quota", func() {
+				rl := &corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("1"),
+					corev1.ResourceMemory: resource.MustParse("100Mi"),
+					sharedCpusResource:    resource.MustParse("1"),
+				}
+				p, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+					withRequests(rl),
+					withLimits(rl),
+					withAnnotations(map[string]string{"cpu-quota.crio.io": "disable"}),
+					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
+				Expect(err).ToNot(HaveOccurred())
+				cfg := &controller.Cpu{}
+				err = getter.Container(ctx, p, p.Spec.Containers[0].Name, cfg)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(cfg.Quota).To(Or(Equal("max"), Equal("-1")))
+			})
+			It("should have OPENSHIFT_ISOLATED_CPUS and OPENSHIFT_SHARED_CPUS env variables under the container", func() {
+				rl := &corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("1"),
+					corev1.ResourceMemory: resource.MustParse("100Mi"),
+					sharedCpusResource:    resource.MustParse("1"),
+				}
+				p, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+					withRequests(rl),
+					withLimits(rl),
+					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
+				Expect(err).ToNot(HaveOccurred())
+				cmd := printMixedCPUsEnvCmd()
+				output, err := pods.ExecCommandOnPod(testclient.K8sClient, p, "", cmd)
+				Expect(err).ToNot(HaveOccurred(), "failed to execute command on pod; cmd=%q pod=%q", cmd, client.ObjectKeyFromObject(p).String())
+				isolatedAndShared := strings.Split(string(output), "\r\n")
+				isolated := mustParse(isolatedAndShared[0])
+				Expect(isolated.IsEmpty()).ToNot(BeTrue())
+				shared := mustParse(isolatedAndShared[1])
+				ppShared := mustParse(string(*profile.Spec.CPU.Shared))
+				Expect(err).ToNot(HaveOccurred())
+				Expect(shared.Equals(*ppShared)).To(BeTrue(), "OPENSHIFT_SHARED_CPUS value not equal to what configure in the performance profile."+
+					"OPENSHIFT_SHARED_CPUS=%s spec.cpu.shared=%s", shared.String(), ppShared.String())
+			})
+		})
+
+		When("Modifying the shared CPUs in the performance profile", func() {
+			var newShared cpuset.CPUSet
+			BeforeEach(func() {
+
+				isolated := mustParse(string(*profile.Spec.CPU.Isolated))
+				shared := mustParse(string(*profile.Spec.CPU.Shared))
+				// select one arbitrary
+				isolatedCore := mustParse(strconv.Itoa(isolated.List()[0]))
+				sharedCore := mustParse(strconv.Itoa(shared.List()[0]))
+				// swap one from the isolated with one from the shared
+				//  to create new shared cpuset
+				newIsolated := isolated.Difference(*isolatedCore).Union(*sharedCore)
+				newShared = shared.Difference(*sharedCore).Union(*isolatedCore)
+				profile.Spec.CPU.Isolated = cpuSetToPerformanceCPUSet(&newIsolated)
+				profile.Spec.CPU.Shared = cpuSetToPerformanceCPUSet(&newShared)
+				By("applying new performanceProfile")
+				testprofiles.UpdateWithRetry(profile)
+				mcp, err := mcps.GetByProfile(profile)
+				Expect(err).ToNot(HaveOccurred())
+				By("waiting for mcp to catch up")
+				mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+				mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				Expect(testclient.Client.Get(ctx, client.ObjectKeyFromObject(profile), profile))
+				testlog.Infof("new isolated CPU set=%q\nnew shared CPU set=%q", string(*profile.Spec.CPU.Isolated), string(*profile.Spec.CPU.Isolated))
+				// we do not bother to revert the profile at the end of the test, since its irrelevant which of the cpus are shared
+			})
+
+			It("should contains the updated values under the container", func() {
+				rl := &corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("1"),
+					corev1.ResourceMemory: resource.MustParse("100Mi"),
+					sharedCpusResource:    resource.MustParse("1"),
+				}
+				p, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+					withRequests(rl),
+					withLimits(rl),
+					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
+				Expect(err).ToNot(HaveOccurred())
+
+				By("checking cgroups under the container")
+				cfg := &controller.CpuSet{}
+				err = getter.Container(ctx, p, p.Spec.Containers[0].Name, cfg)
+				Expect(err).ToNot(HaveOccurred())
+				cgroupCpuSet := mustParse(cfg.Cpus)
+				Expect(cgroupCpuSet.Intersection(newShared).List()).ToNot(BeEmpty(), "shared cpus are not in the pod cgroups; pod=%q, cgroupscpuset=%q sharedcpuset=%q",
+					fmt.Sprintf("%s/%s", p.Namespace, p.Name), cgroupCpuSet.String(), newShared.String())
+
+				By("checking environment variable under the container")
+				cmd := printMixedCPUsEnvCmd()
+				output, err := pods.ExecCommandOnPod(testclient.K8sClient, p, "", cmd)
+				Expect(err).ToNot(HaveOccurred(), "failed to execute command on pod; cmd=%q pod=%q", cmd, client.ObjectKeyFromObject(p).String())
+				isolatedAndShared := strings.Split(string(output), "\r\n")
+				// We expect three - two environment variables and one empty string appended by split
+				Expect(len(isolatedAndShared)).To(Equal(3), "failed to split output; output=%q isolatedAndShared=%v len=%d", string(output), isolatedAndShared, len(isolatedAndShared))
+				isolatedFromEnv := mustParse(isolatedAndShared[0])
+				Expect(isolatedFromEnv.IsEmpty()).ToNot(BeTrue())
+				sharedFromEnv := mustParse(isolatedAndShared[1])
+				Expect(sharedFromEnv.IsEmpty()).ToNot(BeTrue())
+				Expect(sharedFromEnv.Equals(newShared)).To(BeTrue(), "OPENSHIFT_SHARED_CPUS value not equal to what configure in the performance profile."+
+					"OPENSHIFT_SHARED_CPUS=%s spec.cpu.shared=%s", sharedFromEnv.String(), newShared.String())
+
+			})
 		})
 	})
 })
 
-func setup(ctx context.Context, profile *performancev2.PerformanceProfile) func(ctx2 context.Context) {
-	initialProfile := profile.DeepCopy()
-	isolated, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+func setup(ctx context.Context) func(ctx2 context.Context) {
+	var updateNeeded bool
+	profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 	Expect(err).ToNot(HaveOccurred())
+	initialProfile := profile.DeepCopy()
 
-	// arbitrary take the first one
-	sharedcpu := cpuset.New(isolated.List()[0])
-	testlog.Infof("shared cpu ids are: %q", sharedcpu.String())
-	updatedIsolated := isolated.Difference(sharedcpu)
-	profile.Spec.CPU.Isolated = cpuSetToPerformanceCPUSet(&updatedIsolated)
-	profile.Spec.CPU.Shared = cpuSetToPerformanceCPUSet(&sharedcpu)
-	profile.Spec.WorkloadHints.MixedCpus = pointer.Bool(true)
+	if !profileutil.IsMixedCPUsEnabled(profile) {
+		isolated := mustParse(string(*profile.Spec.CPU.Isolated))
+
+		// arbitrary take the first one
+		sharedcpu := cpuset.New(isolated.List()[0])
+		testlog.Infof("shared cpu ids are: %q", sharedcpu.String())
+		updatedIsolated := isolated.Difference(sharedcpu)
+		profile.Spec.CPU.Isolated = cpuSetToPerformanceCPUSet(&updatedIsolated)
+		profile.Spec.CPU.Shared = cpuSetToPerformanceCPUSet(&sharedcpu)
+		profile.Spec.WorkloadHints.MixedCpus = pointer.Bool(true)
+		testlog.Infof("enable mixed cpus for profile %q", profile.Name)
+		updateNeeded = true
+	} else {
+		testlog.Infof("mixed cpus already enabled for profile %q", profile.Name)
+	}
+
+	workers, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
+	Expect(err).ToNot(HaveOccurred())
+	for _, worker := range workers {
+		//node cpu numbers are integral
+		numOfCores, _ := worker.Status.Capacity.Cpu().AsInt64()
+		if numOfCores <= numberOfCoresThatRequiredCancelingSMTAlignment {
+			profile.Annotations = map[string]string{
+				"kubeletconfig.experimental": "{\"cpuManagerPolicyOptions\": {\"full-pcpus-only\": \"false\"}}",
+			}
+			testlog.Infof("canceling SMT alignment for nodes under profile %q", profile.Name)
+			updateNeeded = true
+		}
+	}
+
+	if !updateNeeded {
+		return func(ctx context.Context) {
+			By(fmt.Sprintf("skipping teardown - no changes to profile %q were applied", profile.Name))
+		}
+	}
 	testprofiles.UpdateWithRetry(profile)
 	mcp, err := mcps.GetByProfile(profile)
 	Expect(err).ToNot(HaveOccurred())
@@ -134,12 +312,10 @@ func setup(ctx context.Context, profile *performancev2.PerformanceProfile) func(
 	teardown := func(ctx2 context.Context) {
 		By(fmt.Sprintf("executing teardown - revert profile %q back to its intial state", profile.Name))
 		Expect(testclient.Client.Get(ctx2, client.ObjectKeyFromObject(initialProfile), profile))
-		profile.Spec = initialProfile.Spec
-		resourceVersion := profile.ResourceVersion
-		testprofiles.UpdateWithRetry(profile)
+		testprofiles.UpdateWithRetry(initialProfile)
 
 		// do not wait if nothing has changed
-		if resourceVersion != profile.ResourceVersion {
+		if initialProfile.ResourceVersion != profile.ResourceVersion {
 			mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
 			mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 		}
@@ -152,6 +328,14 @@ func cpuSetToPerformanceCPUSet(set *cpuset.CPUSet) *performancev2.CPUSet {
 	return &c
 }
 
+func printMixedCPUsEnvCmd() []string {
+	return []string{
+		"/bin/printenv",
+		"OPENSHIFT_ISOLATED_CPUS",
+		"OPENSHIFT_SHARED_CPUS",
+	}
+}
+
 // checks whether file exists and not empty
 func isFileExistCmd(absoluteFileName string) []string {
 	return []string{
@@ -161,4 +345,60 @@ func isFileExistCmd(absoluteFileName string) []string {
 		"-c",
 		fmt.Sprintf("if [[ -s %s ]]; then echo true; else echo false; fi", absoluteFileName),
 	}
+}
+
+func createPod(ctx context.Context, c client.Client, ns string, opts ...func(pod *corev1.Pod)) (*corev1.Pod, error) {
+	p := pods.GetTestPod()
+	p.Namespace = ns
+	for _, opt := range opts {
+		opt(p)
+	}
+	if err := c.Create(ctx, p); err != nil {
+		return nil, err
+	}
+	p, err := pods.WaitForCondition(ctx, client.ObjectKeyFromObject(p), corev1.PodReady, corev1.ConditionTrue, time.Minute)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pod. pod=%s, podStatus=%v err=%v", client.ObjectKeyFromObject(p).String(), p.Status, err)
+	}
+	return p, nil
+}
+
+func withRequests(rl *corev1.ResourceList) func(p *corev1.Pod) {
+	return func(p *corev1.Pod) {
+		p.Spec.Containers[0].Resources.Requests = *rl
+	}
+}
+
+func withLimits(rl *corev1.ResourceList) func(p *corev1.Pod) {
+	return func(p *corev1.Pod) {
+		p.Spec.Containers[0].Resources.Limits = *rl
+	}
+}
+
+func withAnnotations(annot map[string]string) func(p *corev1.Pod) {
+	return func(p *corev1.Pod) {
+		if p.Annotations == nil {
+			p.Annotations = map[string]string{}
+		}
+		for k, v := range annot {
+			p.Annotations[k] = v
+		}
+	}
+}
+
+func withRuntime(name string) func(p *corev1.Pod) {
+	return func(p *corev1.Pod) {
+		p.Spec.RuntimeClassName = &name
+	}
+}
+
+func getTestingNamespace() corev1.Namespace {
+	return *namespaces.TestingNamespace
+}
+
+func mustParse(cpus string) *cpuset.CPUSet {
+	GinkgoHelper()
+	set, err := cpuset.Parse(cpus)
+	Expect(err).ToNot(HaveOccurred(), "failed to parse cpuset; cpus=%q", cpus)
+	return &set
 }
