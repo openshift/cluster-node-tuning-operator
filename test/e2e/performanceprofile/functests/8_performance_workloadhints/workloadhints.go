@@ -284,7 +284,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters := []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
-					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
+					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate= {f:intel_recommended_pstate}", "idle=poll"}
 
 				wg := sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
@@ -343,7 +343,8 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &workerRTNodes[0], []string{"cat", "/proc/cmdline"})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(cmdline).To(ContainSubstring("intel_pstate=passive"))
-				Expect(cmdline).ToNot(ContainSubstring("intel_pstate=disable"))
+				Expect(cmdline).ToNot(ContainSubstring("intel_pstate=active"))
+				Expect(cmdline).ToNot(ContainSubstring("intel_pstate= {f:intel_recommended_pstate}"))
 
 				By("Verifying tuned profile")
 				key := types.NamespacedName{
@@ -404,7 +405,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters := []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
-					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
+					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate= {f:intel_recommended_pstate}", "idle=poll"}
 
 				wg := sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
@@ -567,7 +568,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				}
 				wg.Wait()
 
-				//Update the profile to disable HighPowerConsumption and enable PerPodPowerManagment
+				//Update the profile to enable HighPowerConsumption and disable PerPodPowerManagment
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption:  pointer.Bool(true),
 					RealTime:              pointer.Bool(true),
@@ -605,7 +606,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters = []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
-					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate=disable", "idle=poll"}
+					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate= {f:intel_recommended_pstate}", "idle=poll"}
 
 				wg = sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")

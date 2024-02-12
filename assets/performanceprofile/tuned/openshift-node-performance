@@ -24,6 +24,7 @@ isolated_cores={{.IsolatedCpus}}
 {{end}}
 
 not_isolated_cores_expanded=${f:cpulist_invert:${isolated_cores_expanded}}
+automatic_pstate=${f:intel_recommended_pstate}
 
 {{if .PerPodPowerManagement}}
 [cpu]
@@ -165,8 +166,8 @@ cmdline_additionalArg=+{{.AdditionalArgs}}
 cmdline_pstate=+intel_pstate=passive
 {{else if .HardwareTuning}}
 cmdline_pstate=+intel_pstate=active
-{{else if .RealTimeHint}}
-cmdline_pstate=+intel_pstate=disable
+{{else}}
+cmdline_pstate=+intel_pstate=${automatic_pstate}
 {{end}}
 
 [rtentsk]
