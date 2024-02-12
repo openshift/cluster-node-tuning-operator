@@ -210,10 +210,6 @@ func render(ownerRefMode, inputDir, outputDir string) error {
 			if err != nil {
 				return err
 			}
-			err = writeObject(outputDir, fmt.Sprintf("%s_%s.yaml", pp.Name, "annotated"), pp)
-			if err != nil {
-				return err
-			}
 		}
 
 		for kind, manifest := range components.ToManifestTable() {
@@ -263,11 +259,6 @@ func addOwnerReference(components *manifestset.ManifestResultSet, pp *performanc
 func addWeakOwnerReferenceLabel(components *manifestset.ManifestResultSet, pp *performancev2.PerformanceProfile) error {
 	lab := weakOwnerReferenceNameLabel // shortcut
 	val := pp.Name                     // shortcut
-
-	if pp.Labels == nil {
-		pp.Labels = make(map[string]string)
-	}
-	pp.Labels[lab] = val
 
 	for _, componentObj := range components.ToObjects() {
 		labels := componentObj.GetLabels()
