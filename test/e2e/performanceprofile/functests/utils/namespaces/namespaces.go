@@ -30,6 +30,9 @@ func init() {
 var TestingNamespace = &corev1.Namespace{
 	ObjectMeta: metav1.ObjectMeta{
 		Name: testutils.NamespaceTesting,
+		Annotations: map[string]string{
+			"workload.mixedcpus.openshift.io/allowed": "",
+		},
 		Labels: map[string]string{
 			"security.openshift.io/scc.podSecurityLabelSync": "false",
 			"pod-security.kubernetes.io/audit":               "privileged",
