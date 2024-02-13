@@ -73,7 +73,7 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 			// test arbitrary one should be good enough
 			worker := &workers[0]
 			cmd := isFileExistCmd(kubeletMixedCPUsConfigFile)
-			found, err := nodes.ExecCommandOnNode(ctx, cmd, worker)
+			found, err := nodes.ExecCommandOnNode(cmd, worker)
 			Expect(err).ToNot(HaveOccurred(), "failed to execute command on node; cmd=%q node=%q", cmd, worker)
 			Expect(found).To(Equal("true"), "file not found; file=%q", kubeletMixedCPUsConfigFile)
 		})
@@ -104,7 +104,7 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 				"-c",
 				fmt.Sprintf("/bin/awk  -F '\"' '/shared_cpuset.*/ { print $2 }' %s", runtime.CRIORuntimeConfigFile),
 			}
-			cpus, err := nodes.ExecCommandOnNode(ctx, cmd, worker)
+			cpus, err := nodes.ExecCommandOnNode(cmd, worker)
 			Expect(err).ToNot(HaveOccurred(), "failed to execute command on node; cmd=%q node=%q", cmd, worker)
 			cpus = strings.Trim(cpus, "\n")
 			crioShared := mustParse(cpus)
@@ -220,7 +220,7 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 
 				cmd := kubeletRestartCmd()
 				// The command would fail since it aborts all the pods during restart
-				_, _ = nodes.ExecCommandOnNode(ctx, cmd, node)
+				_, _ = nodes.ExecCommandOnNode(cmd, node)
 				// check that the node is ready after we restart Kubelet
 				nodes.WaitForReadyOrFail("post restart", node.Name, 20*time.Minute, 3*time.Second)
 
@@ -411,7 +411,7 @@ func createPod(ctx context.Context, c client.Client, ns string, opts ...func(pod
 	if err := c.Create(ctx, p); err != nil {
 		return nil, err
 	}
-	p, err := pods.WaitForCondition(ctx, client.ObjectKeyFromObject(p), corev1.PodReady, corev1.ConditionTrue, time.Minute)
+	p, err := pods.WaitForCondition(client.ObjectKeyFromObject(p), corev1.PodReady, corev1.ConditionTrue, time.Minute)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pod. pod=%s, podStatus=%v err=%v", client.ObjectKeyFromObject(p).String(), p.Status, err)
 	}
