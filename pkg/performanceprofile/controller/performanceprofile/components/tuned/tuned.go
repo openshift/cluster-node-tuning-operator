@@ -37,6 +37,7 @@ const (
 	templateReservedCpuMaxFreq              = "ReservedCpuMaxFreq"
 	templateIsolatedCpuList                 = "IsolatedCpuList"
 	templateReservedCpuList                 = "ReservedCpuList"
+	templatePerformanceProfileName          = "PerformanceProfileName"
 )
 
 func new(name string, profiles []tunedv1.TunedProfile, recommends []tunedv1.TunedRecommend) *tunedv1.Tuned {
@@ -59,6 +60,8 @@ func new(name string, profiles []tunedv1.TunedProfile, recommends []tunedv1.Tune
 // NewNodePerformance returns tuned profile for performance sensitive workflows
 func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tuned, error) {
 	templateArgs := make(map[string]interface{})
+
+	templateArgs[templatePerformanceProfileName] = profile.Name
 
 	if profile.Spec.CPU.Isolated != nil {
 		templateArgs[templateIsolatedCpus] = string(*profile.Spec.CPU.Isolated)
@@ -215,11 +218,20 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 		return nil, err
 	}
 
+	RealTimeKernelProfileData, err := getProfileData(filepath.Join("tuned", components.ProfileNamePerformanceRT), templateArgs)
+	if err != nil {
+		return nil, err
+	}
 	name := components.GetComponentName(profile.Name, components.ProfileNamePerformance)
+	RealTimeKernelProfileName := components.GetComponentName(profile.Name, components.ProfileNamePerformanceRT)
 	profiles := []tunedv1.TunedProfile{
 		{
 			Name: &name,
 			Data: &profileData,
+		},
+		{
+			Name: &RealTimeKernelProfileName,
+			Data: &RealTimeKernelProfileData,
 		},
 	}
 
