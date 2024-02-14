@@ -14,7 +14,10 @@ type CpuSet struct {
 }
 
 type Cpu struct {
-	Quota   string
-	Period  string
-	cpuStat map[string]string
+	Quota  string
+	Period string
+}
+
+type CpuStat struct {
+	Stat map[string]string
 }
