@@ -114,6 +114,21 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Expect(strings.TrimSpace(activeProfileName)).To(Equal(tunedExpectedName), "active profile name mismatch got %q expected %q", activeProfileName, tunedExpectedName)
 			}
 		})
+
+		It("Tuned profile shouldn't be degraded", func() {
+			for _, node := range workerRTNodes {
+				key := types.NamespacedName{
+					Name:      node.Name,
+					Namespace: components.NamespaceNodeTuningOperator,
+				}
+				tunedProfile := &tunedv1.Profile{}
+				err := testclient.Client.Get(context.TODO(), key, tunedProfile)
+				Expect(err).ToNot(HaveOccurred(), "Failed to get the Tuned profile for node %s", node.Name)
+				degradedCondition := findCondition(tunedProfile.Status.Conditions, "Degraded")
+				Expect(degradedCondition).ToNot(BeNil(), "Degraded condition not found in Tuned profile status")
+				Expect(degradedCondition.Status).To(Equal(corev1.ConditionFalse), "Tuned profile is degraded")
+			}
+		})
 	})
 
 	Context("Pre boot tuning adjusted by tuned ", func() {
@@ -1344,4 +1359,14 @@ func makeDevRPSMap(content string) map[string]string {
 		devRPSMap[path] = mask
 	}
 	return devRPSMap
+}
+
+// Helper function to find a condition in the status.conditions slice by type
+func findCondition(conditions []tunedv1.ProfileStatusCondition, conditionType string) *tunedv1.ProfileStatusCondition {
+	for _, condition := range conditions {
+		if string(condition.Type) == conditionType {
+			return &condition
+		}
+	}
+	return nil
 }
