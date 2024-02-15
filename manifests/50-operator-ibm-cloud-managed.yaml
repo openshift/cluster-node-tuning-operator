@@ -4,6 +4,7 @@ kind: Deployment
 metadata:
   annotations:
     capability.openshift.io/name: NodeTuning
+    include.release.openshift.io/hypershift: "true"
     include.release.openshift.io/ibm-cloud-managed: "true"
   name: cluster-node-tuning-operator
   namespace: openshift-cluster-node-tuning-operator
