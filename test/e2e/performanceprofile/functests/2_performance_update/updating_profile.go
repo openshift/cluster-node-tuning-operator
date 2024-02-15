@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
@@ -942,7 +941,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			spec, _ := json.Marshal(initialProfile.Spec)
 			// revert only if the profile changes.
 			if !bytes.Equal(currentSpec, spec) {
-				var allCpus = []int{}
 				spec, err := json.Marshal(initialProfile.Spec)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(testclient.Client.Patch(context.TODO(), profile,
@@ -957,27 +955,16 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 				By("Waiting when mcp finishes updates")
 				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			}
 
-				// Verify cpus are back online when the offline parameters is removed
-				for _, cores := range numaCoreSiblings {
-					for _, cpuSiblings := range cores {
-						for _, cpus := range cpuSiblings {
-							allCpus = append(allCpus, cpus)
-						}
-					}
-				}
-				// we don't need to check all the cpus as this may be costly
-				// on BM system which have more than 100 cpus, so we pick any 10 cpus randomly.
-				cpusToCheck := randomCpus(allCpus)
-				for _, node := range workerRTNodes {
-					for _, v := range cpusToCheck {
-						checkCpuStatusCmd := []string{"bash", "-c",
-							fmt.Sprintf("cat /sys/devices/system/cpu/cpu%d/online", v)}
-						fmt.Printf("Checking cpu%d is online\n", v)
-						stdout, err := nodes.ExecCommandOnNode(context.TODO(), checkCpuStatusCmd, &node)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(stdout).Should(Equal("1"))
-					}
+			findcmd := `find /sys/devices/system/cpu/cpu* -type f -name online -exec cat {} \;`
+			checkCpuStatusCmd := []string{"bash", "-c", findcmd}
+			for _, node := range workerRTNodes {
+				stdout, err := nodes.ExecCommandOnNode(context.TODO(), checkCpuStatusCmd, &node)
+				Expect(err).NotTo(HaveOccurred())
+				v := strings.Split(stdout, "\n")
+				for _, val := range v {
+					Expect(val).To(Equal("1"))
 				}
 			}
 		})
@@ -1349,15 +1336,4 @@ func copyNumaCoreSiblings(src map[int]map[int][]int) map[int]map[int][]int {
 		dst[k] = coresiblings
 	}
 	return dst
-}
-
-// randomCpus function generates 10 random cpuids
-func randomCpus(cpus []int) []int {
-	if len(cpus) < 10 {
-		return cpus
-	}
-	rand.Shuffle(len(cpus), func(i, j int) {
-		cpus[i], cpus[j] = cpus[j], cpus[i]
-	})
-	return cpus[:10]
 }
