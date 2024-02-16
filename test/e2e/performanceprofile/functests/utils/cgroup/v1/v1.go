@@ -66,7 +66,7 @@ func (cm *ControllersManager) CpuStat(ctx context.Context, pod *corev1.Pod, cont
 	dirPath := path.Join(controller.CgroupMountPoint, childName)
 	cmd := []string{
 		"/bin/cat",
-		dirPath + "/cpu.stat",
+		dirPath + "/cpu/cpu.stat",
 	}
 	b, err := pods.ExecCommandOnPod(cm.k8sClient, pod, containerName, cmd)
 	if err != nil {
