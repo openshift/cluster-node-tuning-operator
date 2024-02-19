@@ -542,6 +542,31 @@ func GetNodeInterfaces(node corev1.Node) ([]NodeInterface, error) {
 	return nodeInterfaces, err
 }
 
+func WaitForReadyOrFail(tag, nodeName string, timeout, polling time.Duration) {
+	testlog.Infof("%s: waiting for node %q: to be ready", tag, nodeName)
+	EventuallyWithOffset(1, func() (bool, error) {
+		node, err := GetByName(nodeName)
+		if err != nil {
+			// intentionally tolerate error
+			testlog.Infof("wait for node %q ready: %v", nodeName, err)
+			return false, nil
+		}
+		ready := isNodeReady(*node)
+		testlog.Infof("node %q ready=%v", nodeName, ready)
+		return ready, nil
+	}).WithTimeout(timeout).WithPolling(polling).Should(BeTrue(), "post reboot: cannot get readiness status after reboot for node %q", nodeName)
+	testlog.Infof("%s: node %q: reported ready", tag, nodeName)
+}
+
+func isNodeReady(node corev1.Node) bool {
+	for _, c := range node.Status.Conditions {
+		if c.Type == corev1.NodeReady {
+			return c.Status == corev1.ConditionTrue
+		}
+	}
+	return false
+}
+
 // GetCgroupFs retrieves the version of the cgroup subsystem on a node.
 func GetCgroupFs(node *corev1.Node) (string, error) {
 	// Command to check cgroup version.

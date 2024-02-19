@@ -30,8 +30,8 @@ func (cm *ControllersManager) CpuSet(ctx context.Context, pod *corev1.Pod, conta
 	dirPath := path.Join(controller.CgroupMountPoint, "cpuset", childName)
 	store := map[string]*string{
 		"cpuset.cpus":               &cfg.Cpus,
-		"cpuset.cpus.exclusive":     &cfg.Exclusive,
-		"cpuset.cpus.effective":     &cfg.Effective,
+		"cpuset.cpu_exclusive":      &cfg.Exclusive,
+		"cpuset.effective_cpus":     &cfg.Effective,
 		"cpuset.sched_load_balance": &cfg.SchedLoadBalance,
 		"cpuset.mems":               &cfg.Mems,
 	}
