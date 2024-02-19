@@ -5,6 +5,14 @@ function join_by { local IFS="$1"; shift; echo "$*"; }
 
 function rendersync() {
   INPUT_DIRS=()
+  EXTRA_ARGS=()
+  if [[ "$1" =~ ^-.* ]]; then
+      while [[ "x$1" != "x--" ]]; do
+          EXTRA_ARGS+=("$1")
+          shift
+      done
+      shift
+  fi
   while (( $# > 1 )); do
     INPUT_DIRS+=("${WORKDIR}/test/e2e/performanceprofile/cluster-setup/$1")
     shift
@@ -18,7 +26,7 @@ function rendersync() {
   ARTIFACT_DIR=$(mktemp -d)
 
   cd "${WORKDIR}" || { echo "failed to change dir to ${WORKDIR}"; exit; }
-  _output/cluster-node-tuning-operator render \
+  _output/cluster-node-tuning-operator render ${EXTRA_ARGS[@]} \
   --asset-input-dir "${INPUT_DIRS}" \
   --asset-output-dir "${ARTIFACT_DIR}"
 
