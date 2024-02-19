@@ -1,6 +1,7 @@
 - op: replace
   path: /metadata/annotations
   value:
+    include.release.openshift.io/hypershift: "true"
     include.release.openshift.io/ibm-cloud-managed: "true"
     capability.openshift.io/name: NodeTuning
 - op: remove
