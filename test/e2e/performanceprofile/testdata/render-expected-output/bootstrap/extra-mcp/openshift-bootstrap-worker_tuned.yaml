@@ -10,7 +10,9 @@ spec:
   profile:
   - data: "[main]\nsummary=Openshift node optimized for deterministic performance
       at the cost of increased power consumption, focused on low latency network performance.
-      Based on Tuned 2.11 and Cluster node tuning (oc 4.5)\ninclude=openshift-node,cpu-partitioning\n\n#
+      Based on Tuned 2.11 and Cluster node tuning (oc 4.5)\n\n# In case real time
+      kernel is enabled the following include section will be evaluated as:\n# include=openshift-node,cpu-partitioning,openshift-node-performance-rt-<PerformanceProfile
+      name>\n# Otherwise:\n# include=openshift-node,cpu-partitioning\ninclude=openshift-node,cpu-partitioning${f:regex_search_ternary:${f:exec:uname:-r}:rt:,openshift-node-performance-rt-openshift-bootstrap-worker:}\n\n\n#
       Inheritance of base profiles legend:\n# cpu-partitioning -> network-latency
       -> latency-performance\n# https://github.com/redhat-performance/tuned/blob/master/profiles/latency-performance/tuned.conf\n#
       https://github.com/redhat-performance/tuned/blob/master/profiles/network-latency/tuned.conf\n#
@@ -27,9 +29,7 @@ spec:
       cpu-partitioning  #RealTimeHint\nvm.stat_interval=10\n\n# cpu-partitioning and
       RealTimeHint for RHEL disable it (= 0)\n# OCP is too dynamic when partitioning
       and needs to evacuate\n#> scheduled timers when starting a guaranteed workload
-      (= 1)\nkernel.timer_migration=1\n#> network-latency\n# TODO once rhbz#2120328
-      is solved: kernel.numa_balancing, net.core.busy_read and net.core.busy_poll
-      do not exist on RT kernels\nkernel.numa_balancing=0\nnet.core.busy_read=50\nnet.core.busy_poll=50\nnet.ipv4.tcp_fastopen=3\n\n#
+      (= 1)\nkernel.timer_migration=1\n#> network-latency\nnet.ipv4.tcp_fastopen=3\n\n#
       If a workload mostly uses anonymous memory and it hits this limit, the entire\n#
       working set is buffered for I/O, and any more write buffering would require\n#
       swapping, so it's time to throttle writes until I/O can catch up.  Workloads\n#
@@ -53,6 +53,11 @@ spec:
       tsc=reliable nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11\n\n\n\n\n\n\n
       \n\n\n\n\ncmdline_pstate=+intel_pstate=disable\n\n\n[rtentsk]\n\n\n"
     name: openshift-node-performance-openshift-bootstrap-worker
+  - data: "[main]\nsummary=Real time profile to override unsupported settings\n\n[sysctl]\n#Real
+      time kernel doesn't support the following kernel parameters.\n#The openshift-node-performance
+      profile inherits these kernel parameters from the network-latency profile. \n#Therefore,
+      if the real time kernel is detected they will be dropped, meaning won't be applied.\ndrop=kernel.numa_balancing,net.core.busy_read,net.core.busy_poll\n"
+    name: openshift-node-performance-rt-openshift-bootstrap-worker
   recommend:
   - machineConfigLabels:
       machineconfiguration.openshift.io/role: worker
