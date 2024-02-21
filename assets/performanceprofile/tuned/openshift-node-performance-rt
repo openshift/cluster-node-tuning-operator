@@ -1,0 +1,8 @@
+[main]
+summary=Real time profile to override unsupported settings
+
+[sysctl]
+#Real time kernel doesn't support the following kernel parameters.
+#The openshift-node-performance profile inherits these kernel parameters from the network-latency profile. 
+#Therefore, if the real time kernel is detected they will be dropped, meaning won't be applied.
+drop=kernel.numa_balancing,net.core.busy_read,net.core.busy_poll
