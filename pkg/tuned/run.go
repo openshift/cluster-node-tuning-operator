@@ -83,6 +83,7 @@ func TunedRunNoDaemon(cmd *exec.Cmd) error {
 	onDaemonReload := func() {}
 	return TunedRun(cmd, &daemon, onDaemonReload)
 }
+
 func TunedRun(cmd *exec.Cmd, daemon *Daemon, onDaemonReload func()) error {
 	klog.Infof("running cmd...")
 
@@ -141,12 +142,6 @@ func TunedRun(cmd *exec.Cmd, daemon *Daemon, onDaemonReload func()) error {
 				if daemon.reloaded {
 					klog.V(2).Infof("profile applied or reload failed, stopping the TuneD watcher")
 					onDaemonReload()
-					// c.tunedTimeout = tunedInitialTimeout // initialize the timeout
-					// c.daemon.status &= ^scTimeout        // clear the scTimeout status bit
-					// c.tunedTicker.Stop()                 // profile applied or reload failed, stop the TuneD watcher
-
-					// // Notify the event processor that the TuneD daemon finished reloading.
-					// c.wqTuneD.Add(wqKey{kind: wqKindDaemon})
 				}
 			}
 		}
