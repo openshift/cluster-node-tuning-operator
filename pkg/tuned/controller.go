@@ -375,12 +375,15 @@ func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string)
 	var (
 		change bool
 	)
-	klog.Info("profilesExtract(): extracting TuneD profiles")
+	klog.Infof("profilesExtract(): extracting %d TuneD profiles", len(profiles))
 
-	// Get a list of TuneD profiles names the recommended profile depends on.
-	recommendedProfileDeps := profileDepends(recommendedProfile)
-	// Add the recommended profile itself.
-	recommendedProfileDeps[recommendedProfile] = true
+	recommendedProfileDeps := map[string]bool{}
+	if len(recommendedProfile) > 0 {
+		// Get a list of TuneD profiles names the recommended profile depends on.
+		recommendedProfileDeps = profileDepends(recommendedProfile)
+		// Add the recommended profile itself.
+		recommendedProfileDeps[recommendedProfile] = true
+	}
 	extracted := map[string]bool{} // TuneD profile names present in TuneD CR and successfully extracted to /etc/tuned/<profile>/
 
 	for index, profile := range profiles {

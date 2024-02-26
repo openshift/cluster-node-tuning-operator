@@ -15,10 +15,12 @@ package render
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	assets "github.com/openshift/cluster-node-tuning-operator/assets/tuned"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/operator"
@@ -58,6 +60,51 @@ func init() {
 	)
 }
 
+func decodeManifestsFromFile(filename string,
+	r io.Reader,
+	runtimeDecoder runtime.Decoder,
+	perfProfiles *[]*performancev2.PerformanceProfile,
+	mcPools *[]*mcfgv1.MachineConfigPool,
+	mcConfigs *[]*mcfgv1.MachineConfig,
+	tuneD *[]*tunedv1.Tuned) error {
+	manifests, err := util.ParseManifests(filename, r)
+	if err != nil {
+		return fmt.Errorf("error parsing manifests from %s: %w", filename, err)
+	}
+
+	// Decode manifest files
+	klog.V(4).Infof("decoding manifests for file %s...", filename)
+	for idx, m := range manifests {
+		obji, err := runtime.Decode(runtimeDecoder, m.Raw)
+		if err != nil {
+			if runtime.IsNotRegisteredError(err) {
+				klog.Infof("skipping path %q [%d] manifest because it is not part of expected api group: %v", filename, idx+1, err)
+				continue
+			}
+			klog.Errorf("error parsing %q [%d] manifest: %v", filename, idx+1, err)
+			return fmt.Errorf("error parsing %q [%d] manifest: %w", filename, idx+1, err)
+		}
+
+		switch obj := obji.(type) {
+		case *performancev2.PerformanceProfile:
+			klog.Infof("Adding PerformanceProfile Manifest %q from %q", obj.Name, filename)
+			*perfProfiles = append(*perfProfiles, obj)
+		case *mcfgv1.MachineConfigPool:
+			klog.Infof("Adding MachineConfigPool Manifest %q from %q", obj.Name, filename)
+			*mcPools = append(*mcPools, obj)
+		case *mcfgv1.MachineConfig:
+			klog.Infof("Adding MachineConfig Manifest %q from %q", obj.Name, filename)
+			*mcConfigs = append(*mcConfigs, obj)
+		case *tunedv1.Tuned:
+			klog.Infof("Adding TuneD Manifest %q from %q", obj.Name, filename)
+			*tuneD = append(*tuneD, obj)
+		default:
+			klog.V(4).Infof("skipping %q [%d] manifest because of unhandled %T", filename, idx+1, obji)
+		}
+	}
+
+	return nil
+}
 func render(inputDir []string, outputDir string, mcpName string) error {
 	klog.Info("Rendering files from: ", inputDir)
 	klog.Info("Rendering files into: ", outputDir)
@@ -74,7 +121,7 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 	if err != nil {
 		return fmt.Errorf("error while listing files: %w", err)
 	}
-	klog.Infof("listed files: %v", filePaths)
+	klog.V(4).Infof("listed files: %v", filePaths)
 	// Make output dir if not present
 	err = os.MkdirAll(outputDir, os.ModePerm)
 	if err != nil {
@@ -97,36 +144,14 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 		}
 		defer file.Close()
 
-		manifests, err := util.ParseManifests(file.Name(), file)
+		err = decodeManifestsFromFile(file.Name(), file, runtimeDecoder, &perfProfiles, &mcPools, &mcConfigs, &tuneD)
 		if err != nil {
-			return fmt.Errorf("error parsing manifests from %s: %w", file.Name(), err)
+			return err
 		}
+	}
 
-		// Decode manifest files
-		klog.V(4).Infof("decoding manifests for file %s...", path)
-		for idx, m := range manifests {
-			obji, err := runtime.Decode(runtimeDecoder, m.Raw)
-			if err != nil {
-				if runtime.IsNotRegisteredError(err) {
-					klog.V(4).Infof("skipping path %q [%d] manifest because it is not part of expected api group: %v", file.Name(), idx+1, err)
-					continue
-				}
-				return fmt.Errorf("error parsing %q [%d] manifest: %w", file.Name(), idx+1, err)
-			}
-
-			switch obj := obji.(type) {
-			case *performancev2.PerformanceProfile:
-				perfProfiles = append(perfProfiles, obj)
-			case *mcfgv1.MachineConfigPool:
-				mcPools = append(mcPools, obj)
-			case *mcfgv1.MachineConfig:
-				mcConfigs = append(mcConfigs, obj)
-			case *tunedv1.Tuned:
-				tuneD = append(tuneD, obj)
-			default:
-				klog.Infof("skipping %q [%d] manifest because of unhandled %T", file.Name(), idx+1, obji)
-			}
-		}
+	if len(perfProfiles) == 0 {
+		klog.Infof("No PerformanceProfile found on input dirs %s", strings.Join(inputDir, ","))
 	}
 
 	// Append any missing default manifests (i.e. `master`/`worker`)
@@ -144,33 +169,43 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 		return fmt.Errorf("Unable to get PerformanceProfile to apply using MachineConfigPool %s. error : %w", mcpName, err)
 	}
 
-	if len(filteredPerformanceProfiles) > 1 {
-		klog.Warningf("Found %d PerformanceProfiles for MachineConfigPool %s, only ONE is allowed.", len(filteredPerformanceProfiles), mcpName)
-		return fmt.Errorf("Found %d PerformanceProfiles for MachineConfigPool %s, only ONE is allowed.", len(filteredPerformanceProfiles), mcpName)
+	if len(filteredPerformanceProfiles) == 0 {
+		klog.Infof("No PerformanceProfile found for MachineConfigPool %s", mcpName)
 	}
-
-	if len(filteredPerformanceProfiles) > 0 {
-		perfProfile := filteredPerformanceProfiles[0]
-		tunedFromPP, err := tuned.NewNodePerformance(perfProfile)
+	for _, pp := range filteredPerformanceProfiles {
+		tunedFromPP, err := tuned.NewNodePerformance(pp)
 		if err != nil {
-			klog.Errorf("Unable to get tuned from PerformanceProfile %s. error : %v", perfProfile.Name, err)
-			return fmt.Errorf("unable to get tuned from PerformanceProfile:%s. error: %w", perfProfile.Name, err)
+			e := fmt.Errorf("unable to get tuned from PerformanceProfile:%s. error: %w", pp.Name, err)
+			klog.Error(e)
+			return e
 		}
 		// add tuned from PP to the list
 		tuneD = append(tuneD, tunedFromPP)
 	}
 
+	klog.Infof("working with %d additional tuneD profiles", len(tuneD))
+
+	if err := loadDefaultCrTuneD(&tuneD); err != nil {
+		e := fmt.Errorf("unable to load default cr tuned %w", err)
+		klog.Error(e)
+		return e
+	}
+
 	tuneDrecommended := operator.TunedRecommend(tuneD)
 	if len(tuneDrecommended) == 0 {
-		klog.Error("Unable to get tuned recommended profile.")
-		return fmt.Errorf("Unable to get tuned recommended profile.")
+		e := fmt.Errorf("unable to get recommended profile")
+		klog.Error(e)
+		return e
 	}
 
 	recommendedProfile := *tuneDrecommended[0].Profile
+	klog.Infof("RecommendedProfile found :%s", recommendedProfile)
+
 	err = tunedpkg.TunedRecommendFileWrite(recommendedProfile)
 	if err != nil {
-		klog.Errorf("error writing recommended profile %q : %v", recommendedProfile, err)
-		return fmt.Errorf("error writing recommended profile %q : %w", recommendedProfile, err)
+		err := fmt.Errorf("error writing recommended profile %q : %v", recommendedProfile, err)
+		klog.Error(err.Error())
+		return err
 	}
 
 	t := manifests.TunedRenderedResource(tuneD)
@@ -195,7 +230,7 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 		return err
 	}
 
-	mc, err := renderMachineConfig(mcp, bootcmdline, mcConfigs, tuneDrecommended[0].MachineConfigLabels)
+	mc, err := renderMachineConfig(mcp, bootcmdline, mcConfigs, mcp.Spec.MachineConfigSelector.MatchLabels)
 	if err != nil {
 		klog.Errorf("error while rendering machine config  %v", err)
 		return fmt.Errorf("error while rendering machine config: %w", err)
@@ -209,7 +244,7 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 			return err
 		}
 
-		fileName := fmt.Sprintf("%s_%s_kargs.yaml", recommendedProfile, strings.ToLower(mc.Kind))
+		fileName := fmt.Sprintf("%s_%s_kargs.yaml", "kernelcmdargs", strings.ToLower(mc.Kind))
 		fullFilePath := filepath.Join(outputDir, fileName)
 		klog.Info("Writing file: ", fullFilePath)
 		err = os.WriteFile(fullFilePath, byteOutput, 0644)
@@ -221,6 +256,29 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 		klog.Infof("MachineConfig written at : %s", fullFilePath)
 	}
 
+	return nil
+}
+
+func loadDefaultCrTuneD(tuneD *[]*tunedv1.Tuned) error {
+	var (
+		dummyPerfProfiles []*performancev2.PerformanceProfile
+		dummyMcPools      []*mcfgv1.MachineConfigPool
+		dummyMcConfigs    []*mcfgv1.MachineConfig
+	)
+
+	klog.Infof("Unable to get tuned recommended profile with current info. Adding default tuneD")
+
+	fileName := "default-cr-tuned.yaml"
+	f, err := assets.Manifests.Open(filepath.Join("manifests", fileName))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	err = decodeManifestsFromFile(fileName, f, runtimeDecoder, &dummyPerfProfiles, &dummyMcPools, &dummyMcConfigs, tuneD)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
