@@ -4,12 +4,10 @@ import (
 	"bufio"   // scanner
 	"bytes"   // bytes.Buffer
 	"context" // context.TODO()
-	"flag"    // command-line options parsing
 	"fmt"     // Printf()
 	"math"    // math.Pow()
 	"os"      // os.Exit(), os.Stderr, ...
 	"os/exec" // os.Exec()
-	"strconv" // strconv
 	"strings" // strings.Join()
 	"syscall" // syscall.SIGHUP, ...
 	"time"    // time.Second, ...
@@ -73,9 +71,8 @@ const (
 	// TuneD logs before restarting TuneD and thus retrying the profile application.  Keep this
 	// reasonably low to workaround system/TuneD issues as soon as possible, but not too low
 	// to increase the system load by retrying profile applications that can never succeed.
-	openshiftTunedHome     = "/var/lib/tuned"
+	openshiftTunedHome     = "/var/lib/ocp-tuned"
 	openshiftTunedRunDir   = "/run/" + programName
-	openshiftTunedPidFile  = openshiftTunedRunDir + "/" + programName + ".pid"
 	openshiftTunedProvider = openshiftTunedHome + "/provider"
 	tunedInitialTimeout    = 60 // timeout in seconds
 	// With the less aggressive rate limiter, retries will happen at 100ms*2^(retry_n-1):
@@ -108,6 +105,7 @@ type Daemon struct {
 	// the TuneD profile we wish to be applied.
 	recommendedProfile string
 }
+
 type Controller struct {
 	kubeconfig *restclient.Config
 	kubeclient kubernetes.Interface
@@ -148,19 +146,6 @@ type Controller struct {
 type wqKey struct {
 	kind string // object kind
 	name string // object name
-}
-
-func parseCmdOpts() {
-	klog.InitFlags(nil)
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n", programName)
-		fmt.Fprintf(os.Stderr, "Example: %s\n\n", programName)
-		fmt.Fprintf(os.Stderr, "Options:\n")
-
-		flag.PrintDefaults()
-	}
-
-	flag.Parse()
 }
 
 // Get a client from kubelet's kubeconfig to write to the Node object.
@@ -478,21 +463,6 @@ func providerExtract(provider string) error {
 		return fmt.Errorf("failed to write cloud provider name file %q: %v", openshiftTunedProvider, err)
 	}
 
-	return nil
-}
-
-func openshiftTunedPidFileWrite() error {
-	if err := util.Mkdir(openshiftTunedRunDir); err != nil {
-		return fmt.Errorf("failed to create %s run directory %q: %v", programName, openshiftTunedRunDir, err)
-	}
-	f, err := os.Create(openshiftTunedPidFile)
-	if err != nil {
-		return fmt.Errorf("failed to create %s pid file %q: %v", programName, openshiftTunedPidFile, err)
-	}
-	defer f.Close()
-	if _, err = f.WriteString(strconv.Itoa(os.Getpid())); err != nil {
-		return fmt.Errorf("failed to write %s pid file %q: %v", programName, openshiftTunedPidFile, err)
-	}
 	return nil
 }
 
@@ -1212,20 +1182,8 @@ func retryLoop(c *Controller) (err error) {
 	}
 }
 
-func Run(stopCh <-chan struct{}, boolVersion *bool, version string) {
-	klog.Infof("starting %s %s", programName, version)
-	parseCmdOpts()
-
-	if *boolVersion {
-		fmt.Fprintf(os.Stderr, "%s %s\n", programName, version)
-		os.Exit(0)
-	}
-
-	err := openshiftTunedPidFileWrite()
-	if err != nil {
-		// openshift-tuned PID file is not really used by anything, remove it in the future?
-		panic(err.Error())
-	}
+func RunOperand(stopCh <-chan struct{}, version string, inCluster bool) error {
+	klog.Infof("starting %s %s; in-cluster: %v", programName, version, inCluster)
 
 	c, err := newController(stopCh)
 	if err != nil {
@@ -1233,8 +1191,5 @@ func Run(stopCh <-chan struct{}, boolVersion *bool, version string) {
 		panic(err.Error())
 	}
 
-	err = retryLoop(c)
-	if err != nil {
-		panic(err.Error())
-	}
+	return retryLoop(c)
 }

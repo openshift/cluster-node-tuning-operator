@@ -22,7 +22,7 @@ spec:
     spec:
       serviceAccountName: tuned
       containers:
-      - command: ["/var/lib/tuned/bin/run","start"]
+      - command: ["/usr/bin/cluster-node-tuning-operator","openshift-tuned","--in-cluster","-v=0"]
         resources:
           requests:
             cpu: 10m
@@ -35,9 +35,6 @@ spec:
         terminationMessagePath: /dev/termination-log
         terminationMessagePolicy: FallbackToLogsOnError
         volumeMounts:
-        - mountPath: /var/lib/tuned/profiles-data
-          name: var-lib-tuned-profiles-data
-          mountPropagation: HostToContainer
         - mountPath: /etc/modprobe.d
           name: etc-modprobe-d
           mountPropagation: HostToContainer
@@ -91,6 +88,8 @@ spec:
             value: "600"
           - name: RELEASE_VERSION
             value: ""
+          - name: CLUSTER_NODE_TUNED_IMAGE
+            value: ${CLUSTER_NODE_TUNED_IMAGE}
       volumes:
       - hostPath:
           path: /etc/modprobe.d
@@ -136,14 +135,6 @@ spec:
         hostPath:
           path: /
           type: Directory
-      - configMap:
-          defaultMode: 0644
-          items:
-          - key: tuned-profiles-data
-            path: tuned-profiles.yaml
-          name: tuned-profiles
-          optional: true
-        name: var-lib-tuned-profiles-data
       dnsPolicy: ClusterFirst
       nodeSelector:
         kubernetes.io/os: linux
