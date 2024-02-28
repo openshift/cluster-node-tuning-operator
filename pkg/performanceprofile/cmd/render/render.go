@@ -160,6 +160,9 @@ func render(inputDir, outputDir string) error {
 		}
 	}
 
+	// Append any missing default manifests (i.e. `master`/`worker`)
+	mcPools = util.AppendMissingDefaultMCPManifests(mcPools)
+
 	for _, pp := range perfProfiles {
 		mcp, err := selectMachineConfigPool(mcPools, pp.Spec.NodeSelector)
 		if err != nil {

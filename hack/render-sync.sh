@@ -1,16 +1,35 @@
 #!/usr/bin/env bash
-
 WORKDIR=$(dirname "$(realpath "$0")")/..
-ARTIFACT_DIR=$(mktemp -d)
 
-cd "${WORKDIR}" || { echo "failed to change dir to ${WORKDIR}"; exit; }
-_output/cluster-node-tuning-operator render \
---asset-input-dir "${WORKDIR}"/test/e2e/performanceprofile/cluster-setup/manual-cluster/performance,"${WORKDIR}"/test/e2e/performanceprofile/cluster-setup/base/performance \
---asset-output-dir "${ARTIFACT_DIR}"
+function join_by { local IFS="$1"; shift; echo "$*"; }
 
-cp "${ARTIFACT_DIR}"/*  "${WORKDIR}"/test/e2e/performanceprofile/testdata/render-expected-output/default
-for f in  "${WORKDIR}"/test/e2e/performanceprofile/testdata/render-expected-output/default/*
-do
-  sed -i "s/uid:.*/uid: \"\"/" "${f}"
-done
-rm -r "${ARTIFACT_DIR}"
+function rendersync() {
+  INPUT_DIRS=()
+  while (( $# > 1 )); do
+    INPUT_DIRS+=("${WORKDIR}/test/e2e/performanceprofile/cluster-setup/$1")
+    shift
+  done
+  INPUT_DIRS=$(join_by , ${INPUT_DIRS[@]})
+
+  OUTPUT_DIR=$1
+
+  echo "== Rendering ${INPUT_DIRS} into ${OUTPUT_DIR}"
+
+  ARTIFACT_DIR=$(mktemp -d)
+
+  cd "${WORKDIR}" || { echo "failed to change dir to ${WORKDIR}"; exit; }
+  _output/cluster-node-tuning-operator render \
+  --asset-input-dir "${INPUT_DIRS}" \
+  --asset-output-dir "${ARTIFACT_DIR}"
+
+  cp "${ARTIFACT_DIR}"/*  "${WORKDIR}"/test/e2e/performanceprofile/testdata/render-expected-output/${OUTPUT_DIR}
+  for f in  "${WORKDIR}"/test/e2e/performanceprofile/testdata/render-expected-output/${OUTPUT_DIR}/*
+  do
+    sed -i "s/uid:.*/uid: \"\"/" "${f}"
+  done
+  rm -r "${ARTIFACT_DIR}"
+}
+
+rendersync manual-cluster/performance base/performance default
+rendersync bootstrap-cluster/performance pinned-cluster/default bootstrap/no-mcp
+rendersync bootstrap-cluster/performance pinned-cluster/default bootstrap-cluster/extra-mcp bootstrap/extra-mcp

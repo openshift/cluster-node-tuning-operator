@@ -1,0 +1,12 @@
+apiVersion: performance.openshift.io/v2
+kind: PerformanceProfile
+metadata:
+  name: openshift-bootstrap-worker
+spec:
+  cpu:
+    isolated: 0-1
+    reserved: 2-3
+  machineConfigPoolSelector:
+    pools.operator.machineconfiguration.openshift.io/worker: ""
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""

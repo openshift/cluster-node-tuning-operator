@@ -1,0 +1,17 @@
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfigPool
+metadata:
+  name: worker-cnf
+  namespace: openshift-machine-config-operator
+  labels:
+    machineconfiguration.openshift.io/role: worker-cnf
+spec:
+  paused: true
+  machineConfigSelector:
+    matchExpressions:
+      - key: machineconfiguration.openshift.io/role
+        operator: In
+        values: [worker,worker-cnf]
+  nodeSelector:
+    matchLabels:
+      node-role.kubernetes.io/worker-cnf: ""
