@@ -30,6 +30,7 @@ var (
 	snoLegacyPinnedDir                     string
 	bootstrapPPDir                         string
 	extraMCPDir                            string
+	containerRuntimeConfigDir              string
 )
 
 var _ = Describe("render command e2e test", func() {
@@ -44,6 +45,7 @@ var _ = Describe("render command e2e test", func() {
 		defaultPinnedDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "pinned-cluster", "default")
 		snoLegacyPinnedDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "pinned-cluster", "single-node-legacy")
 		testDataPath = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "testdata")
+		containerRuntimeConfigDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "container-runtime-crun")
 		assetsInDirs = []string{assetsInDir, ppDir}
 		assetsCpuFrequencyInDirs = []string{assetsInDir, ppCpuFrequencyDir}
 	})
@@ -192,6 +194,25 @@ var _ = Describe("render command e2e test", func() {
 
 			cmd := exec.Command(cmdline[0], cmdline[1:]...)
 			runAndCompare(cmd, path.Join(bootstrapExpectedDir, "extra-mcp"))
+
+		})
+	})
+
+	Context("With performance profile and matching extra ContainerRuntimeConfig during bootstrap", func() {
+		It("should render ContainerRuntimeConfig", func() {
+
+			bootstrapPPDirs := []string{bootstrapPPDir, defaultPinnedDir, containerRuntimeConfigDir}
+
+			cmdline := []string{
+				filepath.Join(binPath, "cluster-node-tuning-operator"),
+				"render",
+				"--asset-input-dir", strings.Join(bootstrapPPDirs, ","),
+				"--asset-output-dir", assetsOutDir,
+			}
+			fmt.Fprintf(GinkgoWriter, "running: %v\n", cmdline)
+
+			cmd := exec.Command(cmdline[0], cmdline[1:]...)
+			runAndCompare(cmd, path.Join(bootstrapExpectedDir, "extra-ctrcfg"))
 
 		})
 	})
