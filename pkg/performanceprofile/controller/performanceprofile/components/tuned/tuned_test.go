@@ -411,7 +411,9 @@ var _ = Describe("Tuned", func() {
 					Expect(channelsRegex.MatchString(manifest)).To(BeTrue())
 				})
 				It("should set by negative interface name with reserved CPUs count", func() {
-					netDeviceName := "!ens5"
+					netDeviceName := "ens5"
+					netDeviceNameInverted := "!" + netDeviceName
+
 					//regex field should be: devices_udev_regex=^INTERFACE=(?!ens5)
 					devicesUdevRegex := "\\^INTERFACE=\\(\\?!" + strings.Replace(netDeviceName, "*", "\\.\\*", -1) + "\\)"
 
@@ -419,7 +421,7 @@ var _ = Describe("Tuned", func() {
 						UserLevelNetworking: pointer.Bool(true),
 						Devices: []performancev2.Device{
 							{
-								InterfaceName: &netDeviceName,
+								InterfaceName: &netDeviceNameInverted,
 							},
 						}}
 					manifest := getTunedManifest(profile)
@@ -493,7 +495,8 @@ var _ = Describe("Tuned", func() {
 					Expect(channelsRegex.MatchString(manifest)).To(BeTrue())
 				})
 				It("should set by specific vendor,model and negative interface name with reserved CPUs count", func() {
-					netDeviceName := "!ens5"
+					netDeviceName := "ens5"
+					netDeviceNameInverted := "!ens5"
 					netDeviceVendorID := "0x1af4"
 					netDeviceModelID := "0x1000"
 					//regex field should be: devices_udev_regex=^ID_MODEL_ID=0x1000[\\s\\S]*^ID_VENDOR_ID=0x1af4[\\s\\S]*^INTERFACE=(?!ens5)
@@ -503,7 +506,7 @@ var _ = Describe("Tuned", func() {
 						UserLevelNetworking: pointer.Bool(true),
 						Devices: []performancev2.Device{
 							{
-								InterfaceName: &netDeviceName,
+								InterfaceName: &netDeviceNameInverted,
 								DeviceID:      &netDeviceModelID,
 								VendorID:      &netDeviceVendorID,
 							},
