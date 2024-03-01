@@ -205,6 +205,68 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 			}
 		})
 
+		It("[test_id:72051] Verify reserved cpus count is applied to all but specific supported networking device using a negative match", func() {
+			nodesDevices := make(map[string]map[string]int)
+			var device, devicePattern string
+			deviceSupport, err := checkDeviceSupport(workerRTNodes, nodesDevices)
+			Expect(err).ToNot(HaveOccurred())
+			if !deviceSupport {
+				Skip("Skipping Test: There are no supported Network Devices")
+			}
+
+			// Remove nodes with only one NIC as that cannot be used to check this behavior
+			// this is done by removing the NIC entries to avoid deleting from the map while iterating
+			for node, nics := range nodesDevices {
+				if len(nics) < 2 {
+					nodesDevices[node] = nil
+				}
+			}
+
+			nodeName, device := getRandomNodeDevice(nodesDevices)
+			devicePattern = "!" + device
+			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+			if profile.Spec.Net.UserLevelNetworking != nil && *profile.Spec.Net.UserLevelNetworking && len(profile.Spec.Net.Devices) == 0 {
+				By("Enable UserLevelNetworking and add Devices in Profile")
+				profile.Spec.Net = &performancev2.Net{
+					UserLevelNetworking: pointer.Bool(true),
+					Devices: []performancev2.Device{
+						{
+							InterfaceName: &devicePattern,
+						},
+					},
+				}
+				profiles.UpdateWithRetry(profile)
+			}
+			//Verify the tuned profile is created on the worker-cnf nodes:
+			tunedCmd := []string{"bash", "-c",
+				fmt.Sprintf("cat /etc/tuned/openshift-node-performance-%s/tuned.conf | grep devices_udev_regex", performanceProfileName)}
+
+			node, err := nodes.GetByName(nodeName)
+			Expect(err).ToNot(HaveOccurred())
+			tunedPod := nodes.TunedForNode(node, RunningOnSingleNode)
+
+			Eventually(func() bool {
+				out, err := pods.WaitForPodOutput(testclient.K8sClient, tunedPod, tunedCmd)
+				if err != nil {
+					return false
+				}
+				return strings.ContainsAny(string(out), device)
+			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "could not get a tuned profile set with devices_udev_regex")
+
+			nodesDevices = make(map[string]map[string]int)
+			err = checkDeviceSetWithReservedCPU(workerRTNodes, nodesDevices, *profile)
+			if err != nil {
+				Skip("Skipping Test: Unable to set Network queue size to reserved cpu count")
+			}
+
+			// After at least one NIC was configured, make sure that the selected NIC was NOT it
+
+			Expect(nodesDevices).To(HaveKey(node.Name))
+			Expect(nodesDevices[node.Name]).To(HaveKey(device))
+			Expect(nodesDevices[node.Name][device]).ToNot(Equal(getReservedCPUSize(profile.Spec.CPU)))
+		})
+
 		It("[test_id:40668] Verify reserved cpu count is added to networking devices matched with vendor and Device id", func() {
 			nodesDevices := make(map[string]map[string]int)
 			deviceSupport, err := checkDeviceSupport(workerRTNodes, nodesDevices)
