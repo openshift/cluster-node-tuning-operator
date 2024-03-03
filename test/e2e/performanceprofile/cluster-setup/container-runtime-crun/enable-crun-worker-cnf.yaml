@@ -1,0 +1,11 @@
+apiVersion: machineconfiguration.openshift.io/v1
+kind: ContainerRuntimeConfig
+metadata:
+  name: enable-crun-worker-cnf
+spec:
+  containerRuntimeConfig:
+    defaultRuntime: crun
+  nodeSelector:
+    matchLabels:
+      node-role.kubernetes.io/worker-cnf: ""
+status: {}
