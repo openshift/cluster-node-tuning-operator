@@ -1,0 +1,13 @@
+apiVersion: config.openshift.io/v1
+kind: Node
+metadata:
+  creationTimestamp: null
+  name: cluster
+  ownerReferences:
+  - apiVersion: performance.openshift.io/v2
+    kind: PerformanceProfile
+    name: manual
+    uid: 6e1ecea6-9919-46c1-903e-b8c08026c230
+spec:
+  cgroupMode: v1
+status: {}
