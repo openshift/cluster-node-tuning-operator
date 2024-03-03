@@ -67,6 +67,7 @@ sched_migration_cost_ns=5000000
 {{if not .GloballyDisableIrqLoadBalancing}}
 default_irq_smp_affinity = ignore
 {{end}}
+irq_process=false
 
 [sysctl]
 {{if .RealTimeHint}}
