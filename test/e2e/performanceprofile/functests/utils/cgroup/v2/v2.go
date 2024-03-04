@@ -77,7 +77,7 @@ func (cm *ControllersManager) CpuStat(ctx context.Context, pod *corev1.Pod, cont
 	// cpu.stat always contains 3 stats usage_usec, user_usec, system_usec
 	// only when cpu controller is enabled other stats like nr_periods etc are enabled
 	if len(interfacevalues) < 4 {
-		return nil, fmt.Errorf("CPU Controller is not enabled")
+		return nil, fmt.Errorf("cpu.stat doesn't contain all the cpu metrics required")
 	}
 	for _, v := range interfacevalues {
 		stat := strings.Split(v, " ")
