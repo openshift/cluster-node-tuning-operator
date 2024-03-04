@@ -529,7 +529,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		)
 
 	})
-	When("Crio Annotations", func() {
+	Context("Crio Annotations", func() {
 		var testpod *corev1.Pod
 		var allTestpods map[types.UID]*corev1.Pod
 		annotations := map[string]string{
@@ -558,7 +558,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			if len(defaultCpuNotInSchedulingDomains) > 0 {
 				pods, err := pods.GetPodsOnNode(context.TODO(), workerRTNode.Name)
 				if err != nil {
-					testlog.Warningf("cannot list pods on %q: %v", workerRTNode.Name, err)
+					testlog.Warningf("Warning cannot list pods on %q: %v", workerRTNode.Name, err)
 				} else {
 					testlog.Infof("pods on %q BEGIN", workerRTNode.Name)
 					for _, pod := range pods {
@@ -586,7 +586,6 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				testlog.Infof("deleting test pod %s/%s UID=%q", testpod.Namespace, testpod.Name, podUID)
 				err := testclient.Client.Get(ctx, client.ObjectKeyFromObject(testpod), testpod)
 				Expect(err).ToNot(HaveOccurred())
-				//testpodUID := testpod.UID
 				err = testclient.Client.Delete(ctx, testpod)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -596,23 +595,27 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		})
 
 		Describe("cpuset controller", func() {
-			It("Verify cpuset controller interface files have right values", func() {
+			It("[test_id:72080] Verify cpu affinity of container process matches with cpuset controller interface file cpuset.cpus", func() {
 				cpusetCfg := &controller.CpuSet{}
 				err := getter.Container(ctx, testpod, testpod.Spec.Containers[0].Name, cpusetCfg)
 				Expect(err).ToNot(HaveOccurred())
 				// Get cpus used by the container
-				tasksetcmd := []string{"taskset", "-pc", "1"}
+				tasksetcmd := []string{"/bin/taskset", "-pc", "1"}
 				testpodAffinity, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod, testpod.Spec.Containers[0].Name, tasksetcmd)
 				podCpusStr := string(testpodAffinity)
 				parts := strings.Split(strings.TrimSpace(podCpusStr), ":")
 				testpodCpus := strings.TrimSpace(parts[1])
-				testlog.Infof("%v pod is using %v cpus", testpod.Name, string(testpodCpus))
-				Expect(cpusetCfg.Cpus).To(Equal(testpodCpus), "cpuset.cpus not matching the process affinity")
+				testlog.Infof("%v pod is using %v cpus", testpod.Name, testpodCpus)
+				podAffinityCpuset, err := cpuset.Parse(testpodCpus)
+				Expect(err).ToNot(HaveOccurred(), "Unable to parse cpus %s used by %s pod", testpodCpus, testpod.Name)
+				cgroupCpuset, err := cpuset.Parse(cpusetCfg.Cpus)
+				Expect(err).ToNot(HaveOccurred(), "Unable to parse cpus from cgroups.cpugset")
+				Expect(cgroupCpuset).To(Equal(podAffinityCpuset), "cpuset.cpus not matching the process affinity")
 			})
 		})
 
 		Describe("Load Balancing Annotation", func() {
-			It("cpus used by container should not be load balanced", func() {
+			It("[test_id:32646] cpus used by container should not be load balanced", func() {
 				output, err := getPodCpus(testpod)
 				Expect(err).ToNot(HaveOccurred(), "unable to fetch cpus used by testpod")
 				podCpus, err := cpuset.Parse(output)
@@ -629,8 +632,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			})
 		})
 
-		Describe("CPU Quota Annotation", func() {
-			It("cpu controller interface files have correct values", func() {
+		Describe("CPU Quota annotation", func() {
+			It("[test_id:72079] CPU Quota interface files have correct values", func() {
 				cpuCfg := &controller.Cpu{}
 				err := getter.Container(ctx, testpod, testpod.Spec.Containers[0].Name, cpuCfg)
 				Expect(err).ToNot(HaveOccurred())
@@ -641,7 +644,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				}
 			})
 
-			It("Verify cpu assigned to pod with quota disabled is not throttled", func() {
+			It("[test_id: 72081] Verify cpu assigned to pod with quota disabled is not throttled", func() {
 				cpuStat := &controller.CpuStat{}
 				err := getter.Container(ctx, testpod, testpod.Spec.Containers[0].Name, cpuStat)
 				Expect(err).ToNot(HaveOccurred())
