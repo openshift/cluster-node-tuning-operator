@@ -29,6 +29,7 @@ import (
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
@@ -135,7 +136,7 @@ var _ = Describe("[performance][config] Performance configuration", Ordered, fun
 		format.Object(performanceProfile, 2)
 	})
 
-	It("should create SRI-OV devices if they are exist", func() {
+	It("should create SRI-OV devices if they are exist", Label(string(label.SRIOV)), func() {
 		sriovInfos, err := sriovcluster.DiscoverSriov(testclient.SRIOVClient, sriov.OperatorNamespace)
 		if err != nil || sriovInfos == nil {
 			Skip("failed to discover SRI-OV information for the cluster")
