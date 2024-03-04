@@ -20,8 +20,7 @@ import (
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	mcv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
-
+	sriovcluster "github.com/k8snetworkplumbingwg/sriov-network-operator/test/util/cluster"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
@@ -33,6 +32,8 @@ import (
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/sriov"
+	mcv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	olmv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 )
 
@@ -132,6 +133,14 @@ var _ = Describe("[performance][config] Performance configuration", Ordered, fun
 		Expect(testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(performanceProfile), performanceProfile))
 		By("Printing the updated profile")
 		format.Object(performanceProfile, 2)
+	})
+
+	It("should create SRI-OV devices if they are exist", func() {
+		sriovInfos, err := sriovcluster.DiscoverSriov(testclient.SRIOVClient, sriov.OperatorNamespace)
+		if err != nil || sriovInfos == nil {
+			Skip("failed to discover SRI-OV information for the cluster")
+		}
+		sriov.CreatePolicyAndNetwork(context.TODO(), sriovInfos, sriov.OperatorNamespace, "test-sriov-for-performance-network", "testresource", "")
 	})
 
 })
