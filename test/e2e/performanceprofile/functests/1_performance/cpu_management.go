@@ -188,6 +188,11 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			testpod = getStressPod(workerRTNode.Name, cpuRequest)
 			testpod.Namespace = testutils.NamespaceTesting
 
+			isolatedCPUSet, _ := cpuset.Parse(isolatedCPU)
+			if cpuRequest > isolatedCPUSet.Size() {
+				Skip(fmt.Sprintf("cpus request %d is greater than the isolated cpus %d", cpuRequest, isolatedCPUSet.Size()))
+			}
+
 			listCPU := onlineCPUSet.List()
 			expectedQos := corev1.PodQOSBurstable
 
@@ -200,6 +205,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				listCPU = listReservedCPU
 			}
 
+			By(fmt.Sprintf("create a %s QoS stress pod requesting %d cpus", expectedQos, cpuRequest))
 			var err error
 			err = testclient.Client.Create(ctx, testpod)
 			Expect(err).ToNot(HaveOccurred())
