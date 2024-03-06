@@ -31,6 +31,7 @@ import (
 type renderOpts struct {
 	assetsInDir  string
 	assetsOutDir string
+	ownerRefMode string
 }
 
 // NewRenderCommand creates a render command.
@@ -39,6 +40,7 @@ type renderOpts struct {
 // needed to generate the machine configs.
 func NewRenderCommand() *cobra.Command {
 	renderOpts := renderOpts{}
+	renderOpts.SetDefaults()
 
 	cmd := &cobra.Command{
 		Use:   "render",
@@ -59,9 +61,14 @@ func NewRenderCommand() *cobra.Command {
 	return cmd
 }
 
+func (r *renderOpts) SetDefaults() {
+	r.ownerRefMode = ownerRefModeLabelName
+}
+
 func (r *renderOpts) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&r.assetsInDir, "asset-input-dir", components.AssetsDir, "Input path for the assets directory. (Can be a comma separated list of directories.)")
 	fs.StringVar(&r.assetsOutDir, "asset-output-dir", r.assetsOutDir, "Output path for the rendered manifests.")
+	fs.StringVar(&r.ownerRefMode, "owner-ref", r.ownerRefMode, "Add Owner Reference to rendered manifests. Accepted values: 'none' to disable; 'k8s' for proper owner reference; 'label-name' to use just a label.")
 	// environment variables has precedence over standard input
 	r.readFlagsFromEnv()
 }
@@ -74,18 +81,23 @@ func (r *renderOpts) readFlagsFromEnv() {
 	if assetsOutDir := os.Getenv("ASSET_OUTPUT_DIR"); len(assetsOutDir) > 0 {
 		r.assetsOutDir = assetsOutDir
 	}
+	if ownerRefMode, ok := os.LookupEnv("OWNER_REF"); ok {
+		r.ownerRefMode = ownerRefMode
+	}
 }
 
 func (r *renderOpts) Validate() error {
+	if !isValidOwnerRefMode(r.ownerRefMode) {
+		return fmt.Errorf("unsupported owner reference: %q", r.ownerRefMode)
+	}
 	if len(r.assetsOutDir) == 0 {
 		return fmt.Errorf("asset-output-dir must be specified")
 	}
-
 	return nil
 }
 
 func (r *renderOpts) Run() error {
-	return render(r.assetsInDir, r.assetsOutDir)
+	return render(r.ownerRefMode, r.assetsInDir, r.assetsOutDir)
 }
 
 func addKlogFlags(cmd *cobra.Command) {

@@ -2,10 +2,8 @@ apiVersion: tuned.openshift.io/v1
 kind: Tuned
 metadata:
   creationTimestamp: null
-  name: openshift-node-performance-openshift-bootstrap-master
+  name: openshift-node-performance-manual
   namespace: openshift-cluster-node-tuning-operator
-  labels:
-    performance.openshift.io/weak-owner-reference-name: "openshift-bootstrap-master"
 spec:
   profile:
   - data: "[main]\nsummary=Openshift node optimized for deterministic performance
@@ -17,7 +15,7 @@ spec:
       https://github.com/redhat-performance/tuned/blob/master/profiles/cpu-partitioning/tuned.conf\n\n#
       All values are mapped with a comment where a parent profile contains them.\n#
       Different values will override the original values in parent profiles.\n\n[variables]\n#>
-      isolated_cores take a list of ranges; e.g. isolated_cores=2,4-7\n\nisolated_cores=0-1\n\n\nnot_isolated_cores_expanded=${f:cpulist_invert:${isolated_cores_expanded}}\n\n\n[cpu]\n#>
+      isolated_cores take a list of ranges; e.g. isolated_cores=2,4-7\n\nisolated_cores=1\n\n\nnot_isolated_cores_expanded=${f:cpulist_invert:${isolated_cores_expanded}}\n\n\n[cpu]\n#>
       latency-performance\n#> (override)\nforce_latency=cstate.id:1|3\ngovernor=performance\nenergy_perf_bias=performance\nmin_perf_pct=100\n\n\n\n[service]\nservice.stalld=start,enable\n\n\n[vm]\n#>
       network-latency\ntransparent_hugepages=never\n\n\n[irqbalance]\n# Disable the
       plugin entirely, which was enabled by the parent profile `cpu-partitioning`.\n#
@@ -50,15 +48,15 @@ spec:
       overrides cpu-partitioning cmdline\ncmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores}
       tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded}
       intel_iommu=on iommu=pt\n\n\ncmdline_isolation=+isolcpus=managed_irq,${isolated_cores}\n\n\n\ncmdline_realtime=+nohz_full=${isolated_cores}
-      tsc=reliable nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11\n\n\n\n\n\n\n
-      \n\n\n\n\ncmdline_pstate=+intel_pstate=disable\n\n\n[rtentsk]\n"
-    name: openshift-node-performance-openshift-bootstrap-master
+      tsc=reliable nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11\n\n\n\n\n\n\n\ncmdline_hugepages=+
+      default_hugepagesz=1G   hugepagesz=2M hugepages=128 \n\n\n\n\ncmdline_pstate=+intel_pstate=disable\n\n\n[rtentsk]\n"
+    name: openshift-node-performance-manual
   recommend:
   - machineConfigLabels:
-      machineconfiguration.openshift.io/role: master
+      machineconfiguration.openshift.io/role: worker-cnf
     operand:
       tunedConfig:
         reapply_sysctl: null
     priority: 20
-    profile: openshift-node-performance-openshift-bootstrap-master
+    profile: openshift-node-performance-manual
 status: {}
