@@ -31,7 +31,7 @@ cvo_scale() {
 
 nto_deploy_custom() {
   oc project openshift-cluster-node-tuning-operator
-  oc patch deploy cluster-node-tuning-operator -p '{"spec":{"template":{"spec":{"containers":[{"env":[{"name":"RELEASE_VERSION","value":"'$TAG'"},{"name":"CLUSTER_NODE_TUNED_IMAGE","value":"'$IMAGE'"}],"name":"cluster-node-tuning-operator"}]}}}}'
+  oc patch deploy cluster-node-tuning-operator -p '{"spec":{"template":{"spec":{"containers":[{"env":[{"name":"CLUSTER_NODE_TUNED_IMAGE","value":"'$IMAGE'"}],"name":"cluster-node-tuning-operator"}]}}}}'
 }
 
 wait_for_updated_tuned_pods() {
