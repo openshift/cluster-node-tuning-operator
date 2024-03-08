@@ -170,6 +170,48 @@ var _ = Describe("Controller", func() {
 			Expect(availableCondition.Status).To(Equal(corev1.ConditionTrue))
 		})
 
+		It("should update relatedObject in the profile status", func() {
+			r := newFakeReconciler(profile, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
+
+			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
+
+			updatedProfile := &performancev2.PerformanceProfile{}
+			key := types.NamespacedName{
+				Name:      profile.Name,
+				Namespace: metav1.NamespaceNone,
+			}
+			Expect(r.Get(context.TODO(), key, updatedProfile)).ToNot(HaveOccurred())
+
+			expectedComponentName := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+			expectedTunedName := components.GetComponentName(profile.Name, components.ProfileNamePerformance)
+			expectedTunedOperatorNs := "openshift-cluster-node-tuning-operator"
+
+			Expect(updatedProfile.Status.RelatedObjects).To(HaveLen(4))
+			mcor := apiconfigv1.ObjectReference{
+				Group:    "machineconfiguration.openshift.io",
+				Resource: "machineconfigs",
+				Name:     machineconfig.GetMachineConfigName(updatedProfile),
+			}
+
+			kcor := apiconfigv1.ObjectReference{
+				Group:    "machineconfiguration.openshift.io",
+				Resource: "kubeletconfigs",
+				Name:     expectedComponentName,
+			}
+			tdor := apiconfigv1.ObjectReference{
+				Group:     "tuned.openshift.io",
+				Resource:  "tuneds",
+				Name:      expectedTunedName,
+				Namespace: expectedTunedOperatorNs,
+			}
+			rtcor := apiconfigv1.ObjectReference{
+				Group:    "node.k8s.io",
+				Resource: "runtimeclasses",
+				Name:     expectedComponentName,
+			}
+			Expect(updatedProfile.Status.RelatedObjects).To(ContainElements(mcor, kcor, tdor, rtcor))
+		})
+
 		It("should promote kubelet config failure condition", func() {
 			r := newFakeReconciler(profile, profileMCP, infra, clusterOperator, nodeConfig, profileMC)
 			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
