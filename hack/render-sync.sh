@@ -39,5 +39,3 @@ function rendersync() {
 }
 
 rendersync manual-cluster/performance base/performance default
-rendersync bootstrap-cluster/performance pinned-cluster/default bootstrap/no-mcp
-rendersync bootstrap-cluster/performance pinned-cluster/default bootstrap-cluster/extra-mcp bootstrap/extra-mcp
