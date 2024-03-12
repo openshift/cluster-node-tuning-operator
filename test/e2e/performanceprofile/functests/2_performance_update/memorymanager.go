@@ -752,7 +752,7 @@ func (mm MMPod) createPodTemplate(profile *performancev2.PerformanceProfile, gu 
 		*mm.CreateHugePagesVolumeMounts(),
 	}
 
-	mm.podV1Struct.Spec.Volumes = append([]corev1.Volume{
+	mm.podV1Struct.Spec.Volumes = []corev1.Volume{
 		{
 			Name: strings.ToLower(volumeName),
 			VolumeSource: corev1.VolumeSource{
@@ -761,7 +761,7 @@ func (mm MMPod) createPodTemplate(profile *performancev2.PerformanceProfile, gu 
 				},
 			},
 		},
-	})
+	}
 	// we set the node selector to worker-cnf node
 	mm.podV1Struct.Spec.NodeSelector = testNode
 	// Set runtimeclass

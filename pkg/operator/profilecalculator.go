@@ -243,7 +243,7 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[stri
 
 		if recommendAll[iStop].Priority == nil || recommendAll[i].Priority == nil {
 			// This should never happen as Priority is a required field, but just in case -- we don't want to crash below.
-			klog.Warningf("one or both of profiles %s/%s have undefined priority", recommendAll[iStop].Profile, recommendAll[i].Profile)
+			klog.Warningf("one or both of profiles %s/%s have undefined priority", *recommendAll[iStop].Profile, *recommendAll[i].Profile)
 			continue
 		}
 		// Warn if two profiles have the same priority, and different names.
@@ -347,7 +347,7 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (string
 
 		if recommendAll[iStop].Priority == nil || recommendAll[i].Priority == nil {
 			// This should never happen as Priority is a required field, but just in case -- we don't want to crash below.
-			klog.Warningf("one or both of profiles %s/%s have undefined priority", recommendAll[iStop].Profile, recommendAll[i].Profile)
+			klog.Warningf("one or both of profiles %s/%s have undefined priority", *recommendAll[iStop].Profile, *recommendAll[i].Profile)
 			continue
 		}
 		// Warn if two profiles have the same priority, and different names.
