@@ -200,7 +200,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				initialProfile = profile.DeepCopy()
 			})
 			It("[test_id:64100] matches with ovs process affinity", func() {
-				testutils.KnownIssueJira("OCPBUGS-27834")
+				testutils.KnownIssueJira("OCPBUGS-30806")
 				ovnPod, err := getOvnPod(context.TODO(), workerRTNode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get ovnPod")
 
@@ -222,7 +222,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 			})
 
 			It("[test_id:64101] Creating gu pods modifies affinity of ovs", func() {
-				testutils.KnownIssueJira("OCPBUGS-27834")
+				testutils.KnownIssueJira("OCPBUGS-30806")
 				var testpod *corev1.Pod
 				var err error
 				testpod = pods.GetTestPod()
