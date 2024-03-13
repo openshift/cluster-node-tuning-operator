@@ -1,7 +1,7 @@
 package v1alpha1
 
 import (
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	v1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v1"
 	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
@@ -29,7 +29,7 @@ func (curr *PerformanceProfile) ConvertTo(dstRaw conversion.Hub) error {
 			dst.Spec.CPU.Isolated = &isolated
 		}
 		if curr.Spec.CPU.BalanceIsolated != nil {
-			dst.Spec.CPU.BalanceIsolated = pointer.Bool(*curr.Spec.CPU.BalanceIsolated)
+			dst.Spec.CPU.BalanceIsolated = ptr.To(*curr.Spec.CPU.BalanceIsolated)
 		}
 	}
 
@@ -49,7 +49,7 @@ func (curr *PerformanceProfile) ConvertTo(dstRaw conversion.Hub) error {
 					Size: v1.HugePageSize(p.Size), Count: p.Count,
 				}
 				if p.Node != nil {
-					dst.Spec.HugePages.Pages[i].Node = pointer.Int32(*p.Node)
+					dst.Spec.HugePages.Pages[i].Node = ptr.To[int32](*p.Node)
 				}
 			}
 		}
@@ -80,7 +80,7 @@ func (curr *PerformanceProfile) ConvertTo(dstRaw conversion.Hub) error {
 		dst.Spec.RealTimeKernel = new(v1.RealTimeKernel)
 
 		if curr.Spec.RealTimeKernel.Enabled != nil {
-			dst.Spec.RealTimeKernel.Enabled = pointer.Bool(*curr.Spec.RealTimeKernel.Enabled)
+			dst.Spec.RealTimeKernel.Enabled = ptr.To(*curr.Spec.RealTimeKernel.Enabled)
 		}
 	}
 
@@ -93,7 +93,7 @@ func (curr *PerformanceProfile) ConvertTo(dstRaw conversion.Hub) error {
 		dst.Spec.NUMA = new(v1.NUMA)
 
 		if curr.Spec.NUMA.TopologyPolicy != nil {
-			dst.Spec.NUMA.TopologyPolicy = pointer.String(*curr.Spec.NUMA.TopologyPolicy)
+			dst.Spec.NUMA.TopologyPolicy = ptr.To[string](*curr.Spec.NUMA.TopologyPolicy)
 		}
 	}
 
@@ -104,11 +104,11 @@ func (curr *PerformanceProfile) ConvertTo(dstRaw conversion.Hub) error {
 	}
 
 	if curr.Status.Tuned != nil {
-		dst.Status.Tuned = pointer.String(*curr.Status.Tuned)
+		dst.Status.Tuned = ptr.To[string](*curr.Status.Tuned)
 	}
 
 	if curr.Status.RuntimeClass != nil {
-		dst.Status.RuntimeClass = pointer.String(*curr.Status.RuntimeClass)
+		dst.Status.RuntimeClass = ptr.To[string](*curr.Status.RuntimeClass)
 	}
 
 	// +kubebuilder:docs-gen:collapse=rote conversion
@@ -135,7 +135,7 @@ func (curr *PerformanceProfile) ConvertFrom(srcRaw conversion.Hub) error {
 			curr.Spec.CPU.Isolated = &isolated
 		}
 		if src.Spec.CPU.BalanceIsolated != nil {
-			curr.Spec.CPU.BalanceIsolated = pointer.Bool(*src.Spec.CPU.BalanceIsolated)
+			curr.Spec.CPU.BalanceIsolated = ptr.To(*src.Spec.CPU.BalanceIsolated)
 		}
 	}
 
@@ -154,7 +154,7 @@ func (curr *PerformanceProfile) ConvertFrom(srcRaw conversion.Hub) error {
 					Size: HugePageSize(p.Size), Count: p.Count,
 				}
 				if p.Node != nil {
-					curr.Spec.HugePages.Pages[i].Node = pointer.Int32(*p.Node)
+					curr.Spec.HugePages.Pages[i].Node = ptr.To[int32](*p.Node)
 				}
 			}
 		}
@@ -185,7 +185,7 @@ func (curr *PerformanceProfile) ConvertFrom(srcRaw conversion.Hub) error {
 		curr.Spec.RealTimeKernel = new(RealTimeKernel)
 
 		if src.Spec.RealTimeKernel.Enabled != nil {
-			curr.Spec.RealTimeKernel.Enabled = pointer.Bool(*src.Spec.RealTimeKernel.Enabled)
+			curr.Spec.RealTimeKernel.Enabled = ptr.To(*src.Spec.RealTimeKernel.Enabled)
 		}
 	}
 
@@ -198,7 +198,7 @@ func (curr *PerformanceProfile) ConvertFrom(srcRaw conversion.Hub) error {
 		curr.Spec.NUMA = new(NUMA)
 
 		if src.Spec.NUMA.TopologyPolicy != nil {
-			curr.Spec.NUMA.TopologyPolicy = pointer.String(*src.Spec.NUMA.TopologyPolicy)
+			curr.Spec.NUMA.TopologyPolicy = ptr.To[string](*src.Spec.NUMA.TopologyPolicy)
 		}
 	}
 
@@ -209,11 +209,11 @@ func (curr *PerformanceProfile) ConvertFrom(srcRaw conversion.Hub) error {
 	}
 
 	if src.Status.Tuned != nil {
-		curr.Status.Tuned = pointer.String(*src.Status.Tuned)
+		curr.Status.Tuned = ptr.To[string](*src.Status.Tuned)
 	}
 
 	if src.Status.RuntimeClass != nil {
-		curr.Status.RuntimeClass = pointer.String(*src.Status.RuntimeClass)
+		curr.Status.RuntimeClass = ptr.To[string](*src.Status.RuntimeClass)
 	}
 
 	// +kubebuilder:docs-gen:collapse=rote conversion
