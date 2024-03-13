@@ -57,33 +57,34 @@ func (cm *ControllersManager) Cpu(ctx context.Context, pod *corev1.Pod, containe
 	quotaAndPeriod := strings.Split(output[0], " ")
 	cfg.Quota = quotaAndPeriod[0]
 	cfg.Period = quotaAndPeriod[1]
+	cfg.Stat, err = stat(cm.k8sClient, pod, containerName, childName)
 	return cfg, nil
 }
 
-func (cm *ControllersManager) CpuStat(ctx context.Context, pod *corev1.Pod, containerName, childName, runtimeType string) (*controller.CpuStat, error) {
-	cfg := &controller.CpuStat{}
-	cfg.Stat = make(map[string]string)
+// stat fetch cpu.stat values
+func stat(k8sclient *kubernetes.Clientset, pod *corev1.Pod, containerName, childName string) (map[string]string, error) {
+	cpuStat := make(map[string]string)
 	dirPath := path.Join(controller.CgroupMountPoint, childName)
 	cmd := []string{
 		"/bin/cat",
-		dirPath + "/cpu.stat",
+		dirPath + "/cpu/cpu.stat",
 	}
-	b, err := pods.ExecCommandOnPod(cm.k8sClient, pod, containerName, cmd)
+	statBytes, err := pods.ExecCommandOnPod(k8sclient, pod, containerName, cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve cgroup config for pod. pod=%q, container=%q; %w", client.ObjectKeyFromObject(pod).String(), containerName, err)
 	}
-	output := strings.TrimSpace(string(b))
+	output := strings.TrimSpace(string(statBytes))
 	interfacevalues := strings.Split(output, "\r\n")
 	// cpu.stat always contains 3 stats usage_usec, user_usec, system_usec
 	// only when cpu controller is enabled other stats like nr_periods etc are enabled
 	if len(interfacevalues) < 4 {
-		return nil, fmt.Errorf("cpu.stat doesn't contain all the cpu metrics required")
+		return nil, fmt.Errorf("CPU Controller is not enabled")
 	}
 	for _, v := range interfacevalues {
-		stat := strings.Split(v, " ")
-		cfg.Stat[stat[0]] = stat[1]
+		values := strings.Split(v, " ")
+		cpuStat[values[0]] = values[1]
 	}
-	return cfg, nil
+	return cpuStat, nil
 }
 
 func (cm *ControllersManager) Pod(ctx context.Context, pod *corev1.Pod, controllerConfig interface{}) error {
@@ -109,12 +110,6 @@ func (cm *ControllersManager) Child(ctx context.Context, pod *corev1.Pod, contai
 		*cc = *cfg
 	case *controller.Cpu:
 		cfg, err := cm.Cpu(ctx, pod, containerName, childName, runtimeType)
-		if err != nil {
-			return err
-		}
-		*cc = *cfg
-	case *controller.CpuStat:
-		cfg, err := cm.CpuStat(ctx, pod, containerName, childName, runtimeType)
 		if err != nil {
 			return err
 		}

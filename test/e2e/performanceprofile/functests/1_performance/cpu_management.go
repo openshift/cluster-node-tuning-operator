@@ -645,10 +645,10 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			})
 
 			It("[test_id: 72081] Verify cpu assigned to pod with quota disabled is not throttled", func() {
-				cpuStat := &controller.CpuStat{}
-				err := getter.Container(ctx, testpod, testpod.Spec.Containers[0].Name, cpuStat)
+				cpuCfg := &controller.Cpu{}
+				err := getter.Container(ctx, testpod, testpod.Spec.Containers[0].Name, cpuCfg)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(cpuStat.Stat["nr_throttled"]).To(Equal("0"), "cpu throttling not disabled on pod=%q, container=%q", client.ObjectKeyFromObject(testpod), testpod.Spec.Containers[0].Name)
+				Expect(cpuCfg.Stat["nr_throttled"]).To(Equal("0"), "cpu throttling not disabled on pod=%q, container=%q", client.ObjectKeyFromObject(testpod), testpod.Spec.Containers[0].Name)
 			})
 		})
 	})
