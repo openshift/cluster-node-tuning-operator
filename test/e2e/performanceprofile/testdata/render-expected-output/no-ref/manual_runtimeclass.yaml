@@ -3,8 +3,6 @@ handler: high-performance
 kind: RuntimeClass
 metadata:
   creationTimestamp: null
-  labels:
-    performance.openshift.io/weak-owner-reference-name: manual
   name: performance-manual
 scheduling:
   nodeSelector:
