@@ -55,8 +55,8 @@ func BuildGetter(ctx context.Context, c client.Client, k8sClient *kubernetes.Cli
 	}
 }
 
-// PidCgroupParser parsing /proc/pid/cgroup
-func PidCgroupParser(lines []byte) (string, error) {
+// PidParser parsing /proc/pid/cgroup
+func PidParser(lines []byte) (string, error) {
 	var cgroupPath string
 	for _, line := range bytes.Split(lines, []byte("\n")) {
 		if len(line) == 0 {
