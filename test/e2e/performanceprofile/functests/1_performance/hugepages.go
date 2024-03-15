@@ -3,6 +3,7 @@ package __performance
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
@@ -29,13 +31,21 @@ import (
 )
 
 var _ = Describe("[performance]Hugepages", Ordered, func() {
-	var workerRTNode *corev1.Node
-	var profile *performancev2.PerformanceProfile
+	const cgroupRoot string = "/rootfs/sys/fs/cgroup/"
+	var (
+		workerRTNode *corev1.Node
+		profile      *performancev2.PerformanceProfile
+		ctx          context.Context = context.Background()
+		cgroupV2     bool
+	)
 
 	testutils.CustomBeforeAll(func() {
 		isSNO, err := cluster.IsSingleNode()
 		Expect(err).ToNot(HaveOccurred())
 		RunningOnSingleNode = isSNO
+		cgroupV2, err = cgroup.IsVersion2(ctx, testclient.Client)
+		Expect(err).ToNot(HaveOccurred())
+
 	})
 
 	BeforeEach(func() {
@@ -124,11 +134,20 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 
 		It("[test_id:27477][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Huge pages support for container workloads", func() {
 			hpSize := profile.Spec.HugePages.Pages[0].Size
+			var systemCgroup, hugepageInterface string
 			hpSizeKb, err := machineconfig.GetHugepagesSizeKilobytes(hpSize)
 			Expect(err).ToNot(HaveOccurred())
 
 			By("checking hugepages usage in bytes - should be 0 on idle system")
-			usageHugepagesFile := fmt.Sprintf("/rootfs/sys/fs/cgroup/hugetlb/hugetlb.%sB.usage_in_bytes", hpSize)
+			if cgroupV2 {
+				//we need to check kubepods.slice
+				systemCgroup = filepath.Join(cgroupRoot, "kubepods.slice")
+				hugepageInterface = fmt.Sprintf("hugetlb.%sB.current", hpSize)
+			} else {
+				systemCgroup = filepath.Join(cgroupRoot, "hugetlb")
+				hugepageInterface = fmt.Sprintf("hugetlb.%sB.usage_in_bytes", hpSize)
+			}
+			usageHugepagesFile := fmt.Sprintf("%s/%s", systemCgroup, hugepageInterface)
 			usageHugepages := checkHugepagesStatus(context.TODO(), usageHugepagesFile, workerRTNode)
 			if discovery.Enabled() && usageHugepages != 0 {
 				Skip("Skipping test since other guests might reside in the cluster affecting results")
