@@ -381,7 +381,6 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 			containersCgroups = strings.Trim(containersCgroups, "\n")
 			containersCgroupsDirs := strings.Split(containersCgroups, "\n")
-			//Expect(len(containersCgroupsDirs)).To(Equal(2), "unexpected amount of containers cgroups")
 
 			for _, dir := range containersCgroupsDirs {
 				// skip application container cgroup
@@ -609,7 +608,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				podAffinityCpuset, err := cpuset.Parse(testpodCpus)
 				Expect(err).ToNot(HaveOccurred(), "Unable to parse cpus %s used by %s pod", testpodCpus, testpod.Name)
 				cgroupCpuset, err := cpuset.Parse(cpusetCfg.Cpus)
-				Expect(err).ToNot(HaveOccurred(), "Unable to parse cpus from cgroups.cpugset")
+				Expect(err).ToNot(HaveOccurred(), "Unable to parse cpus from cgroups.cpuset")
 				Expect(cgroupCpuset).To(Equal(podAffinityCpuset), "cpuset.cpus not matching the process affinity")
 			})
 		})

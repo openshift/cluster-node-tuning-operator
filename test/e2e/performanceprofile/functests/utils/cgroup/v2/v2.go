@@ -77,6 +77,7 @@ func stat(k8sclient *kubernetes.Clientset, pod *corev1.Pod, containerName, child
 	interfacevalues := strings.Split(output, "\r\n")
 	// cpu.stat always contains 3 stats usage_usec, user_usec, system_usec
 	// only when cpu controller is enabled other stats like nr_periods etc are enabled
+	// this is not applicable for v1 as controllers are preenabled by default
 	if len(interfacevalues) < 4 {
 		return nil, fmt.Errorf("CPU Controller is not enabled")
 	}

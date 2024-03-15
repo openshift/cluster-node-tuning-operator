@@ -58,6 +58,9 @@ func (cm *ControllersManager) Cpu(ctx context.Context, pod *corev1.Pod, containe
 	cfg.Quota = output[0]
 	cfg.Period = output[1]
 	cfg.Stat, err = stat(cm.k8sClient, pod, containerName, childName)
+	if err != nil {
+		return nil, err
+	}
 	return cfg, nil
 }
 
@@ -75,11 +78,6 @@ func stat(k8sclient *kubernetes.Clientset, pod *corev1.Pod, containerName, child
 	}
 	output := strings.TrimSpace(string(statBytes))
 	interfacevalues := strings.Split(output, "\r\n")
-	// cpu.stat always contains 3 stats usage_usec, user_usec, system_usec
-	// only when cpu controller is enabled other stats like nr_periods etc are enabled
-	if len(interfacevalues) < 4 {
-		return nil, fmt.Errorf("CPU Controller is not enabled")
-	}
 	for _, v := range interfacevalues {
 		values := strings.Split(v, " ")
 		cpuStat[values[0]] = values[1]
