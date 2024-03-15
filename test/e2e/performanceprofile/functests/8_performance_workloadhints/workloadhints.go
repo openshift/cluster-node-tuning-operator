@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"sync"
@@ -26,9 +27,10 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/tuned"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
@@ -38,6 +40,10 @@ import (
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
 
+const (
+	cgroupRoot = "/rootfs/sys/fs/cgroup"
+)
+
 var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific PerformanceProfile API", func() {
 	var workerRTNodes []corev1.Node
 	var profile, initialProfile *performancev2.PerformanceProfile
@@ -45,14 +51,6 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 	var err error
 
 	nodeLabel := testutils.NodeSelectorLabels
-
-	var RunningOnSingleNode bool
-
-	testutils.CustomBeforeAll(func() {
-		isSNO, err := cluster.IsSingleNode()
-		Expect(err).ToNot(HaveOccurred())
-		RunningOnSingleNode = isSNO
-	})
 
 	BeforeEach(func() {
 		if discovery.Enabled() && testutils.ProfileNotFound {
@@ -653,6 +651,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 			It("[test_id:54185] Verify sysfs parameters of guaranteed pod with powersave annotations", func() {
 
+				var fullPath string = ""
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware.
 				checkHardwareCapability(context.TODO(), workerRTNodes)
@@ -710,16 +709,21 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				Expect(err).ToNot(HaveOccurred())
 
 				containerCgroup := ""
-				Eventually(func() string {
-					cmd := []string{"/bin/bash", "-c", fmt.Sprintf("find /rootfs/sys/fs/cgroup/cpuset/ -name *%s*", containerID)}
-					containerCgroup, err = nodes.ExecCommandOnNode(context.TODO(), cmd, &workerRTNodes[0])
-					Expect(err).ToNot(HaveOccurred())
-					return containerCgroup
-				}, cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode), 5*time.Second).ShouldNot(BeEmpty(),
-					fmt.Sprintf("cannot find cgroup for container %q", containerID))
-
+				pid, err := nodes.ContainerPid(context.TODO(), &workerRTNodes[0], containerID)
+				cmd := []string{"cat", fmt.Sprintf("/rootfs/proc/%s/cgroup", pid)}
+				out, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &workerRTNodes[0], cmd)
+				containerCgroup, err = cgroup.PidParser(out)
+				cgroupv2, err := cgroup.IsVersion2(context.TODO(), testclient.Client)
+				Expect(err).ToNot(HaveOccurred())
+				if cgroupv2 {
+					fullPath = filepath.Join(cgroupRoot, containerCgroup)
+				} else {
+					fullPath = filepath.Join(cgroupRoot, "cpuset", containerCgroup)
+				}
+				cpusetCpusPath := filepath.Join(fullPath, "cpuset.cpus")
+				testlog.Infof("test pod %s with container id %s cgroup path %s", testpod.Name, containerID, cpusetCpusPath)
 				By("Verify powersetting of cpus used by the pod")
-				cmd := []string{"/bin/bash", "-c", fmt.Sprintf("cat %s/cpuset.cpus", containerCgroup)}
+				cmd = []string{"cat", cpusetCpusPath}
 				output, err := nodes.ExecCommandOnNode(context.TODO(), cmd, &workerRTNodes[0])
 				Expect(err).ToNot(HaveOccurred())
 				cpus, err := cpuset.Parse(output)
@@ -749,6 +753,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware
+				var containerCgroup, fullPath string
 				checkHardwareCapability(context.TODO(), workerRTNodes)
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					PerPodPowerManagement: pointer.Bool(false),
@@ -806,17 +811,21 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				containerID, err := pods.GetContainerIDByName(testpod, "test")
 				Expect(err).ToNot(HaveOccurred())
 
-				containerCgroup := ""
-				Eventually(func() string {
-					cmd := []string{"/bin/bash", "-c", fmt.Sprintf("find /rootfs/sys/fs/cgroup/cpuset/ -name *%s*", containerID)}
-					containerCgroup, err = nodes.ExecCommandOnNode(context.TODO(), cmd, &workerRTNodes[0])
-					Expect(err).ToNot(HaveOccurred())
-					return containerCgroup
-				}, cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode), 5*time.Second).ShouldNot(BeEmpty(),
-					fmt.Sprintf("cannot find cgroup for container %q", containerID))
-
+				pid, err := nodes.ContainerPid(context.TODO(), &workerRTNodes[0], containerID)
+				cmd := []string{"cat", fmt.Sprintf("/rootfs/proc/%s/cgroup", pid)}
+				out, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &workerRTNodes[0], cmd)
+				containerCgroup, err = cgroup.PidParser(out)
+				cgroupv2, err := cgroup.IsVersion2(context.TODO(), testclient.Client)
+				Expect(err).ToNot(HaveOccurred())
+				if cgroupv2 {
+					fullPath = filepath.Join(cgroupRoot, containerCgroup)
+				} else {
+					fullPath = filepath.Join(cgroupRoot, "cpuset", containerCgroup)
+				}
+				cpusetCpusPath := filepath.Join(fullPath, "cpuset.cpus")
+				testlog.Infof("test pod %s with container id %s cgroup path %s", testpod.Name, containerID, cpusetCpusPath)
 				By("Verify powersetting of cpus used by the pod")
-				cmd := []string{"/bin/bash", "-c", fmt.Sprintf("cat %s/cpuset.cpus", containerCgroup)}
+				cmd = []string{"cat", cpusetCpusPath}
 				output, err := nodes.ExecCommandOnNode(context.TODO(), cmd, &workerRTNodes[0])
 				Expect(err).ToNot(HaveOccurred())
 				cpus, err := cpuset.Parse(output)
