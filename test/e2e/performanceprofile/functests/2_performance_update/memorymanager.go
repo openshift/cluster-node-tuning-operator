@@ -357,7 +357,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			Expect(mm1.removePod(context.TODO(), testPod)).ToNot(HaveOccurred(), "Failed to remove test pod")
 		})
 
-		It("[test_id:60697] Verify Pod is rejected when the numzone doesn't enough resources", func() {
+		It("[test_id:60697] Verify Pod is rejected when the numa zone doesn't have enough resources", func() {
 			// We first create a pod thats assigned to numa zone 1
 			// and requesting most of the hugepages resources from numa zone 1
 			var mm1, mm2 MMPod
