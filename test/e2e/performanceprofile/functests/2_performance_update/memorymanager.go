@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -12,8 +13,8 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/events"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
@@ -30,6 +31,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	cgroupRoot string = "/rootfs/sys/fs/cgroup"
+)
+
 // MMPod Memory Manager Pod Definition
 type MMPod struct {
 	podV1Struct                   *corev1.Pod
@@ -41,10 +46,12 @@ type MMPod struct {
 }
 
 var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() {
-	var workerRTNodes []corev1.Node
-	var profile, initialProfile *performancev2.PerformanceProfile
-	var performanceMCP string
-	var err error
+	var (
+		workerRTNodes           []corev1.Node
+		profile, initialProfile *performancev2.PerformanceProfile
+		performanceMCP          string
+		err                     error
+	)
 
 	Context("Group Both Numa Nodes with restricted topology", Ordered, func() {
 		var numaCoreSiblings map[int]map[int][]int
@@ -58,7 +65,6 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			Expect(err).ToNot(HaveOccurred())
 			performanceMCP, err = mcps.GetByProfile(profile)
 			Expect(err).ToNot(HaveOccurred())
-
 			// Save the original performance profile
 			initialProfile = profile.DeepCopy()
 
@@ -351,7 +357,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 			Expect(mm1.removePod(context.TODO(), testPod)).ToNot(HaveOccurred(), "Failed to remove test pod")
 		})
 
-		It("[test_id:60697] Verify Pod is rejected when the numzone doesn't enough resources", func() {
+		It("[test_id:60697] Verify Pod is rejected when the numa zone doesn't have enough resources", func() {
 			// We first create a pod thats assigned to numa zone 1
 			// and requesting most of the hugepages resources from numa zone 1
 			var mm1, mm2 MMPod
@@ -800,24 +806,31 @@ func initializePod(ctx context.Context, testPod *corev1.Pod) error {
 
 // GetMemoryNodes Returns memory nodes used by the pods' container
 func GetMemoryNodes(ctx context.Context, testPod *corev1.Pod, targetNode *corev1.Node) (string, error) {
-	var containerCgroup = ""
-	var RunningOnSingleNode bool
-	RunningOnSingleNode, err := cluster.IsSingleNode()
+	var containerCgroup, memoryNodes, fullPath, cpusetMemsPath string
 	containerID, err := pods.GetContainerIDByName(testPod, "test")
 	if err != nil {
 		return "", fmt.Errorf("Failed to fetch containerId for %v", testPod)
 	}
-	Eventually(func() string {
-		cmd := []string{"/bin/bash", "-c", fmt.Sprintf("find /rootfs/sys/fs/cgroup/cpuset/ -name *%s*", containerID)}
-		containerCgroup, err = nodes.ExecCommandOnNode(ctx, cmd, targetNode)
-		Expect(err).ToNot(HaveOccurred(), "failed to run %s cmd", cmd)
-		return containerCgroup
-	}, cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode), 5*time.Second).ShouldNot(BeEmpty(),
-		fmt.Sprintf("cannot find cgroup for container %q", containerID))
-	By("Checking NumaZones the pod is using")
-	cmd := []string{"/bin/bash", "-c", fmt.Sprintf("cat %s/cpuset.mems", containerCgroup)}
-	output, err := nodes.ExecCommandOnNode(ctx, cmd, targetNode)
-	return output, err
+	pid, err := nodes.ContainerPid(context.TODO(), targetNode, containerID)
+	cmd := []string{"cat", fmt.Sprintf("/rootfs/proc/%s/cgroup", pid)}
+	out, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), targetNode, cmd)
+	containerCgroup, err = cgroup.PidParser(out)
+	fmt.Println("Container Cgroup = ", containerCgroup)
+	cgroupv2, err := cgroup.IsVersion2(context.TODO(), testclient.Client)
+	if err != nil {
+		return "", err
+	}
+	if cgroupv2 {
+		fullPath = filepath.Join(cgroupRoot, containerCgroup)
+		cpusetMemsPath = filepath.Join(fullPath, "cpuset.mems.effective")
+	} else {
+		fullPath = filepath.Join(cgroupRoot, "cpuset", containerCgroup)
+		cpusetMemsPath = filepath.Join(fullPath, "cpuset.mems")
+	}
+	cmd = []string{"cat", cpusetMemsPath}
+	memoryNodes, err = nodes.ExecCommandOnNode(ctx, cmd, targetNode)
+	testlog.Infof("test pod %s with container id %s has Memory nodes %s", testPod.Name, containerID, memoryNodes)
+	return memoryNodes, err
 }
 
 // CreateHugePagesVolumeMounts create Huge pages volume mounts
