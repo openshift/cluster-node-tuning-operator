@@ -254,6 +254,11 @@ pao-functests-mixedcpus:
 	hack/show-cluster-version.sh
 	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/11_mixedcpus" -p "-v -r --fail-fast --flake-attempts=2 --junit-report=report.xml" -m "Running MixedCPUs Tests"
 
+.PHONY: pao-functests-hypershift
+pao-functests-hypershift:
+	@echo "Cluster Version"
+	hack/show-cluster-version.sh
+
 .PHONY: cluster-clean-pao
 cluster-clean-pao:
 	@echo "Cleaning up performance addons artifacts"
