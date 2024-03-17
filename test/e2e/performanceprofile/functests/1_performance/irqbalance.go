@@ -313,7 +313,11 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 
 			origBannedCPUsFile := "/etc/sysconfig/orig_irq_banned_cpus"
 			By(fmt.Sprintf("Checking content of %q on node %q", origBannedCPUsFile, node.Name))
-			expectFileEmpty(node, origBannedCPUsFile)
+			fullPath := filepath.Join("/", "rootfs", origBannedCPUsFile)
+			out, err := nodes.ExecCommandOnNode([]string{"/usr/bin/cat", fullPath}, node)
+			Expect(err).ToNot(HaveOccurred())
+			out = strings.TrimSuffix(out, "\r\n")
+			Expect(out).To(Equal("0"), "file %s does not contain the expect output; expected=0 actual=%s", fullPath, out)
 		})
 	})
 })
@@ -341,9 +345,6 @@ func getIrqBalanceBannedCPUs(node *corev1.Node) (cpuset.CPUSet, error) {
 	items := strings.FieldsFunc(keyValue, func(c rune) bool {
 		return c == '='
 	})
-	if len(items) == 1 {
-		return cpuset.New(), nil
-	}
 	if len(items) != 2 {
 		return cpuset.New(), fmt.Errorf("malformed CPU ban list in the configuration")
 	}
@@ -399,12 +400,4 @@ func unquote(s string) string {
 	s = strings.TrimPrefix(s, q)
 	s = strings.TrimSuffix(s, q)
 	return s
-}
-
-func expectFileEmpty(node *corev1.Node, path string) {
-	fullPath := filepath.Join("/", "rootfs", path)
-	out, err := nodes.ExecCommandOnNode([]string{"wc", "-c", fullPath}, node)
-	ExpectWithOffset(1, err).ToNot(HaveOccurred())
-	expected := "0 " + fullPath
-	ExpectWithOffset(1, out).To(Equal(expected), "file %s (%s) not empty", path, fullPath)
 }
