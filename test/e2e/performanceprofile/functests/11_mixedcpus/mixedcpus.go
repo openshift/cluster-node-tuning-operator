@@ -13,6 +13,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/client-go/kubernetes"
 	kubeletconfig "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/cpuset"
 	"k8s.io/utils/pointer"
@@ -46,6 +47,8 @@ const (
 	// smt alignment won't allow us to run the test pod with a single core, hence we should cancel it.
 	numberOfCoresThatRequiredCancelingSMTAlignment = 4
 	restartCooldownTime                            = 1 * time.Minute
+	isolatedCpusEnv                                = "OPENSHIFT_ISOLATED_CPUS"
+	sharedCpusEnv                                  = "OPENSHIFT_SHARED_CPUS"
 )
 
 var _ = Describe("Mixedcpus", Ordered, func() {
@@ -182,17 +185,25 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 					withLimits(rl),
 					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
 				Expect(err).ToNot(HaveOccurred())
+
+				By("checking environment variables are under the container's init process")
+				shared := fetchSharedCPUsFromEnv(testclient.K8sClient, p, "")
+				ppShared := mustParse(string(*profile.Spec.CPU.Shared))
+				Expect(err).ToNot(HaveOccurred())
+				Expect(shared.Equals(*ppShared)).To(BeTrue(), "OPENSHIFT_SHARED_CPUS value not equal to what configure in the performance profile."+
+					"OPENSHIFT_SHARED_CPUS=%s spec.cpu.shared=%s", shared.String(), ppShared.String())
+
+				By("checking environment variables are under the container's child process")
 				cmd := printMixedCPUsEnvCmd()
 				output, err := pods.ExecCommandOnPod(testclient.K8sClient, p, "", cmd)
 				Expect(err).ToNot(HaveOccurred(), "failed to execute command on pod; cmd=%q pod=%q", cmd, client.ObjectKeyFromObject(p).String())
 				isolatedAndShared := strings.Split(string(output), "\r\n")
 				isolated := mustParse(isolatedAndShared[0])
-				Expect(isolated.IsEmpty()).ToNot(BeTrue())
-				shared := mustParse(isolatedAndShared[1])
-				ppShared := mustParse(string(*profile.Spec.CPU.Shared))
-				Expect(err).ToNot(HaveOccurred())
-				Expect(shared.Equals(*ppShared)).To(BeTrue(), "OPENSHIFT_SHARED_CPUS value not equal to what configure in the performance profile."+
-					"OPENSHIFT_SHARED_CPUS=%s spec.cpu.shared=%s", shared.String(), ppShared.String())
+				Expect(isolated.IsEmpty()).ToNot(BeTrue(), "isolated cpuset is empty")
+				shared = mustParse(isolatedAndShared[1])
+				Expect(shared.IsEmpty()).ToNot(BeTrue(), "shared cpuset is empty")
+				// we don't need to check the shared and isolated values again, we only want to make sure they appear
+				// in the child processes
 			})
 			It("should contains the shared cpus after Kubelet restarts", func() {
 				rl := &corev1.ResourceList{
@@ -287,20 +298,22 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 				Expect(cgroupCpuSet.Intersection(newShared).List()).ToNot(BeEmpty(), "shared cpus are not in the pod cgroups; pod=%q, cgroupscpuset=%q sharedcpuset=%q",
 					fmt.Sprintf("%s/%s", p.Namespace, p.Name), cgroupCpuSet.String(), newShared.String())
 
-				By("checking environment variable under the container")
+				By("checking environment variables are under the container's init process")
+				sharedFromEnv := fetchSharedCPUsFromEnv(testclient.K8sClient, p, "")
+				Expect(sharedFromEnv.Equals(newShared)).To(BeTrue(), "OPENSHIFT_SHARED_CPUS value not equal to what configure in the performance profile."+
+					"OPENSHIFT_SHARED_CPUS=%s spec.cpu.shared=%s", sharedFromEnv.String(), newShared.String())
+
+				By("checking environment variables are under the container's child process")
 				cmd := printMixedCPUsEnvCmd()
 				output, err := pods.ExecCommandOnPod(testclient.K8sClient, p, "", cmd)
 				Expect(err).ToNot(HaveOccurred(), "failed to execute command on pod; cmd=%q pod=%q", cmd, client.ObjectKeyFromObject(p).String())
 				isolatedAndShared := strings.Split(string(output), "\r\n")
-				// We expect three - two environment variables and one empty string appended by split
-				Expect(len(isolatedAndShared)).To(Equal(3), "failed to split output; output=%q isolatedAndShared=%v len=%d", string(output), isolatedAndShared, len(isolatedAndShared))
-				isolatedFromEnv := mustParse(isolatedAndShared[0])
-				Expect(isolatedFromEnv.IsEmpty()).ToNot(BeTrue())
-				sharedFromEnv := mustParse(isolatedAndShared[1])
-				Expect(sharedFromEnv.IsEmpty()).ToNot(BeTrue())
-				Expect(sharedFromEnv.Equals(newShared)).To(BeTrue(), "OPENSHIFT_SHARED_CPUS value not equal to what configure in the performance profile."+
-					"OPENSHIFT_SHARED_CPUS=%s spec.cpu.shared=%s", sharedFromEnv.String(), newShared.String())
-
+				isolated := mustParse(isolatedAndShared[0])
+				Expect(isolated.IsEmpty()).ToNot(BeTrue(), "isolated cpuset is empty")
+				shared := mustParse(isolatedAndShared[1])
+				Expect(shared.IsEmpty()).ToNot(BeTrue(), "shared cpuset is empty")
+				// we don't need to check the shared and isolated values again, we only want to make sure they appear
+				// in the child processes
 			})
 		})
 	})
@@ -456,4 +469,25 @@ func mustParse(cpus string) *cpuset.CPUSet {
 	set, err := cpuset.Parse(cpus)
 	Expect(err).ToNot(HaveOccurred(), "failed to parse cpuset; cpus=%q", cpus)
 	return &set
+}
+
+func fetchSharedCPUsFromEnv(c *kubernetes.Clientset, p *corev1.Pod, containerName string) *cpuset.CPUSet {
+	GinkgoHelper()
+	// we should check the environment variable under the init process (pid 1)
+	cmd := []string{
+		"/bin/cat",
+		"/proc/1/environ",
+	}
+	output, err := pods.ExecCommandOnPod(c, p, containerName, cmd)
+	Expect(err).ToNot(HaveOccurred(), "failed to execute command on pod; cmd=%q pod=%q", cmd, client.ObjectKeyFromObject(p).String())
+	Expect(string(output)).To(And(ContainSubstring(isolatedCpusEnv), ContainSubstring(sharedCpusEnv)))
+	// \x00 is the NULL (C programming) of UTF-8
+	envs := strings.Split(string(output), "\x00")
+	var shared *cpuset.CPUSet
+	for _, env := range envs {
+		if strings.HasPrefix(env, sharedCpusEnv) {
+			shared = mustParse(strings.Split(env, "=")[1])
+		}
+	}
+	return shared
 }
