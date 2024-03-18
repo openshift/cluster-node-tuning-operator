@@ -21,7 +21,6 @@ require (
 	github.com/openshift/custom-resource-status v1.1.3-0.20220503160415-f2fdb4999d87
 	github.com/openshift/library-go v0.0.0-20230803043003-e1dfb9bf12bb
 	github.com/openshift/machine-config-operator v0.0.1-0.20230807154212-886c5c3fc7a9
-	github.com/operator-framework/api v0.10.7
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.15.1
 	github.com/sirupsen/logrus v1.9.3
