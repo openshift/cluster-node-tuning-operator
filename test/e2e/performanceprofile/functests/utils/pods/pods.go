@@ -207,7 +207,10 @@ func GetContainerIDByName(pod *corev1.Pod, containerName string) (string, error)
 	}
 	for _, containerStatus := range updatedPod.Status.ContainerStatuses {
 		if containerStatus.Name == containerName {
-			return strings.Trim(containerStatus.ContainerID, "cri-o://"), nil
+			containerID := containerStatus.ContainerID
+			// Split the container ID at the "://" delimiter, keeping the second part:
+			containerID = strings.SplitN(containerID, "://", 2)[1]
+			return containerID, nil
 		}
 	}
 	return "", fmt.Errorf("failed to find the container ID for the container %q under the pod %q", containerName, pod.Name)
