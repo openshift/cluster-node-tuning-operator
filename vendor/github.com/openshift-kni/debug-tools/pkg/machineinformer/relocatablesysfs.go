@@ -61,6 +61,7 @@ const (
 	nodeDirPattern = "node*[0-9]"
 
 	nodeDistance = "distance"
+	hidden       = "hidden"
 
 	//HugePagesNrFile name of nr_hugepages file in sysfs
 	HugePagesNrFile = "nr_hugepages"
@@ -91,6 +92,27 @@ func (fs RelocatableSysFs) GetDistances(nodePath string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(nodeDistances)), err
+}
+
+// See: https://github.com/google/cadvisor/blob/v0.48.1/utils/sysfs/sysfs.go#L218-L236
+func (fs RelocatableSysFs) IsBlockDeviceHidden(name string) (bool, error) {
+	// See: https://www.kernel.org/doc/Documentation/ABI/stable/sysfs-block
+	//      https://git.kernel.org/pub/scm/utils/util-linux/util-linux.git
+	//        - c8487d854ba5 ("lsblk: Ignore hidden devices")
+	path := filepath.Join(fs.root, blockDir, name, hidden)
+	hidden, err := os.ReadFile(path)
+	if err != nil && os.IsNotExist(err) {
+		// older OS may not have /hidden sysfs entry, so for sure
+		// it is not a hidden device...
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to read %s: %w", path, err)
+	}
+	if string(hidden) == "1" {
+		return true, nil
+	}
+	return false, nil
 }
 
 func (fs RelocatableSysFs) GetNodesPaths() ([]string, error) {

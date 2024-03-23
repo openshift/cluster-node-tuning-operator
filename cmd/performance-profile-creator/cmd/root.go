@@ -36,7 +36,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	kubeletconfig "k8s.io/kubelet/config/v1beta1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -122,8 +122,8 @@ func init() {
 // NewRootCommand returns entrypoint command to interact with all other commands
 func NewRootCommand() *cobra.Command {
 	pcArgs := &ProfileCreatorArgs{
-		UserLevelNetworking:   pointer.Bool(false),
-		PerPodPowerManagement: pointer.Bool(false),
+		UserLevelNetworking:   ptr.To(false),
+		PerPodPowerManagement: ptr.To(false),
 	}
 
 	var requiredFlags = []string{
@@ -529,10 +529,10 @@ func getProfileData(args ProfileCreatorArgs, cluster ClusterData) (*ProfileData,
 			)
 		}
 	case lowLatency:
-		profileData.realtimeHint = pointer.Bool(true)
+		profileData.realtimeHint = ptr.To(true)
 	case ultraLowLatency:
-		profileData.realtimeHint = pointer.Bool(true)
-		profileData.highPowerConsumptionHint = pointer.Bool(true)
+		profileData.realtimeHint = ptr.To(true)
+		profileData.highPowerConsumptionHint = ptr.To(true)
 		if profileData.perPodPowerManagementHint != nil && *profileData.perPodPowerManagementHint {
 			return nil, fmt.Errorf(
 				"please use one of %v power consumption modes together with the perPodPowerManagement",
@@ -618,9 +618,9 @@ func createProfile(profileData ProfileData) error {
 
 	// configuring workload hints
 	profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-		HighPowerConsumption:  pointer.Bool(false),
-		RealTime:              pointer.Bool(false),
-		PerPodPowerManagement: pointer.Bool(false),
+		HighPowerConsumption:  ptr.To(false),
+		RealTime:              ptr.To(false),
+		PerPodPowerManagement: ptr.To(false),
 	}
 
 	if profileData.highPowerConsumptionHint != nil {
