@@ -19,6 +19,7 @@ import (
 	olmv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 
+	sriovtestclient "github.com/k8snetworkplumbingwg/sriov-network-operator/test/util/client"
 	performancev1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v1"
 	performancev1alpha1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v1alpha1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -30,6 +31,8 @@ var (
 	Client client.Client
 	// K8sClient defines k8s client to run subresource operations, for example you should use it to get pod logs
 	K8sClient *kubernetes.Clientset
+	// SRIOVClient defines SR-IOV client for deploying SR-IOV devices for the test
+	SRIOVClient *sriovtestclient.ClientSet
 	// ClientsEnabled tells if the client from the package can be used
 	ClientsEnabled bool
 )
@@ -78,6 +81,12 @@ func init() {
 	K8sClient, err = NewK8s()
 	if err != nil {
 		testlog.Info("Failed to initialize k8s client, check the KUBECONFIG env variable", err.Error())
+		ClientsEnabled = false
+		return
+	}
+	SRIOVClient = sriovtestclient.New("")
+	if SRIOVClient == nil {
+		testlog.Info("Failed to initialize SR-IOV client, check the KUBECONFIG env variable", err.Error())
 		ClientsEnabled = false
 		return
 	}

@@ -39,6 +39,9 @@ const (
 	// PerformanceProfileCreator should be added in tests that are validating/verifying performance-profile-creator tool
 	// functionally.
 	PerformanceProfileCreator Feature = "performance-profile-creator"
+
+	// SRIOV should be added in tests that are integrated with sriov
+	SRIOV Feature = "sriov"
 )
 
 // Tier is a label to classify tests under specific grade/level
