@@ -148,8 +148,8 @@ func TunedRun(cmd *exec.Cmd, daemon *Daemon, onDaemonReload func()) error {
 	}()
 
 	daemon.reloading = true
-	// Clear the set out of which Profile status conditions are created. Keep timeout condition if already set.
-	daemon.status &= scTimeout
+	// Clear the set out of which Profile status conditions are created.
+	daemon.status = 0
 	daemon.stderr = ""
 	if err = cmd.Start(); err != nil {
 		return fmt.Errorf("error starting tuned: %w", err)
