@@ -67,7 +67,7 @@ func stat(k8sclient *kubernetes.Clientset, pod *corev1.Pod, containerName, child
 	dirPath := path.Join(controller.CgroupMountPoint, childName)
 	cmd := []string{
 		"/bin/cat",
-		dirPath + "/cpu/cpu.stat",
+		dirPath + "/cpu.stat",
 	}
 	statBytes, err := pods.ExecCommandOnPod(k8sclient, pod, containerName, cmd)
 	if err != nil {
