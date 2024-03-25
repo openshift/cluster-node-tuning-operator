@@ -35,6 +35,7 @@ import (
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/infrastructure"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
@@ -126,7 +127,13 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred(), "Failed to get the Tuned profile for node %s", node.Name)
 				degradedCondition := findCondition(tunedProfile.Status.Conditions, "Degraded")
 				Expect(degradedCondition).ToNot(BeNil(), "Degraded condition not found in Tuned profile status")
-				Expect(degradedCondition.Status).To(Equal(corev1.ConditionFalse), "Tuned profile is degraded")
+				isNodeBasedOnVM, err := infrastructure.IsVM(&node)
+				Expect(err).ToNot(HaveOccurred(), "Failed to detect if the node is based on VM")
+				if isNodeBasedOnVM {
+					testlog.Warning(fmt.Sprintf("Tuned profile is degraded. A warning raised as the node is based on a VM. Error message: %s", degradedCondition.Message))
+				} else {
+					Expect(degradedCondition.Status).To(Equal(corev1.ConditionFalse), "Tuned profile is degraded. Error message: %s", degradedCondition.Message)
+				}
 			}
 		})
 	})
