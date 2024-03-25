@@ -20,15 +20,12 @@ import (
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"github.com/openshift/library-go/pkg/operator/events"
 	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
-	olmv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -57,8 +54,6 @@ const (
 	webhookCertDir  = "/apiserver.local.config/certificates"
 	webhookCertName = "apiserver.crt"
 	webhookKeyName  = "apiserver.key"
-
-	performanceOperatorDeploymentName = "performance-operator"
 )
 
 var (
@@ -156,10 +151,6 @@ func operatorRun() {
 	}
 
 	if !config.InHyperShift() {
-		if err := removePerformanceOLMOperator(restConfig); err != nil {
-			klog.Fatalf("unable to remove Performance addons OLM operator: %v", err)
-		}
-
 		if err := migratePinnedSingleNodeInfraStatus(restConfig, scheme); err != nil {
 			klog.Fatalf("unable to migrate pinned single node infra status: %v", err)
 		}
@@ -204,62 +195,6 @@ func operatorRun() {
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		klog.Exitf("manager exited with non-zero code: %v", err)
 	}
-}
-
-// Uninstall PAO OLM operator since PAO is shipped
-// as a core operator from 4.11.
-// This is relevant for any upgrade path of an OpenShift cluster
-// below 4.11 containing PAO to this current version.
-func removePerformanceOLMOperator(cfg *rest.Config) error {
-	k8sclient, err := client.New(cfg, client.Options{})
-	if err != nil {
-		return err
-	}
-
-	csvSelector := labels.NewSelector()
-	req, err := labels.NewRequirement(olmv1alpha1.CopiedLabelKey, selection.DoesNotExist, []string{})
-	if err != nil {
-		return err
-	}
-	csvSelector.Add(*req)
-
-	//REVIEW - should this be an input parameter? or something configurable?
-	paginationLimit := uint64(1000)
-	options := []client.ListOption{
-		client.MatchingLabelsSelector{Selector: csvSelector},
-	}
-
-	performanceOperatorCSVs, err := paocontroller.ListPerformanceOperatorCSVs(k8sclient, options, paginationLimit, performanceOperatorDeploymentName)
-	if err != nil && !util.IsNoMatchError(err) {
-		return err
-	}
-
-	subscriptions := &olmv1alpha1.SubscriptionList{}
-	if err := k8sclient.List(context.TODO(), subscriptions); err != nil {
-		if !errors.IsNotFound(err) && !util.IsNoMatchError(err) {
-			return err
-		}
-	}
-	for i := range subscriptions.Items {
-		subscription := &subscriptions.Items[i]
-		subscriptionExists := true
-		for _, csv := range performanceOperatorCSVs {
-			if subscription.Namespace == csv.Namespace && subscription.Status.InstalledCSV == csv.Name {
-				if subscriptionExists {
-					klog.Infof("Removing performance-addon-operator subscription %s", subscription.Name)
-					if err := k8sclient.Delete(context.TODO(), subscription); err != nil {
-						return err
-					}
-					subscriptionExists = false
-				}
-				klog.Infof("Removing performance-addon-operator related CSV %s/%s", csv.Namespace, csv.Name)
-				if err := k8sclient.Delete(context.TODO(), &csv); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	return nil
 }
 
 // During upgrade from 4.13 -> 4.14, this logic will update the authoritative flag in the new
