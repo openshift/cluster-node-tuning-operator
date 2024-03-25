@@ -62,6 +62,27 @@ type NodeInterface struct {
 	defRoute bool
 }
 
+type ContainerInfo struct {
+	PID int `json:"pid"`
+}
+
+type CrictlInfo struct {
+	Info struct {
+		Pid   int `json:"pid"`
+		Linux struct {
+			Resources struct {
+				CPU struct {
+					Shares int    `json:"shares"`
+					Quota  int    `json:"quota"`
+					Period int    `json:"period"`
+					Cpus   string `json:"cpus"`
+				} `json:"cpus"`
+			} `json:"resources"`
+			CgroupsPath string `json:"cgroupsPath"`
+		} `json:"linux"`
+	} `json:"info"`
+}
+
 // GetByRole returns all nodes with the specified role
 func GetByRole(role string) ([]corev1.Node, error) {
 	selector, err := labels.Parse(fmt.Sprintf("%s/%s=", testutils.LabelRole, role))
@@ -505,4 +526,22 @@ func isNodeReady(node corev1.Node) bool {
 		}
 	}
 	return false
+}
+
+// ContainerPid returns container process pid using crictl inspect command
+func ContainerPid(ctx context.Context, node *corev1.Node, containerId string) (string, error) {
+	var err error
+	var criInfo CrictlInfo
+	var cridata = []byte{}
+	Eventually(func() []byte {
+		cmd := []string{"/bin/bash", "-c", fmt.Sprintf("chroot /rootfs crictl inspect %s", containerId)}
+		cridata, err = ExecCommandOnMachineConfigDaemon(ctx, node, cmd)
+		Expect(err).ToNot(HaveOccurred(), "failed to run %s cmd", cmd)
+		return cridata
+	}, 10*time.Second, 5*time.Second).ShouldNot(BeEmpty())
+	err = json.Unmarshal(cridata, &criInfo)
+	if err != nil {
+		return "", err
+	}
+	return strconv.Itoa(criInfo.Info.Pid), err
 }
