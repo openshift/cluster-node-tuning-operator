@@ -88,15 +88,26 @@ type latencyTest struct {
 	testCpus              string
 	outputMsgs            []string
 	toolToTest            string
+	ginkgoTimeout         string
 }
 
 var _ = DescribeTable("Test latency measurement tools tests", func(testGroup []latencyTest, isPositiveTest bool) {
 	format.MaxLength = 0
+	var output []byte
+	var err error
 	for _, test := range testGroup {
 		clearEnv()
 		testDescription := setEnvAndGetDescription(test)
 		By(testDescription)
-		output, err := exec.Command(testExecutablePath, "-ginkgo.v", "-ginkgo.focus", test.toolToTest).Output()
+
+		if isPositiveTest {
+			// We only override ginkgo default value for positive tests
+			output, err = exec.Command(testExecutablePath, "-ginkgo.v", "-ginkgo.focus", test.toolToTest, "-ginkgo.timeout", test.ginkgoTimeout).Output()
+		} else {
+			// default ginkgo timeout value for negative tests
+			output, err = exec.Command(testExecutablePath, "-ginkgo.v", "-ginkgo.focus", test.toolToTest).Output()
+		}
+
 		if err != nil {
 			//we don't log Error level here because the test might be a negative check
 			testlog.Info(err.Error())
@@ -128,6 +139,7 @@ var _ = DescribeTable("Test latency measurement tools tests", func(testGroup []l
 				switch test.toolToTest {
 				case oslat:
 					passedArgs = []string{"--duration " + test.testRuntime, "--rtprio ", "--cpu-list ", "--cpu-main-thread "}
+				// The default image specified in test/e2e/performanceprofile/functests/utils/images/images.go cyclic test
 				case cyclictest:
 					passedArgs = []string{"--duration " + test.testRuntime, "--priority 95", "--threads ", "--affinity ", "--histogram ", "--interval ", "--mlockall ", "--quiet"}
 				case hwlatdetect:
@@ -218,31 +230,33 @@ func getValidValuesTests(toolToTest string) []latencyTest {
 	//testCpus: for tests that expect a success output message, note that an even CPU number is needed, otherwise the test would fail with SMTAlignmentError
 
 	successRuntime := "30"
-	testSet = append(testSet, latencyTest{testDelay: "200", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, testCpus: "4", outputMsgs: []string{success}, toolToTest: toolToTest})
-	testSet = append(testSet, latencyTest{testDelay: "0", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, testCpus: "4", outputMsgs: []string{success}, toolToTest: toolToTest})
-	testSet = append(testSet, latencyTest{testDelay: "0", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, testCpus: "6", outputMsgs: []string{success}, toolToTest: toolToTest})
-	testSet = append(testSet, latencyTest{testDelay: "1", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest})
-	testSet = append(testSet, latencyTest{testDelay: "60", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest})
-	testSet = append(testSet, latencyTest{testRuntime: "2", testCpus: "5", testMaxLatency: untunedLatencyThreshold, outputMsgs: []string{skip, skipOddCpuNumber}, toolToTest: toolToTest})
+	// Using a timeout value such that ginkgo timeout > runtime + latency to ensure successfull runs
+	successGinkgoTimeout := "200s"
+	testSet = append(testSet, latencyTest{testDelay: "140", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, testCpus: "4", outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
+	testSet = append(testSet, latencyTest{testDelay: "0", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, testCpus: "4", outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
+	testSet = append(testSet, latencyTest{testDelay: "0", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, testCpus: "6", outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
+	testSet = append(testSet, latencyTest{testDelay: "1", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
+	testSet = append(testSet, latencyTest{testDelay: "60", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
+	testSet = append(testSet, latencyTest{testRuntime: "2", testCpus: "5", testMaxLatency: untunedLatencyThreshold, outputMsgs: []string{skip, skipOddCpuNumber}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
 
 	if toolToTest != hwlatdetect {
-		testSet = append(testSet, latencyTest{testRuntime: "1", outputMsgs: []string{skip, skipMaxLatency}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRuntime: "1", outputMsgs: []string{skip, skipMaxLatency}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
 	}
 	if toolToTest == oslat {
-		testSet = append(testSet, latencyTest{testRuntime: successRuntime, testMaxLatency: "1", oslatMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRuntime: successRuntime, testMaxLatency: "1", oslatMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
 		//TODO add tests when requested cpus for oslat is 2 once BZ 2055267 is resolved
-		testSet = append(testSet, latencyTest{testRuntime: successRuntime, oslatMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRuntime: successRuntime, oslatMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
 		//TODO: update isolated CPUs in PP to 1 and restore the original set post test
 	}
 	if toolToTest == cyclictest {
 		//TODO add tests when requested cpus for cyclictest is 2 or less once BZ 2094046 is resolved
-		testSet = append(testSet, latencyTest{testRuntime: successRuntime, testMaxLatency: "1", cyclictestMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest})
-		testSet = append(testSet, latencyTest{testRuntime: successRuntime, cyclictestMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRuntime: successRuntime, testMaxLatency: "1", cyclictestMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
+		testSet = append(testSet, latencyTest{testRuntime: successRuntime, cyclictestMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
 	}
 	if toolToTest == hwlatdetect {
-		testSet = append(testSet, latencyTest{testRuntime: successRuntime, testMaxLatency: "1", hwlatdetectMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest})
-		testSet = append(testSet, latencyTest{testRuntime: successRuntime, hwlatdetectMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest})
-		testSet = append(testSet, latencyTest{testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRuntime: successRuntime, testMaxLatency: "1", hwlatdetectMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
+		testSet = append(testSet, latencyTest{testRuntime: successRuntime, hwlatdetectMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
+		testSet = append(testSet, latencyTest{testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
 	}
 	return testSet
 }
