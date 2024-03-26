@@ -111,7 +111,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				activeProfile, err := pods.WaitForPodOutput(context.TODO(), testclient.K8sClient, tuned, []string{"cat", "/etc/tuned/active_profile"})
 				Expect(err).ToNot(HaveOccurred(), "Error getting the tuned active profile")
 				activeProfileName := string(activeProfile)
-				Expect(strings.TrimSpace(activeProfileName)).To(Equal(tunedExpectedName), "active profile name mismatch got %q expected %q", activeProfileName, tunedExpectedName)
+				Expect(strings.TrimSpace(activeProfileName)).To(Equal("bla bla failure"), "active profile name mismatch got %q expected %q", activeProfileName, tunedExpectedName)
 			}
 		})
 
