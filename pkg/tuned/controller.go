@@ -42,7 +42,18 @@ const (
 	scWarn
 	scError
 	scSysctlOverride
+	scReloading // reloading is true during the TuneD daemon reload.
 	scUnknown
+)
+
+const (
+	// Constants used for controlling TuneD;
+	// they will be set to 2^0, 2^1, 2^2, ..., 2^n
+	ctrlReload Bits = 1 << iota
+	// Did the command-line parameters to run the TuneD daemon or tuned-main.conf change?
+	// In other words, is a complete restart of the TuneD daemon needed?
+	ctrlRestart
+	ctrlDebug // Debugging can be turned on only from the command-line.
 )
 
 // Constants
@@ -74,24 +85,38 @@ const (
 )
 
 // Types
-type Bits uint8
+type Bits uint64
 
 type Daemon struct {
-	// reloading is true during the TuneD daemon reload.
-	reloading bool
-	// reloaded is true immediately after the TuneD daemon finished reloading.
-	// and the node Profile k8s object's Status needs to be set for the operator;
-	// it is set to false on successful Profile update.
-	reloaded bool
-	// debugging flag
-	debug bool
-	// bit/set representaton of Profile status conditions to report back via API.
+	// bit/set representation of TuneD options which are remotely controllable.
+	restart Bits
+	// bit/set representation of Profile status conditions to report back via API.
 	status Bits
 	// stderr log from TuneD daemon to report back via API.
 	stderr string
 	// stopping is true while the controller tries to stop the TuneD daemon.
 	stopping bool
-	// the TuneD profile we wish to be applied.
+	// recommendedProfile is the TuneD profile the operator calculated to be applied.
+	// This variable is used to cache the value which was written to tunedRecommendFile.
+	recommendedProfile string
+}
+
+type Change struct {
+	// Did the node Profile k8s object change?
+	profile bool
+	// Do we need to update Tuned Profile status?
+	profileStatus bool
+	// Did the "rendered" Tuned k8s object change?
+	rendered bool
+
+	// The following keys are set when profile == true.
+	// Was debugging set in Profile k8s object?
+	debug bool
+	// Cloud Provider as detected by the operator.
+	provider string
+	// Should we turn the reapply_sysctl TuneD option on in tuned-main.conf file?
+	reapplySysctl bool
+	// The current recommended profile as calculated by the operator.
 	recommendedProfile string
 }
 
@@ -107,19 +132,7 @@ type Controller struct {
 	listers *ntoclient.Listers
 	clients *ntoclient.Clients
 
-	change struct {
-		// Did the node Profile k8s object change?
-		profile bool
-		// Did the "rendered" Tuned k8s object change?
-		rendered bool
-		// Did tunedBootcmdlineFile change on the filesystem?
-		// It is set to false on successful Profile update.
-		bootcmdline bool
-		// Did the command-line parameters to run the TuneD daemon change?
-		// In other words, is a complete restart of the TuneD daemon needed?
-		daemon bool
-	}
-
+	change Change
 	daemon Daemon
 
 	tunedCmd     *exec.Cmd       // external command (tuned) being prepared or run
@@ -130,9 +143,14 @@ type Controller struct {
 	tunedMainCfg *ini.File       // global TuneD configuration as defined in tuned-main.conf
 }
 
-type wqKey struct {
+type wqKeyKube struct {
 	kind string // object kind
 	name string // object name
+}
+
+type wqKeyTuned struct {
+	kind   string // object kind
+	change Change // object change type
 }
 
 // Get a client from kubelet's kubeconfig to write to the Node object.
@@ -181,10 +199,10 @@ func newController(stopCh <-chan struct{}) (*Controller, error) {
 		kubeclient:  kubeclient,
 		listers:     listers,
 		clients:     clients,
-		tunedExit:   make(chan bool, 1),
+		tunedExit:   make(chan bool),
 		stopCh:      stopCh,
-		changeCh:    make(chan bool, 1),
-		changeChRet: make(chan bool, 1),
+		changeCh:    make(chan bool),
+		changeChRet: make(chan bool),
 	}
 
 	return controller, nil
@@ -200,15 +218,15 @@ func (c *Controller) eventProcessorKube() {
 			return
 		}
 
-		klog.V(2).Infof("got event from workqueue")
+		klog.V(2).Infof("got event from workqueue: %#v", obj)
 		func() {
 			defer c.wqKube.Done(obj)
-			var workqueueKey wqKey
+			var workqueueKey wqKeyKube
 			var ok bool
 
-			if workqueueKey, ok = obj.(wqKey); !ok {
+			if workqueueKey, ok = obj.(wqKeyKube); !ok {
 				c.wqKube.Forget(obj)
-				klog.Errorf("expected wqKey in workqueue but got %#v", obj)
+				klog.Errorf("expected wqKeyKube in workqueue but got %#v", obj)
 				return
 			}
 
@@ -235,7 +253,7 @@ func (c *Controller) eventProcessorKube() {
 	}
 }
 
-func (c *Controller) sync(key wqKey) error {
+func (c *Controller) sync(key wqKeyKube) error {
 	switch {
 	case key.kind == wqKindTuned:
 		if key.name != tunedv1.TunedRenderedResourceName {
@@ -243,22 +261,13 @@ func (c *Controller) sync(key wqKey) error {
 		}
 		klog.V(2).Infof("sync(): Tuned %s", key.name)
 
-		tuned, err := c.listers.TunedResources.Get(key.name)
-		if err != nil {
-			return fmt.Errorf("failed to get Tuned %s: %v", key.name, err)
-		}
-
-		change, err := profilesSync(tuned.Spec.Profile, c.daemon.recommendedProfile)
-		if err != nil {
-			return err
-		}
-		c.change.rendered = change
-		// Notify the event processor that the Tuned k8s object containing TuneD profiles changed.
-		c.wqTuneD.Add(wqKey{kind: wqKindDaemon})
+		// Notify the event processor that the Tuned k8s object containing all TuneD profiles changed.
+		c.wqTuneD.Add(wqKeyTuned{kind: wqKindDaemon, change: Change{rendered: true}})
 
 		return nil
 
 	case key.kind == wqKindProfile:
+		var change Change
 		if key.name != getNodeName() {
 			return nil
 		}
@@ -269,37 +278,17 @@ func (c *Controller) sync(key wqKey) error {
 			return fmt.Errorf("failed to get Profile %s: %v", key.name, err)
 		}
 
-		err = providerExtract(profile.Spec.Config.ProviderName)
-		if err != nil {
-			return err
-		}
-
-		c.daemon.recommendedProfile = profile.Spec.Config.TunedProfile
-		err = TunedRecommendFileWrite(c.daemon.recommendedProfile)
-		if err != nil {
-			return err
-		}
-		c.change.profile = true
-
-		if c.daemon.debug != profile.Spec.Config.Debug {
-			c.change.daemon = true // A complete restart of the TuneD daemon is needed due to a debugging request switched on or off.
-			c.daemon.debug = profile.Spec.Config.Debug
-		}
+		change.provider = profile.Spec.Config.ProviderName
+		change.recommendedProfile = profile.Spec.Config.TunedProfile
+		change.debug = profile.Spec.Config.Debug
+		change.reapplySysctl = true
 		if profile.Spec.Config.TuneDConfig.ReapplySysctl != nil {
-			reapplySysctl := c.tunedMainCfg.Section("").Key("reapply_sysctl").MustBool()
-			if *profile.Spec.Config.TuneDConfig.ReapplySysctl != reapplySysctl {
-				if err = iniCfgSetKey(c.tunedMainCfg, "reapply_sysctl", !reapplySysctl); err != nil {
-					return err
-				}
-				err = iniFileSave(tunedProfilesDirCustom+"/"+tunedMainConfFile, c.tunedMainCfg)
-				if err != nil {
-					return fmt.Errorf("failed to write global TuneD configuration file: %v", err)
-				}
-				c.change.daemon = true // A complete restart of the TuneD daemon is needed due to configuration change in tunedMainConfFile.
-			}
+			change.reapplySysctl = *profile.Spec.Config.TuneDConfig.ReapplySysctl
 		}
+
+		change.profile = true
 		// Notify the event processor that the Profile k8s object containing information about which TuneD profile to apply changed.
-		c.wqTuneD.Add(wqKey{kind: wqKindDaemon})
+		c.wqTuneD.Add(wqKeyTuned{kind: wqKindDaemon, change: change})
 
 		return nil
 
@@ -450,6 +439,35 @@ func providerExtract(provider string) error {
 	return nil
 }
 
+// Read the Cloud Provider name from openshiftTunedProvider file and
+// extract/write 'provider' only if the file does not exist or it does not
+// match 'provider'.  Returns indication whether the 'provider' changed and
+// an error if any.
+func providerSync(provider string) (bool, error) {
+	var providerCurrent string
+
+	f, err := os.Open(openshiftTunedProvider)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// The provider file hasn't been created yet.
+			return len(provider) > 0, providerExtract(provider)
+		}
+		return false, err
+	}
+	defer f.Close()
+
+	var scanner = bufio.NewScanner(f)
+	for scanner.Scan() {
+		providerCurrent = strings.TrimSpace(scanner.Text())
+	}
+
+	if provider != providerCurrent {
+		return true, providerExtract(provider)
+	}
+
+	return false, nil
+}
+
 func TunedRecommendFileWrite(profileName string) error {
 	klog.V(2).Infof("tunedRecommendFileWrite(): %s", profileName)
 	if err := util.Mkdir(tunedRecommendDir); err != nil {
@@ -467,7 +485,7 @@ func TunedRecommendFileWrite(profileName string) error {
 	return nil
 }
 
-// isSysctlOverride returns name of a host-level sysctl that overrides TuneD-level sysctl,
+// overridenSysctl returns name of a host-level sysctl that overrides TuneD-level sysctl,
 // or an empty string.
 func overridenSysctl(data string) string {
 	// Example log line to parse:
@@ -492,7 +510,7 @@ func overridenSysctl(data string) string {
 }
 
 func (c *Controller) tunedCreateCmd() *exec.Cmd {
-	return TunedCreateCmd(c.daemon.debug)
+	return TunedCreateCmd((c.daemon.restart & ctrlDebug) != 0)
 }
 
 func (c *Controller) tunedRun() {
@@ -502,10 +520,11 @@ func (c *Controller) tunedRun() {
 		close(c.tunedExit)
 	}()
 
+	c.tunedExit = make(chan bool) // Once tunedStop() terminates, the tunedExit channel is closed!
+
 	onDaemonReload := func() {
-		klog.V(2).Infof("profile applied or reload failed, stopping the TuneD watcher")
-		// Notify the event processor that the TuneD daemon finished reloading.
-		c.wqTuneD.Add(wqKey{kind: wqKindDaemon})
+		// Notify the event processor that the TuneD daemon finished reloading and that we might need to update Profile status.
+		c.wqTuneD.Add(wqKeyTuned{kind: wqKindDaemon, change: Change{profileStatus: true}})
 	}
 
 	err := TunedRun(c.tunedCmd, &c.daemon, onDaemonReload)
@@ -516,27 +535,31 @@ func (c *Controller) tunedRun() {
 
 // tunedStop tries to gracefully stop the TuneD daemon process by sending it SIGTERM.
 // If the TuneD daemon does not respond by terminating within tunedGracefulExitWait
-// duration, SIGKILL is sent.  This method returns an indication whether the TuneD
-// daemon exitted gracefully (true) or SIGKILL had to be sent (false).
-func (c *Controller) tunedStop() (bool, error) {
+// duration, SIGKILL is sent.
+func (c *Controller) tunedStop() error {
 	c.daemon.stopping = true
 	defer func() {
 		c.daemon.stopping = false
+		c.tunedCmd = nil // Cmd.Start() cannot be used more than once
 	}()
 
 	if c.tunedCmd == nil {
 		// Looks like there has been a termination signal prior to starting tuned.
-		return false, nil
+		return nil
 	}
 	if c.tunedCmd.Process != nil {
 		// The TuneD daemon rolls back the current profile and should terminate on SIGTERM.
 		klog.V(1).Infof("sending SIGTERM to PID %d", c.tunedCmd.Process.Pid)
 		if err := c.tunedCmd.Process.Signal(syscall.SIGTERM); err != nil {
-			return false, fmt.Errorf("failed to signal TuneD process: %v", err)
+			if err == os.ErrProcessDone {
+				// The TuneD process has already finished.
+				return nil
+			}
+			return fmt.Errorf("failed to signal TuneD process: %v", err)
 		}
 	} else {
 		// This should never happen!
-		return false, fmt.Errorf("cannot find the TuneD process!")
+		return fmt.Errorf("cannot find the TuneD process!")
 	}
 	// Wait for TuneD process to stop -- this will enable node-level tuning rollback.
 	select {
@@ -546,25 +569,36 @@ func (c *Controller) tunedStop() (bool, error) {
 		// within tunedGracefulExitWait.
 		klog.V(1).Infof("sending SIGKILL to PID %d", c.tunedCmd.Process.Pid)
 		if err := c.tunedCmd.Process.Signal(syscall.SIGKILL); err != nil {
-			return false, fmt.Errorf("failed to signal TuneD process: %v", err)
+			if err == os.ErrProcessDone {
+				// The TuneD process has already finished.
+				return nil
+			}
+			return fmt.Errorf("failed to signal TuneD process: %v", err)
 		}
 		<-c.tunedExit
-		return false, nil
+		return nil
 	}
 	klog.V(1).Infof("TuneD process terminated gracefully")
 
-	return true, nil
+	return nil
 }
 
 func (c *Controller) tunedReload() error {
-	c.daemon.reloading = true
+	klog.Infof("tunedReload()")
+
 	c.daemon.status = 0 // clear the set out of which Profile status conditions are created
+	c.daemon.status |= scReloading
 	c.daemon.stderr = ""
+	c.daemon.restart &= ^ctrlReload
+
+	tunedStart := func() {
+		c.tunedCmd = c.tunedCreateCmd()
+		go c.tunedRun()
+	}
 
 	if c.tunedCmd == nil {
 		// TuneD hasn't been started by openshift-tuned, start it.
-		c.tunedCmd = c.tunedCreateCmd()
-		go c.tunedRun()
+		tunedStart()
 		return nil
 	}
 
@@ -572,8 +606,15 @@ func (c *Controller) tunedReload() error {
 
 	if c.tunedCmd.Process != nil {
 		klog.Infof("sending HUP to PID %d", c.tunedCmd.Process.Pid)
-		err := c.tunedCmd.Process.Signal(syscall.SIGHUP)
-		if err != nil {
+		if err := c.tunedCmd.Process.Signal(syscall.SIGHUP); err != nil {
+			if err == os.ErrProcessDone {
+				// The TuneD process has already finished.  The following comes to mind:
+				//   * TuneD exitted due to a bug
+				//   * someone or something (systemd) killed TuneD intentionally
+				klog.Warningf("TuneD process PID %d finished", c.tunedCmd.Process.Pid)
+				tunedStart()
+				return nil
+			}
 			return fmt.Errorf("error sending SIGHUP to PID %d: %v\n", c.tunedCmd.Process.Pid, err)
 		}
 	} else {
@@ -587,11 +628,12 @@ func (c *Controller) tunedReload() error {
 // tunedRestart restarts the TuneD daemon.  The "stop" part is synchronous
 // to ensure proper termination of TuneD, the "start" part is asynchronous.
 func (c *Controller) tunedRestart() (err error) {
-	if _, err = c.tunedStop(); err != nil {
+	klog.Infof("tunedRestart()")
+	c.daemon.restart &= ^ctrlRestart
+
+	if err = c.tunedStop(); err != nil {
 		return err
 	}
-	c.tunedCmd = nil                 // Cmd.Start() cannot be used more than once
-	c.tunedExit = make(chan bool, 1) // Once tunedStop() terminates, the tunedExit channel is closed!
 
 	if err = c.tunedReload(); err != nil {
 		return err
@@ -643,19 +685,10 @@ func GetBootcmdline() (string, error) {
 	return responseString, nil
 }
 
-// Method changeSyncer performs k8s Profile object updates and TuneD daemon
-// reloads as needed.  Returns indication whether the change was successfully
-// synced and an error.  Only critical errors are returned, as non-nil errors
-// will cause restart of the main control loop -- the changeWatcher() method.
-func (c *Controller) changeSyncer() (synced bool, err error) {
-	var reload bool
+func (c *Controller) changeSyncerProfileStatus() (synced bool) {
+	klog.V(2).Infof("changeSyncerProfileStatus()")
 
-	if c.daemon.reloading {
-		// This should not be necessary, but keep this here as a reminder.
-		return false, fmt.Errorf("changeSyncer(): called while the TuneD daemon was reloading")
-	}
-
-	if c.change.bootcmdline || c.daemon.reloaded {
+	if c.change.profileStatus {
 		// One or both of the following happened:
 		// 1) tunedBootcmdlineFile changed on the filesystem.  This is very likely the result of
 		//    applying a TuneD profile by the TuneD daemon.  Make sure the node Profile k8s object
@@ -663,64 +696,134 @@ func (c *Controller) changeSyncer() (synced bool, err error) {
 		// 2) TuneD daemon was reloaded.  Make sure the node Profile k8s object is in sync with
 		//    the active profile, e.g. the Profile indicates the presence of the stall daemon on
 		//    the host if requested by the current active profile.
-		if err = c.updateTunedProfile(); err != nil {
+		if err := c.updateTunedProfile(); err != nil {
 			klog.Error(err.Error())
-			return false, nil // retry later
-		} else {
-			// The node Profile k8s object was updated successfully.  Clear the flags indicating
-			// a check for syncing the object is needed.
-			c.change.bootcmdline = false
-			c.daemon.reloaded = false
+			return false // retry later
 		}
+	}
+
+	return true
+}
+
+// changeSyncerTuneD synchronizes k8s objects to disk, compares them with
+// current TuneD configuration and signals TuneD process reload or restart.
+func (c *Controller) changeSyncerTuneD() (synced bool, err error) {
+	var reload bool
+
+	klog.V(2).Infof("changeSyncerTuneD()")
+
+	if (c.daemon.status & scReloading) != 0 {
+		// This should not be necessary, but keep this here as a reminder.
+		// We should not manipulate TuneD configuration files in any way while the daemon is reloading/restarting.
+		return false, fmt.Errorf("changeSyncerTuneD(): called while the TuneD daemon was reloading")
 	}
 
 	// Check whether reload of the TuneD daemon is really necessary due to a Profile change.
 	if c.change.profile {
-		// The node Profile k8s object changed.
-		var activeProfile string
-		if activeProfile, err = getActiveProfile(); err != nil {
+		changeProvider, err := providerSync(c.change.provider)
+		if err != nil {
 			return false, err
 		}
-		if (c.daemon.status & scApplied) == 0 {
-			if len(activeProfile) > 0 {
-				// activeProfile == "" means we have not started TuneD daemon yet; do not log that case
-				klog.Infof("re-applying profile (%s) as the previous application did not complete", activeProfile)
+		reload = reload || changeProvider
+
+		if c.daemon.recommendedProfile != c.change.recommendedProfile {
+			if err = TunedRecommendFileWrite(c.change.recommendedProfile); err != nil {
+				return false, err
 			}
+			klog.Infof("recommended TuneD profile changed from (%s) to (%s)", c.daemon.recommendedProfile, c.change.recommendedProfile)
+			// Cache the value written to tunedRecommendFile.
+			c.daemon.recommendedProfile = c.change.recommendedProfile
 			reload = true
-		} else if activeProfile != c.daemon.recommendedProfile {
-			klog.Infof("active profile (%s) != recommended profile (%s)", activeProfile, c.daemon.recommendedProfile)
-			reload = true
-			c.daemon.status = scUnknown
 		} else {
-			klog.Infof("active and recommended profile (%s) match; profile change will not trigger profile reload", activeProfile)
-			// We do not need to reload the TuneD daemon, however, someone may have tampered with the k8s Profile for this node.
-			// Make sure it is up-to-date.
+			klog.Infof("recommended profile (%s) matches current configuration", c.daemon.recommendedProfile)
+			// We do not need to reload the TuneD daemon, however, someone may have tampered with the k8s Profile status for this node.
+			// Make sure its status is up-to-date.
 			if err = c.updateTunedProfile(); err != nil {
 				klog.Error(err.Error())
 				return false, nil // retry later
 			}
 		}
-		c.change.profile = false
-	}
-	if c.change.rendered {
-		// The "rendered" Tuned k8s object changed.
-		c.change.rendered = false
-		reload = true
-		c.daemon.status = scUnknown
+
+		// Does the current TuneD process have debugging turned on?
+		debug := (c.daemon.restart & ctrlDebug) != 0
+		if debug != c.change.debug {
+			// A complete restart of the TuneD daemon is needed due to a debugging request switched on or off.
+			c.daemon.restart |= ctrlRestart
+			if c.change.debug {
+				c.daemon.restart |= ctrlDebug
+			} else {
+				c.daemon.restart &= ^ctrlDebug
+			}
+		}
+
+		// Does the current TuneD process have the reapply_sysctl option turned on?
+		reapplySysctl := c.tunedMainCfg.Section("").Key("reapply_sysctl").MustBool()
+		if reapplySysctl != c.change.reapplySysctl {
+			if err = iniCfgSetKey(c.tunedMainCfg, "reapply_sysctl", !reapplySysctl); err != nil {
+				return false, err
+			}
+			err = iniFileSave(tunedProfilesDirCustom+"/"+tunedMainConfFile, c.tunedMainCfg)
+			if err != nil {
+				return false, fmt.Errorf("failed to write global TuneD configuration file: %v", err)
+			}
+			c.daemon.restart |= ctrlRestart // A complete restart of the TuneD daemon is needed due to configuration change in tuned-main.conf file.
+		}
 	}
 
-	if c.change.daemon {
-		// Complete restart of the TuneD daemon needed (e.g. using --debug option).
-		c.change.daemon = false
-		c.daemon.status = scUnknown
-		err = c.tunedRestart()
-		return err == nil, err
+	if c.change.rendered {
+		// The "rendered" Tuned k8s object changed.
+		tuned, err := c.listers.TunedResources.Get(tunedv1.TunedRenderedResourceName)
+		if err != nil {
+			klog.Errorf("failed to get Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
+			return false, nil // retry later
+		}
+
+		changeRendered, err := profilesSync(tuned.Spec.Profile, c.daemon.recommendedProfile)
+		if err != nil {
+			return false, err
+		}
+
+		reload = reload || changeRendered
 	}
 
 	if reload {
+		c.daemon.restart |= ctrlReload
+	}
+	err = c.changeSyncerRestartOrReloadTuneD()
+
+	return err == nil, err
+}
+
+func (c *Controller) changeSyncerRestartOrReloadTuneD() error {
+	var err error
+
+	klog.V(2).Infof("changeSyncerRestartOrReloadTuneD()")
+
+	if (c.daemon.restart & ctrlRestart) != 0 {
+		// Complete restart of the TuneD daemon needed.  For example, debuging option is used or an option in tuned-main.conf file changed).
+		err = c.tunedRestart()
+		return err
+	}
+
+	if (c.daemon.restart & ctrlReload) != 0 {
 		err = c.tunedReload()
 	}
-	return err == nil, err
+
+	return err
+}
+
+// Method changeSyncer performs k8s Profile object updates and TuneD daemon
+// reloads as needed.  Returns indication whether the change was successfully
+// synced and an error.  Only critical errors are returned, as non-nil errors
+// will cause restart of the main control loop -- the changeWatcher() method.
+func (c *Controller) changeSyncer() (synced bool, err error) {
+	// Sync k8s Profile status if/when needed.
+	if !c.changeSyncerProfileStatus() {
+		return false, nil
+	}
+
+	// Extract TuneD configuration from k8s objects and restart/reload TuneD as needed.
+	return c.changeSyncerTuneD()
 }
 
 // eventProcessorTuneD is a long-running method that will continually
@@ -733,37 +836,49 @@ func (c *Controller) eventProcessorTuneD() {
 			return
 		}
 
-		klog.V(2).Infof("got event from workqueue")
+		klog.V(2).Infof("got event from workqueue: %#v", obj)
 		func() {
 			defer c.wqTuneD.Done(obj)
-			var workqueueKey wqKey
+			var workqueueKey wqKeyTuned
 			var ok bool
 
-			if workqueueKey, ok = obj.(wqKey); !ok {
+			if workqueueKey, ok = obj.(wqKeyTuned); !ok {
 				c.wqTuneD.Forget(obj)
-				klog.Errorf("expected wqKey in workqueue but got %#v", obj)
+				klog.Errorf("expected wqKeyTuned in workqueue but got %#v", obj)
 				return
 			}
 
+			if (c.daemon.status & scReloading) != 0 {
+				// Do not do any of the following until TuneD finished with the previous reload:
+				//   * update Profile status
+				//   * extract TuneD configuration
+				//   * reload/restart TuneD
+				// Requeuing based on TuneD reloading is far from ideal, but it is simple/reliable.
+				// When rewriting this, beware of rare deadlocks.
+				c.wqTuneD.AddRateLimited(workqueueKey)
+				return
+			}
+
+			c.change = workqueueKey.change
 			c.changeCh <- true
 			eventProcessed := <-c.changeChRet
 			if !eventProcessed {
 				requeued := c.wqTuneD.NumRequeues(workqueueKey)
 				// Limit retries to maxRetries.  After that, stop trying.
 				if requeued < maxRetries {
-					klog.Errorf("unable to sync(%s/%s) requeued (%d)", workqueueKey.kind, workqueueKey.name, requeued)
+					klog.Errorf("unable to sync(%s/%+v) requeued (%d)", workqueueKey.kind, workqueueKey.change, requeued)
 
 					// Re-enqueue the workqueueKey.  Based on the rate limiter on the queue
 					// and the re-enqueue history, the workqueueKey will be processed later again.
 					c.wqTuneD.AddRateLimited(workqueueKey)
 					return
 				}
-				klog.Errorf("unable to sync(%s/%s) reached max retries (%d)", workqueueKey.kind, workqueueKey.name, maxRetries)
+				klog.Errorf("unable to sync(%s/%+v) reached max retries (%d)", workqueueKey.kind, workqueueKey.change, maxRetries)
 				// Dropping the item after maxRetries unsuccessful retries.
 				c.wqTuneD.Forget(obj)
 				return
 			}
-			klog.V(1).Infof("event from workqueue (%s/%s) successfully processed", workqueueKey.kind, workqueueKey.name)
+			klog.V(1).Infof("event from workqueue (%s/%+v) successfully processed", workqueueKey.kind, workqueueKey.change)
 			// Successful processing.
 			c.wqTuneD.Forget(obj)
 		}()
@@ -813,6 +928,7 @@ func (c *Controller) updateNodeAnnotations(node *corev1.Node, annotations map[st
 	if err != nil {
 		return fmt.Errorf("failed to update Node %s: %v", node.ObjectMeta.Name, err)
 	}
+	klog.Infof("updated Node %v annotation", node.Name)
 
 	return nil
 }
@@ -854,20 +970,18 @@ func (c *Controller) updateTunedProfile() (err error) {
 	statusConditions := computeStatusConditions(c.daemon.status, c.daemon.stderr, profile.Status.Conditions)
 	bootcmdlineAnnotVal, bootcmdlineAnnotSet := node.ObjectMeta.Annotations[tunedv1.TunedBootcmdlineAnnotationKey]
 
-	if bootcmdlineAnnotSet && bootcmdlineAnnotVal == bootcmdline &&
-		profile.Status.TunedProfile == activeProfile &&
-		conditionsEqual(profile.Status.Conditions, statusConditions) {
-		// Do not update node Profile unnecessarily (e.g. bootcmdline did not change).
-		// This will save operator CPU cycles trying to reconcile objects that do not
-		// need reconciling.
-		klog.V(2).Infof("updateTunedProfile(): no need to update Profile %s", profile.Name)
-		return nil
+	if !bootcmdlineAnnotSet || bootcmdlineAnnotVal != bootcmdline {
+		annotations := map[string]string{tunedv1.TunedBootcmdlineAnnotationKey: bootcmdline}
+		err = c.updateNodeAnnotations(node, annotations)
+		if err != nil {
+			return err
+		}
 	}
 
-	annotations := map[string]string{tunedv1.TunedBootcmdlineAnnotationKey: bootcmdline}
-	err = c.updateNodeAnnotations(node, annotations)
-	if err != nil {
-		return err
+	if profile.Status.TunedProfile == activeProfile &&
+		conditionsEqual(profile.Status.Conditions, statusConditions) {
+		klog.V(2).Infof("updateTunedProfile(): no need to update status of Profile %s", profile.Name)
+		return nil
 	}
 
 	profile = profile.DeepCopy() // never update the objects from cache
@@ -878,12 +992,11 @@ func (c *Controller) updateTunedProfile() (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to update Profile %s status: %v", profile.Name, err)
 	}
-	klog.Infof("updated Profile %s bootcmdline: %s", profile.Name, bootcmdline)
 
 	return nil
 }
 
-func (c *Controller) informerEventHandler(workqueueKey wqKey) cache.ResourceEventHandlerFuncs {
+func (c *Controller) informerEventHandler(workqueueKey wqKeyKube) cache.ResourceEventHandlerFuncs {
 	return cache.ResourceEventHandlerFuncs{
 		AddFunc: func(o interface{}) {
 			accessor, err := kmeta.Accessor(o)
@@ -901,7 +1014,7 @@ func (c *Controller) informerEventHandler(workqueueKey wqKey) cache.ResourceEven
 			}
 
 			klog.V(2).Infof("add event to workqueue due to %s (add)", util.ObjectInfo(o))
-			c.wqKube.Add(wqKey{kind: workqueueKey.kind, name: workqueueKey.name})
+			c.wqKube.Add(wqKeyKube{kind: workqueueKey.kind, name: workqueueKey.name})
 		},
 		UpdateFunc: func(o, n interface{}) {
 			newAccessor, err := kmeta.Accessor(n)
@@ -920,7 +1033,7 @@ func (c *Controller) informerEventHandler(workqueueKey wqKey) cache.ResourceEven
 				return
 			}
 			klog.V(2).Infof("add event to workqueue due to %s (update)", util.ObjectInfo(n))
-			c.wqKube.Add(wqKey{kind: workqueueKey.kind, name: newAccessor.GetName()})
+			c.wqKube.Add(wqKeyKube{kind: workqueueKey.kind, name: newAccessor.GetName()})
 		},
 		DeleteFunc: func(o interface{}) {
 			object, ok := o.(metav1.Object)
@@ -938,7 +1051,7 @@ func (c *Controller) informerEventHandler(workqueueKey wqKey) cache.ResourceEven
 				klog.V(4).Infof("recovered deleted object %s from tombstone", object.GetName())
 			}
 			klog.V(2).Infof("add event to workqueue due to %s (delete)", util.ObjectInfo(object))
-			c.wqKube.Add(wqKey{kind: workqueueKey.kind, name: object.GetName()})
+			c.wqKube.Add(wqKeyKube{kind: workqueueKey.kind, name: object.GetName()})
 		},
 	}
 }
@@ -970,13 +1083,13 @@ func (c *Controller) changeWatcher() (err error) {
 
 	trInformer := tunedInformerFactory.Tuned().V1().Tuneds()
 	c.listers.TunedResources = trInformer.Lister().Tuneds(operandNamespace)
-	if _, err = trInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindTuned})); err != nil {
+	if _, err = trInformer.Informer().AddEventHandler(c.informerEventHandler(wqKeyKube{kind: wqKindTuned})); err != nil {
 		return err
 	}
 
 	tpInformer := tunedInformerFactory.Tuned().V1().Profiles()
 	c.listers.TunedProfiles = tpInformer.Lister().Profiles(operandNamespace)
-	if _, err = tpInformer.Informer().AddEventHandler(c.informerEventHandler(wqKey{kind: wqKindProfile})); err != nil {
+	if _, err = tpInformer.Informer().AddEventHandler(c.informerEventHandler(wqKeyKube{kind: wqKindProfile})); err != nil {
 		return err
 	}
 
@@ -1022,22 +1135,12 @@ func (c *Controller) changeWatcher() (err error) {
 
 			return nil
 
-		case <-c.tunedExit:
-			c.tunedCmd = nil // Cmd.Start() cannot be used more than once
-			klog.Infof("TuneD process exitted...")
-
-			// Do not be too aggressive about keeping the TuneD daemon around.
-			// TuneD daemon might have exitted after receiving SIGTERM during
-			// system reboot/shutdown.
-			return nil
-
 		case fsEvent := <-wFs.Events:
 			klog.V(2).Infof("fsEvent")
 			if fsEvent.Op&fsnotify.Write == fsnotify.Write {
 				klog.V(1).Infof("write event on: %s", fsEvent.Name)
-				c.change.bootcmdline = true
 				// Notify the event processor that the TuneD daemon calculated new kernel command-line parameters.
-				c.wqTuneD.Add(wqKey{kind: wqKindDaemon})
+				c.wqTuneD.Add(wqKeyTuned{kind: wqKindDaemon, change: Change{profileStatus: true}})
 			}
 
 		case err := <-wFs.Errors:
@@ -1046,12 +1149,6 @@ func (c *Controller) changeWatcher() (err error) {
 		case <-c.changeCh:
 			var synced bool
 			klog.V(2).Infof("changeCh")
-
-			if c.daemon.reloading {
-				// Do not reload the TuneD daemon unless it finished with the previous reload.
-				c.changeChRet <- false
-				continue
-			}
 
 			synced, err := c.changeSyncer()
 			if err != nil {
@@ -1080,7 +1177,7 @@ func retryLoop(c *Controller) (err error) {
 			return
 		}
 		if c.tunedCmd.Process != nil {
-			if _, err := c.tunedStop(); err != nil {
+			if err := c.tunedStop(); err != nil {
 				klog.Errorf("%s", err.Error())
 			}
 		} else {
