@@ -139,7 +139,8 @@ spec:
       - contents: |
           [Unit]
           Description=Move services to reserved cpuset
-          Before=network-online.target
+          Before=kubelet.service
+          After=crio.service
 
           [Service]
           Type=oneshot
