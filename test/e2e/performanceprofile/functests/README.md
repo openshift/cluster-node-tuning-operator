@@ -17,6 +17,9 @@ This deployment takes some time and requires reboot
 Tests are executed in order of file-names
 So be careful with renaming existing or adding new suites
 
-DISCOVERY_MODE env variable to get an already deployed performanceProfile
+Environment variables:
+DISCOVERY_MODE: to get an already deployed performanceProfile.
 If DISCOVERY_MODE set to true the suites will search for a PerformanceProfile on the cluster and use it.
-If no PerformanceProfile is found, that suites will be skipped
+If no PerformanceProfile is found, that suites will be skipped.
+
+RESERVED_CPU_SET, ISOLATED_CPU_SET, OFFLINED_CPU_SET: strings that present the CPU sets distributed between reserved, isolated, and offlined CPU profile specifications. The runner is responsible for validating that these values are compatible with the testing environment. 
