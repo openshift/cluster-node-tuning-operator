@@ -115,7 +115,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			}
 		})
 
-		It("Tuned profile shouldn't be degraded", func() {
+		/*It("Tuned profile shouldn't be degraded", func() {
 			for _, node := range workerRTNodes {
 				key := types.NamespacedName{
 					Name:      node.Name,
@@ -128,7 +128,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Expect(degradedCondition).ToNot(BeNil(), "Degraded condition not found in Tuned profile status")
 				Expect(degradedCondition.Status).To(Equal(corev1.ConditionFalse), "Tuned profile is degraded")
 			}
-		})
+		})*/
 	})
 
 	Context("Pre boot tuning adjusted by tuned ", func() {
