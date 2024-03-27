@@ -65,7 +65,7 @@ var _ = Describe("Assets scripts", func() {
 
 			bannedCPUs, ok := extractBannedCPUs(string(data))
 			Expect(ok).To(BeTrue())
-			Expect(bannedCPUs).To(BeEmpty())
+			Expect(bannedCPUs).To(Equal("0"))
 		})
 
 		It("should handle empty ban list", func() {
@@ -92,7 +92,7 @@ var _ = Describe("Assets scripts", func() {
 
 			bannedCPUs, ok := extractBannedCPUs(string(data))
 			Expect(ok).To(BeTrue())
-			Expect(bannedCPUs).To(BeEmpty())
+			Expect(bannedCPUs).To(Equal("0"))
 		})
 
 		It("should clear existing ban list", func() {
@@ -125,7 +125,7 @@ var _ = Describe("Assets scripts", func() {
 
 			updatedBannedCPUs, ok := extractBannedCPUs(string(data))
 			Expect(ok).To(BeTrue())
-			Expect(updatedBannedCPUs).To(BeEmpty())
+			Expect(updatedBannedCPUs).To(Equal("0"))
 		})
 	})
 })
@@ -186,10 +186,6 @@ func getBannedCPUs(line string) (string, bool) {
 	items := strings.FieldsFunc(line, func(r rune) bool {
 		return r == '='
 	})
-	// missing value is interpreted (by shell and by us) as empty string
-	if len(items) == 1 {
-		return "", true
-	}
 	// too many values, bail out
 	if len(items) != 2 {
 		return "", false
