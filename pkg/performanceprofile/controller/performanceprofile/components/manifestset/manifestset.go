@@ -78,7 +78,8 @@ func GetNewComponents(profile *performancev2.PerformanceProfile, opts *component
 	}
 
 	nodeConfig := node.NewNodeConfig(apiconfigv1.CgroupModeV1)
-	runtimeClass := runtimeclass.New(profile, machineconfig.HighPerformanceRuntime)
+	rtName := runtimeclass.BuildRuntimeClassName(profile.Name)
+	runtimeClass := runtimeclass.New(rtName, profile, machineconfig.HighPerformanceRuntime)
 
 	manifestResultSet := ManifestResultSet{
 		MachineConfig: mc,

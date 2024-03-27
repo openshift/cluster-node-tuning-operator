@@ -19,15 +19,16 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"os"
 	"reflect"
 	"time"
 
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
+
 	apiconfigv1 "github.com/openshift/api/config/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/config"
+	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
@@ -65,9 +66,10 @@ const (
 // PerformanceProfileReconciler reconciles a PerformanceProfile object
 type PerformanceProfileReconciler struct {
 	client.Client
-	Scheme      *runtime.Scheme
-	Recorder    record.EventRecorder
-	FeatureGate featuregates.FeatureGate
+	ManagementClient client.Client
+	Scheme           *runtime.Scheme
+	Recorder         record.EventRecorder
+	FeatureGate      featuregates.FeatureGate
 }
 
 // SetupWithManager creates a new PerformanceProfile Controller and adds it to the Manager.
@@ -389,6 +391,11 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	klog.Info("Reconciling PerformanceProfile")
+
+	if ntoconfig.InHyperShift() {
+		return r.hypershiftReconcile(ctx, req)
+	}
+
 	// Fetch the PerformanceProfile instance
 	instance := &performancev2.PerformanceProfile{}
 	err = r.Get(ctx, req.NamespacedName, instance)
@@ -756,7 +763,7 @@ func (r *PerformanceProfileReconciler) isMixedCPUsEnabled(profile *performancev2
 	if !r.FeatureGate.Enabled(apiconfigv1.FeatureGateMixedCPUsAllocation) {
 		return false
 	}
-	if config.InHyperShift() {
+	if ntoconfig.InHyperShift() {
 		return false
 	}
 	return profileutil.IsMixedCPUsEnabled(profile)

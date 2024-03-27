@@ -9,8 +9,7 @@ import (
 )
 
 // New returns a new RuntimeClass object
-func New(profile *performancev2.PerformanceProfile, handler string) *nodev1.RuntimeClass {
-	name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+func New(name string, profile *performancev2.PerformanceProfile, handler string) *nodev1.RuntimeClass {
 	return &nodev1.RuntimeClass{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "RuntimeClass",
@@ -24,4 +23,8 @@ func New(profile *performancev2.PerformanceProfile, handler string) *nodev1.Runt
 			NodeSelector: profile.Spec.NodeSelector,
 		},
 	}
+}
+
+func BuildRuntimeClassName(performanceProfileName string) string {
+	return components.GetComponentName(performanceProfileName, components.ComponentNamePrefix)
 }
