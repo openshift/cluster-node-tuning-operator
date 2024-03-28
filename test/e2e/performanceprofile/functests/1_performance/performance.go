@@ -35,6 +35,7 @@ import (
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/infrastructure"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
@@ -112,6 +113,27 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred(), "Error getting the tuned active profile")
 				activeProfileName := string(activeProfile)
 				Expect(strings.TrimSpace(activeProfileName)).To(Equal(tunedExpectedName), "active profile name mismatch got %q expected %q", activeProfileName, tunedExpectedName)
+			}
+		})
+
+		It("Tuned profile shouldn't be degraded", func() {
+			for _, node := range workerRTNodes {
+				key := types.NamespacedName{
+					Name:      node.Name,
+					Namespace: components.NamespaceNodeTuningOperator,
+				}
+				tunedProfile := &tunedv1.Profile{}
+				err := testclient.Client.Get(context.TODO(), key, tunedProfile)
+				Expect(err).ToNot(HaveOccurred(), "Failed to get the Tuned profile for node %s", node.Name)
+				degradedCondition := findCondition(tunedProfile.Status.Conditions, "Degraded")
+				Expect(degradedCondition).ToNot(BeNil(), "Degraded condition not found in Tuned profile status")
+				isNodeBasedOnVM, err := infrastructure.IsVM(&node)
+				Expect(err).ToNot(HaveOccurred(), "Failed to detect if the node is based on VM")
+				if isNodeBasedOnVM {
+					testlog.Warning(fmt.Sprintf("Tuned profile is degraded. A warning raised as the node is based on a VM. Error message: %s", degradedCondition.Message))
+				} else {
+					Expect(degradedCondition.Status).To(Equal(corev1.ConditionFalse), "Tuned profile is degraded. Error message: %s", degradedCondition.Message)
+				}
 			}
 		})
 	})
@@ -1344,4 +1366,14 @@ func makeDevRPSMap(content string) map[string]string {
 		devRPSMap[path] = mask
 	}
 	return devRPSMap
+}
+
+// Helper function to find a condition in the status.conditions slice by type
+func findCondition(conditions []tunedv1.ProfileStatusCondition, conditionType string) *tunedv1.ProfileStatusCondition {
+	for _, condition := range conditions {
+		if string(condition.Type) == conditionType {
+			return &condition
+		}
+	}
+	return nil
 }
