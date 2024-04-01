@@ -59,6 +59,7 @@ enabled=false
 {{end}}
 
 [scheduler]
+enabled=false
 runtime=0
 group.ksoftirqd=0:f:11:*:ksoftirqd.*
 group.rcuc=0:f:11:*:rcuc.*
