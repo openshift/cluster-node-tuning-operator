@@ -509,9 +509,6 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				},
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "second-profile",
-					Annotations: map[string]string{
-						performancev2.PerformanceProfileIgnoreCgroupsVersion: "true",
-					},
 				},
 				Spec: performancev2.PerformanceProfileSpec{
 					CPU: &performancev2.CPU{

@@ -177,17 +177,6 @@ func NewClusterOperator() *apiconfigv1.ClusterOperator {
 	}
 }
 
-func NewNodeConfig(mode apiconfigv1.CgroupMode) *apiconfigv1.Node {
-	return &apiconfigv1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "cluster",
-		},
-		Spec: apiconfigv1.NodeSpec{
-			CgroupMode: mode,
-		},
-	}
-}
-
 func NewContainerRuntimeConfig(runtime mcov1.ContainerRuntimeDefaultRuntime, mcpSelector map[string]string) *mcov1.ContainerRuntimeConfig {
 	return &mcov1.ContainerRuntimeConfig{
 		ObjectMeta: metav1.ObjectMeta{
