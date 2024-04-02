@@ -1,8 +1,11 @@
 package cgroup
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -50,4 +53,27 @@ func BuildGetter(ctx context.Context, c client.Client, k8sClient *kubernetes.Cli
 	} else {
 		return cgroupv1.NewManager(c, k8sClient), nil
 	}
+}
+
+// PidParser parsing /proc/pid/cgroup
+func PidParser(lines []byte) (string, error) {
+	var cgroupPath string
+	for _, line := range bytes.Split(lines, []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		fields := bytes.Split(line, []byte(":"))
+		if len(fields) != 3 {
+			return "", fmt.Errorf("Error parsing cgroup: expected 3 fields but got %d:\n", len(fields))
+		}
+
+		if bytes.Contains(fields[1], []byte("=")) {
+			continue
+		}
+		path := string(fields[2])
+		if len(path) > len(cgroupPath) {
+			cgroupPath = path
+		}
+	}
+	return strings.TrimSpace(cgroupPath), nil
 }
