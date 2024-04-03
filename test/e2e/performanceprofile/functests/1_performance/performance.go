@@ -32,6 +32,7 @@ import (
 	componentprofile "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
@@ -263,6 +264,29 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 						Expect(string(cmdline)).To(ContainSubstring(arg))
 					}
 				}
+			}
+		})
+	})
+
+	Context("Using performance profile", func() {
+		It("[test_id: 73107] Should have system services running on the system.slice cgroup", func() {
+			for _, node := range workerRTNodes {
+				processesFound := make([]string, 0)
+				rootCgroupPath := "/rootfs/sys/fs/cgroup/cpuset/cgroup.procs"
+				isV2, err := cgroup.IsVersion2(context.TODO(), testclient.Client)
+				if err != nil {
+					Expect(err).ToNot(HaveOccurred())
+				}
+				if isV2 {
+					rootCgroupPath = "/rootfs/sys/fs/cgroup/cgroup.procs"
+				}
+				// Getting the list of processes that are running on the root cgroup, filtering out the kernel threads (are presented in [square brackets]).
+				command := fmt.Sprintf("cat %s | xargs ps -o cmd | grep -v \"\\[\"", rootCgroupPath)
+				output, err := nodes.ExecCommandOnNode([]string{"/bin/bash", "-c", command}, &node)
+				Expect(err).ToNot(HaveOccurred())
+				cmds := strings.Split(output, "\n")
+				processesFound = append(processesFound, cmds[1:]...)
+				Expect(processesFound).To(BeEmpty(), "The node %s has the following processes on the root cgroup: %v", node.Name, processesFound)
 			}
 		})
 	})
