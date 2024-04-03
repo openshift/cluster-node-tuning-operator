@@ -320,6 +320,73 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 				// in the child processes
 			})
 		})
+		When("trying to deploy a burstable pod", func() {
+			It("should cause the burstable pod to fail", func() {
+				By("creating a burstable pod")
+				rl := &corev1.ResourceList{
+					corev1.ResourceCPU: resource.MustParse("1"),
+					sharedCpusResource: resource.MustParse("1"),
+				}
+				_, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+					withRequests(rl),
+					withLimits(rl),
+					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
+				Expect(err.Error()).To(ContainSubstring("resource but pod is not Guaranteed QoS class"))
+			})
+		})
+		When("trying to deploy a best effort pod", func() {
+			It("should cause the best effort pod to fail", func() {
+				By("creating a best effort pod")
+				rl := &corev1.ResourceList{
+					sharedCpusResource: resource.MustParse("1"),
+				}
+				_, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+					withRequests(rl),
+					withLimits(rl),
+					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
+				Expect(err.Error()).To(ContainSubstring("resource but pod is not Guaranteed QoS class"))
+			})
+		})
+		When("creating a pod with resource openshift.io/enable-shared-cpus != 1", func() {
+			It("should cause the pod to fail and not created", func() {
+				By("creating a pod with an incompatible resource request")
+				rl := &corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("1"),
+					corev1.ResourceMemory: resource.MustParse("100Mi"),
+					sharedCpusResource:    resource.MustParse("2"),
+				}
+				_, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+					withRequests(rl),
+					withLimits(rl),
+					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
+				expectedError := "more than a single \"workload.openshift.io/enable-shared-cpus\" resource is forbiden, please set the request to 1 or remove it"
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring(expectedError))
+			})
+		})
+		When("using namespace without mixedcpus allowed annotation", func() {
+			It("should not be able to deploy a pod requesting shared cpus", func() {
+				By("updating the namespace to disable mixedcpus")
+				ns := getTestingNamespace()
+				//Remove the annotations to disable mixedcpus
+				ns.ObjectMeta.Annotations = nil
+				Expect(testclient.Client.Update(ctx, &ns)).ToNot(HaveOccurred())
+				rl := &corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("1"),
+					corev1.ResourceMemory: resource.MustParse("100Mi"),
+					sharedCpusResource:    resource.MustParse("1"),
+				}
+
+				By("Creating a pod requesting shared cpus")
+				_, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+					withRequests(rl),
+					withLimits(rl))
+				Expect(err).To(HaveOccurred())
+				expectedError := fmt.Sprintf("namespace %s is not allowed for workload.openshift.io/enable-shared-cpus resource request", ns.ObjectMeta.Name)
+				Expect(err.Error()).To(ContainSubstring(expectedError))
+
+			})
+		})
 		When("Disabling mixedCpus in the performance profile", func() {
 			It("should causes all pods that uses shared CPUs to fail", func() {
 
