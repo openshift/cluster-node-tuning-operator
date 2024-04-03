@@ -19,10 +19,11 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"os"
 	"reflect"
 	"time"
+
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 
 	apiconfigv1 "github.com/openshift/api/config/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -754,7 +755,8 @@ func (r *PerformanceProfileReconciler) isComponentsExist(profile *performancev2.
 
 func (r *PerformanceProfileReconciler) isMixedCPUsEnabled(profile *performancev2.PerformanceProfile) bool {
 	if !r.FeatureGate.Enabled(apiconfigv1.FeatureGateMixedCPUsAllocation) {
-		return false
+		//return false
+		return true
 	}
 	if config.InHyperShift() {
 		return false
