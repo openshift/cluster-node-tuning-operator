@@ -21,6 +21,8 @@ const (
 	NamespaceNodeTuningOperator = "openshift-cluster-node-tuning-operator"
 	// ProfileNamePerformance defines the performance tuned profile name
 	ProfileNamePerformance = "openshift-node-performance"
+	// ProfileNamePerformanceRT defines the performance real time tuned profile name
+	ProfileNamePerformanceRT = "openshift-node-performance-rt"
 )
 
 const (
