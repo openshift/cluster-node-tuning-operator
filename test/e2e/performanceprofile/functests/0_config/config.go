@@ -31,8 +31,10 @@ import (
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 )
 
@@ -40,14 +42,13 @@ var RunningOnSingleNode bool
 
 var _ = Describe("[performance][config] Performance configuration", Ordered, func() {
 
-	testutils.CustomBeforeAll(func() {
+	BeforeAll(func() {
 		isSNO, err := cluster.IsSingleNode()
 		Expect(err).ToNot(HaveOccurred())
 		RunningOnSingleNode = isSNO
 	})
 
 	It("Should successfully deploy the performance profile", func() {
-
 		performanceProfile, err := testProfile()
 		Expect(err).ToNot(HaveOccurred(), "failed to build performance profile: %v", err)
 		profileAlreadyExists := false
@@ -65,19 +66,11 @@ var _ = Describe("[performance][config] Performance configuration", Ordered, fun
 			profileAlreadyExists = true
 		}
 
-		By("Getting MCP for profile")
-		mcpLabel := profile.GetMachineConfigLabel(performanceProfile)
-		key, value := components.GetFirstKeyAndValue(mcpLabel)
-		mcpsByLabel, err := mcps.GetByLabel(key, value)
-		Expect(err).ToNot(HaveOccurred(), "Failed getting MCP by label key %v value %v", key, value)
-		Expect(len(mcpsByLabel)).To(Equal(1), fmt.Sprintf("Unexpected number of MCPs found: %v", len(mcpsByLabel)))
-		performanceMCP := &mcpsByLabel[0]
-
 		if !discovery.Enabled() {
 			By("Creating the PerformanceProfile")
 			// this might fail while the operator is still being deployed and the CRD does not exist yet
 			Eventually(func() error {
-				err := testclient.Client.Create(context.TODO(), performanceProfile)
+				err := testclient.ControlPlaneClient.Create(context.TODO(), performanceProfile)
 				if errors.IsAlreadyExists(err) {
 					testlog.Warning(fmt.Sprintf("A PerformanceProfile with name %s already exists! If created externally, tests might have unexpected behaviour", performanceProfile.Name))
 					profileAlreadyExists = true
@@ -86,36 +79,12 @@ var _ = Describe("[performance][config] Performance configuration", Ordered, fun
 				return err
 			}, cluster.ComputeTestTimeout(15*time.Minute, RunningOnSingleNode), 15*time.Second).ShouldNot(HaveOccurred(), "Failed creating the performance profile")
 		}
-
-		if !performanceMCP.Spec.Paused {
-			By("MCP is already unpaused")
-		} else {
-			By("Unpausing the MCP")
-			Expect(testclient.Client.Patch(context.TODO(), performanceMCP,
-				client.RawPatch(
-					types.JSONPatchType,
-					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec/paused", "value": %v }]`, false)),
-				),
-			)).ToNot(HaveOccurred(), "Failed unpausing MCP")
-		}
-
-		By("Waiting for the MCP to pick the PerformanceProfile's MC")
-		mcps.WaitForProfilePickedUp(performanceMCP.Name, performanceProfile)
-
-		// If the profile is already there, it's likely to have been through the updating phase, so we only
-		// wait for updated.
-		if !profileAlreadyExists {
-			By("Waiting for MCP starting to update")
-			mcps.WaitForCondition(performanceMCP.Name, mcv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-		}
-		By("Waiting for MCP being updated")
-		mcps.WaitForCondition(performanceMCP.Name, mcv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
-
-		Expect(testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(performanceProfile), performanceProfile))
+		unpauseMCP(context.TODO(), performanceProfile, profileAlreadyExists)
+		attachProfileToNodePool(context.TODO(), performanceProfile, profileAlreadyExists)
+		Expect(testclient.ControlPlaneClient.Get(context.TODO(), client.ObjectKeyFromObject(performanceProfile), performanceProfile))
 		By("Printing the updated profile")
 		format.Object(performanceProfile, 2)
 	})
-
 })
 
 func externalPerformanceProfile(performanceManifest string) (*performancev2.PerformanceProfile, error) {
@@ -229,4 +198,75 @@ func testProfile() (*performancev2.PerformanceProfile, error) {
 		}
 	}
 	return profile, nil
+}
+
+func unpauseMCP(ctx context.Context, performanceProfile *performancev2.PerformanceProfile, profileAlreadyExists bool) {
+	GinkgoHelper()
+	// no MCPs on hypershift
+	if hypershift.IsHypershiftCluster() {
+		return
+	}
+	By("Getting MCP for profile")
+	mcpLabel := profile.GetMachineConfigLabel(performanceProfile)
+	key, value := components.GetFirstKeyAndValue(mcpLabel)
+	mcpsByLabel, err := mcps.GetByLabel(key, value)
+	Expect(err).ToNot(HaveOccurred(), "Failed getting MCP by label key %v value %v", key, value)
+	Expect(len(mcpsByLabel)).To(Equal(1), fmt.Sprintf("Unexpected number of MCPs found: %v", len(mcpsByLabel)))
+	performanceMCP := &mcpsByLabel[0]
+
+	if !performanceMCP.Spec.Paused {
+		By("MCP is already unpaused")
+	} else {
+		By("Unpausing the MCP")
+		Expect(testclient.ControlPlaneClient.Patch(ctx, performanceMCP,
+			client.RawPatch(
+				types.JSONPatchType,
+				[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec/paused", "value": %v }]`, false)),
+			),
+		)).ToNot(HaveOccurred(), "Failed unpausing MCP")
+	}
+
+	By("Waiting for the MCP to pick the PerformanceProfile's MC")
+	mcps.WaitForProfilePickedUp(performanceMCP.Name, performanceProfile)
+
+	// If the profile is already there, it's likely to have been through the updating phase, so we only
+	// wait for updated.
+	if !profileAlreadyExists {
+		By("Waiting for MCP starting to update")
+		mcps.WaitForCondition(performanceMCP.Name, mcv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+	}
+	By("Waiting for MCP being updated")
+	mcps.WaitForCondition(performanceMCP.Name, mcv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+}
+
+func attachProfileToNodePool(ctx context.Context, performanceProfile *performancev2.PerformanceProfile, profileAlreadyExists bool) {
+	GinkgoHelper()
+	// no NodePools on none-hypershift
+	if !hypershift.IsHypershiftCluster() {
+		return
+	}
+	npList := &hypershiftv1beta1.NodePoolList{}
+	Expect(testclient.ControlPlaneClient.List(ctx, npList)).To(Succeed())
+	hostedClusterName, err := hypershift.GetHostedClusterName()
+	Expect(err).ToNot(HaveOccurred())
+	var np *hypershiftv1beta1.NodePool
+	for i := 0; i < len(npList.Items); i++ {
+		np = &npList.Items[i]
+		if np.Spec.ClusterName == hostedClusterName {
+			break
+		}
+	}
+	Expect(np).ToNot(BeNil(), "failed to find nodePool associated with cluster %q; existing nodePools are: %v", hostedClusterName, npList.Items)
+	np.Spec.TuningConfig = []corev1.LocalObjectReference{{Name: performanceProfile.Name}}
+	Expect(testclient.ControlPlaneClient.Update(ctx, np)).To(Succeed())
+	key := client.ObjectKeyFromObject(np)
+	// if the profile exists, don't wait for nodePool to get into updating state
+	if !profileAlreadyExists {
+		err = nodepools.WaitForUpdatingConfig(ctx, testclient.ControlPlaneClient, np.Name, np.Namespace)
+		Expect(err).ToNot(HaveOccurred(), "nodePool %q is not in UpdatingConfig state", client.ObjectKeyFromObject(np).String())
+	}
+	mngClusterNamespace, err := hypershift.GetManagementClusterNamespace()
+	Expect(err).ToNot(HaveOccurred())
+	err = nodepools.WaitForConfigToBeReady(ctx, testclient.ControlPlaneClient, hostedClusterName, mngClusterNamespace)
+	Expect(err).ToNot(HaveOccurred(), "nodePool %q config is not ready", key.String())
 }

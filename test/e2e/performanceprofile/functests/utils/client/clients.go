@@ -10,6 +10,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog"
 
+	apiv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
@@ -21,9 +22,9 @@ import (
 	performancev1alpha1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v1alpha1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
+	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 )
 
 var (
@@ -71,6 +72,14 @@ func init() {
 		klog.Exit(err.Error())
 	}
 
+	if err := hypershiftv1beta1.AddToScheme(scheme.Scheme); err != nil {
+		klog.Exit(err.Error())
+	}
+
+	if err := apiv1beta1.AddToScheme(scheme.Scheme); err != nil {
+		klog.Exit(err.Error())
+	}
+
 	var err error
 	Client, err = New()
 	if err != nil {
@@ -106,7 +115,7 @@ func New() (client.Client, error) {
 
 // NewControlPlane returns a new controller-runtime client for ControlPlaneClient cluster.
 func NewControlPlane() (client.Client, error) {
-	if ntoconfig.InHyperShift() {
+	if hypershift.IsHypershiftCluster() {
 		testlog.Info("creating ControlPlaneClient client for hypershift cluster")
 		return hypershift.BuildControlPlaneClient()
 	}
@@ -117,7 +126,7 @@ func NewControlPlane() (client.Client, error) {
 func NewDataPlane() (client.Client, error) {
 	var c client.Client
 	var err error
-	if ntoconfig.InHyperShift() {
+	if hypershift.IsHypershiftCluster() {
 		testlog.Info("creating DataPlaneClient client for hypershift cluster")
 		c, err = hypershift.BuildDataPlaneClient()
 	} else {
