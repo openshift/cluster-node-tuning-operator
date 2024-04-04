@@ -366,6 +366,13 @@ var (
 					enableIn(Default, TechPreviewNoUpgrade).
 					mustRegister()
 
+	FeatureGateNetworkDiagnosticsConfig = newFeatureGate("NetworkDiagnosticsConfig").
+						reportProblemsToJiraComponent("Networking/cluster-network-operator").
+						contactPerson("kyrtapz").
+						productScope(ocpSpecific).
+						enableIn(TechPreviewNoUpgrade).
+						mustRegister()
+
 	FeatureGateHardwareSpeed = newFeatureGate("HardwareSpeed").
 					reportProblemsToJiraComponent("etcd").
 					contactPerson("hasbro17").

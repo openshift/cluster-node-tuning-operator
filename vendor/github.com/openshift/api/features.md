@@ -23,6 +23,7 @@
 | MetricsCollectionProfiles| | | <span style="background-color: #519450">Enabled</span> | <span style="background-color: #519450">Enabled</span>  |
 | MetricsServer| | | <span style="background-color: #519450">Enabled</span> | <span style="background-color: #519450">Enabled</span>  |
 | MixedCPUsAllocation| | | <span style="background-color: #519450">Enabled</span> | <span style="background-color: #519450">Enabled</span>  |
+| NetworkDiagnosticsConfig| | | <span style="background-color: #519450">Enabled</span> | <span style="background-color: #519450">Enabled</span>  |
 | NewOLM| | | <span style="background-color: #519450">Enabled</span> | <span style="background-color: #519450">Enabled</span>  |
 | NodeDisruptionPolicy| | | <span style="background-color: #519450">Enabled</span> | <span style="background-color: #519450">Enabled</span>  |
 | NodeSwap| | | <span style="background-color: #519450">Enabled</span> | <span style="background-color: #519450">Enabled</span>  |

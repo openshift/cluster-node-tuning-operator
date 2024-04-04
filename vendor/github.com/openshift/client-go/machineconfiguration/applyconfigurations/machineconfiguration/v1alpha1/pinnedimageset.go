@@ -16,7 +16,8 @@ import (
 type PinnedImageSetApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	Spec                             *PinnedImageSetSpecApplyConfiguration `json:"spec,omitempty"`
+	Spec                             *PinnedImageSetSpecApplyConfiguration   `json:"spec,omitempty"`
+	Status                           *PinnedImageSetStatusApplyConfiguration `json:"status,omitempty"`
 }
 
 // PinnedImageSet constructs an declarative configuration of the PinnedImageSet type for use with
@@ -227,5 +228,13 @@ func (b *PinnedImageSetApplyConfiguration) ensureObjectMetaApplyConfigurationExi
 // If called multiple times, the Spec field is set to the value of the last call.
 func (b *PinnedImageSetApplyConfiguration) WithSpec(value *PinnedImageSetSpecApplyConfiguration) *PinnedImageSetApplyConfiguration {
 	b.Spec = value
+	return b
+}
+
+// WithStatus sets the Status field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Status field is set to the value of the last call.
+func (b *PinnedImageSetApplyConfiguration) WithStatus(value *PinnedImageSetStatusApplyConfiguration) *PinnedImageSetApplyConfiguration {
+	b.Status = value
 	return b
 }

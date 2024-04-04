@@ -2268,6 +2268,11 @@ func (in *IngressControllerTuningOptions) DeepCopyInto(out *IngressControllerTun
 		*out = new(metav1.Duration)
 		**out = **in
 	}
+	if in.ConnectTimeout != nil {
+		in, out := &in.ConnectTimeout, &out.ConnectTimeout
+		*out = new(metav1.Duration)
+		**out = **in
+	}
 	if in.TLSInspectDelay != nil {
 		in, out := &in.TLSInspectDelay, &out.TLSInspectDelay
 		*out = new(metav1.Duration)

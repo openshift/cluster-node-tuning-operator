@@ -5,45 +5,30 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const (
-	AutoRegenerateAfterOfflineExpiryAnnotation string = "certificates.openshift.io/auto-regenerate-after-offline-expiry"
-)
-
-type AdditionalAnnotations struct {
-	// JiraComponent annotates tls artifacts so that owner could be easily found
-	JiraComponent string
-	// Description is a human-readable one sentence description of certificate purpose
-	Description string
-	// AutoRegenerateAfterOfflineExpiry contains a link to PR and an e2e test name which verifies
-	// that TLS artifact is correctly regenerated after it has expired
-	AutoRegenerateAfterOfflineExpiry string
+func NewTLSArtifactObjectMeta(name, namespace, jiraComponent, description string) metav1.ObjectMeta {
+	return metav1.ObjectMeta{
+		Namespace: namespace,
+		Name:      name,
+		Annotations: map[string]string{
+			annotations.OpenShiftComponent:   jiraComponent,
+			annotations.OpenShiftDescription: description,
+		},
+	}
 }
 
-func (a AdditionalAnnotations) EnsureTLSMetadataUpdate(meta *metav1.ObjectMeta) bool {
+// EnsureTLSMetadataUpdate mutates objectMeta setting necessary annotations if unset
+func EnsureTLSMetadataUpdate(meta *metav1.ObjectMeta, jiraComponent, description string) bool {
 	modified := false
 	if meta.Annotations == nil {
 		meta.Annotations = make(map[string]string)
 	}
-	if len(a.JiraComponent) > 0 && meta.Annotations[annotations.OpenShiftComponent] != a.JiraComponent {
-		meta.Annotations[annotations.OpenShiftComponent] = a.JiraComponent
+	if len(jiraComponent) > 0 && meta.Annotations[annotations.OpenShiftComponent] != jiraComponent {
+		meta.Annotations[annotations.OpenShiftComponent] = jiraComponent
 		modified = true
 	}
-	if len(a.Description) > 0 && meta.Annotations[annotations.OpenShiftDescription] != a.Description {
-		meta.Annotations[annotations.OpenShiftDescription] = a.Description
-		modified = true
-	}
-	if len(a.AutoRegenerateAfterOfflineExpiry) > 0 && meta.Annotations[AutoRegenerateAfterOfflineExpiryAnnotation] != a.AutoRegenerateAfterOfflineExpiry {
-		meta.Annotations[AutoRegenerateAfterOfflineExpiryAnnotation] = a.AutoRegenerateAfterOfflineExpiry
+	if len(description) > 0 && meta.Annotations[annotations.OpenShiftDescription] != description {
+		meta.Annotations[annotations.OpenShiftDescription] = description
 		modified = true
 	}
 	return modified
-}
-
-func NewTLSArtifactObjectMeta(name, namespace string, annotations AdditionalAnnotations) metav1.ObjectMeta {
-	meta := metav1.ObjectMeta{
-		Namespace: namespace,
-		Name:      name,
-	}
-	_ = annotations.EnsureTLSMetadataUpdate(&meta)
-	return meta
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openshift/api/annotations"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -57,8 +58,11 @@ type RotatedSelfSignedCertKeySecret struct {
 	// certificate is used, early deletion will be catastrophic.
 	Owner *metav1.OwnerReference
 
-	// AdditionalAnnotations is a collection of annotations set for the secret
-	AdditionalAnnotations AdditionalAnnotations
+	// JiraComponent annotates tls artifacts so that owner could be easily found
+	JiraComponent string
+
+	// Description is a human-readable one sentence description of certificate purpose
+	Description string
 
 	// CertCreator does the actual cert generation.
 	CertCreator TargetCertCreator
@@ -68,19 +72,13 @@ type RotatedSelfSignedCertKeySecret struct {
 	Lister        corev1listers.SecretLister
 	Client        corev1client.SecretsGetter
 	EventRecorder events.Recorder
-
-	// Deprecated: DO NOT eanble, it is intended as a short term hack for a very specific use case,
-	// and it works in tandem with a particular carry patch applied to the openshift kube-apiserver.
-	// we will remove this when we migrate all of the affected secret
-	// objects to their intended type: https://issues.redhat.com/browse/API-1800
-	UseSecretUpdateOnly bool
 }
 
 type TargetCertCreator interface {
 	// NewCertificate creates a new key-cert pair with the given signer.
 	NewCertificate(signer *crypto.CA, validity time.Duration) (*crypto.TLSCertificateConfig, error)
 	// NeedNewTargetCertKeyPair decides whether a new cert-key pair is needed. It returns a non-empty reason if it is the case.
-	NeedNewTargetCertKeyPair(currentCertSecret *corev1.Secret, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration, refreshOnlyWhenExpired bool) string
+	NeedNewTargetCertKeyPair(currentSecretAnnotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration, refreshOnlyWhenExpired bool) string
 	// SetAnnotations gives an option to override or set additional annotations
 	SetAnnotations(cert *crypto.TLSCertificateConfig, annotations map[string]string) map[string]string
 }
@@ -91,59 +89,57 @@ type TargetCertRechecker interface {
 	RecheckChannel() <-chan struct{}
 }
 
-func (c RotatedSelfSignedCertKeySecret) EnsureTargetCertKeyPair(ctx context.Context, signingCertKeyPair *crypto.CA, caBundleCerts []*x509.Certificate) (*corev1.Secret, error) {
+func (c RotatedSelfSignedCertKeySecret) ensureTargetCertKeyPair(ctx context.Context, signingCertKeyPair *crypto.CA, caBundleCerts []*x509.Certificate) error {
 	// at this point our trust bundle has been updated.  We don't know for sure that consumers have updated, but that's why we have a second
 	// validity percentage.  We always check to see if we need to sign.  Often we are signing with an old key or we have no target
 	// and need to mint one
 	// TODO do the cross signing thing, but this shows the API consumers want and a very simple impl.
 	originalTargetCertKeyPairSecret, err := c.Lister.Secrets(c.Namespace).Get(c.Name)
 	if err != nil && !apierrors.IsNotFound(err) {
-		return nil, err
+		return err
 	}
 	targetCertKeyPairSecret := originalTargetCertKeyPairSecret.DeepCopy()
 	if apierrors.IsNotFound(err) {
 		// create an empty one
-		targetCertKeyPairSecret = &corev1.Secret{
-			ObjectMeta: NewTLSArtifactObjectMeta(
-				c.Name,
-				c.Namespace,
-				c.AdditionalAnnotations,
-			),
-			Type: corev1.SecretTypeTLS,
-		}
+		targetCertKeyPairSecret = &corev1.Secret{ObjectMeta: NewTLSArtifactObjectMeta(
+			c.Name,
+			c.Namespace,
+			c.JiraComponent,
+			c.Description,
+		)}
 	}
+	targetCertKeyPairSecret.Type = corev1.SecretTypeTLS
 
-	applyFn := resourceapply.ApplySecret
-	if c.UseSecretUpdateOnly {
-		applyFn = resourceapply.ApplySecretDoNotUse
+	needsMetadataUpdate := false
+	if c.Owner != nil {
+		needsMetadataUpdate = ensureOwnerReference(&targetCertKeyPairSecret.ObjectMeta, c.Owner)
 	}
-
-	// apply necessary metadata (possibly via delete+recreate) if secret exists
-	// this is done before content update to prevent unexpected rollouts
-	if ensureMetadataUpdate(targetCertKeyPairSecret, c.Owner, c.AdditionalAnnotations) && ensureSecretTLSTypeSet(targetCertKeyPairSecret) {
-		actualTargetCertKeyPairSecret, _, err := applyFn(ctx, c.Client, c.EventRecorder, targetCertKeyPairSecret)
+	if len(c.JiraComponent) > 0 || len(c.Description) > 0 {
+		needsMetadataUpdate = EnsureTLSMetadataUpdate(&targetCertKeyPairSecret.ObjectMeta, c.JiraComponent, c.Description) || needsMetadataUpdate
+	}
+	if needsMetadataUpdate && len(targetCertKeyPairSecret.ResourceVersion) > 0 {
+		_, _, err := resourceapply.ApplySecret(ctx, c.Client, c.EventRecorder, targetCertKeyPairSecret)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		targetCertKeyPairSecret = actualTargetCertKeyPairSecret
 	}
 
-	if reason := c.CertCreator.NeedNewTargetCertKeyPair(targetCertKeyPairSecret, signingCertKeyPair, caBundleCerts, c.Refresh, c.RefreshOnlyWhenExpired); len(reason) > 0 {
+	if reason := needNewTargetCertKeyPair(targetCertKeyPairSecret.Annotations, signingCertKeyPair, caBundleCerts, c.Refresh, c.RefreshOnlyWhenExpired); len(reason) > 0 {
 		c.EventRecorder.Eventf("TargetUpdateRequired", "%q in %q requires a new target cert/key pair: %v", c.Name, c.Namespace, reason)
-		if err := setTargetCertKeyPairSecret(targetCertKeyPairSecret, c.Validity, signingCertKeyPair, c.CertCreator, c.AdditionalAnnotations); err != nil {
-			return nil, err
+		if err := setTargetCertKeyPairSecret(targetCertKeyPairSecret, c.Validity, signingCertKeyPair, c.CertCreator, c.JiraComponent, c.Description); err != nil {
+			return err
 		}
 
 		LabelAsManagedSecret(targetCertKeyPairSecret, CertificateTypeTarget)
 
-		actualTargetCertKeyPairSecret, _, err := applyFn(ctx, c.Client, c.EventRecorder, targetCertKeyPairSecret)
+		actualTargetCertKeyPairSecret, _, err := resourceapply.ApplySecret(ctx, c.Client, c.EventRecorder, targetCertKeyPairSecret)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		targetCertKeyPairSecret = actualTargetCertKeyPairSecret
 	}
 
-	return targetCertKeyPairSecret, nil
+	return nil
 }
 
 func needNewTargetCertKeyPair(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration, refreshOnlyWhenExpired bool) string {
@@ -221,7 +217,7 @@ func needNewTargetCertKeyPairForTime(annotations map[string]string, signer *cryp
 
 // setTargetCertKeyPairSecret creates a new cert/key pair and sets them in the secret.  Only one of client, serving, or signer rotation may be specified.
 // TODO refactor with an interface for actually signing and move the one-of check higher in the stack.
-func setTargetCertKeyPairSecret(targetCertKeyPairSecret *corev1.Secret, validity time.Duration, signer *crypto.CA, certCreator TargetCertCreator, annotations AdditionalAnnotations) error {
+func setTargetCertKeyPairSecret(targetCertKeyPairSecret *corev1.Secret, validity time.Duration, signer *crypto.CA, certCreator TargetCertCreator, jiraComponent, description string) error {
 	if targetCertKeyPairSecret.Annotations == nil {
 		targetCertKeyPairSecret.Annotations = map[string]string{}
 	}
@@ -248,8 +244,12 @@ func setTargetCertKeyPairSecret(targetCertKeyPairSecret *corev1.Secret, validity
 	targetCertKeyPairSecret.Annotations[CertificateNotAfterAnnotation] = certKeyPair.Certs[0].NotAfter.Format(time.RFC3339)
 	targetCertKeyPairSecret.Annotations[CertificateNotBeforeAnnotation] = certKeyPair.Certs[0].NotBefore.Format(time.RFC3339)
 	targetCertKeyPairSecret.Annotations[CertificateIssuer] = certKeyPair.Certs[0].Issuer.CommonName
-
-	_ = annotations.EnsureTLSMetadataUpdate(&targetCertKeyPairSecret.ObjectMeta)
+	if len(jiraComponent) > 0 {
+		targetCertKeyPairSecret.Annotations[annotations.OpenShiftComponent] = jiraComponent
+	}
+	if len(description) > 0 {
+		targetCertKeyPairSecret.Annotations[annotations.OpenShiftDescription] = description
+	}
 	certCreator.SetAnnotations(certKeyPair, targetCertKeyPairSecret.Annotations)
 
 	return nil
@@ -263,8 +263,8 @@ func (r *ClientRotation) NewCertificate(signer *crypto.CA, validity time.Duratio
 	return signer.MakeClientCertificateForDuration(r.UserInfo, validity)
 }
 
-func (r *ClientRotation) NeedNewTargetCertKeyPair(currentCertSecret *corev1.Secret, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration, refreshOnlyWhenExpired bool) string {
-	return needNewTargetCertKeyPair(currentCertSecret.Annotations, signer, caBundleCerts, refresh, refreshOnlyWhenExpired)
+func (r *ClientRotation) NeedNewTargetCertKeyPair(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration, refreshOnlyWhenExpired bool) string {
+	return needNewTargetCertKeyPair(annotations, signer, caBundleCerts, refresh, refreshOnlyWhenExpired)
 }
 
 func (r *ClientRotation) SetAnnotations(cert *crypto.TLSCertificateConfig, annotations map[string]string) map[string]string {
@@ -288,13 +288,13 @@ func (r *ServingRotation) RecheckChannel() <-chan struct{} {
 	return r.HostnamesChanged
 }
 
-func (r *ServingRotation) NeedNewTargetCertKeyPair(currentCertSecret *corev1.Secret, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration, refreshOnlyWhenExpired bool) string {
-	reason := needNewTargetCertKeyPair(currentCertSecret.Annotations, signer, caBundleCerts, refresh, refreshOnlyWhenExpired)
+func (r *ServingRotation) NeedNewTargetCertKeyPair(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration, refreshOnlyWhenExpired bool) string {
+	reason := needNewTargetCertKeyPair(annotations, signer, caBundleCerts, refresh, refreshOnlyWhenExpired)
 	if len(reason) > 0 {
 		return reason
 	}
 
-	return r.missingHostnames(currentCertSecret.Annotations)
+	return r.missingHostnames(annotations)
 }
 
 func (r *ServingRotation) missingHostnames(annotations map[string]string) string {
@@ -334,8 +334,8 @@ func (r *SignerRotation) NewCertificate(signer *crypto.CA, validity time.Duratio
 	return crypto.MakeCAConfigForDuration(signerName, validity, signer)
 }
 
-func (r *SignerRotation) NeedNewTargetCertKeyPair(currentCertSecret *corev1.Secret, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration, refreshOnlyWhenExpired bool) string {
-	return needNewTargetCertKeyPair(currentCertSecret.Annotations, signer, caBundleCerts, refresh, refreshOnlyWhenExpired)
+func (r *SignerRotation) NeedNewTargetCertKeyPair(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration, refreshOnlyWhenExpired bool) string {
+	return needNewTargetCertKeyPair(annotations, signer, caBundleCerts, refresh, refreshOnlyWhenExpired)
 }
 
 func (r *SignerRotation) SetAnnotations(cert *crypto.TLSCertificateConfig, annotations map[string]string) map[string]string {
