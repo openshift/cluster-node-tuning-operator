@@ -39,3 +39,4 @@ function rendersync() {
 }
 
 rendersync manual-cluster/performance base/performance default
+rendersync --owner-ref none -- base/performance manual-cluster/performance no-ref 
