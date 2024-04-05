@@ -25,8 +25,8 @@ import (
 	"strconv"
 	"strings"
 
+	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator"
-	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	log "github.com/sirupsen/logrus"
 	"sigs.k8s.io/yaml"
 

@@ -334,7 +334,7 @@ func WaitForProfileConditionStatus(cs *framework.ClientSet, interval, duration t
 
 // GetUpdatedMachineCountForPool returns the UpdatedMachineCount for MCP 'pool'.
 func GetUpdatedMachineCountForPool(cs *framework.ClientSet, pool string) (int32, error) {
-	mcp, err := cs.MachineConfigPools().Get(context.TODO(), pool, metav1.GetOptions{})
+	mcp, err := cs.MachineconfigurationV1().MachineConfigPools().Get(context.TODO(), pool, metav1.GetOptions{})
 	if err != nil {
 		return 0, err
 	}
@@ -347,7 +347,7 @@ func WaitForPoolMachineCount(cs *framework.ClientSet, pool string, count int32) 
 
 	startTime := time.Now()
 	if err := wait.Poll(5*time.Second, 20*time.Minute, func() (bool, error) {
-		mcp, err := cs.MachineConfigPools().Get(context.TODO(), pool, metav1.GetOptions{})
+		mcp, err := cs.MachineconfigurationV1().MachineConfigPools().Get(context.TODO(), pool, metav1.GetOptions{})
 		if err != nil {
 			// This is not fatal.  On SNO, API server will be unavailable during reboots.
 			explain = err
@@ -369,7 +369,7 @@ func WaitForPoolUpdatedMachineCount(cs *framework.ClientSet, pool string, count 
 
 	startTime := time.Now()
 	if err := wait.Poll(5*time.Second, 20*time.Minute, func() (bool, error) {
-		mcp, err := cs.MachineConfigPools().Get(context.TODO(), pool, metav1.GetOptions{})
+		mcp, err := cs.MachineconfigurationV1().MachineConfigPools().Get(context.TODO(), pool, metav1.GetOptions{})
 		if err != nil {
 			// This is not fatal.  On SNO, API server will be unavailable during reboots.
 			explain = err

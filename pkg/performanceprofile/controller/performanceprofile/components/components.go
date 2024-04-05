@@ -18,7 +18,7 @@ package components
 
 import (
 	apiconfigv1 "github.com/openshift/api/config/v1"
-	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
+	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 )
 
 type Options struct {
