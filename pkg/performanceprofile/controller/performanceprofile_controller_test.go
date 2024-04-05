@@ -14,6 +14,7 @@ import (
 	igntypes "github.com/coreos/ignition/config/v2_2/types"
 	apiconfigv1 "github.com/openshift/api/config/v1"
 	configv1 "github.com/openshift/api/config/v1"
+	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
@@ -24,7 +25,6 @@ import (
 	testutils "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/utils/testing"
 	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
-	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"

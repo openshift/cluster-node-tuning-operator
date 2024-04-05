@@ -26,7 +26,7 @@ import (
 
 	igntypes "github.com/coreos/ignition/v2/config/v3_2/types"
 	apicfgv1 "github.com/openshift/api/config/v1"
-	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
+	mcfgv1 "github.com/openshift/api/machineconfiguration/v1"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	performanceprofilecomponents "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"

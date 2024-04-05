@@ -24,8 +24,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	mcfgv1 "github.com/openshift/api/machineconfiguration/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
-	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 )

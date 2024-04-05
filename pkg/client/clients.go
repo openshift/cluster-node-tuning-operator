@@ -7,8 +7,8 @@ import (
 
 	configclientset "github.com/openshift/client-go/config/clientset/versioned"
 	configv1client "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
+	mcfgclientset "github.com/openshift/client-go/machineconfiguration/clientset/versioned"
 	tunedset "github.com/openshift/cluster-node-tuning-operator/pkg/generated/clientset/versioned"
-	mcfgclientset "github.com/openshift/machine-config-operator/pkg/generated/clientset/versioned"
 )
 
 type Clients struct {
