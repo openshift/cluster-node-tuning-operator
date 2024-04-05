@@ -57,7 +57,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 	Context("Additional kubelet arguments", func() {
 		It("[test_id:45488]Test performance profile annotation for changing multiple kubelet settings", func() {
 			sysctls := "{\"allowedUnsafeSysctls\":[\"net.core.somaxconn\",\"kernel.msg*\"],\"systemReserved\":{\"memory\":\"300Mi\"},\"kubeReserved\":{\"memory\":\"768Mi\"},\"imageMinimumGCAge\":\"3m\"}"
-			profile.Annotations = updateAnnotation(profile.Annotations, sysctls)
+			profile.Annotations = updateKubeletConfigOverrideAnnotations(profile.Annotations, sysctls)
 			annotations, err := json.Marshal(profile.Annotations)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -89,7 +89,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 		Context("When setting cpu manager related parameters", func() {
 			It("[test_id:45493]Should not override performance-addon-operator values", func() {
 				paoValues := "{\"cpuManagerPolicy\":\"static\",\"cpuManagerReconcilePeriod\":\"5s\"}"
-				profile.Annotations = updateAnnotation(profile.Annotations, paoValues)
+				profile.Annotations = updateKubeletConfigOverrideAnnotations(profile.Annotations, paoValues)
 				annotations, err := json.Marshal(profile.Annotations)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -116,7 +116,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			// systemReserved and KubeReserved, the allocatable is reduced and Allocatable
 			// Verify that Allocatable = Node capacity - (kubereserved + systemReserved + EvictionMemory)
 			reservedMemory := "{\"systemReserved\":{\"memory\":\"300Mi\"},\"kubeReserved\":{\"memory\":\"768Mi\"}}"
-			profile.Annotations = updateAnnotation(profile.Annotations, reservedMemory)
+			profile.Annotations = updateKubeletConfigOverrideAnnotations(profile.Annotations, reservedMemory)
 			annotations, err := json.Marshal(profile.Annotations)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -175,7 +175,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			} else {
 				paoParameters = "{\"topologyManagerPolicy\":\"single-numa-node\"}"
 			}
-			profile.Annotations = updateAnnotation(profile.Annotations, paoParameters)
+			profile.Annotations = updateKubeletConfigOverrideAnnotations(profile.Annotations, paoParameters)
 			annotations, err := json.Marshal(profile.Annotations)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -247,7 +247,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 	})
 })
 
-func updateAnnotation(profileAnnotations map[string]string, annotations string) map[string]string {
+func updateKubeletConfigOverrideAnnotations(profileAnnotations map[string]string, annotations string) map[string]string {
 	if _, ok := profileAnnotations["performance.openshift.io/ignore-cgroups-version"]; !ok {
 		profileAnnotations = map[string]string{
 			"kubeletconfig.experimental": annotations}
