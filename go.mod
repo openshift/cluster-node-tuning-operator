@@ -20,7 +20,7 @@ require (
 	github.com/openshift/client-go v0.0.0-20240325151210-66398bfc44e1
 	github.com/openshift/custom-resource-status v1.1.3-0.20220503160415-f2fdb4999d87
 	github.com/openshift/library-go v0.0.0-20240404133914-6b235e9156fa
-	github.com/openshift/machine-config-operator v0.0.1-0.20230807154212-886c5c3fc7a9
+	github.com/openshift/machine-config-operator v0.0.1-0.20240404192517-42218f968a9e
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.16.0
 	github.com/sirupsen/logrus v1.9.3
@@ -238,7 +238,7 @@ replace (
 	github.com/Azure/go-autorest => github.com/Azure/go-autorest v14.2.0+incompatible
 	github.com/coreos/prometheus-operator => github.com/coreos/prometheus-operator v0.40.0
 	github.com/mtrmac/gpgme => github.com/mtrmac/gpgme v0.1.1
-	github.com/openshift/machine-config-operator => github.com/openshift/machine-config-operator v0.0.1-0.20230807154212-886c5c3fc7a9 // release-4.14
+	github.com/openshift/machine-config-operator => github.com/openshift/machine-config-operator v0.0.1-0.20240404192517-42218f968a9e // release-4.14
 )
 
 replace vbom.ml/util => github.com/fvbommel/util v0.0.0-20180919145318-efcd4e0f9787
