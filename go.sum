@@ -422,6 +422,8 @@ github.com/openshift/library-go v0.0.0-20240404133914-6b235e9156fa h1:xGGzEFdvZF
 github.com/openshift/library-go v0.0.0-20240404133914-6b235e9156fa/go.mod h1:sb0m3u8GuEtCmkVWsosk/XBAzvnJjaOKcZ4m+oYsOa0=
 github.com/openshift/machine-config-operator v0.0.1-0.20230807154212-886c5c3fc7a9 h1:lEH5TQGyDjnJZocsI4FE0BcWKkKtqW3OOsBkRvGd9Rs=
 github.com/openshift/machine-config-operator v0.0.1-0.20230807154212-886c5c3fc7a9/go.mod h1:kP51fbL8QBSY/mAkFicoF73x0QSraPrX4BjWIdzFPio=
+github.com/openshift/machine-config-operator v0.0.1-0.20240404192517-42218f968a9e h1:6lQ0TPoOeWPG07ri6bamEhe6PRiJQHGzDdhVNDWS5Mc=
+github.com/openshift/machine-config-operator v0.0.1-0.20240404192517-42218f968a9e/go.mod h1:RVXxGeaeKYcdekIFMn640nvX1jxl/B8orgVssAneCsA=
 github.com/pelletier/go-toml v1.7.0/go.mod h1:vwGMzjaWMwyfHwgIBhI2YUM4fB6nL6lVAvS1LBMMhTE=
 github.com/pkg/diff v0.0.0-20210226163009-20ebb0f2a09e/go.mod h1:pJLUxLENpZxwdsKMEsNbx1VGcRFpLqf3715MtcvvzbA=
 github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=

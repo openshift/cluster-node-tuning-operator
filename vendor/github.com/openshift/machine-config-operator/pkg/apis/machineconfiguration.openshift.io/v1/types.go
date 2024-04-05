@@ -75,6 +75,10 @@ type ControllerConfigSpec struct {
 	// on all machines.
 	PullSecret *corev1.ObjectReference `json:"pullSecret,omitempty"`
 
+	// internalRegistryPullSecret is the pull secret for the internal registry
+	// +nullable
+	InternalRegistryPullSecret []byte `json:"internalRegistryPullSecret"`
+
 	// images is map of images that are used by the controller to render templates under ./templates/
 	Images map[string]string `json:"images"`
 
@@ -163,12 +167,6 @@ type ControllerCertificate struct {
 
 	// signer is the  cert Issuer
 	Signer string `json:"signer"`
-
-	// notBefore is the lower boundary for validity
-	NotBefore string `json:"notBefore"`
-
-	// notAfter is the upper boundary for validity
-	NotAfter string `json:"notAfter"`
 
 	// bundleFile is the larger bundle a cert comes from
 	BundleFile string `json:"bundleFile"`
@@ -345,7 +343,6 @@ type MachineConfigPoolStatus struct {
 type CertExpiry struct {
 	Bundle  string `json:"bundle"`
 	Subject string `json:"subject"`
-	Expiry  string `json:"expiry"`
 }
 
 // MachineConfigPoolStatusConfiguration stores the current configuration for the pool, and
@@ -535,11 +532,11 @@ type ContainerRuntimeConfiguration struct {
 	// logSizeMax specifies the Maximum size allowed for the container log file.
 	// Negative numbers indicate that no size limit is imposed.
 	// If it is positive, it must be >= 8192 to match/exceed conmon's read buffer.
-	LogSizeMax resource.Quantity `json:"logSizeMax,omitempty"`
+	LogSizeMax *resource.Quantity `json:"logSizeMax,omitempty"`
 
 	// overlaySize specifies the maximum size of a container image.
 	// This flag can be used to set quota on the size of container images.
-	OverlaySize resource.Quantity `json:"overlaySize,omitempty"`
+	OverlaySize *resource.Quantity `json:"overlaySize,omitempty"`
 
 	// defaultRuntime is the name of the OCI runtime to be used as the default.
 	DefaultRuntime ContainerRuntimeDefaultRuntime `json:"defaultRuntime,omitempty"`

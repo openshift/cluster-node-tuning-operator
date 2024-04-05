@@ -618,7 +618,7 @@ github.com/openshift/library-go/pkg/operator/resource/resourcemerge
 github.com/openshift/library-go/pkg/operator/resource/resourceread
 github.com/openshift/library-go/pkg/operator/resourcesynccontroller
 github.com/openshift/library-go/pkg/operator/v1helpers
-# github.com/openshift/machine-config-operator v0.0.1-0.20230807154212-886c5c3fc7a9 => github.com/openshift/machine-config-operator v0.0.1-0.20230807154212-886c5c3fc7a9
+# github.com/openshift/machine-config-operator v0.0.1-0.20240404192517-42218f968a9e => github.com/openshift/machine-config-operator v0.0.1-0.20240404192517-42218f968a9e
 ## explicit; go 1.20
 github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1
 github.com/openshift/machine-config-operator/pkg/generated/clientset/versioned
@@ -2092,5 +2092,5 @@ sigs.k8s.io/yaml
 # github.com/Azure/go-autorest => github.com/Azure/go-autorest v14.2.0+incompatible
 # github.com/coreos/prometheus-operator => github.com/coreos/prometheus-operator v0.40.0
 # github.com/mtrmac/gpgme => github.com/mtrmac/gpgme v0.1.1
-# github.com/openshift/machine-config-operator => github.com/openshift/machine-config-operator v0.0.1-0.20230807154212-886c5c3fc7a9
+# github.com/openshift/machine-config-operator => github.com/openshift/machine-config-operator v0.0.1-0.20240404192517-42218f968a9e
 # vbom.ml/util => github.com/fvbommel/util v0.0.0-20180919145318-efcd4e0f9787
