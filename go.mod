@@ -15,11 +15,11 @@ require (
 	github.com/onsi/gomega v1.29.0
 	github.com/openshift-kni/debug-tools v0.1.12
 	github.com/openshift-kni/k8sreporter v1.0.4
-	github.com/openshift/api v0.0.0-20231130134125-f6ae1072b499
-	github.com/openshift/build-machinery-go v0.0.0-20230306181456-d321ffa04533
-	github.com/openshift/client-go v0.0.0-20230807132528-be5346fb33cb
+	github.com/openshift/api v0.0.0-20240404200104-96ed2d49b255
+	github.com/openshift/build-machinery-go v0.0.0-20230816154005-5a38e1bfd880
+	github.com/openshift/client-go v0.0.0-20240325151210-66398bfc44e1
 	github.com/openshift/custom-resource-status v1.1.3-0.20220503160415-f2fdb4999d87
-	github.com/openshift/library-go v0.0.0-20230803043003-e1dfb9bf12bb
+	github.com/openshift/library-go v0.0.0-20240404133914-6b235e9156fa
 	github.com/openshift/machine-config-operator v0.0.1-0.20230807154212-886c5c3fc7a9
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.16.0
@@ -74,11 +74,12 @@ require (
 	github.com/evanphx/json-patch/v5 v5.6.0 // indirect
 	github.com/fatih/color v1.15.0 // indirect
 	github.com/felixge/httpsnoop v1.0.3 // indirect
+	github.com/frankban/quicktest v1.14.4 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/ghodss/yaml v1.0.1-0.20190212211648-25d852aebe32 // indirect
 	github.com/go-logr/logr v1.3.0 // indirect
 	github.com/go-logr/zapr v1.2.4 // indirect
-	github.com/go-ole/go-ole v1.2.5 // indirect
+	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-openapi/analysis v0.21.4 // indirect
 	github.com/go-openapi/errors v0.20.3 // indirect
 	github.com/go-openapi/jsonpointer v0.19.6 // indirect
