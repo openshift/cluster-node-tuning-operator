@@ -511,6 +511,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware.
 				checkHardwareCapability(context.TODO(), workerRTNodes)
+				currentWorkloadHints := profile.Spec.WorkloadHints
 				// First enable HighPowerConsumption
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
@@ -523,24 +524,24 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 						Enabled: pointer.Bool(true),
 					}
 				}
+				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
+					By("Patching the performance profile with workload hints")
+					spec, err := json.Marshal(profile.Spec)
+					Expect(err).ToNot(HaveOccurred())
 
-				By("Patching the performance profile with workload hints")
-				spec, err := json.Marshal(profile.Spec)
-				Expect(err).ToNot(HaveOccurred())
+					Expect(testclient.Client.Patch(context.TODO(), profile,
+						client.RawPatch(
+							types.JSONPatchType,
+							[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
+						),
+					)).ToNot(HaveOccurred())
 
-				Expect(testclient.Client.Patch(context.TODO(), profile,
-					client.RawPatch(
-						types.JSONPatchType,
-						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-					),
-				)).ToNot(HaveOccurred())
+					By("Applying changes in performance profile and waiting until mcp will start updating")
+					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
 
-				By("Applying changes in performance profile and waiting until mcp will start updating")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-
-				By("Waiting when mcp finishes updates")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
-
+					By("Waiting when mcp finishes updates")
+					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				}
 				stalldEnabled, rtKernel := true, true
 				noHzParam := fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
 				sysctlMap := map[string]string{
@@ -664,26 +665,29 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware.
 				checkHardwareCapability(context.TODO(), workerRTNodes)
+				currentWorkloadHints := profile.Spec.WorkloadHints
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					PerPodPowerManagement: pointer.Bool(true),
 					HighPowerConsumption:  pointer.Bool(false),
 					RealTime:              pointer.Bool(true),
 				}
-				By("Patching the performance profile with workload hints")
-				workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
-				Expect(err).ToNot(HaveOccurred())
+				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
+					By("Patching the performance profile with workload hints")
+					workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
+					Expect(err).ToNot(HaveOccurred())
 
-				Expect(testclient.Client.Patch(context.TODO(), profile,
-					client.RawPatch(
-						types.JSONPatchType,
-						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec/workloadHints", "value": %s }]`, workloadHints)),
-					),
-				)).ToNot(HaveOccurred())
-				By("Applying changes in performance profile and waiting until mcp will start updating")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+					Expect(testclient.Client.Patch(context.TODO(), profile,
+						client.RawPatch(
+							types.JSONPatchType,
+							[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec/workloadHints", "value": %s }]`, workloadHints)),
+						),
+					)).ToNot(HaveOccurred())
+					By("Applying changes in performance profile and waiting until mcp will start updating")
+					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
 
-				By("Waiting when mcp finishes updates")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+					By("Waiting when mcp finishes updates")
+					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				}
 
 				annotations := map[string]string{
 					"cpu-c-states.crio.io":      "enable",
@@ -758,27 +762,29 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware
 				checkHardwareCapability(context.TODO(), workerRTNodes)
+				currentWorkloadHints := profile.Spec.WorkloadHints
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					PerPodPowerManagement: pointer.Bool(false),
 					HighPowerConsumption:  pointer.Bool(true),
 					RealTime:              pointer.Bool(true),
 				}
-				By("Patching the performance profile with workload hints")
-				workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
-				Expect(err).ToNot(HaveOccurred())
+				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
+					By("Patching the performance profile with workload hints")
+					workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
+					Expect(err).ToNot(HaveOccurred())
 
-				Expect(testclient.Client.Patch(context.TODO(), profile,
-					client.RawPatch(
-						types.JSONPatchType,
-						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec/workloadHints", "value": %s }]`, workloadHints)),
-					),
-				)).ToNot(HaveOccurred())
-				By("Applying changes in performance profile and waiting until mcp will start updating")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+					Expect(testclient.Client.Patch(context.TODO(), profile,
+						client.RawPatch(
+							types.JSONPatchType,
+							[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec/workloadHints", "value": %s }]`, workloadHints)),
+						),
+					)).ToNot(HaveOccurred())
+					By("Applying changes in performance profile and waiting until mcp will start updating")
+					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
 
-				By("Waiting when mcp finishes updates")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
-
+					By("Waiting when mcp finishes updates")
+					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				}
 				annotations := map[string]string{
 					"cpu-load-balancing.crio.io": "disable",
 					"cpu-quota.crio.io":          "disable",
