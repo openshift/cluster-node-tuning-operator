@@ -4,6 +4,7 @@ import (
 	"bufio"   // scanner
 	"bytes"   // bytes.Buffer
 	"context" // context.TODO()
+	"errors"  // errors.Is()
 	"fmt"     // Printf()
 	"math"    // math.Pow()
 	"os"      // os.Exit(), os.Stderr, ...
@@ -34,10 +35,9 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/version"
 )
 
-// Constants
+// Constants used for instantiating Profile status conditions;
+// they will be set to 2^0, 2^1, 2^2, ..., 2^n
 const (
-	// Constants used for instantiating Profile status conditions;
-	// they will be set to 2^0, 2^1, 2^2, ..., 2^n
 	scApplied Bits = 1 << iota
 	scWarn
 	scError
@@ -46,9 +46,10 @@ const (
 	scUnknown
 )
 
+// Constants used for controlling TuneD;
+// they will be set to 2^0, 2^1, 2^2, ..., 2^n
 const (
-	// Constants used for controlling TuneD;
-	// they will be set to 2^0, 2^1, 2^2, ..., 2^n
+	// Should we reload (vs. full restart) TuneD?
 	ctrlReload Bits = 1 << iota
 	// Did the command-line parameters to run the TuneD daemon or tuned-main.conf change?
 	// In other words, is a complete restart of the TuneD daemon needed?
@@ -551,7 +552,7 @@ func (c *Controller) tunedStop() error {
 		// The TuneD daemon rolls back the current profile and should terminate on SIGTERM.
 		klog.V(1).Infof("sending SIGTERM to PID %d", c.tunedCmd.Process.Pid)
 		if err := c.tunedCmd.Process.Signal(syscall.SIGTERM); err != nil {
-			if err == os.ErrProcessDone {
+			if errors.Is(err, os.ErrProcessDone) {
 				// The TuneD process has already finished.
 				return nil
 			}
@@ -569,7 +570,7 @@ func (c *Controller) tunedStop() error {
 		// within tunedGracefulExitWait.
 		klog.V(1).Infof("sending SIGKILL to PID %d", c.tunedCmd.Process.Pid)
 		if err := c.tunedCmd.Process.Signal(syscall.SIGKILL); err != nil {
-			if err == os.ErrProcessDone {
+			if errors.Is(err, os.ErrProcessDone) {
 				// The TuneD process has already finished.
 				return nil
 			}
@@ -607,7 +608,7 @@ func (c *Controller) tunedReload() error {
 	if c.tunedCmd.Process != nil {
 		klog.Infof("sending HUP to PID %d", c.tunedCmd.Process.Pid)
 		if err := c.tunedCmd.Process.Signal(syscall.SIGHUP); err != nil {
-			if err == os.ErrProcessDone {
+			if errors.Is(err, os.ErrProcessDone) {
 				// The TuneD process has already finished.  The following comes to mind:
 				//   * TuneD exitted due to a bug
 				//   * someone or something (systemd) killed TuneD intentionally
