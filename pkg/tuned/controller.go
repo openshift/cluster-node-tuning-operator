@@ -445,28 +445,19 @@ func providerExtract(provider string) error {
 // match 'provider'.  Returns indication whether the 'provider' changed and
 // an error if any.
 func providerSync(provider string) (bool, error) {
-	var providerCurrent string
-
-	f, err := os.Open(openshiftTunedProvider)
+	providerCurrent, err := os.ReadFile(openshiftTunedProvider)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// The provider file hasn't been created yet.
 			return len(provider) > 0, providerExtract(provider)
 		}
 		return false, err
 	}
-	defer f.Close()
 
-	var scanner = bufio.NewScanner(f)
-	for scanner.Scan() {
-		providerCurrent = strings.TrimSpace(scanner.Text())
+	if provider == string(providerCurrent) {
+		return false, nil
 	}
 
-	if provider != providerCurrent {
-		return true, providerExtract(provider)
-	}
-
-	return false, nil
+	return true, providerExtract(provider)
 }
 
 func TunedRecommendFileWrite(profileName string) error {
