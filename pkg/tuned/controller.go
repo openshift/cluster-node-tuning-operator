@@ -133,13 +133,12 @@ type Controller struct {
 	listers *ntoclient.Listers
 	clients *ntoclient.Clients
 
-	change Change
 	daemon Daemon
 
 	tunedCmd     *exec.Cmd       // external command (tuned) being prepared or run
 	tunedExit    chan bool       // bi-directional channel to signal and register TuneD daemon exit
 	stopCh       <-chan struct{} // receive-only channel to stop the openshift-tuned controller
-	changeCh     chan bool       // bi-directional channel to wake-up the main thread to process accrued changes
+	changeCh     chan Change     // bi-directional channel to wake-up the main thread to process accrued changes
 	changeChRet  chan bool       // bi-directional channel to announce success/failure of change processing
 	tunedMainCfg *ini.File       // global TuneD configuration as defined in tuned-main.conf
 }
@@ -202,7 +201,7 @@ func newController(stopCh <-chan struct{}) (*Controller, error) {
 		clients:     clients,
 		tunedExit:   make(chan bool),
 		stopCh:      stopCh,
-		changeCh:    make(chan bool),
+		changeCh:    make(chan Change),
 		changeChRet: make(chan bool),
 	}
 
@@ -677,10 +676,10 @@ func GetBootcmdline() (string, error) {
 	return responseString, nil
 }
 
-func (c *Controller) changeSyncerProfileStatus() (synced bool) {
+func (c *Controller) changeSyncerProfileStatus(change Change) (synced bool) {
 	klog.V(2).Infof("changeSyncerProfileStatus()")
 
-	if c.change.profileStatus {
+	if change.profileStatus {
 		// One or both of the following happened:
 		// 1) tunedBootcmdlineFile changed on the filesystem.  This is very likely the result of
 		//    applying a TuneD profile by the TuneD daemon.  Make sure the node Profile k8s object
@@ -699,7 +698,7 @@ func (c *Controller) changeSyncerProfileStatus() (synced bool) {
 
 // changeSyncerTuneD synchronizes k8s objects to disk, compares them with
 // current TuneD configuration and signals TuneD process reload or restart.
-func (c *Controller) changeSyncerTuneD() (synced bool, err error) {
+func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 	var reload bool
 
 	klog.V(2).Infof("changeSyncerTuneD()")
@@ -711,20 +710,20 @@ func (c *Controller) changeSyncerTuneD() (synced bool, err error) {
 	}
 
 	// Check whether reload of the TuneD daemon is really necessary due to a Profile change.
-	if c.change.profile {
-		changeProvider, err := providerSync(c.change.provider)
+	if change.profile {
+		changeProvider, err := providerSync(change.provider)
 		if err != nil {
 			return false, err
 		}
 		reload = reload || changeProvider
 
-		if c.daemon.recommendedProfile != c.change.recommendedProfile {
-			if err = TunedRecommendFileWrite(c.change.recommendedProfile); err != nil {
+		if c.daemon.recommendedProfile != change.recommendedProfile {
+			if err = TunedRecommendFileWrite(change.recommendedProfile); err != nil {
 				return false, err
 			}
-			klog.Infof("recommended TuneD profile changed from (%s) to (%s)", c.daemon.recommendedProfile, c.change.recommendedProfile)
+			klog.Infof("recommended TuneD profile changed from (%s) to (%s)", c.daemon.recommendedProfile, change.recommendedProfile)
 			// Cache the value written to tunedRecommendFile.
-			c.daemon.recommendedProfile = c.change.recommendedProfile
+			c.daemon.recommendedProfile = change.recommendedProfile
 			reload = true
 		} else {
 			klog.Infof("recommended profile (%s) matches current configuration", c.daemon.recommendedProfile)
@@ -738,10 +737,10 @@ func (c *Controller) changeSyncerTuneD() (synced bool, err error) {
 
 		// Does the current TuneD process have debugging turned on?
 		debug := (c.daemon.restart & ctrlDebug) != 0
-		if debug != c.change.debug {
+		if debug != change.debug {
 			// A complete restart of the TuneD daemon is needed due to a debugging request switched on or off.
 			c.daemon.restart |= ctrlRestart
-			if c.change.debug {
+			if change.debug {
 				c.daemon.restart |= ctrlDebug
 			} else {
 				c.daemon.restart &= ^ctrlDebug
@@ -750,7 +749,7 @@ func (c *Controller) changeSyncerTuneD() (synced bool, err error) {
 
 		// Does the current TuneD process have the reapply_sysctl option turned on?
 		reapplySysctl := c.tunedMainCfg.Section("").Key("reapply_sysctl").MustBool()
-		if reapplySysctl != c.change.reapplySysctl {
+		if reapplySysctl != change.reapplySysctl {
 			if err = iniCfgSetKey(c.tunedMainCfg, "reapply_sysctl", !reapplySysctl); err != nil {
 				return false, err
 			}
@@ -762,7 +761,7 @@ func (c *Controller) changeSyncerTuneD() (synced bool, err error) {
 		}
 	}
 
-	if c.change.rendered {
+	if change.rendered {
 		// The "rendered" Tuned k8s object changed.
 		tuned, err := c.listers.TunedResources.Get(tunedv1.TunedRenderedResourceName)
 		if err != nil {
@@ -808,14 +807,14 @@ func (c *Controller) changeSyncerRestartOrReloadTuneD() error {
 // reloads as needed.  Returns indication whether the change was successfully
 // synced and an error.  Only critical errors are returned, as non-nil errors
 // will cause restart of the main control loop -- the changeWatcher() method.
-func (c *Controller) changeSyncer() (synced bool, err error) {
+func (c *Controller) changeSyncer(change Change) (synced bool, err error) {
 	// Sync k8s Profile status if/when needed.
-	if !c.changeSyncerProfileStatus() {
+	if !c.changeSyncerProfileStatus(change) {
 		return false, nil
 	}
 
 	// Extract TuneD configuration from k8s objects and restart/reload TuneD as needed.
-	return c.changeSyncerTuneD()
+	return c.changeSyncerTuneD(change)
 }
 
 // eventProcessorTuneD is a long-running method that will continually
@@ -851,8 +850,7 @@ func (c *Controller) eventProcessorTuneD() {
 				return
 			}
 
-			c.change = workqueueKey.change
-			c.changeCh <- true
+			c.changeCh <- workqueueKey.change
 			eventProcessed := <-c.changeChRet
 			if !eventProcessed {
 				requeued := c.wqTuneD.NumRequeues(workqueueKey)
@@ -1138,11 +1136,11 @@ func (c *Controller) changeWatcher() (err error) {
 		case err := <-wFs.Errors:
 			return fmt.Errorf("error watching filesystem: %v", err)
 
-		case <-c.changeCh:
+		case ch := <-c.changeCh:
 			var synced bool
 			klog.V(2).Infof("changeCh")
 
-			synced, err := c.changeSyncer()
+			synced, err := c.changeSyncer(ch)
 			if err != nil {
 				return err
 			}
