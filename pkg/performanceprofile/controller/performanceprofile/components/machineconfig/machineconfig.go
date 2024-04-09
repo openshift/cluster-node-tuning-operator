@@ -17,7 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/cpuset"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	apiconfigv1 "github.com/openshift/api/config/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -260,7 +260,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 
 			ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
 				Contents: &hugepagesService,
-				Enabled:  pointer.Bool(true),
+				Enabled:  ptr.To(true),
 				Name:     getSystemdService(fmt.Sprintf("%s-%skB-NUMA%d", hugepagesAllocation, hugepagesSize, *page.Node)),
 			})
 		}
@@ -293,7 +293,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 
 		ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
 			Contents: &cpusetConfigureService,
-			Enabled:  pointer.Bool(true),
+			Enabled:  ptr.To(true),
 			Name:     getSystemdService(cpusetConfigure),
 		})
 
@@ -318,7 +318,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 
 		ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
 			Contents: &offlineCPUsService,
-			Enabled:  pointer.Bool(true),
+			Enabled:  ptr.To(true),
 			Name:     getSystemdService(setCPUsOffline),
 		})
 	}
@@ -330,7 +330,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 
 	ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
 		Contents: &clearIRQBalanceBannedCPUsService,
-		Enabled:  pointer.Bool(true),
+		Enabled:  ptr.To(true),
 		Name:     getSystemdService(clearIRQBalanceBannedCPUs),
 	})
 
@@ -372,7 +372,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 		if err != nil {
 			return nil, err
 		}
-		addContent(ignitionConfig, content, filepath.Join(kubernetesConfDir, mixedCPUsConfig), pointer.Int(0644))
+		addContent(ignitionConfig, content, filepath.Join(kubernetesConfDir, mixedCPUsConfig), ptr.To[int](0644))
 	}
 	return ignitionConfig, nil
 }
@@ -552,7 +552,7 @@ func addContent(ignitionConfig *igntypes.Config, content []byte, dst string, mod
 		},
 		FileEmbedded1: igntypes.FileEmbedded1{
 			Contents: igntypes.Resource{
-				Source: pointer.String(fmt.Sprintf("%s,%s", defaultIgnitionContentSource, contentBase64)),
+				Source: ptr.To[string](fmt.Sprintf("%s,%s", defaultIgnitionContentSource, contentBase64)),
 			},
 			Mode: mode,
 		},

@@ -64,7 +64,7 @@ func configDaemonMode() (func(), error) {
 		}
 		err = iniFileSave(tunedMainCfgFilename, tunedMainCfg)
 		if err != nil {
-			klog.Warningf("failed to write global TuneD configuration file: %w", err)
+			klog.Warningf("failed to write global TuneD configuration file: %v", err)
 		}
 	}
 

@@ -11,7 +11,7 @@ import (
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/cpuset"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	assets "github.com/openshift/cluster-node-tuning-operator/assets/performanceprofile"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -109,7 +109,7 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 				// a user requested to allocate 2M huge pages on the specific NUMA node,
 				// append dummy kernel arguments
 				if page.Size == components.HugepagesSize2M && is2MHugepagesRequested == nil {
-					is2MHugepagesRequested = pointer.Bool(true)
+					is2MHugepagesRequested = ptr.To(true)
 				}
 				continue
 			}
@@ -118,7 +118,7 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 			// we need to append 2M hugepages kernel arguments anyway, no need to add dummy
 			// kernel arguments
 			if page.Size == components.HugepagesSize2M {
-				is2MHugepagesRequested = pointer.Bool(false)
+				is2MHugepagesRequested = ptr.To(false)
 			}
 
 			hugepages = append(hugepages, fmt.Sprintf("hugepagesz=%s", string(page.Size)))
