@@ -18,7 +18,7 @@ TAG=$(git rev-parse --abbrev-ref HEAD)
 IMAGE=quay.io/${ORG}/origin-cluster-node-tuning-operator:$TAG
 
 nto_prepare_image() {
-  make clone-tuned TUNED_COMMIT=${TUNED_COMMIT:-HEAD}
+  make update-tuned-submodule TUNED_COMMIT=${TUNED_COMMIT:-HEAD}
   make local-image IMAGE=$IMAGE
   make local-image-push IMAGE=$IMAGE
 }
