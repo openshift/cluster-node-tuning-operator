@@ -399,14 +399,14 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	if instance.DeletionTimestamp != nil {
 		// delete components
-		if err := r.deleteComponents(instance.Name); err != nil {
+		if err := r.deleteComponents(instance.GetName()); err != nil {
 			klog.Errorf("failed to delete components: %v", err)
 			r.Recorder.Eventf(instance, corev1.EventTypeWarning, "Deletion failed", "Failed to delete components: %v", err)
 			return reconcile.Result{}, err
 		}
 		r.Recorder.Eventf(instance, corev1.EventTypeNormal, "Deletion succeeded", "Succeeded to delete all components")
 
-		if r.isComponentsExist(instance.Name) {
+		if r.isComponentsExist(instance.GetName()) {
 			return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 
@@ -442,14 +442,14 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err != nil {
 		conditions := getDegradedConditions(conditionFailedToFindMachineConfigPool, err.Error())
 		if err := r.updateStatus(instance, conditions); err != nil {
-			klog.Errorf("failed to update performance profile %q status: %v", instance.Name, err)
+			klog.Errorf("failed to update performance profile %q status: %v", instance.GetName(), err)
 			return reconcile.Result{}, err
 		}
 
 		return reconcile.Result{}, nil
 	}
 
-	ctrRuntime, err := getContainerRuntimeName(ctx, r.Client, profileMCP.Labels, instance.Name)
+	ctrRuntime, err := getContainerRuntimeName(ctx, r.Client, profileMCP.Labels, instance.GetName())
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("could not determine high-performance runtime class container-runtime for profile %q; %w", instance.GetName(), err)
 	}
@@ -458,7 +458,7 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err := validateProfileMachineConfigPool(instance, profileMCP); err != nil {
 		conditions := getDegradedConditions(conditionBadMachineConfigLabels, err.Error())
 		if err := r.updateStatus(instance, conditions); err != nil {
-			klog.Errorf("failed to update performance profile %q status: %v", instance.Name, err)
+			klog.Errorf("failed to update performance profile %q status: %v", instance.GetName(), err)
 			return reconcile.Result{}, err
 		}
 
@@ -475,18 +475,18 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		},
 	})
 	if err != nil {
-		klog.Errorf("failed to deploy performance profile %q components: %v", instance.Name, err)
+		klog.Errorf("failed to deploy performance profile %q components: %v", instance.GetName(), err)
 		r.Recorder.Eventf(instance, corev1.EventTypeWarning, "Creation failed", "Failed to create all components: %v", err)
-		conditions := r.getDegradedConditions(conditionReasonComponentsCreationFailed, err.Error())
+		conditions := getDegradedConditions(conditionReasonComponentsCreationFailed, err.Error())
 		if err := r.updateStatus(instance, conditions); err != nil {
-			klog.Errorf("failed to update performance profile %q status: %v", instance.Name, err)
+			klog.Errorf("failed to update performance profile %q status: %v", instance.GetName(), err)
 			return reconcile.Result{}, err
 		}
 		return reconcile.Result{}, err
 	}
 
 	// get kubelet false condition
-	conditions, err := r.getKubeletConditionsByProfile(instance.Name)
+	conditions, err := r.getKubeletConditionsByProfile(instance.GetName())
 	if err != nil {
 		return r.updateDegradedCondition(instance, conditionFailedGettingKubeletStatus, err)
 	}
@@ -513,7 +513,7 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	if err := r.updateStatus(instance, conditions); err != nil {
-		klog.Errorf("failed to update performance profile %q status: %v", instance.Name, err)
+		klog.Errorf("failed to update performance profile %q status: %v", instance.GetName(), err)
 		// we still want to requeue after some, also in case of error, to avoid chance of multiple reboots
 		if result != nil {
 			return *result, nil
@@ -532,7 +532,7 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 func (r *PerformanceProfileReconciler) updateDegradedCondition(instance *performancev2.PerformanceProfile, conditionState string, conditionError error) (ctrl.Result, error) {
 	conditions := getDegradedConditions(conditionState, conditionError.Error())
 	if err := r.updateStatus(instance, conditions); err != nil {
-		klog.Errorf("failed to update performance profile %q status: %v", instance.Name, err)
+		klog.Errorf("failed to update performance profile %q status: %v", instance.GetName(), err)
 		return reconcile.Result{}, err
 	}
 	return reconcile.Result{}, conditionError
