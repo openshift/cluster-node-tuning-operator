@@ -404,14 +404,14 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	if instance.DeletionTimestamp != nil {
 		// delete components
-		if err := r.deleteComponents(instance); err != nil {
+		if err := r.deleteComponents(instance.Name); err != nil {
 			klog.Errorf("failed to delete components: %v", err)
 			r.Recorder.Eventf(instance, corev1.EventTypeWarning, "Deletion failed", "Failed to delete components: %v", err)
 			return reconcile.Result{}, err
 		}
 		r.Recorder.Eventf(instance, corev1.EventTypeNormal, "Deletion succeeded", "Succeeded to delete all components")
 
-		if r.isComponentsExist(instance) {
+		if r.isComponentsExist(instance.Name) {
 			return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 
@@ -491,7 +491,7 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	// get kubelet false condition
-	conditions, err := r.getKubeletConditionsByProfile(instance)
+	conditions, err := r.getKubeletConditionsByProfile(instance.Name)
 	if err != nil {
 		return r.updateDegradedCondition(instance, conditionFailedGettingKubeletStatus, err)
 	}
@@ -620,13 +620,13 @@ func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.Pe
 	return &reconcile.Result{}, nil
 }
 
-func (r *PerformanceProfileReconciler) deleteComponents(profile *performancev2.PerformanceProfile) error {
-	tunedName := components.GetComponentName(profile.Name, components.ProfileNamePerformance)
+func (r *PerformanceProfileReconciler) deleteComponents(profileName string) error {
+	tunedName := components.GetComponentName(profileName, components.ProfileNamePerformance)
 	if err := resources.DeleteTuned(context.TODO(), r.Client, tunedName, components.NamespaceNodeTuningOperator); err != nil {
 		return err
 	}
 
-	name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+	name := components.GetComponentName(profileName, components.ComponentNamePrefix)
 	if err := resources.DeleteKubeletConfig(context.TODO(), r.Client, name); err != nil {
 		return err
 	}
@@ -635,21 +635,21 @@ func (r *PerformanceProfileReconciler) deleteComponents(profile *performancev2.P
 		return err
 	}
 
-	if err := resources.DeleteMachineConfig(context.TODO(), r.Client, machineconfig.GetMachineConfigName(profile)); err != nil {
+	if err := resources.DeleteMachineConfig(context.TODO(), r.Client, machineconfig.GetMachineConfigName(profileName)); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (r *PerformanceProfileReconciler) isComponentsExist(profile *performancev2.PerformanceProfile) bool {
-	tunedName := components.GetComponentName(profile.Name, components.ProfileNamePerformance)
+func (r *PerformanceProfileReconciler) isComponentsExist(profileName string) bool {
+	tunedName := components.GetComponentName(profileName, components.ProfileNamePerformance)
 	if _, err := resources.GetTuned(context.TODO(), r.Client, tunedName, components.NamespaceNodeTuningOperator); !k8serros.IsNotFound(err) {
 		klog.Infof("Tuned %q custom resource is still exists under the namespace %q", tunedName, components.NamespaceNodeTuningOperator)
 		return true
 	}
 
-	name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+	name := components.GetComponentName(profileName, components.ComponentNamePrefix)
 	if _, err := resources.GetKubeletConfig(context.TODO(), r.Client, name); !k8serros.IsNotFound(err) {
 		klog.Infof("Kubelet Config %q exists under the cluster", name)
 		return true
@@ -660,7 +660,7 @@ func (r *PerformanceProfileReconciler) isComponentsExist(profile *performancev2.
 		return true
 	}
 
-	if _, err := resources.GetMachineConfig(context.TODO(), r.Client, machineconfig.GetMachineConfigName(profile)); !k8serros.IsNotFound(err) {
+	if _, err := resources.GetMachineConfig(context.TODO(), r.Client, machineconfig.GetMachineConfigName(profileName)); !k8serros.IsNotFound(err) {
 		klog.Infof("Machine Config %q exists under the cluster", name)
 		return true
 	}

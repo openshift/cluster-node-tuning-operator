@@ -263,7 +263,7 @@ func WaitForProfilePickedUp(mcpName string, profile *performancev2.PerformancePr
 			return false
 		}
 		for _, source := range mcp.Spec.Configuration.Source {
-			if source.Name == machineconfig.GetMachineConfigName(profile) {
+			if source.Name == machineconfig.GetMachineConfigName(profile.Name) {
 				return true
 			}
 		}

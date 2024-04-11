@@ -90,7 +90,7 @@ var _ = Describe("Controller", func() {
 			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
 			key := types.NamespacedName{
-				Name:      machineconfig.GetMachineConfigName(profile),
+				Name:      machineconfig.GetMachineConfigName(profile.Name),
 				Namespace: metav1.NamespaceNone,
 			}
 
@@ -380,7 +380,7 @@ var _ = Describe("Controller", func() {
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
 				key := types.NamespacedName{
-					Name:      machineconfig.GetMachineConfigName(profile),
+					Name:      machineconfig.GetMachineConfigName(profile.Name),
 					Namespace: metav1.NamespaceNone,
 				}
 
@@ -532,7 +532,7 @@ var _ = Describe("Controller", func() {
 
 				By("Verifying MC update")
 				key = types.NamespacedName{
-					Name:      machineconfig.GetMachineConfigName(profile),
+					Name:      machineconfig.GetMachineConfigName(profile.Name),
 					Namespace: metav1.NamespaceNone,
 				}
 				mc := &mcov1.MachineConfig{}
@@ -886,7 +886,7 @@ var _ = Describe("Controller", func() {
 
 			By("Verifying MC update")
 			key := types.NamespacedName{
-				Name:      machineconfig.GetMachineConfigName(profile),
+				Name:      machineconfig.GetMachineConfigName(profile.Name),
 				Namespace: metav1.NamespaceNone,
 			}
 			mc = &mcov1.MachineConfig{}
@@ -1002,7 +1002,7 @@ var _ = Describe("Controller", func() {
 
 			By("Verifying MC update")
 			key := types.NamespacedName{
-				Name:      machineconfig.GetMachineConfigName(profile),
+				Name:      machineconfig.GetMachineConfigName(profile.Name),
 				Namespace: metav1.NamespaceNone,
 			}
 			mc = &mcov1.MachineConfig{}
@@ -1048,7 +1048,7 @@ var _ = Describe("Controller", func() {
 
 			By("Verifying MC update")
 			key := types.NamespacedName{
-				Name:      machineconfig.GetMachineConfigName(profile),
+				Name:      machineconfig.GetMachineConfigName(profile.Name),
 				Namespace: metav1.NamespaceNone,
 			}
 			mc = &mcov1.MachineConfig{}

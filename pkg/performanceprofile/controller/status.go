@@ -196,8 +196,8 @@ func (r *PerformanceProfileReconciler) getMCPDegradedCondition(profileMCP *mcov1
 	return r.getDegradedConditions(conditionReasonMCPDegraded, messageString), nil
 }
 
-func (r *PerformanceProfileReconciler) getKubeletConditionsByProfile(profile *performancev2.PerformanceProfile) ([]conditionsv1.Condition, error) {
-	name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+func (r *PerformanceProfileReconciler) getKubeletConditionsByProfile(profileName string) ([]conditionsv1.Condition, error) {
+	name := components.GetComponentName(profileName, components.ComponentNamePrefix)
 	kc, err := resources.GetKubeletConfig(context.TODO(), r.Client, name)
 
 	// do not drop an error when kubelet config does not exist
