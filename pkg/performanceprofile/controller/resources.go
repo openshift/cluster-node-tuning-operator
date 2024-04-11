@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"reflect"
 
 	apiconfigv1 "github.com/openshift/api/config/v1"
@@ -27,21 +26,6 @@ func mergeMaps(src map[string]string, dst map[string]string) {
 }
 
 // TODO: we should merge all create, get and delete methods
-
-func (r *PerformanceProfileReconciler) getCurrentMachineConfigByMCP(ctx context.Context, mcp *mcov1.MachineConfigPool) (*mcov1.MachineConfig, error) {
-	if mcp == nil {
-		return nil, fmt.Errorf("nil MachineConfigPool object")
-	}
-
-	currentMCName := mcp.Status.Configuration.Name
-	if currentMCName == "" { // should never happen
-		return nil, fmt.Errorf("MCP %q missing configuration name", mcp.Name)
-	}
-
-	klog.Infof("checking current MachineConfig %q", currentMCName)
-
-	return r.getMachineConfig(ctx, currentMCName)
-}
 
 func (r *PerformanceProfileReconciler) getMachineConfig(ctx context.Context, name string) (*mcov1.MachineConfig, error) {
 	mc := &mcov1.MachineConfig{}

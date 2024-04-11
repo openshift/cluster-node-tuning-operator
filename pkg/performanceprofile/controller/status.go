@@ -29,7 +29,6 @@ const (
 	conditionFailedGettingKubeletStatus      = "GettingKubeletStatusFailed"
 	conditionReasonTunedDegraded             = "TunedProfileDegraded"
 	conditionFailedGettingTunedProfileStatus = "GettingTunedStatusFailed"
-	conditionReasonCgroupsV1NotEnabled       = "CgroupsV1NotEnabled"
 )
 
 func (r *PerformanceProfileReconciler) updateStatus(profile *performancev2.PerformanceProfile, conditions []conditionsv1.Condition) error {
