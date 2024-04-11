@@ -83,7 +83,7 @@ func (r *PerformanceProfileReconciler) updateStatus(profile *performancev2.Perfo
 	return r.Status().Update(context.TODO(), profileCopy)
 }
 
-func (r *PerformanceProfileReconciler) getAvailableConditions(message string) []conditionsv1.Condition {
+func getAvailableConditions(message string) []conditionsv1.Condition {
 	now := time.Now()
 	return []conditionsv1.Condition{
 		{
@@ -114,7 +114,7 @@ func (r *PerformanceProfileReconciler) getAvailableConditions(message string) []
 	}
 }
 
-func (r *PerformanceProfileReconciler) getDegradedConditions(reason string, message string) []conditionsv1.Condition {
+func getDegradedConditions(reason string, message string) []conditionsv1.Condition {
 	now := time.Now()
 	return []conditionsv1.Condition{
 		{
@@ -146,7 +146,7 @@ func (r *PerformanceProfileReconciler) getDegradedConditions(reason string, mess
 	}
 }
 
-func (r *PerformanceProfileReconciler) getProgressingConditions(reason string, message string) []conditionsv1.Condition {
+func getProgressingConditions(reason string, message string) []conditionsv1.Condition {
 	now := time.Now()
 
 	return []conditionsv1.Condition{
@@ -175,7 +175,7 @@ func (r *PerformanceProfileReconciler) getProgressingConditions(reason string, m
 	}
 }
 
-func (r *PerformanceProfileReconciler) getMCPDegradedCondition(profileMCP *mcov1.MachineConfigPool) ([]conditionsv1.Condition, error) {
+func getMCPDegradedCondition(profileMCP *mcov1.MachineConfigPool) ([]conditionsv1.Condition, error) {
 	message := bytes.Buffer{}
 	for _, condition := range profileMCP.Status.Conditions {
 		if (condition.Type == mcov1.MachineConfigPoolNodeDegraded || condition.Type == mcov1.MachineConfigPoolRenderDegraded) && condition.Status == corev1.ConditionTrue {
@@ -193,7 +193,7 @@ func (r *PerformanceProfileReconciler) getMCPDegradedCondition(profileMCP *mcov1
 		return nil, nil
 	}
 
-	return r.getDegradedConditions(conditionReasonMCPDegraded, messageString), nil
+	return getDegradedConditions(conditionReasonMCPDegraded, messageString), nil
 }
 
 func (r *PerformanceProfileReconciler) getKubeletConditionsByProfile(profileName string) ([]conditionsv1.Condition, error) {
@@ -218,7 +218,7 @@ func (r *PerformanceProfileReconciler) getKubeletConditionsByProfile(profileName
 		return nil, nil
 	}
 
-	return r.getDegradedConditions(conditionKubeletFailed, latestCondition.Message), nil
+	return getDegradedConditions(conditionKubeletFailed, latestCondition.Message), nil
 }
 
 func (r *PerformanceProfileReconciler) getTunedConditionsByProfile(profile *performancev2.PerformanceProfile) ([]conditionsv1.Condition, error) {
@@ -271,7 +271,7 @@ func (r *PerformanceProfileReconciler) getTunedConditionsByProfile(profile *perf
 		return nil, nil
 	}
 
-	return r.getDegradedConditions(conditionReasonTunedDegraded, messageString), nil
+	return getDegradedConditions(conditionReasonTunedDegraded, messageString), nil
 }
 
 func getLatestKubeletConfigCondition(conditions []mcov1.KubeletConfigCondition) *mcov1.KubeletConfigCondition {
