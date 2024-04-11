@@ -294,7 +294,7 @@ func (r *PerformanceProfileReconciler) getInfraPartitioningMode() (pinning apico
 	return infra.Status.CPUPartitioning, nil
 }
 
-func getContainerRuntimeName(ctx context.Context, client client.Client, profile *performancev2.PerformanceProfile) (mcov1.ContainerRuntimeDefaultRuntime, error) {
+func getContainerRuntimeName(ctx context.Context, client client.Client, mcpLabels map[string]string, profileName string) (mcov1.ContainerRuntimeDefaultRuntime, error) {
 	ctrcfgList := &mcov1.ContainerRuntimeConfigList{}
 	if err := client.List(ctx, ctrcfgList); err != nil {
 		return "", err
@@ -304,31 +304,26 @@ func getContainerRuntimeName(ctx context.Context, client client.Client, profile 
 		return mcov1.ContainerRuntimeDefaultRuntimeRunc, nil
 	}
 
-	mcp, err := getMachineConfigPoolByProfile(ctx, client, profile)
-	if err != nil {
-		return "", err
-	}
-
 	var ctrcfgs []*mcov1.ContainerRuntimeConfig
-	mcpLabels := labels.Set(mcp.Labels)
+	mcpSetLabels := labels.Set(mcpLabels)
 	for i := 0; i < len(ctrcfgList.Items); i++ {
 		ctrcfg := &ctrcfgList.Items[i]
 		ctrcfgSelector, err := metav1.LabelSelectorAsSelector(ctrcfg.Spec.MachineConfigPoolSelector)
 		if err != nil {
 			return "", err
 		}
-		if ctrcfgSelector.Matches(mcpLabels) {
+		if ctrcfgSelector.Matches(mcpSetLabels) {
 			ctrcfgs = append(ctrcfgs, ctrcfg)
 		}
 	}
 
 	if len(ctrcfgs) == 0 {
-		klog.Infof("no ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q; using default container runtime", mcpLabels.String(), profile.Name)
+		klog.Infof("no ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q; using default container runtime", mcpSetLabels.String(), profileName)
 		return mcov1.ContainerRuntimeDefaultRuntimeRunc, nil
 	}
 
 	if len(ctrcfgs) > 1 {
-		return "", fmt.Errorf("more than one ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q", mcpLabels.String(), profile.Name)
+		return "", fmt.Errorf("more than one ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q", mcpSetLabels.String(), profileName)
 	}
 
 	condition := getLatestContainerRuntimeConfigCondition(ctrcfgs[0].Status.Conditions)
@@ -443,12 +438,6 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	ctrRuntime, err := getContainerRuntimeName(ctx, r.Client, instance)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("could not determine high-performance runtime class container-runtime for profile %q; %w", instance.Name, err)
-	}
-	klog.Infof("using %q as high-performance runtime class container-runtime for profile %q", ctrRuntime, instance.Name)
-
 	profileMCP, err := getMachineConfigPoolByProfile(ctx, r.Client, instance)
 	if err != nil {
 		conditions := r.getDegradedConditions(conditionFailedToFindMachineConfigPool, err.Error())
@@ -459,6 +448,12 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 		return reconcile.Result{}, nil
 	}
+
+	ctrRuntime, err := getContainerRuntimeName(ctx, r.Client, profileMCP.Labels)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("could not determine high-performance runtime class container-runtime for profile %q; %w", instance.GetName(), err)
+	}
+	klog.Infof("using %q as high-performance runtime class container-runtime for profile %q", ctrRuntime, instance.GetName())
 
 	if err := validateProfileMachineConfigPool(instance, profileMCP); err != nil {
 		conditions := r.getDegradedConditions(conditionBadMachineConfigLabels, err.Error())
