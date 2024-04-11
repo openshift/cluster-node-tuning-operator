@@ -9,6 +9,7 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
 	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -197,7 +198,7 @@ func (r *PerformanceProfileReconciler) getMCPDegradedCondition(profileMCP *mcov1
 
 func (r *PerformanceProfileReconciler) getKubeletConditionsByProfile(profile *performancev2.PerformanceProfile) ([]conditionsv1.Condition, error) {
 	name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
-	kc, err := r.getKubeletConfig(name)
+	kc, err := resources.GetKubeletConfig(context.TODO(), r.Client, name)
 
 	// do not drop an error when kubelet config does not exist
 	if errors.IsNotFound(err) {

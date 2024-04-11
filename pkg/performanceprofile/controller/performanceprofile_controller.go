@@ -34,6 +34,8 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
+
 	operatorv1helpers "github.com/openshift/library-go/pkg/operator/v1helpers"
 
 	corev1 "k8s.io/api/core/v1"
@@ -371,7 +373,7 @@ func validateUpdateEvent(e *event.UpdateEvent) bool {
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	co, err := r.getClusterOperator()
+	co, err := resources.GetClusterOperator(ctx, r.Client)
 	if err != nil {
 		klog.Errorf("failed to get ClusterOperator: %v", err)
 		return reconcile.Result{}, err
@@ -557,25 +559,25 @@ func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.Pe
 	}
 
 	// get mutated machine config
-	mcMutated, err := r.getMutatedMachineConfig(context.TODO(), components.MachineConfig)
+	mcMutated, err := resources.GetMutatedMachineConfig(context.TODO(), r.Client, components.MachineConfig)
 	if err != nil {
 		return nil, err
 	}
 
 	// get mutated kubelet config
-	kcMutated, err := r.getMutatedKubeletConfig(components.KubeletConfig)
+	kcMutated, err := resources.GetMutatedKubeletConfig(context.TODO(), r.Client, components.KubeletConfig)
 	if err != nil {
 		return nil, err
 	}
 
 	// get mutated performance tuned
-	performanceTunedMutated, err := r.getMutatedTuned(components.Tuned)
+	performanceTunedMutated, err := resources.GetMutatedTuned(context.TODO(), r.Client, components.Tuned)
 	if err != nil {
 		return nil, err
 	}
 
 	// get mutated RuntimeClass
-	runtimeClassMutated, err := r.getMutatedRuntimeClass(components.RuntimeClass)
+	runtimeClassMutated, err := resources.GetMutatedRuntimeClass(context.TODO(), r.Client, components.RuntimeClass)
 	if err != nil {
 		return nil, err
 	}
@@ -591,25 +593,25 @@ func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.Pe
 	}
 
 	if mcMutated != nil {
-		if err := r.createOrUpdateMachineConfig(mcMutated); err != nil {
+		if err := resources.CreateOrUpdateMachineConfig(context.TODO(), r.Client, mcMutated); err != nil {
 			return nil, err
 		}
 	}
 
 	if performanceTunedMutated != nil {
-		if err := r.createOrUpdateTuned(performanceTunedMutated, profile.Name); err != nil {
+		if err := resources.CreateOrUpdateTuned(context.TODO(), r.Client, performanceTunedMutated, profile.Name); err != nil {
 			return nil, err
 		}
 	}
 
 	if kcMutated != nil {
-		if err := r.createOrUpdateKubeletConfig(kcMutated); err != nil {
+		if err := resources.CreateOrUpdateKubeletConfig(context.TODO(), r.Client, kcMutated); err != nil {
 			return nil, err
 		}
 	}
 
 	if runtimeClassMutated != nil {
-		if err := r.createOrUpdateRuntimeClass(runtimeClassMutated); err != nil {
+		if err := resources.CreateOrUpdateRuntimeClass(context.TODO(), r.Client, runtimeClassMutated); err != nil {
 			return nil, err
 		}
 	}
@@ -620,20 +622,20 @@ func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.Pe
 
 func (r *PerformanceProfileReconciler) deleteComponents(profile *performancev2.PerformanceProfile) error {
 	tunedName := components.GetComponentName(profile.Name, components.ProfileNamePerformance)
-	if err := r.deleteTuned(tunedName, components.NamespaceNodeTuningOperator); err != nil {
+	if err := resources.DeleteTuned(context.TODO(), r.Client, tunedName, components.NamespaceNodeTuningOperator); err != nil {
 		return err
 	}
 
 	name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
-	if err := r.deleteKubeletConfig(name); err != nil {
+	if err := resources.DeleteKubeletConfig(context.TODO(), r.Client, name); err != nil {
 		return err
 	}
 
-	if err := r.deleteRuntimeClass(name); err != nil {
+	if err := resources.DeleteRuntimeClass(context.TODO(), r.Client, name); err != nil {
 		return err
 	}
 
-	if err := r.deleteMachineConfig(machineconfig.GetMachineConfigName(profile)); err != nil {
+	if err := resources.DeleteMachineConfig(context.TODO(), r.Client, machineconfig.GetMachineConfigName(profile)); err != nil {
 		return err
 	}
 
@@ -642,23 +644,23 @@ func (r *PerformanceProfileReconciler) deleteComponents(profile *performancev2.P
 
 func (r *PerformanceProfileReconciler) isComponentsExist(profile *performancev2.PerformanceProfile) bool {
 	tunedName := components.GetComponentName(profile.Name, components.ProfileNamePerformance)
-	if _, err := r.getTuned(tunedName, components.NamespaceNodeTuningOperator); !k8serros.IsNotFound(err) {
+	if _, err := resources.GetTuned(context.TODO(), r.Client, tunedName, components.NamespaceNodeTuningOperator); !k8serros.IsNotFound(err) {
 		klog.Infof("Tuned %q custom resource is still exists under the namespace %q", tunedName, components.NamespaceNodeTuningOperator)
 		return true
 	}
 
 	name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
-	if _, err := r.getKubeletConfig(name); !k8serros.IsNotFound(err) {
+	if _, err := resources.GetKubeletConfig(context.TODO(), r.Client, name); !k8serros.IsNotFound(err) {
 		klog.Infof("Kubelet Config %q exists under the cluster", name)
 		return true
 	}
 
-	if _, err := r.getRuntimeClass(name); !k8serros.IsNotFound(err) {
+	if _, err := resources.GetRuntimeClass(context.TODO(), r.Client, name); !k8serros.IsNotFound(err) {
 		klog.Infof("Runtime class %q exists under the cluster", name)
 		return true
 	}
 
-	if _, err := r.getMachineConfig(context.TODO(), machineconfig.GetMachineConfigName(profile)); !k8serros.IsNotFound(err) {
+	if _, err := resources.GetMachineConfig(context.TODO(), r.Client, machineconfig.GetMachineConfigName(profile)); !k8serros.IsNotFound(err) {
 		klog.Infof("Machine Config %q exists under the cluster", name)
 		return true
 	}

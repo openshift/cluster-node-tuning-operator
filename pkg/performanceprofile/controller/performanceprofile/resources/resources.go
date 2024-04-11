@@ -1,13 +1,9 @@
-package controller
+package resources
 
 import (
 	"context"
 	"encoding/json"
 	"reflect"
-
-	apiconfigv1 "github.com/openshift/api/config/v1"
-	mcov1 "github.com/openshift/api/machineconfiguration/v1"
-	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 
 	nodev1 "k8s.io/api/node/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
@@ -16,6 +12,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	apiconfigv1 "github.com/openshift/api/config/v1"
+	mcov1 "github.com/openshift/api/machineconfiguration/v1"
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 )
 
 func mergeMaps(src map[string]string, dst map[string]string) {
@@ -27,20 +28,20 @@ func mergeMaps(src map[string]string, dst map[string]string) {
 
 // TODO: we should merge all create, get and delete methods
 
-func (r *PerformanceProfileReconciler) getMachineConfig(ctx context.Context, name string) (*mcov1.MachineConfig, error) {
+func GetMachineConfig(ctx context.Context, cli client.Client, name string) (*mcov1.MachineConfig, error) {
 	mc := &mcov1.MachineConfig{}
 	key := types.NamespacedName{
 		Name:      name,
 		Namespace: metav1.NamespaceNone,
 	}
-	if err := r.Get(ctx, key, mc); err != nil {
+	if err := cli.Get(ctx, key, mc); err != nil {
 		return nil, err
 	}
 	return mc, nil
 }
 
-func (r *PerformanceProfileReconciler) getMutatedMachineConfig(ctx context.Context, mc *mcov1.MachineConfig) (*mcov1.MachineConfig, error) {
-	existing, err := r.getMachineConfig(ctx, mc.Name)
+func GetMutatedMachineConfig(ctx context.Context, cli client.Client, mc *mcov1.MachineConfig) (*mcov1.MachineConfig, error) {
+	existing, err := GetMachineConfig(ctx, cli, mc.Name)
 	if errors.IsNotFound(err) {
 		return mc, nil
 	}
@@ -64,23 +65,23 @@ func (r *PerformanceProfileReconciler) getMutatedMachineConfig(ctx context.Conte
 	return mutated, nil
 }
 
-func (r *PerformanceProfileReconciler) getClusterOperator() (*apiconfigv1.ClusterOperator, error) {
+func GetClusterOperator(ctx context.Context, cli client.Client) (*apiconfigv1.ClusterOperator, error) {
 	co := &apiconfigv1.ClusterOperator{}
 	key := types.NamespacedName{
 		Name:      "node-tuning",
 		Namespace: metav1.NamespaceNone,
 	}
-	if err := r.Get(context.TODO(), key, co); err != nil {
+	if err := cli.Get(ctx, key, co); err != nil {
 		return nil, err
 	}
 	return co, nil
 }
 
-func (r *PerformanceProfileReconciler) createOrUpdateMachineConfig(mc *mcov1.MachineConfig) error {
-	_, err := r.getMachineConfig(context.TODO(), mc.Name)
+func CreateOrUpdateMachineConfig(ctx context.Context, cli client.Client, mc *mcov1.MachineConfig) error {
+	_, err := GetMachineConfig(ctx, cli, mc.Name)
 	if errors.IsNotFound(err) {
 		klog.Infof("Create machine-config %q", mc.Name)
-		if err := r.Create(context.TODO(), mc); err != nil {
+		if err := cli.Create(ctx, mc); err != nil {
 			return err
 		}
 		return nil
@@ -91,34 +92,34 @@ func (r *PerformanceProfileReconciler) createOrUpdateMachineConfig(mc *mcov1.Mac
 	}
 
 	klog.Infof("Update machine-config %q", mc.Name)
-	return r.Update(context.TODO(), mc)
+	return cli.Update(ctx, mc)
 }
 
-func (r *PerformanceProfileReconciler) deleteMachineConfig(name string) error {
-	mc, err := r.getMachineConfig(context.TODO(), name)
+func DeleteMachineConfig(ctx context.Context, cli client.Client, name string) error {
+	mc, err := GetMachineConfig(ctx, cli, name)
 	if errors.IsNotFound(err) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	return r.Delete(context.TODO(), mc)
+	return cli.Delete(ctx, mc)
 }
 
-func (r *PerformanceProfileReconciler) getKubeletConfig(name string) (*mcov1.KubeletConfig, error) {
+func GetKubeletConfig(ctx context.Context, cli client.Client, name string) (*mcov1.KubeletConfig, error) {
 	kc := &mcov1.KubeletConfig{}
 	key := types.NamespacedName{
 		Name:      name,
 		Namespace: metav1.NamespaceNone,
 	}
-	if err := r.Get(context.TODO(), key, kc); err != nil {
+	if err := cli.Get(ctx, key, kc); err != nil {
 		return nil, err
 	}
 	return kc, nil
 }
 
-func (r *PerformanceProfileReconciler) getMutatedKubeletConfig(kc *mcov1.KubeletConfig) (*mcov1.KubeletConfig, error) {
-	existing, err := r.getKubeletConfig(kc.Name)
+func GetMutatedKubeletConfig(ctx context.Context, cli client.Client, kc *mcov1.KubeletConfig) (*mcov1.KubeletConfig, error) {
+	existing, err := GetKubeletConfig(ctx, cli, kc.Name)
 	if errors.IsNotFound(err) {
 		return kc, nil
 	}
@@ -155,11 +156,11 @@ func (r *PerformanceProfileReconciler) getMutatedKubeletConfig(kc *mcov1.Kubelet
 	return mutated, nil
 }
 
-func (r *PerformanceProfileReconciler) createOrUpdateKubeletConfig(kc *mcov1.KubeletConfig) error {
-	_, err := r.getKubeletConfig(kc.Name)
+func CreateOrUpdateKubeletConfig(ctx context.Context, cli client.Client, kc *mcov1.KubeletConfig) error {
+	_, err := GetKubeletConfig(ctx, cli, kc.Name)
 	if errors.IsNotFound(err) {
 		klog.Infof("Create kubelet-config %q", kc.Name)
-		if err := r.Create(context.TODO(), kc); err != nil {
+		if err := cli.Create(ctx, kc); err != nil {
 			return err
 		}
 		return nil
@@ -170,34 +171,34 @@ func (r *PerformanceProfileReconciler) createOrUpdateKubeletConfig(kc *mcov1.Kub
 	}
 
 	klog.Infof("Update kubelet-config %q", kc.Name)
-	return r.Update(context.TODO(), kc)
+	return cli.Update(ctx, kc)
 }
 
-func (r *PerformanceProfileReconciler) deleteKubeletConfig(name string) error {
-	kc, err := r.getKubeletConfig(name)
+func DeleteKubeletConfig(ctx context.Context, cli client.Client, name string) error {
+	kc, err := GetKubeletConfig(ctx, cli, name)
 	if errors.IsNotFound(err) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	return r.Delete(context.TODO(), kc)
+	return cli.Delete(ctx, kc)
 }
 
-func (r *PerformanceProfileReconciler) getTuned(name string, namespace string) (*tunedv1.Tuned, error) {
+func GetTuned(ctx context.Context, cli client.Client, name string, namespace string) (*tunedv1.Tuned, error) {
 	tuned := &tunedv1.Tuned{}
 	key := types.NamespacedName{
 		Name:      name,
 		Namespace: namespace,
 	}
-	if err := r.Get(context.TODO(), key, tuned); err != nil {
+	if err := cli.Get(ctx, key, tuned); err != nil {
 		return nil, err
 	}
 	return tuned, nil
 }
 
-func (r *PerformanceProfileReconciler) getMutatedTuned(tuned *tunedv1.Tuned) (*tunedv1.Tuned, error) {
-	existing, err := r.getTuned(tuned.Name, tuned.Namespace)
+func GetMutatedTuned(ctx context.Context, cli client.Client, tuned *tunedv1.Tuned) (*tunedv1.Tuned, error) {
+	existing, err := GetTuned(ctx, cli, tuned.Name, tuned.Namespace)
 	if errors.IsNotFound(err) {
 		return tuned, nil
 	}
@@ -221,15 +222,15 @@ func (r *PerformanceProfileReconciler) getMutatedTuned(tuned *tunedv1.Tuned) (*t
 	return mutated, nil
 }
 
-func (r *PerformanceProfileReconciler) createOrUpdateTuned(tuned *tunedv1.Tuned, profileName string) error {
-	if err := r.removeOutdatedTuned(tuned, profileName); err != nil {
+func CreateOrUpdateTuned(ctx context.Context, cli client.Client, tuned *tunedv1.Tuned, profileName string) error {
+	if err := RemoveOutdatedTuned(ctx, cli, tuned, profileName); err != nil {
 		return err
 	}
 
-	_, err := r.getTuned(tuned.Name, tuned.Namespace)
+	_, err := GetTuned(ctx, cli, tuned.Name, tuned.Namespace)
 	if errors.IsNotFound(err) {
 		klog.Infof("Create tuned %q under the namespace %q", tuned.Name, tuned.Namespace)
-		if err := r.Create(context.TODO(), tuned); err != nil {
+		if err := cli.Create(ctx, tuned); err != nil {
 			return err
 		}
 		return nil
@@ -240,12 +241,12 @@ func (r *PerformanceProfileReconciler) createOrUpdateTuned(tuned *tunedv1.Tuned,
 	}
 
 	klog.Infof("Update tuned %q under the namespace %q", tuned.Name, tuned.Namespace)
-	return r.Update(context.TODO(), tuned)
+	return cli.Update(ctx, tuned)
 }
 
-func (r *PerformanceProfileReconciler) removeOutdatedTuned(tuned *tunedv1.Tuned, profileName string) error {
+func RemoveOutdatedTuned(ctx context.Context, cli client.Client, tuned *tunedv1.Tuned, profileName string) error {
 	tunedList := &tunedv1.TunedList{}
-	if err := r.List(context.TODO(), tunedList); err != nil {
+	if err := cli.List(ctx, tunedList); err != nil {
 		klog.Errorf("Unable to list tuned objects for outdated removal procedure: %v", err)
 		return err
 	}
@@ -255,7 +256,7 @@ func (r *PerformanceProfileReconciler) removeOutdatedTuned(tuned *tunedv1.Tuned,
 		ownerReferences := tunedItem.ObjectMeta.OwnerReferences
 		for o := range ownerReferences {
 			if ownerReferences[o].Name == profileName && tunedItem.Name != tuned.Name {
-				if err := r.deleteTuned(tunedItem.Name, tunedItem.Namespace); err != nil {
+				if err := DeleteTuned(ctx, cli, tunedItem.Name, tunedItem.Namespace); err != nil {
 					return err
 				}
 			}
@@ -264,30 +265,30 @@ func (r *PerformanceProfileReconciler) removeOutdatedTuned(tuned *tunedv1.Tuned,
 	return nil
 }
 
-func (r *PerformanceProfileReconciler) deleteTuned(name string, namespace string) error {
-	tuned, err := r.getTuned(name, namespace)
+func DeleteTuned(ctx context.Context, cli client.Client, name string, namespace string) error {
+	tuned, err := GetTuned(ctx, cli, name, namespace)
 	if errors.IsNotFound(err) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	return r.Delete(context.TODO(), tuned)
+	return cli.Delete(ctx, tuned)
 }
 
-func (r *PerformanceProfileReconciler) getRuntimeClass(name string) (*nodev1.RuntimeClass, error) {
+func GetRuntimeClass(ctx context.Context, cli client.Client, name string) (*nodev1.RuntimeClass, error) {
 	runtimeClass := &nodev1.RuntimeClass{}
 	key := types.NamespacedName{
 		Name: name,
 	}
-	if err := r.Get(context.TODO(), key, runtimeClass); err != nil {
+	if err := cli.Get(ctx, key, runtimeClass); err != nil {
 		return nil, err
 	}
 	return runtimeClass, nil
 }
 
-func (r *PerformanceProfileReconciler) getMutatedRuntimeClass(runtimeClass *nodev1.RuntimeClass) (*nodev1.RuntimeClass, error) {
-	existing, err := r.getRuntimeClass(runtimeClass.Name)
+func GetMutatedRuntimeClass(ctx context.Context, cli client.Client, runtimeClass *nodev1.RuntimeClass) (*nodev1.RuntimeClass, error) {
+	existing, err := GetRuntimeClass(ctx, cli, runtimeClass.Name)
 	if errors.IsNotFound(err) {
 		return runtimeClass, nil
 	}
@@ -313,11 +314,11 @@ func (r *PerformanceProfileReconciler) getMutatedRuntimeClass(runtimeClass *node
 	return mutated, nil
 }
 
-func (r *PerformanceProfileReconciler) createOrUpdateRuntimeClass(runtimeClass *nodev1.RuntimeClass) error {
-	_, err := r.getRuntimeClass(runtimeClass.Name)
+func CreateOrUpdateRuntimeClass(ctx context.Context, cli client.Client, runtimeClass *nodev1.RuntimeClass) error {
+	_, err := GetRuntimeClass(ctx, cli, runtimeClass.Name)
 	if errors.IsNotFound(err) {
 		klog.Infof("Create runtime class %q", runtimeClass.Name)
-		if err := r.Create(context.TODO(), runtimeClass); err != nil {
+		if err := cli.Create(ctx, runtimeClass); err != nil {
 			return err
 		}
 		return nil
@@ -328,16 +329,16 @@ func (r *PerformanceProfileReconciler) createOrUpdateRuntimeClass(runtimeClass *
 	}
 
 	klog.Infof("Update runtime class %q", runtimeClass.Name)
-	return r.Update(context.TODO(), runtimeClass)
+	return cli.Update(ctx, runtimeClass)
 }
 
-func (r *PerformanceProfileReconciler) deleteRuntimeClass(name string) error {
-	runtimeClass, err := r.getRuntimeClass(name)
+func DeleteRuntimeClass(ctx context.Context, cli client.Client, name string) error {
+	runtimeClass, err := GetRuntimeClass(ctx, cli, name)
 	if errors.IsNotFound(err) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	return r.Delete(context.TODO(), runtimeClass)
+	return cli.Delete(ctx, runtimeClass)
 }
