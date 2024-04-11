@@ -294,9 +294,9 @@ func (r *PerformanceProfileReconciler) getInfraPartitioningMode() (pinning apico
 	return infra.Status.CPUPartitioning, nil
 }
 
-func (r *PerformanceProfileReconciler) getContainerRuntimeName(ctx context.Context, profile *performancev2.PerformanceProfile) (mcov1.ContainerRuntimeDefaultRuntime, error) {
+func getContainerRuntimeName(ctx context.Context, client client.Client, profile *performancev2.PerformanceProfile) (mcov1.ContainerRuntimeDefaultRuntime, error) {
 	ctrcfgList := &mcov1.ContainerRuntimeConfigList{}
-	if err := r.List(ctx, ctrcfgList); err != nil {
+	if err := client.List(ctx, ctrcfgList); err != nil {
 		return "", err
 	}
 
@@ -304,7 +304,7 @@ func (r *PerformanceProfileReconciler) getContainerRuntimeName(ctx context.Conte
 		return mcov1.ContainerRuntimeDefaultRuntimeRunc, nil
 	}
 
-	mcp, err := r.getMachineConfigPoolByProfile(ctx, profile)
+	mcp, err := getMachineConfigPoolByProfile(ctx, client, profile)
 	if err != nil {
 		return "", err
 	}
@@ -443,13 +443,13 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	ctrRuntime, err := r.getContainerRuntimeName(ctx, instance)
+	ctrRuntime, err := getContainerRuntimeName(ctx, r.Client, instance)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("could not determine high-performance runtime class container-runtime for profile %q; %w", instance.Name, err)
 	}
 	klog.Infof("using %q as high-performance runtime class container-runtime for profile %q", ctrRuntime, instance.Name)
 
-	profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
+	profileMCP, err := getMachineConfigPoolByProfile(ctx, r.Client, instance)
 	if err != nil {
 		conditions := r.getDegradedConditions(conditionFailedToFindMachineConfigPool, err.Error())
 		if err := r.updateStatus(instance, conditions); err != nil {
@@ -705,11 +705,11 @@ func namespacedName(obj metav1.Object) types.NamespacedName {
 	}
 }
 
-func (r *PerformanceProfileReconciler) getMachineConfigPoolByProfile(ctx context.Context, profile *performancev2.PerformanceProfile) (*mcov1.MachineConfigPool, error) {
+func getMachineConfigPoolByProfile(ctx context.Context, client client.Client, profile *performancev2.PerformanceProfile) (*mcov1.MachineConfigPool, error) {
 	nodeSelector := labels.Set(profile.Spec.NodeSelector)
 
 	mcpList := &mcov1.MachineConfigPoolList{}
-	if err := r.Client.List(ctx, mcpList); err != nil {
+	if err := client.List(ctx, mcpList); err != nil {
 		return nil, err
 	}
 
