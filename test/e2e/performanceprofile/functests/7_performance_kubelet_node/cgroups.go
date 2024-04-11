@@ -24,6 +24,7 @@ import (
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
@@ -32,6 +33,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/systemd"
 	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
 
@@ -40,6 +42,7 @@ const minRequiredCPUs = 8
 var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 	const (
 		activation_file string = "/rootfs/var/lib/ovn-ic/etc/enable_dynamic_cpu_affinity"
+		cgroupRoot      string = "/rootfs/sys/fs/cgroup"
 	)
 	var (
 		onlineCPUSet            cpuset.CPUSet
@@ -48,6 +51,9 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 		profile, initialProfile *performancev2.PerformanceProfile
 		performanceMCP          string
 		ovsSliceCgroup          string
+		ctx                     context.Context = context.Background()
+		ovsSystemdServices      []string
+		isCgroupV2              bool
 	)
 
 	BeforeAll(func() {
@@ -67,8 +73,11 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 		performanceMCP, err = mcps.GetByProfile(profile)
 		Expect(err).ToNot(HaveOccurred())
 
-		// TODO: This path is not compatible with cgroupv2.
-		ovsSliceCgroup = "/rootfs/sys/fs/cgroup/cpuset/ovs.slice/"
+		isCgroupV2, err = cgroup.IsVersion2(ctx, testclient.Client)
+		Expect(err).ToNot(HaveOccurred())
+
+		ovsSystemdServices = ovsSystemdServicesOnOvsSlice(ctx, workerRTNode)
+
 	})
 
 	BeforeEach(func() {
@@ -92,7 +101,35 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 					Expect(out).To(Equal(activation_file))
 				}
 			})
+
+			It("[test_id:73046] Verify ovn kube node pod have their cpuset.cpus set to all available cpus", func() {
+				ovnKubenodepod, err := ovnCnfNodePod(ctx, workerRTNode)
+				Expect(err).ToNot(HaveOccurred())
+				containerIds, err := ovnPodContainers(&ovnKubenodepod)
+				for _, ctn := range containerIds {
+					var containerCgroupPath string
+					pid, err := nodes.ContainerPid(ctx, workerRTNode, ctn)
+					Expect(err).ToNot(HaveOccurred())
+					cmd := []string{"cat", fmt.Sprintf("/rootfs/proc/%s/cgroup", pid)}
+					out, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), workerRTNode, cmd)
+					Expect(err).ToNot(HaveOccurred())
+					cgroupPathOfPid, err := cgroup.PidParser(out)
+					if isCgroupV2 {
+						containerCgroupPath = filepath.Join(cgroupRoot, cgroupPathOfPid)
+					} else {
+						controller := filepath.Join(cgroupRoot, "/cpuset")
+						containerCgroupPath = filepath.Join(controller, cgroupPathOfPid)
+					}
+					cmd = []string{"cat", fmt.Sprintf("%s", filepath.Join(containerCgroupPath, "/cpuset.cpus"))}
+					cpus, err := nodes.ExecCommandOnNode(ctx, cmd, workerRTNode)
+					containerCpuset, err := cpuset.Parse(cpus)
+					Expect(containerCpuset).To(Equal(onlineCPUSet), "Burstable pod containers cpuset.cpus do not match total online cpus")
+				}
+
+			})
+
 		})
+
 		Context("[Performance Profile Modified]", func() {
 			BeforeEach(func() {
 				initialProfile = profile.DeepCopy()
@@ -154,25 +191,38 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 	})
 
 	Context("Verification of cgroup layout on the worker node", func() {
+		var ctx context.Context = context.TODO()
+		var cgroupProcs, cgroupCpusetCpus, cgroupLoadBalance string
+		BeforeAll(func() {
+			pids, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
+			Expect(err).ToNot(HaveOccurred(), "unable to fetch pid of ovs services")
+			cmd := []string{"cat", fmt.Sprintf("/rootfs/proc/%s/cgroup", pids[0])}
+			out, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), workerRTNode, cmd)
+			Expect(err).ToNot(HaveOccurred())
+			ovsSliceCgroup, err = cgroup.PidParser(out)
+			Expect(err).ToNot(HaveOccurred())
+			cgroupSlices := strings.Split(ovsSliceCgroup, "/")
+			parentCgroup := strings.Join(cgroupSlices[:len(cgroupSlices)-1], "/")
+			if isCgroupV2 {
+				cgroupProcs = fmt.Sprintf("/rootfs/sys/fs/cgroup/%s/cgroup.procs", ovsSliceCgroup)
+				cgroupCpusetCpus = fmt.Sprintf("/rootfs/sys/fs/cgroup/%s/cpuset.cpus.effective", parentCgroup)
+			} else {
+				cgroupProcs = fmt.Sprintf("%s/cpuset/%s/cgroup.procs", cgroupRoot, parentCgroup)
+				cgroupCpusetCpus = fmt.Sprintf("%s/cpuset/%s/cpuset.cpus", cgroupRoot, parentCgroup)
+				cgroupLoadBalance = fmt.Sprintf("%s/cpuset/%s/cpuset.sched_load_balance", cgroupRoot, parentCgroup)
+			}
+		})
 		chkOvsCgrpProcs := func(node *corev1.Node) (string, error) {
 			testlog.Info("Verify cgroup.procs is not empty")
-			// TODO: This path is not compatible with cgroupv2.
-			ovsCgroupPath := filepath.Join(ovsSliceCgroup, "cgroup.procs")
-			cmd := []string{"cat", ovsCgroupPath}
+			cmd := []string{"cat", cgroupProcs}
 			return nodes.ExecCommandOnNode(context.TODO(), cmd, node)
 		}
 		chkOvsCgrpCpuset := func(node *corev1.Node) (string, error) {
-			// TODO: This path is not compatible with cgroupv2.
-			ovsCgroupPath := filepath.Join(ovsSliceCgroup, "cpuset.cpus")
-			cmd := []string{"cat", ovsCgroupPath}
+			cmd := []string{"cat", cgroupCpusetCpus}
 			return nodes.ExecCommandOnNode(context.TODO(), cmd, node)
 		}
-
 		chkOvsCgroupLoadBalance := func(node *corev1.Node) (string, error) {
-			// TODO: This path is not compatible with cgroupv2.
-			// cpuset.sched_load_balance is not available under cgroupv2
-			ovsCgroupPath := filepath.Join(ovsSliceCgroup, "cpuset.sched_load_balance")
-			cmd := []string{"cat", ovsCgroupPath}
+			cmd := []string{"cat", cgroupLoadBalance}
 			return nodes.ExecCommandOnNode(context.TODO(), cmd, node)
 		}
 
@@ -188,6 +238,9 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(ovsCPUSet).To(Equal(onlineCPUSet))
 
+			if isCgroupV2 {
+				Skip("CPU load balance can be checked only functionally on cgroupv2")
+			}
 			result, err = chkOvsCgroupLoadBalance(workerRTNode)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result).To(Equal("0"))
@@ -195,79 +248,92 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 	})
 
 	Describe("Affinity", func() {
+		var ctx context.Context = context.TODO()
 		Context("ovn-kubenode Pods affinity ", func() {
 			testutils.CustomBeforeAll(func() {
+				profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+				Expect(err).ToNot(HaveOccurred())
 				initialProfile = profile.DeepCopy()
 			})
 			It("[test_id:64100] matches with ovs process affinity", func() {
-				testutils.KnownIssueJira("OCPBUGS-30806")
-				ovnPod, err := getOvnPod(context.TODO(), workerRTNode)
+				ovnPod, err := ovnCnfNodePod(ctx, workerRTNode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get ovnPod")
-
-				ovnContainersids, err := getOvnPodContainers(&ovnPod)
+				ovnContainerids, err := ovnPodContainers(&ovnPod)
 				Expect(err).ToNot(HaveOccurred())
-
 				// Generally there are many containers inside a kubenode pods
 				// we don't need to check cpus used by all the containers
 				// we take first container
-				cpus := getCpusUsedByOvnContainer(context.TODO(), workerRTNode, ovnContainersids[0])
-				testlog.Infof("Cpus used by ovn Containers are %s", cpus)
-				pidList, err := getOVSServicesPid(context.TODO(), workerRTNode)
+				containerPid, err := nodes.ContainerPid(ctx, workerRTNode, ovnContainerids[0])
+				// we need to wait as process affinity can change
+				time.Sleep(30 * time.Second)
+				ctnCpuset := taskSet(ctx, containerPid, workerRTNode)
+				testlog.Infof("Cpus used by ovn Containers are %s", ctnCpuset.String())
+				pidList, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
-				cpumaskList, err := getCPUMaskForPids(context.TODO(), pidList, workerRTNode)
+				cpumaskList, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				for _, cpumask := range cpumaskList {
-					Expect(cpus).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", cpus, cpumask)
+					Expect(ctnCpuset).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", ctnCpuset.String(), cpumask.String())
 				}
+
 			})
 
 			It("[test_id:64101] Creating gu pods modifies affinity of ovs", func() {
-				testutils.KnownIssueJira("OCPBUGS-30806")
 				var testpod *corev1.Pod
 				var err error
 				testpod = pods.GetTestPod()
 				testpod.Namespace = testutils.NamespaceTesting
-				testpod.Spec.Containers[0].Resources = corev1.ResourceRequirements{
-					Limits: corev1.ResourceList{
-						corev1.ResourceCPU:    resource.MustParse("2"),
-						corev1.ResourceMemory: resource.MustParse("200Mi"),
-					},
+				testpod.Spec.Containers[0].Resources = corev1.ResourceRequirements{Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("2"),
+					corev1.ResourceMemory: resource.MustParse("200Mi"),
+				},
 				}
 				testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
-				err = testclient.Client.Create(context.TODO(), testpod)
+				err = testclient.Client.Create(ctx, testpod)
 				Expect(err).ToNot(HaveOccurred())
-				testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
+				testpod, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(testpod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
 
 				cmd := []string{"taskset", "-pc", "1"}
-				testpodCpus, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod, "", cmd)
-				testlog.Infof("%v pod is using %v cpus", testpod.Name, string(testpodCpus))
+				outputb, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod, "", cmd)
+				testpodCpus := bytes.Split(outputb, []byte(":"))
+				testlog.Infof("%v pod is using cpus %v", testpod.Name, string(testpodCpus[1]))
 
 				By("Get ovnpods running on the worker cnf node")
-				ovnPod, err := getOvnPod(context.TODO(), workerRTNode)
+				ovnPod, err := ovnCnfNodePod(ctx, workerRTNode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get ovnPod")
 
 				By("Get cpu used by ovn pod containers")
-				ovnContainers, err := getOvnPodContainers(&ovnPod)
+				// We are fetching the container Process pid and
+				// using taskset we are fetching cpus used by the container process
+				// instead of using containers cpuset.cpus
+				ovnContainers, err := ovnPodContainers(&ovnPod)
 				Expect(err).ToNot(HaveOccurred())
-				cpus := getCpusUsedByOvnContainer(context.TODO(), workerRTNode, ovnContainers[0])
+				containerPid, err := nodes.ContainerPid(ctx, workerRTNode, ovnContainers[0])
+				// we need to wait as process affinity can change
+				time.Sleep(30 * time.Second)
+				ctnCpuset := taskSet(ctx, containerPid, workerRTNode)
+				testlog.Infof("Container of ovn pod %s is using cpus %s", ovnPod.Name, ctnCpuset.String())
 
-				pidList, err := getOVSServicesPid(context.TODO(), workerRTNode)
+				pidList, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 
-				cpumaskList, err := getCPUMaskForPids(context.TODO(), pidList, workerRTNode)
+				cpumaskList, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				for _, cpumask := range cpumaskList {
-					Expect(cpus).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", cpus, cpumask)
+					Expect(ctnCpuset).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", ctnCpuset.String(), cpumask.String())
 				}
-				deleteTestPod(context.TODO(), testpod)
+				deleteTestPod(ctx, testpod)
+
 			})
 
 			It("[test_id:64102] Create and remove gu pods to verify affinity of ovs are changed appropriately", func() {
 				var testpod1, testpod2 *corev1.Pod
 				var err error
-				checkCpuCount(context.TODO(), workerRTNode)
+				ovnPod, err := ovnCnfNodePod(ctx, workerRTNode)
+				Expect(err).ToNot(HaveOccurred())
+				checkCpuCount(ctx, workerRTNode)
 				// Create testpod1
 				testpod1 = pods.GetTestPod()
 				testpod1.Namespace = testutils.NamespaceTesting
@@ -279,9 +345,9 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				}
 
 				testpod1.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
-				err = testclient.Client.Create(context.TODO(), testpod1)
+				err = testclient.Client.Create(ctx, testpod1)
 				Expect(err).ToNot(HaveOccurred())
-				testpod1, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod1), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
+				testpod1, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testpod1), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(testpod1.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
 
@@ -299,46 +365,52 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 					},
 				}
 				testpod2.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
-				err = testclient.Client.Create(context.TODO(), testpod2)
+				err = testclient.Client.Create(ctx, testpod2)
 				Expect(err).ToNot(HaveOccurred())
-				testpod2, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod2), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
+				testpod2, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testpod2), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(testpod1.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
 
-				By("Getting the container cpuset.cpus cgroup")
+				By("fetch cpus used by container process using taskset")
 				testpod2Cpus, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod2, "", tasksetcmd)
 				testlog.Infof("%v pod is using %v cpus", testpod2.Name, string(testpod2Cpus))
 
 				// Get cpus used by the ovnkubenode-pods containers
 				// Each kubenode pods have many containers, we check cpus of only 1 container
-				ovnContainerCpus, err := getOvnContainerCpus(context.TODO(), workerRTNode)
-				Expect(err).ToNot(HaveOccurred(), "Unable to fetch cpus of the containers inside ovn kubenode pods")
-				testlog.Infof("cpus used by ovn kube node pods %v", ovnContainerCpus)
-				pidList, err := getOVSServicesPid(context.TODO(), workerRTNode)
+				ovnContainers, err := ovnPodContainers(&ovnPod)
+				Expect(err).ToNot(HaveOccurred())
+				containerPid, err := nodes.ContainerPid(context.TODO(), workerRTNode, ovnContainers[0])
+				// we need to wait as process affinity can change
+				time.Sleep(30 * time.Second)
+				ovnContainerCpuset1 := taskSet(ctx, containerPid, workerRTNode)
+				testlog.Infof("Container of ovn pod %s is using cpus %s", ovnPod.Name, ovnContainerCpuset1.String())
+				pidList, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 
+				// We wait for 30 seconds for ovs process cpu affinity to be updated
+				time.Sleep(30 * time.Second)
 				// Verify ovs-vswitchd and ovsdb-server process affinity is updated
-				cpumaskList1, err := getCPUMaskForPids(context.TODO(), pidList, workerRTNode)
+				cpumaskList1, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				for _, cpumask := range cpumaskList1 {
-					Expect(ovnContainerCpus).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", ovnContainerCpus, cpumask)
+					Expect(ovnContainerCpuset1).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", ovnContainerCpuset1.String(), cpumask.String())
 				}
 				// Delete testpod1
 				testlog.Infof("Deleting pod %v", testpod1.Name)
 				deleteTestPod(context.TODO(), testpod1)
 
+				time.Sleep(30 * time.Second)
 				// Check the cpus of ovnkubenode pods
-				ovnContainerCpus, err = getOvnContainerCpus(context.TODO(), workerRTNode)
-				Expect(err).ToNot(HaveOccurred(), "Unable to fetch cpus of the containers inside ovn kubenode pods")
-				testlog.Infof("cpus used by ovn kube node pods after deleting pod %v is %v", testpod1.Name, ovnContainerCpus)
-				pidList, err = getOVSServicesPid(context.TODO(), workerRTNode)
-				Expect(err).ToNot(HaveOccurred())
+				ovnContainerCpuset2 := taskSet(ctx, containerPid, workerRTNode)
+				testlog.Infof("cpus used by ovn kube node pods after deleting pod %v is %v", testpod1.Name, ovnContainerCpuset2.String())
+				// we wait some time for ovs process affinity to change
+				time.Sleep(30 * time.Second)
 
 				// Verify ovs-vswitchd and ovsdb-server process affinity is updated
-				cpumaskList2, err := getCPUMaskForPids(context.TODO(), pidList, workerRTNode)
+				cpumaskList2, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				for _, cpumask := range cpumaskList2 {
-					Expect(ovnContainerCpus).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", ovnContainerCpus, cpumask)
+					Expect(ovnContainerCpuset2).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", ovnContainerCpuset2.String(), cpumask.String())
 				}
 				// Delete testpod2
 				deleteTestPod(context.TODO(), testpod2)
@@ -352,28 +424,34 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				testNode := make(map[string]string)
 				testNode["kubernetes.io/hostname"] = workerRTNode.Name
 				dp.Spec.Template.Spec.NodeSelector = testNode
-				err := testclient.Client.Create(context.TODO(), dp)
+				err := testclient.Client.Create(ctx, dp)
 				Expect(err).ToNot(HaveOccurred(), "Unable to create Deployment")
 
 				defer func() {
 					// delete deployment
 					testlog.Infof("Deleting Deployment %v", dp.Name)
-					err := testclient.Client.Delete(context.TODO(), dp)
+					err := testclient.Client.Delete(ctx, dp)
 					Expect(err).ToNot(HaveOccurred())
 				}()
-
-				// Check the cpus of ovn kube node pods and ovs services
-				ovnContainerCpus, err := getOvnContainerCpus(context.TODO(), workerRTNode)
-				Expect(err).ToNot(HaveOccurred(), "Unable to fetch cpus of the containers inside ovn kubenode pods")
-				testlog.Infof("cpus used by ovn kube node pods %v", ovnContainerCpus)
-				pidList, err := getOVSServicesPid(context.TODO(), workerRTNode)
+				ovnPod, err := ovnCnfNodePod(ctx, workerRTNode)
+				Expect(err).ToNot(HaveOccurred(), "Unable to get ovnPod")
+				ovnContainerids, err := ovnPodContainers(&ovnPod)
+				Expect(err).ToNot(HaveOccurred())
+				containerPid, err := nodes.ContainerPid(ctx, workerRTNode, ovnContainerids[0])
+				// we need to wait as process affinity can change
+				time.Sleep(30 * time.Second)
+				ovnContainerCpuset := taskSet(ctx, containerPid, workerRTNode)
+				testlog.Infof("Container of ovn pod %s is using cpus %s", ovnPod.Name, ovnContainerCpuset.String())
+				pidList, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 
+				//wait for 30 seconds for ovs process to have its cpu affinity updated
+				time.Sleep(30 * time.Second)
 				// Verify ovs-vswitchd and ovsdb-server process affinity is updated
-				cpumaskList1, err := getCPUMaskForPids(context.TODO(), pidList, workerRTNode)
+				cpumaskList1, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				for _, cpumask := range cpumaskList1 {
-					Expect(ovnContainerCpus).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", ovnContainerCpus, cpumask)
+					Expect(ovnContainerCpuset).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", ovnContainerCpuset.String(), cpumask.String())
 				}
 
 				testlog.Info("Rebooting the node")
@@ -406,19 +484,24 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				}
 
 				err = waitForCondition(dp, desiredStatus)
+				ovnPodAfterReboot, err := ovnCnfNodePod(ctx, workerRTNode)
+				Expect(err).ToNot(HaveOccurred(), "Unable to get ovnPod")
+				ovnContainerIdsAfterReboot, err := ovnPodContainers(&ovnPodAfterReboot)
+				Expect(err).ToNot(HaveOccurred())
+				containerPid, err = nodes.ContainerPid(ctx, workerRTNode, ovnContainerIdsAfterReboot[0])
+				// we need to wait as process affinity can change
+				time.Sleep(30 * time.Second)
+				ovnContainerCpusetAfterReboot := taskSet(ctx, containerPid, workerRTNode)
+				testlog.Infof("cpus used by ovn kube node pods %v", ovnContainerCpusetAfterReboot.String())
+				pidListAfterReboot, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
 
-				// Check the cpus of ovn kube node pods and ovs services
-				ovnContainerCpus, err = getOvnContainerCpus(context.TODO(), workerRTNode)
-				Expect(err).ToNot(HaveOccurred(), "Unable to fetch cpus of the containers inside ovn kubenode pods")
-				testlog.Infof("cpus used by ovn kube node pods %v", ovnContainerCpus)
-				pidList, err = getOVSServicesPid(context.TODO(), workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 
 				// Verify ovs-vswitchd and ovsdb-server process affinity is updated
-				cpumaskList2, err := getCPUMaskForPids(context.TODO(), pidList, workerRTNode)
+				cpumaskList2, err := getCPUMaskForPids(ctx, pidListAfterReboot, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				for _, cpumask := range cpumaskList2 {
-					Expect(ovnContainerCpus).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", ovnContainerCpus, cpumask)
+					Expect(ovnContainerCpusetAfterReboot).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", ovnContainerCpusetAfterReboot.String(), cpumask.String())
 				}
 			})
 			AfterAll(func() {
@@ -497,8 +580,8 @@ func deleteTestPod(ctx context.Context, testpod *corev1.Pod) {
 	Expect(err).ToNot(HaveOccurred())
 }
 
-// getOvnPod Get OVN Kubenode pods running on the worker cnf node
-func getOvnPod(ctx context.Context, workerNode *corev1.Node) (corev1.Pod, error) {
+// ovnCnfNodePod returns OVN Kubenode pods running on the worker cnf node
+func ovnCnfNodePod(ctx context.Context, workerNode *corev1.Node) (corev1.Pod, error) {
 	var ovnKubeNodePod corev1.Pod
 	ovnpods := &corev1.PodList{}
 	options := &client.ListOptions{
@@ -518,8 +601,8 @@ func getOvnPod(ctx context.Context, workerNode *corev1.Node) (corev1.Pod, error)
 	return ovnKubeNodePod, err
 }
 
-// getOvnPodContainers returns containerids of all containers running inside ovn kube node pod
-func getOvnPodContainers(ovnKubeNodePod *corev1.Pod) ([]string, error) {
+// ovnPodContainers returns containerids of all containers running inside ovn kube node pod
+func ovnPodContainers(ovnKubeNodePod *corev1.Pod) ([]string, error) {
 	var ovnKubeNodePodContainerids []string
 	var err error
 	for _, ovnctn := range ovnKubeNodePod.Spec.Containers {
@@ -532,60 +615,9 @@ func getOvnPodContainers(ovnKubeNodePod *corev1.Pod) ([]string, error) {
 	return ovnKubeNodePodContainerids, err
 }
 
-// getCpusUsedByOvnContainer returns cpus used by the ovn kube node container
-func getCpusUsedByOvnContainer(ctx context.Context, workerRTNode *corev1.Node, ovnKubeNodePodCtnid string) string {
-	var cpus string
-	var err error
-	var containerCgroup = ""
-	Eventually(func() string {
-		// TODO: This path is not compatible with cgroupv2.
-		cmd := []string{"/bin/bash", "-c", fmt.Sprintf("find /rootfs/sys/fs/cgroup/cpuset/ -name '*%s*'", ovnKubeNodePodCtnid)}
-		containerCgroup, err = nodes.ExecCommandOnNode(ctx, cmd, workerRTNode)
-		Expect(err).ToNot(HaveOccurred(), "failed to run %s cmd", cmd)
-		return containerCgroup
-	}, 10*time.Second, 5*time.Second).ShouldNot(BeEmpty())
-	cmd := []string{"/bin/bash", "-c", fmt.Sprintf("cat %s/cpuset.cpus", containerCgroup)}
-	cpus, err = nodes.ExecCommandOnNode(ctx, cmd, workerRTNode)
-	Expect(err).ToNot(HaveOccurred())
-
-	// Wait for a period of time as it takes some time(10s) for cpu manager
-	// to update the cpu usage when gu pod is deleted or created
-	time.Sleep(30 * time.Second)
-	cmd = []string{"/bin/bash", "-c", fmt.Sprintf("cat %s/cpuset.cpus", containerCgroup)}
-	cpus, err = nodes.ExecCommandOnNode(ctx, cmd, workerRTNode)
-	Expect(err).ToNot(HaveOccurred())
-	return cpus
-}
-
-// getOvnContain erCpus returns the cpus used by the container inside the ovn kubenode pods
-func getOvnContainerCpus(ctx context.Context, workerRTNode *corev1.Node) (string, error) {
-	var ovnContainerCpus string
-	ovnPod, err := getOvnPod(ctx, workerRTNode)
-	if err != nil {
-		return "", err
-	}
-	ovnContainers, err := getOvnPodContainers(&ovnPod)
-	if err != nil {
-		return "", err
-	}
-	ovnContainerCpus = getCpusUsedByOvnContainer(ctx, workerRTNode, ovnContainers[0])
-	testlog.Infof("cpus used by ovn kube node pods %v", ovnContainerCpus)
-	return ovnContainerCpus, nil
-}
-
-// getOVSServicesPid returns the pid of ovs-vswitchd and ovsdb-server
-func getOVSServicesPid(ctx context.Context, workerNode *corev1.Node) ([]string, error) {
-	var pids []string
-	// TODO: This path is not compatible with cgroupv2.
-	cmd := []string{"cat", "/rootfs/sys/fs/cgroup/cpuset/ovs.slice/cgroup.procs"}
-	output, err := nodes.ExecCommandOnNode(ctx, cmd, workerNode)
-	pids = strings.Split(output, "\n")
-	return pids, err
-}
-
-// getCPUMaskForPids returns a slice containing cpu affinity of ovs services
-func getCPUMaskForPids(ctx context.Context, pidList []string, targetNode *corev1.Node) ([]string, error) {
-	var cpumaskList []string
+// getCPUMaskForPids returns cpu mask of ovs process pids
+func getCPUMaskForPids(ctx context.Context, pidList []string, targetNode *corev1.Node) ([]cpuset.CPUSet, error) {
+	var cpumaskList []cpuset.CPUSet
 
 	for _, pid := range pidList {
 		cmd := []string{"taskset", "-pc", pid}
@@ -600,7 +632,7 @@ func getCPUMaskForPids(ctx context.Context, pidList []string, targetNode *corev1
 			return nil, fmt.Errorf("failed to parse cpuset: %s", err)
 		}
 
-		cpumaskList = append(cpumaskList, maskSet.String())
+		cpumaskList = append(cpumaskList, maskSet)
 	}
 
 	return cpumaskList, nil
@@ -666,4 +698,46 @@ func waitForCondition(deployment *appsv1.Deployment, status appsv1.DeploymentSta
 	})
 
 	return err
+}
+
+// ovsSystemdServicesOnOvsSlice returns the systemd services dependent on ovs.slice cgroup
+func ovsSystemdServicesOnOvsSlice(ctx context.Context, workerRTNode *corev1.Node) []string {
+	ovsServices, err := systemd.ShowProperty(context.TODO(), "ovs.slice", "RequiredBy", workerRTNode)
+	Expect(err).ToNot(HaveOccurred())
+	serviceList := strings.Split(strings.TrimSpace(ovsServices), "=")
+	ovsSystemdServices := strings.Split(serviceList[1], " ")
+	Expect(len(ovsSystemdServices)).ToNot(Equal(0), "OVS Services not moved under ovs.slice cgroup")
+	return ovsSystemdServices
+}
+
+// ovsPids Returns Pid of ovs services running inside the ovs.slice cgroup
+func ovsPids(ctx context.Context, ovsSystemdServices []string, workerRTNode *corev1.Node) ([]string, error) {
+	var pidList []string
+	var err error
+	for _, service := range ovsSystemdServices {
+		//we need to ignore oneshot services which are part of ovs.slices
+		serviceType, err := systemd.ShowProperty(ctx, service, "Type", workerRTNode)
+		if err != nil {
+			return nil, err
+		}
+		if strings.Contains(serviceType, "oneshot") {
+			continue
+		}
+		pid, err := systemd.ShowProperty(context.TODO(), service, "ExecMainPID", workerRTNode)
+		ovsPid := strings.Split(strings.TrimSpace(pid), "=")
+		pidList = append(pidList, ovsPid[1])
+	}
+	return pidList, err
+}
+
+// taskSet returns cpus used by the pid
+func taskSet(ctx context.Context, pid string, workerRTNode *corev1.Node) cpuset.CPUSet {
+	cmd := []string{"taskset", "-pc", pid}
+	output, err := nodes.ExecCommandOnNode(ctx, cmd, workerRTNode)
+	Expect(err).ToNot(HaveOccurred(), "unable to fetch cpus using taskset")
+	tasksetOutput := strings.Split(strings.TrimSpace(output), ":")
+	cpus := strings.TrimSpace(tasksetOutput[1])
+	ctnCpuset, err := cpuset.Parse(cpus)
+	Expect(err).ToNot(HaveOccurred(), "Unable to parse %s", cpus)
+	return ctnCpuset
 }
