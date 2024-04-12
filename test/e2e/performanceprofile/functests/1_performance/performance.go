@@ -201,7 +201,10 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 
 		It("[test_id:32375][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] initramfs should not have injected configuration", func() {
 			for _, node := range workerRTNodes {
-				rhcosId, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"awk", "-F", "/", "{printf $3}", "/rootfs/proc/cmdline"})
+				// updating the field to 4 as the latest proc/cmdline has been updated to
+				// BOOT_IMAGE=(hd0,gpt3)/boot/ostree/rhcos-<imageid> instead of BOOT_IMAGE=(hd1,gpt3)/ostree/rhcos-<imageId>
+				// TODO: Modify the awk script to be resilent to these changes or check if we can remove it completely
+				rhcosId, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"awk", "-F", "/", "{printf $4}", "/rootfs/proc/cmdline"})
 				Expect(err).ToNot(HaveOccurred())
 				initramfsImagesPath, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"find", filepath.Join("/rootfs/boot/ostree", string(rhcosId)), "-name", "*.img"})
 				Expect(err).ToNot(HaveOccurred())
