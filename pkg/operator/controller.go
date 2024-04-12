@@ -43,9 +43,9 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/openshift/cluster-node-tuning-operator/version"
 
-	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
-	mcfgclientset "github.com/openshift/machine-config-operator/pkg/generated/clientset/versioned"
-	mcfginformers "github.com/openshift/machine-config-operator/pkg/generated/informers/externalversions"
+	mcfgv1 "github.com/openshift/api/machineconfiguration/v1"
+	mcfgclientset "github.com/openshift/client-go/machineconfiguration/clientset/versioned"
+	mcfginformers "github.com/openshift/client-go/machineconfiguration/informers/externalversions"
 )
 
 const (

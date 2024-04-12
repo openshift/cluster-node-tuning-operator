@@ -15,7 +15,7 @@ import (
 	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 
-	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
+	mcfgv1 "github.com/openshift/api/machineconfiguration/v1"
 )
 
 const (

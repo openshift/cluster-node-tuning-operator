@@ -14,8 +14,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	configv1 "github.com/openshift/api/config/v1"
+	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-	mcov1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 
 	performancev1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v1"

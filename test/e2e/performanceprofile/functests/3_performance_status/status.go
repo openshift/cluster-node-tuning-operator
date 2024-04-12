@@ -7,9 +7,9 @@ import (
 	ign2types "github.com/coreos/ignition/config/v2_2/types"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	v1 "github.com/openshift/custom-resource-status/conditions/v1"
-	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
