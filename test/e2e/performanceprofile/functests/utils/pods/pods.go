@@ -205,11 +205,17 @@ func GetContainerIDByName(pod *corev1.Pod, containerName string) (string, error)
 	if err := testclient.Client.Get(context.TODO(), key, updatedPod); err != nil {
 		return "", err
 	}
+	// Find the container by name
 	for _, containerStatus := range updatedPod.Status.ContainerStatuses {
 		if containerStatus.Name == containerName {
-			return strings.Trim(containerStatus.ContainerID, "cri-o://"), nil
+			containerId, found := strings.CutPrefix(containerStatus.ContainerID, "cri-o://")
+			if !found {
+				return "", fmt.Errorf("Invalid ContainerID format: %q container %q", containerStatus.ContainerID, containerName)
+			}
+			return containerId, nil
 		}
 	}
+	// Container not found in the pod
 	return "", fmt.Errorf("failed to find the container ID for the container %q under the pod %q", containerName, pod.Name)
 }
 
