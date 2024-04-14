@@ -282,13 +282,13 @@ func (r *PerformanceProfileReconciler) ctrRuntimeConfToPerformanceProfile(ctx co
 	return allRequests
 }
 
-func (r *PerformanceProfileReconciler) getInfraPartitioningMode() (pinning apiconfigv1.CPUPartitioningMode, err error) {
+func getInfraPartitioningMode(ctx context.Context, client client.Client) (pinning apiconfigv1.CPUPartitioningMode, err error) {
 	key := types.NamespacedName{
 		Name: "cluster",
 	}
 	infra := &apiconfigv1.Infrastructure{}
 
-	if err = r.Client.Get(context.Background(), key, infra); err != nil {
+	if err = client.Get(ctx, key, infra); err != nil {
 		return
 	}
 
@@ -434,7 +434,7 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return reconcile.Result{}, nil
 	}
 
-	pinningMode, err := r.getInfraPartitioningMode()
+	pinningMode, err := getInfraPartitioningMode(ctx, r.Client)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
