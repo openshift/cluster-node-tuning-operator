@@ -62,6 +62,7 @@ sched_rt_runtime_us=-1
 {{end}}
 {{if not .GloballyDisableIrqLoadBalancing}}
 default_irq_smp_affinity = ignore
+irq_process=false
 {{end}}
 
 [sysctl]
