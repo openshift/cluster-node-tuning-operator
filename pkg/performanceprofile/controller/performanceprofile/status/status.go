@@ -1,4 +1,4 @@
-package controller
+package status
 
 import (
 	"bytes"
@@ -21,18 +21,18 @@ import (
 )
 
 const (
-	conditionFailedToFindMachineConfigPool   = "GettingMachineConfigPoolFailed"
-	conditionBadMachineConfigLabels          = "BadMachineConfigLabels"
-	conditionReasonComponentsCreationFailed  = "ComponentCreationFailed"
-	conditionReasonMCPDegraded               = "MCPDegraded"
-	conditionFailedGettingMCPStatus          = "GettingMCPStatusFailed"
-	conditionKubeletFailed                   = "KubeletConfig failure"
-	conditionFailedGettingKubeletStatus      = "GettingKubeletStatusFailed"
-	conditionReasonTunedDegraded             = "TunedProfileDegraded"
-	conditionFailedGettingTunedProfileStatus = "GettingTunedStatusFailed"
+	ConditionFailedToFindMachineConfigPool   = "GettingMachineConfigPoolFailed"
+	ConditionBadMachineConfigLabels          = "BadMachineConfigLabels"
+	ConditionReasonComponentsCreationFailed  = "ComponentCreationFailed"
+	ConditionReasonMCPDegraded               = "MCPDegraded"
+	ConditionFailedGettingMCPStatus          = "GettingMCPStatusFailed"
+	ConditionKubeletFailed                   = "KubeletConfig failure"
+	ConditionFailedGettingKubeletStatus      = "GettingKubeletStatusFailed"
+	ConditionReasonTunedDegraded             = "TunedProfileDegraded"
+	ConditionFailedGettingTunedProfileStatus = "GettingTunedStatusFailed"
 )
 
-func (r *PerformanceProfileReconciler) updateStatus(profile *performancev2.PerformanceProfile, conditions []conditionsv1.Condition) error {
+func Update(ctx context.Context, client client.Client, profile *performancev2.PerformanceProfile, conditions []conditionsv1.Condition) error {
 	profileCopy := profile.DeepCopy()
 
 	if conditions != nil {
@@ -80,10 +80,10 @@ func (r *PerformanceProfileReconciler) updateStatus(profile *performancev2.Perfo
 	}
 
 	klog.Infof("Updating the performance profile %q status", profile.Name)
-	return r.Status().Update(context.TODO(), profileCopy)
+	return client.Status().Update(ctx, profileCopy)
 }
 
-func getAvailableConditions(message string) []conditionsv1.Condition {
+func GetAvailableConditions(message string) []conditionsv1.Condition {
 	now := time.Now()
 	return []conditionsv1.Condition{
 		{
@@ -114,7 +114,7 @@ func getAvailableConditions(message string) []conditionsv1.Condition {
 	}
 }
 
-func getDegradedConditions(reason string, message string) []conditionsv1.Condition {
+func GetDegradedConditions(reason string, message string) []conditionsv1.Condition {
 	now := time.Now()
 	return []conditionsv1.Condition{
 		{
@@ -146,7 +146,7 @@ func getDegradedConditions(reason string, message string) []conditionsv1.Conditi
 	}
 }
 
-func getProgressingConditions(reason string, message string) []conditionsv1.Condition {
+func GetProgressingConditions(reason string, message string) []conditionsv1.Condition {
 	now := time.Now()
 
 	return []conditionsv1.Condition{
@@ -175,7 +175,7 @@ func getProgressingConditions(reason string, message string) []conditionsv1.Cond
 	}
 }
 
-func getMCPDegradedCondition(profileMCP *mcov1.MachineConfigPool) ([]conditionsv1.Condition, error) {
+func GetMCPDegradedCondition(profileMCP *mcov1.MachineConfigPool) ([]conditionsv1.Condition, error) {
 	message := bytes.Buffer{}
 	for _, condition := range profileMCP.Status.Conditions {
 		if (condition.Type == mcov1.MachineConfigPoolNodeDegraded || condition.Type == mcov1.MachineConfigPoolRenderDegraded) && condition.Status == corev1.ConditionTrue {
@@ -193,12 +193,12 @@ func getMCPDegradedCondition(profileMCP *mcov1.MachineConfigPool) ([]conditionsv
 		return nil, nil
 	}
 
-	return getDegradedConditions(conditionReasonMCPDegraded, messageString), nil
+	return GetDegradedConditions(ConditionReasonMCPDegraded, messageString), nil
 }
 
-func (r *PerformanceProfileReconciler) getKubeletConditionsByProfile(profileName string) ([]conditionsv1.Condition, error) {
+func GetKubeletConditionsByProfile(ctx context.Context, client client.Client, profileName string) ([]conditionsv1.Condition, error) {
 	name := components.GetComponentName(profileName, components.ComponentNamePrefix)
-	kc, err := resources.GetKubeletConfig(context.TODO(), r.Client, name)
+	kc, err := resources.GetKubeletConfig(ctx, client, name)
 
 	// do not drop an error when kubelet config does not exist
 	if errors.IsNotFound(err) {
@@ -218,19 +218,19 @@ func (r *PerformanceProfileReconciler) getKubeletConditionsByProfile(profileName
 		return nil, nil
 	}
 
-	return getDegradedConditions(conditionKubeletFailed, latestCondition.Message), nil
+	return GetDegradedConditions(ConditionKubeletFailed, latestCondition.Message), nil
 }
 
-func (r *PerformanceProfileReconciler) getTunedConditionsByProfile(profile *performancev2.PerformanceProfile) ([]conditionsv1.Condition, error) {
+func GetTunedConditionsByProfile(ctx context.Context, cli client.Client, profile *performancev2.PerformanceProfile) ([]conditionsv1.Condition, error) {
 	tunedProfileList := &tunedv1.ProfileList{}
-	if err := r.List(context.TODO(), tunedProfileList); err != nil {
+	if err := cli.List(ctx, tunedProfileList); err != nil {
 		klog.Errorf("Cannot list Tuned Profiles to match with profile %q : %v", profile.Name, err)
 		return nil, err
 	}
 
 	selector := labels.SelectorFromSet(profile.Spec.NodeSelector)
 	nodes := &corev1.NodeList{}
-	if err := r.List(context.TODO(), nodes, &client.ListOptions{LabelSelector: selector}); err != nil {
+	if err := cli.List(ctx, nodes, &client.ListOptions{LabelSelector: selector}); err != nil {
 		return nil, err
 	}
 
@@ -271,7 +271,7 @@ func (r *PerformanceProfileReconciler) getTunedConditionsByProfile(profile *perf
 		return nil, nil
 	}
 
-	return getDegradedConditions(conditionReasonTunedDegraded, messageString), nil
+	return GetDegradedConditions(ConditionReasonTunedDegraded, messageString), nil
 }
 
 func getLatestKubeletConfigCondition(conditions []mcov1.KubeletConfigCondition) *mcov1.KubeletConfigCondition {
@@ -284,7 +284,7 @@ func getLatestKubeletConfigCondition(conditions []mcov1.KubeletConfigCondition) 
 	return latestCondition
 }
 
-func getLatestContainerRuntimeConfigCondition(conditions []mcov1.ContainerRuntimeConfigCondition) *mcov1.ContainerRuntimeConfigCondition {
+func GetLatestContainerRuntimeConfigCondition(conditions []mcov1.ContainerRuntimeConfigCondition) *mcov1.ContainerRuntimeConfigCondition {
 	var latestCondition *mcov1.ContainerRuntimeConfigCondition
 	for i := 0; i < len(conditions); i++ {
 		if latestCondition == nil || latestCondition.LastTransitionTime.Before(&conditions[i].LastTransitionTime) {
