@@ -3,7 +3,9 @@ package nodepools
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/labels"
+	"github.com/onsi/ginkgo/v2"
+	"strings"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -41,24 +43,51 @@ func WaitForUpdatingConfig(ctx context.Context, c client.Client, name, namespace
 }
 
 func WaitForConfigToBeReady(ctx context.Context, c client.Client, hostedClusterName, namespace string) error {
-	return wait.PollUntilContextTimeout(ctx, time.Second*10, time.Minute*20, false, func(ctx context.Context) (done bool, err error) {
-		msList := &apiv1beta1.MachineSetList{}
-		opts := &client.ListOptions{
-			LabelSelector: labels.SelectorFromSet(map[string]string{machineSetLabelKey: hostedClusterName}),
-		}
-		err = c.List(ctx, msList, opts)
-		if err != nil {
-			return false, fmt.Errorf("failed to List machineSet with label %q; %v", opts.LabelSelector.String(), err)
-		}
-		if len(msList.Items) == 0 {
-			return false, fmt.Errorf("machineSetList with label %q is empty", opts.LabelSelector.String())
-		}
-		ms := msList.Items[0]
-		annot := ms.Annotations
-		// check that the machineSet has been updated with the desired (TargetConfig) version
-		if annot[nodePoolAnnotationCurrentConfigVersion] == annot[nodePoolAnnotationTargetConfigVersion] {
-			return true, nil
-		}
-		return false, nil
-	})
+	msList := &apiv1beta1.MachineSetList{}
+	opts := &client.ListOptions{
+		Namespace: namespace,
+	}
+	err := c.List(ctx, msList, opts)
+	if err != nil {
+		return fmt.Errorf("failed to List machineSet with label %q; %v", opts.LabelSelector.String(), err)
+	}
+	if len(msList.Items) == 0 {
+		return fmt.Errorf("no machineSet found within namespace %q", namespace)
+	}
+
+	var errLock sync.Mutex
+	var errors []string
+	var wg sync.WaitGroup
+	for i := 0; i < len(msList.Items); i++ {
+		wg.Add(1)
+		go func(wg *sync.WaitGroup, ms *apiv1beta1.MachineSet) {
+			defer ginkgo.GinkgoRecover()
+			defer wg.Done()
+
+			err = wait.PollUntilContextTimeout(ctx, time.Second*10, time.Minute*20, false, func(ctx context.Context) (done bool, err error) {
+				err = c.Get(ctx, client.ObjectKeyFromObject(ms), ms)
+				if err != nil {
+					return false, fmt.Errorf("failed to Get machineSet %q", client.ObjectKeyFromObject(ms).String())
+				}
+				annot := ms.Annotations
+				// check that the machineSet has been updated with the desired (TargetConfig) version
+				if current, ok := annot[nodePoolAnnotationCurrentConfigVersion]; ok {
+					if target, ok := annot[nodePoolAnnotationTargetConfigVersion]; ok {
+						return current == target, nil
+					}
+				}
+				return false, nil
+			})
+			if err != nil {
+				errLock.Lock()
+				errors = append(errors, err.Error())
+				errLock.Unlock()
+			}
+		}(&wg, &msList.Items[i])
+	}
+	wg.Wait()
+	if errors != nil {
+		return fmt.Errorf("failed to wait for machineSet to be ready. errors: %s", strings.Join(errors, ", "))
+	}
+	return nil
 }

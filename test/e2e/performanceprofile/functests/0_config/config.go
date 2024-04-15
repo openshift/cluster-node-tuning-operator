@@ -267,6 +267,22 @@ func attachProfileToNodePool(ctx context.Context, performanceProfile *performanc
 	}
 	mngClusterNamespace, err := hypershift.GetManagementClusterNamespace()
 	Expect(err).ToNot(HaveOccurred())
+	printEnvs()
 	err = nodepools.WaitForConfigToBeReady(ctx, testclient.ControlPlaneClient, hostedClusterName, mngClusterNamespace)
 	Expect(err).ToNot(HaveOccurred(), "nodePool %q config is not ready", key.String())
+}
+
+func printEnvs() {
+	testlog.Info("Print hypershift CI info")
+	name, _ := os.LookupEnv(hypershift.HostedClusterNameEnv)
+	testlog.Infof("%s=%s", hypershift.HostedClusterNameEnv, name)
+
+	v, _ := hypershift.GetManagementClusterNamespace()
+	testlog.Infof("%s=%s", hypershift.ManagementClusterNamespaceEnv, v)
+
+	kcPath, _ := os.LookupEnv(hypershift.ManagementClusterKubeConfigEnv)
+	testlog.Infof("%s=%s", hypershift.ManagementClusterNamespaceEnv, kcPath)
+
+	kcPath, _ = os.LookupEnv(hypershift.HostedClusterKubeConfigEnv)
+	testlog.Infof("%s=%s", hypershift.HostedClusterKubeConfigEnv, kcPath)
 }

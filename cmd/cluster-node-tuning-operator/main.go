@@ -223,7 +223,7 @@ func operatorRun() {
 			Client:           mgr.GetClient(),
 			ManagementClient: managementCluster.GetClient(),
 			Scheme:           managementCluster.GetScheme(),
-			Recorder:         mgr.GetEventRecorderFor("performance-profile-controller"),
+			Recorder:         managementCluster.GetEventRecorderFor("performance-profile-controller"),
 		}).HypershiftSetupWithManager(mgr, managementCluster); err != nil {
 			klog.Exitf("unable to create PerformanceProfile controller: %v", err)
 		}
