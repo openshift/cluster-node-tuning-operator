@@ -1,10 +1,11 @@
 #!/bin/bash
 
 set -e
+WORKDIR=$(dirname "$(realpath "$0")")/..
 
 # Example invocation
 # ~~~~~~~~~~~~~~~~~~
-# ORG=quay-user hack/test-upstream-tuned.sh
+# ORG=quay-user hack/deploy-custom-nto.sh
 #
 # This script assumes a deployed OpenShift cluster and an environment 
 # configured to write the locally built IMAGE to an image repository.
@@ -18,9 +19,9 @@ TAG=$(git rev-parse --abbrev-ref HEAD)
 IMAGE=quay.io/${ORG}/origin-cluster-node-tuning-operator:$TAG
 
 nto_prepare_image() {
-  make update-tuned-submodule TUNED_COMMIT=${TUNED_COMMIT:-HEAD}
-  make local-image IMAGE=$IMAGE
-  make local-image-push IMAGE=$IMAGE
+  make -C $WORKDIR update-tuned-submodule TUNED_COMMIT=${TUNED_COMMIT:-HEAD}
+  make -C $WORKDIR local-image IMAGE=$IMAGE
+  make -C $WORKDIR local-image-push IMAGE=$IMAGE
 }
 
 # Scale CVO down not to overwrite custom NTO.
@@ -31,7 +32,13 @@ cvo_scale() {
 
 nto_deploy_custom() {
   oc project openshift-cluster-node-tuning-operator
-  oc patch deploy cluster-node-tuning-operator -p '{"spec":{"template":{"spec":{"containers":[{"env":[{"name":"CLUSTER_NODE_TUNED_IMAGE","value":"'$IMAGE'"}],"name":"cluster-node-tuning-operator"}]}}}}'
+  for file in ${WORKDIR}/manifests/*.yaml; do
+    # We will skip the ibm specific deployment. 
+    if [[ "$file" != ${WORKDIR}/manifests/50-operator-ibm* ]]; then
+      oc apply -f "$file"
+    fi
+  done
+  oc patch deploy cluster-node-tuning-operator -p '{"spec":{"template":{"spec":{"containers":[{"name":"cluster-node-tuning-operator","image":"'$IMAGE'","env":[{"name":"CLUSTER_NODE_TUNED_IMAGE","value":"'$IMAGE'"}]}]}}}}'
 }
 
 wait_for_updated_tuned_pods() {
@@ -57,21 +64,7 @@ wait_for_updated_tuned_pods() {
   done
 }
 
-nto_run_tuned_tests() {
-  # test-e2e usually take 30min
-  make test-e2e
-
-  CLUSTER=mcp-only make cluster-deploy-pao
-  # e2e-gcp-pao	usually take 40min
-  make pao-functests
-
-  # e2e-gcp-pao-updating-profile usually take 4-5h
-  make pao-functests-updating-profile
-}
-
 nto_prepare_image
 cvo_scale 0
 nto_deploy_custom
 wait_for_updated_tuned_pods
-nto_run_tuned_tests
-cvo_scale 1
