@@ -110,6 +110,8 @@ func TunedRun(cmd *exec.Cmd, daemon *Daemon, onDaemonReload func()) error {
 
 			profileApplied := strings.Contains(l, " tuned.daemon.daemon: static tuning from profile ") && strings.Contains(l, " applied")
 			reloadFailed := strings.Contains(l, " tuned.daemon.controller: Failed to reload TuneD: ")
+			profileDoesNotExist := strings.Contains(l, " tuned.daemon.daemon: Cannot set initial profile. No tunings will be enabled: Requested profile ") &&
+				strings.Contains(l, " doesn't exist.")
 
 			if profileApplied {
 				daemon.status |= scApplied
@@ -136,20 +138,21 @@ func TunedRun(cmd *exec.Cmd, daemon *Daemon, onDaemonReload func()) error {
 				daemon.stderr = sysctl
 			}
 
-			if daemon.reloading {
-				daemon.reloading = !profileApplied && !reloadFailed
-				daemon.reloaded = !daemon.reloading
-				if daemon.reloaded {
-					klog.V(2).Infof("profile applied or reload failed, stopping the TuneD watcher")
+			if (daemon.status & scReloading) != 0 {
+				// TuneD daemon status flags are set as reloading, see if this has changed based on the log line.
+				reloaded := profileApplied || reloadFailed || profileDoesNotExist
+				if reloaded {
+					// TuneD has finished reloading.
+					daemon.status &= ^scReloading // clear the scReloading status bit
 					onDaemonReload()
 				}
 			}
 		}
 	}()
 
-	daemon.reloading = true
 	// Clear the set out of which Profile status conditions are created.
 	daemon.status = 0
+	daemon.status |= scReloading
 	daemon.stderr = ""
 	if err = cmd.Start(); err != nil {
 		return fmt.Errorf("error starting tuned: %w", err)
