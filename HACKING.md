@@ -2,13 +2,13 @@
 
 # Hacking on the Node Tuning Operator
 
-These instructions have been tested on Fedora 36.
+These instructions have been tested on Fedora 39.
 
 ## Prerequisites
 
 Most changes you'll want to test live against a real cluster. Instructions are TODO.
 
-Go v1.18 is used for development of the NTO.
+Go v1.21 is used for development of the NTO.
 
 # Static Analysis
 
@@ -38,69 +38,14 @@ that require a cluster to properly test your code.
 
 In those situations, you will need to:
 
-1) build the NTO image you're interested in testing
+1) Build the NTO image you're interested in testing
 2) Push the image to an OpenShift cluster
 
-## Build NTO image
+To build the repo's code as an image and push it to the cluster we have a script that 
+can automate this for you: 
 
-To build an image that contains all NTO components run:
+`ORG=quay-user hack/deploy-custom-nto.sh`
 
-```
-# Specify the registry
-REGISTRY=quay.io
-# Specify the registry user
-ORG=username
-# Specify the tag
-TAG=tag
+It is also possible to opt for a specific revision of [TuneD](https://github.com/redhat-performance/tuned) by specifying: `TUNED_COMMIT=commit-hash`
 
-make local-image IMAGE=${REGISTRY}/${ORG}/cluster-node-tuning-operator:${TAG}
-```
-
-After the build is complete, you can push the image to a registry with:
-
-```
-# Specify the registry
-REGISTRY=quay.io
-# Specify the registry user
-ORG=username
-# Specify the tag
-TAG=tag
-
-make local-image-push IMAGE=${REGISTRY}/${ORG}/cluster-node-tuning-operator:${TAG}
-```
-
-## Push the image to an OpenShift cluster
-
-```
-override_tuning_operator ()
-{
-  oc patch clusterversion version --type json -p '[{"op":"add","path":"/spec/overrides","value":[{"kind":"Deployment","group":"apps","name":"cluster-node-tuning-operator","namespace":"openshift-cluster-node-tuning-operator","unmanaged":true}]}]'
-}
-
-custom_tuning_operator ()
-{
-  TUNING_IMAGE=${REGISTRY}/${ORG}/cluster-node-tuning-operator:${TAG}
-  override_tuning_operator
-  oc scale deployment -n openshift-cluster-node-tuning-operator cluster-node-tuning-operator --replicas=0
-  oc patch deployment -n openshift-cluster-node-tuning-operator cluster-node-tuning-operator -p \
-    '{"spec":{"template":{"spec":{"containers":[{"name":"cluster-node-tuning-operator","image":"'${TUNING_IMAGE}'"}]}}}}'
-  oc patch deployment -n openshift-cluster-node-tuning-operator cluster-node-tuning-operator -p \
-    '{"spec":{"template":{"spec":{"containers":[{"name":"cluster-node-tuning-operator","env":[{"name":"CLUSTER_NODE_TUNED_IMAGE","value":"'${TUNING_IMAGE}'"}]}]}}}}'
-  oc describe  deployment -n openshift-cluster-node-tuning-operator cluster-node-tuning-operator | grep --color=auto Image
-  oc describe  deployment -n openshift-cluster-node-tuning-operator cluster-node-tuning-operator | grep --color=auto CLUSTER_NODE_TUNED_IMAGE
-  oc delete ds -n openshift-cluster-node-tuning-operator tuned
-  oc scale deployment -n openshift-cluster-node-tuning-operator cluster-node-tuning-operator --replicas=1
-  sleep 10
-  oc wait deployment -n openshift-cluster-node-tuning-operator cluster-node-tuning-operator --for condition=Available=True --timeout=90s
-  for i in {1..36}; do
-    echo "Waiting for DS to be deployed, try $i"
-    sleep 10
-    if oc get ds -n openshift-cluster-node-tuning-operator tuned 2>/dev/null; then
-      break
-    fi
-  done
-  oc rollout status daemonset -n openshift-cluster-node-tuning-operator tuned --timeout=90s
-  oc get deployment -n openshift-cluster-node-tuning-operator
-  oc get ds -n openshift-cluster-node-tuning-operator
-}
-```
+We recommend running some e2e tests to verify the custom image works as expected.
