@@ -81,7 +81,6 @@ const (
 	maxRetries = 15
 	// workqueue related constants
 	wqKindDaemon  = "daemon"
-	wqKindTuned   = "tuned"
 	wqKindProfile = "profile"
 )
 
@@ -107,8 +106,6 @@ type Change struct {
 	profile bool
 	// Do we need to update Tuned Profile status?
 	profileStatus bool
-	// Did the "rendered" Tuned k8s object change?
-	rendered bool
 
 	// The following keys are set when profile == true.
 	// Was debugging set in Profile k8s object?
@@ -255,17 +252,6 @@ func (c *Controller) eventProcessorKube() {
 
 func (c *Controller) sync(key wqKeyKube) error {
 	switch {
-	case key.kind == wqKindTuned:
-		if key.name != tunedv1.TunedRenderedResourceName {
-			return nil
-		}
-		klog.V(2).Infof("sync(): Tuned %s", key.name)
-
-		// Notify the event processor that the Tuned k8s object containing all TuneD profiles changed.
-		c.wqTuneD.Add(wqKeyTuned{kind: wqKindDaemon, change: Change{rendered: true}})
-
-		return nil
-
 	case key.kind == wqKindProfile:
 		var change Change
 		if key.name != getNodeName() {
@@ -732,6 +718,16 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 			}
 		}
 
+		profile, err := c.listers.TunedProfiles.Get(getNodeName())
+		if err != nil {
+			return false, fmt.Errorf("failed to get Profile %s: %v", getNodeName(), err)
+		}
+		changeProfiles, err := profilesSync(profile.Spec.Profile, c.daemon.recommendedProfile)
+		if err != nil {
+			return false, err
+		}
+		reload = reload || changeProfiles
+
 		// Does the current TuneD process have debugging turned on?
 		debug := (c.daemon.restart & ctrlDebug) != 0
 		if debug != change.debug {
@@ -756,22 +752,6 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 			}
 			c.daemon.restart |= ctrlRestart // A complete restart of the TuneD daemon is needed due to configuration change in tuned-main.conf file.
 		}
-	}
-
-	if change.rendered {
-		// The "rendered" Tuned k8s object changed.
-		tuned, err := c.listers.TunedResources.Get(tunedv1.TunedRenderedResourceName)
-		if err != nil {
-			klog.Errorf("failed to get Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
-			return false, nil // retry later
-		}
-
-		changeRendered, err := profilesSync(tuned.Spec.Profile, c.daemon.recommendedProfile)
-		if err != nil {
-			return false, err
-		}
-
-		reload = reload || changeRendered
 	}
 
 	if reload {
@@ -1068,12 +1048,6 @@ func (c *Controller) changeWatcher() (err error) {
 		ntoconfig.ResyncPeriod(),
 		tunedinformers.WithNamespace(operandNamespace))
 
-	trInformer := tunedInformerFactory.Tuned().V1().Tuneds()
-	c.listers.TunedResources = trInformer.Lister().Tuneds(operandNamespace)
-	if _, err = trInformer.Informer().AddEventHandler(c.informerEventHandler(wqKeyKube{kind: wqKindTuned})); err != nil {
-		return err
-	}
-
 	tpInformer := tunedInformerFactory.Tuned().V1().Profiles()
 	c.listers.TunedProfiles = tpInformer.Lister().Profiles(operandNamespace)
 	if _, err = tpInformer.Informer().AddEventHandler(c.informerEventHandler(wqKeyKube{kind: wqKindProfile})); err != nil {
@@ -1085,7 +1059,6 @@ func (c *Controller) changeWatcher() (err error) {
 	// Wait for the caches to be synced before starting worker(s).
 	klog.V(1).Info("waiting for informer caches to sync")
 	ok := cache.WaitForCacheSync(c.stopCh,
-		trInformer.Informer().HasSynced,
 		tpInformer.Informer().HasSynced,
 	)
 	if !ok {

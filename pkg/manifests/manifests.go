@@ -4,15 +4,12 @@ import (
 	"bytes"
 	"io"
 	"os"
-	"sort"
 
 	appsv1 "k8s.io/api/apps/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
-	"k8s.io/klog/v2"
 )
 
 const (
@@ -24,47 +21,6 @@ const (
 
 func MustAssetReader(asset string) io.Reader {
 	return bytes.NewReader(MustAsset(asset))
-}
-
-func TunedRenderedResource(tunedSlice []*tunedv1.Tuned) *tunedv1.Tuned {
-	cr := &tunedv1.Tuned{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      tunedv1.TunedRenderedResourceName,
-			Namespace: ntoconfig.WatchNamespace(),
-		},
-		Spec: tunedv1.TunedSpec{
-			Recommend: []tunedv1.TunedRecommend{},
-		},
-	}
-
-	tunedProfiles := []tunedv1.TunedProfile{}
-	m := map[string]tunedv1.TunedProfile{}
-
-	for _, tuned := range tunedSlice {
-		if tuned.Name == tunedv1.TunedRenderedResourceName {
-			// Skip the "rendered" Tuned resource itself
-			continue
-		}
-		tunedRenderedProfiles(tuned, m)
-	}
-	for _, tunedProfile := range m {
-		if tunedProfile.Name == nil {
-			// This should never happen (openAPIV3Schema validation); ignore invalid profiles
-			continue
-		}
-		tunedProfiles = append(tunedProfiles, tunedProfile)
-	}
-
-	// The order of Tuned resources is variable and so is the order of profiles
-	// within the resource itself.  Sort the rendered profiles by their names for
-	// simpler change detection.
-	sort.Slice(tunedProfiles, func(i, j int) bool {
-		return *tunedProfiles[i].Name < *tunedProfiles[j].Name
-	})
-
-	cr.Spec.Profile = tunedProfiles
-
-	return cr
 }
 
 func TunedDaemonSet() *appsv1.DaemonSet {
@@ -125,21 +81,4 @@ func NewTuned(manifest io.Reader) (*tunedv1.Tuned, error) {
 		return nil, err
 	}
 	return &o, nil
-}
-
-func tunedRenderedProfiles(tuned *tunedv1.Tuned, m map[string]tunedv1.TunedProfile) {
-	if tuned.Spec.Profile != nil {
-		for _, v := range tuned.Spec.Profile {
-			if v.Name != nil && v.Data != nil {
-				if existingProfile, found := m[*v.Name]; found {
-					if *v.Data == *existingProfile.Data {
-						klog.Infof("duplicate profiles names %s but they have the same contents", *v.Name)
-					} else {
-						klog.Errorf("ERROR: duplicate profiles named %s with different contents found in Tuned CR %q", *v.Name, tuned.Name)
-					}
-				}
-				m[*v.Name] = v
-			}
-		}
-	}
 }

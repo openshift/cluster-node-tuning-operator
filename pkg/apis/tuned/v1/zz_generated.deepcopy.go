@@ -108,6 +108,13 @@ func (in *ProfileList) DeepCopyObject() runtime.Object {
 func (in *ProfileSpec) DeepCopyInto(out *ProfileSpec) {
 	*out = *in
 	in.Config.DeepCopyInto(&out.Config)
+	if in.Profile != nil {
+		in, out := &in.Profile, &out.Profile
+		*out = make([]TunedProfile, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	return
 }
 
