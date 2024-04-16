@@ -96,7 +96,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 			It("[test_id:64097] Activation file is created", func() {
 				cmd := []string{"ls", activation_file}
 				for _, node := range workerRTNodes {
-					out, err := nodes.ExecCommandOnNode(context.TODO(), cmd, &node)
+					out, err := nodes.ExecCommandToString(context.TODO(), cmd, &node)
 					Expect(err).ToNot(HaveOccurred(), "file %s doesn't exist ", activation_file)
 					Expect(out).To(Equal(activation_file))
 				}
@@ -111,7 +111,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 					pid, err := nodes.ContainerPid(ctx, workerRTNode, ctn)
 					Expect(err).ToNot(HaveOccurred())
 					cmd := []string{"cat", fmt.Sprintf("/rootfs/proc/%s/cgroup", pid)}
-					out, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), workerRTNode, cmd)
+					out, err := nodes.ExecCommand(context.TODO(), workerRTNode, cmd)
 					Expect(err).ToNot(HaveOccurred())
 					cgroupPathOfPid, err := cgroup.PidParser(out)
 					if isCgroupV2 {
@@ -121,7 +121,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 						containerCgroupPath = filepath.Join(controller, cgroupPathOfPid)
 					}
 					cmd = []string{"cat", fmt.Sprintf("%s", filepath.Join(containerCgroupPath, "/cpuset.cpus"))}
-					cpus, err := nodes.ExecCommandOnNode(ctx, cmd, workerRTNode)
+					cpus, err := nodes.ExecCommandToString(ctx, cmd, workerRTNode)
 					containerCpuset, err := cpuset.Parse(cpus)
 					Expect(containerCpuset).To(Equal(onlineCPUSet), "Burstable pod containers cpuset.cpus do not match total online cpus")
 				}
@@ -158,7 +158,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 				By("Checking Activation file")
 				cmd := []string{"ls", activation_file}
 				for _, node := range workerRTNodes {
-					out, err := nodes.ExecCommandOnNode(context.TODO(), cmd, &node)
+					out, err := nodes.ExecCommandToString(context.TODO(), cmd, &node)
 					Expect(err).ToNot(HaveOccurred(), "file %s doesn't exist ", activation_file)
 					Expect(out).To(Equal(activation_file))
 				}
@@ -197,7 +197,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 			pids, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
 			Expect(err).ToNot(HaveOccurred(), "unable to fetch pid of ovs services")
 			cmd := []string{"cat", fmt.Sprintf("/rootfs/proc/%s/cgroup", pids[0])}
-			out, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), workerRTNode, cmd)
+			out, err := nodes.ExecCommand(context.TODO(), workerRTNode, cmd)
 			Expect(err).ToNot(HaveOccurred())
 			ovsSliceCgroup, err = cgroup.PidParser(out)
 			Expect(err).ToNot(HaveOccurred())
@@ -215,15 +215,15 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 		chkOvsCgrpProcs := func(node *corev1.Node) (string, error) {
 			testlog.Info("Verify cgroup.procs is not empty")
 			cmd := []string{"cat", cgroupProcs}
-			return nodes.ExecCommandOnNode(context.TODO(), cmd, node)
+			return nodes.ExecCommandToString(context.TODO(), cmd, node)
 		}
 		chkOvsCgrpCpuset := func(node *corev1.Node) (string, error) {
 			cmd := []string{"cat", cgroupCpusetCpus}
-			return nodes.ExecCommandOnNode(context.TODO(), cmd, node)
+			return nodes.ExecCommandToString(context.TODO(), cmd, node)
 		}
 		chkOvsCgroupLoadBalance := func(node *corev1.Node) (string, error) {
 			cmd := []string{"cat", cgroupLoadBalance}
-			return nodes.ExecCommandOnNode(context.TODO(), cmd, node)
+			return nodes.ExecCommandToString(context.TODO(), cmd, node)
 		}
 
 		It("[test_id:64098] Verify cgroup layout on worker node", func() {
@@ -552,7 +552,7 @@ func cpuSpecToString(cpus *performancev2.CPU) string {
 
 // checkCpuCount check if the node has sufficient cpus
 func checkCpuCount(ctx context.Context, workerNode *corev1.Node) {
-	onlineCPUCount, err := nodes.ExecCommandOnNode(ctx, []string{"nproc", "--all"}, workerNode)
+	onlineCPUCount, err := nodes.ExecCommandToString(ctx, []string{"nproc", "--all"}, workerNode)
 	if err != nil {
 		Fail(fmt.Sprintf("Failed to fetch online CPUs: %v", err))
 	}
@@ -621,7 +621,7 @@ func getCPUMaskForPids(ctx context.Context, pidList []string, targetNode *corev1
 
 	for _, pid := range pidList {
 		cmd := []string{"taskset", "-pc", pid}
-		cpumask, err := nodes.ExecCommandOnNode(ctx, cmd, targetNode)
+		cpumask, err := nodes.ExecCommandToString(ctx, cmd, targetNode)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch cpus of %s: %s", pid, err)
 		}
@@ -733,7 +733,7 @@ func ovsPids(ctx context.Context, ovsSystemdServices []string, workerRTNode *cor
 // taskSet returns cpus used by the pid
 func taskSet(ctx context.Context, pid string, workerRTNode *corev1.Node) cpuset.CPUSet {
 	cmd := []string{"taskset", "-pc", pid}
-	output, err := nodes.ExecCommandOnNode(ctx, cmd, workerRTNode)
+	output, err := nodes.ExecCommandToString(ctx, cmd, workerRTNode)
 	Expect(err).ToNot(HaveOccurred(), "unable to fetch cpus using taskset")
 	tasksetOutput := strings.Split(strings.TrimSpace(output), ":")
 	cpus := strings.TrimSpace(tasksetOutput[1])

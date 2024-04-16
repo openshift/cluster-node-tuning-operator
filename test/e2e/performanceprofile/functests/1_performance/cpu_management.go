@@ -120,7 +120,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		It("[test_id:37862][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Verify CPU affinity mask, CPU reservation and CPU isolation on worker node", func() {
 			By("checking isolated CPU")
 			cmd := []string{"cat", "/sys/devices/system/cpu/isolated"}
-			sysIsolatedCpus, err := nodes.ExecCommandOnNode(context.TODO(), cmd, workerRTNode)
+			sysIsolatedCpus, err := nodes.ExecCommandToString(context.TODO(), cmd, workerRTNode)
 			Expect(err).ToNot(HaveOccurred())
 			if balanceIsolated {
 				Expect(sysIsolatedCpus).To(BeEmpty())
@@ -130,14 +130,14 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 			By("checking reserved CPU in kubelet config file")
 			cmd = []string{"cat", "/rootfs/etc/kubernetes/kubelet.conf"}
-			conf, err := nodes.ExecCommandOnNode(context.TODO(), cmd, workerRTNode)
+			conf, err := nodes.ExecCommandToString(context.TODO(), cmd, workerRTNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to cat kubelet.conf")
 			// kubelet.conf changed formatting, there is a space after colons atm. Let's deal with both cases with a regex
 			Expect(conf).To(MatchRegexp(fmt.Sprintf(`"reservedSystemCPUs": ?"%s"`, reservedCPU)))
 
 			By("checking CPU affinity mask for kernel scheduler")
 			cmd = []string{"/bin/bash", "-c", "taskset -pc 1"}
-			sched, err := nodes.ExecCommandOnNode(context.TODO(), cmd, workerRTNode)
+			sched, err := nodes.ExecCommandToString(context.TODO(), cmd, workerRTNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to execute taskset")
 			mask := strings.SplitAfter(sched, " ")
 			maskSet, err := cpuset.Parse(mask[len(mask)-1])
@@ -149,7 +149,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		It("[test_id:34358] Verify rcu_nocbs kernel argument on the node", func() {
 			By("checking that cmdline contains rcu_nocbs with right value")
 			cmd := []string{"cat", "/proc/cmdline"}
-			cmdline, err := nodes.ExecCommandOnNode(context.TODO(), cmd, workerRTNode)
+			cmdline, err := nodes.ExecCommandToString(context.TODO(), cmd, workerRTNode)
 			Expect(err).ToNot(HaveOccurred())
 			re := regexp.MustCompile(`rcu_nocbs=\S+`)
 			rcuNocbsArgument := re.FindString(cmdline)
@@ -159,12 +159,12 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 			By("checking that new rcuo processes are running on non_isolated cpu")
 			cmd = []string{"pgrep", "rcuo"}
-			rcuoList, err := nodes.ExecCommandOnNode(context.TODO(), cmd, workerRTNode)
+			rcuoList, err := nodes.ExecCommandToString(context.TODO(), cmd, workerRTNode)
 			Expect(err).ToNot(HaveOccurred())
 			for _, rcuo := range strings.Split(rcuoList, "\n") {
 				// check cpu affinity mask
 				cmd = []string{"/bin/bash", "-c", fmt.Sprintf("taskset -pc %s", rcuo)}
-				taskset, err := nodes.ExecCommandOnNode(context.TODO(), cmd, workerRTNode)
+				taskset, err := nodes.ExecCommandToString(context.TODO(), cmd, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				mask := strings.SplitAfter(taskset, " ")
 				maskSet, err := cpuset.Parse(mask[len(mask)-1])
@@ -246,7 +246,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				"unexpected QoS Class for %s/%s: %s (looking for %s)",
 				updatedPod.Namespace, updatedPod.Name, updatedPod.Status.QOSClass, expectedQos)
 
-			output, err := nodes.ExecCommandOnNode(ctx,
+			output, err := nodes.ExecCommandToString(ctx,
 				[]string{"/bin/bash", "-c", "ps -o psr $(pgrep -n stress) | tail -1"},
 				workerRTNode,
 			)
@@ -295,7 +295,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 					"systemctl restart kubelet",
 				}
 
-				_, _ = nodes.ExecCommandOnNode(ctx, kubeletRestartCmd, workerRTNode)
+				_, _ = nodes.ExecCommandToString(ctx, kubeletRestartCmd, workerRTNode)
 				nodes.WaitForReadyOrFail("post kubele restart", workerRTNode.Name, 20*time.Minute, 3*time.Second)
 				// giving kubelet more time to stabilize and initialize itself before
 				testlog.Infof("post restart: entering cooldown time: %v", restartCooldownTime)
@@ -370,7 +370,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			// It may takes some time for the system to reschedule active IRQs
 			Eventually(func() bool {
 				getActiveIrq := []string{"/bin/bash", "-c", "for n in $(find /proc/irq/ -name smp_affinity_list); do echo $(cat $n); done"}
-				activeIrq, err := nodes.ExecCommandOnNode(context.TODO(), getActiveIrq, workerRTNode)
+				activeIrq, err := nodes.ExecCommandToString(context.TODO(), getActiveIrq, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(activeIrq).ToNot(BeEmpty())
 				for _, irq := range strings.Split(activeIrq, "\n") {
@@ -424,7 +424,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 			Eventually(func() string {
 				cmd := []string{"/bin/bash", "-c", fmt.Sprintf("find %s -name *%s*", cpusetPath, podUID)}
-				podCgroup, err = nodes.ExecCommandOnNode(context.TODO(), cmd, workerRTNode)
+				podCgroup, err = nodes.ExecCommandToString(context.TODO(), cmd, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				return podCgroup
 			}, cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode), 5*time.Second).ShouldNot(BeEmpty(),
@@ -433,7 +433,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			containersCgroups := ""
 			Eventually(func() string {
 				cmd := []string{"/bin/bash", "-c", fmt.Sprintf("find %s -name crio-*", podCgroup)}
-				containersCgroups, err = nodes.ExecCommandOnNode(context.TODO(), cmd, workerRTNode)
+				containersCgroups, err = nodes.ExecCommandToString(context.TODO(), cmd, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				return containersCgroups
 			}, cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode), 5*time.Second).ShouldNot(BeEmpty(),
@@ -454,7 +454,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 				By("Checking what CPU the infra container is using")
 				cmd := []string{"/bin/bash", "-c", fmt.Sprintf("cat %s/cpuset.cpus", dir)}
-				output, err := nodes.ExecCommandOnNode(context.TODO(), cmd, workerRTNode)
+				output, err := nodes.ExecCommandToString(context.TODO(), cmd, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 
 				cpus, err := cpuset.Parse(output)
@@ -710,7 +710,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred(), "Unable to parse pod cpus")
 				kubepodsExclusiveCpus := fmt.Sprintf("%s/kubepods.slice/cpuset.cpus.exclusive", cgroupRoot)
 				cmd := []string{"cat", kubepodsExclusiveCpus}
-				exclusiveCpus, err := nodes.ExecCommandOnNode(ctx, cmd, targetNode)
+				exclusiveCpus, err := nodes.ExecCommandToString(ctx, cmd, targetNode)
 				Expect(err).ToNot(HaveOccurred())
 				exclusiveCpuset, err := cpuset.Parse(exclusiveCpus)
 				Expect(err).ToNot(HaveOccurred(), "unable to parse cpuset.cpus.exclusive")
@@ -752,7 +752,7 @@ func checkForWorkloadPartitioning(ctx context.Context) bool {
 		"-c",
 		"echo CHECK ; /bin/grep -rEo 'activation_annotation.*target\\.workload\\.openshift\\.io/management.*' /etc/crio/crio.conf.d/ || true",
 	}
-	output, err := nodes.ExecCommandOnNode(ctx, cmd, workerRTNode)
+	output, err := nodes.ExecCommandToString(ctx, cmd, workerRTNode)
 	Expect(err).ToNot(HaveOccurred(), "Unable to check cluster for Workload Partitioning enabled")
 	re := regexp.MustCompile(`activation_annotation.*target\.workload\.openshift\.io/management.*`)
 	return re.MatchString(fmt.Sprint(output))
@@ -773,7 +773,7 @@ func checkPodHTSiblings(ctx context.Context, testpod *corev1.Pod) bool {
 	node, err := nodes.GetByName(testpod.Spec.NodeName)
 	Expect(err).ToNot(HaveOccurred(), "failed to get node %q", testpod.Spec.NodeName)
 	Expect(testpod.Spec.NodeName).ToNot(BeEmpty(), "testpod %s/%s still pending - no nodeName set", testpod.Namespace, testpod.Name)
-	output, err := nodes.ExecCommandOnNode(ctx, cmd, node)
+	output, err := nodes.ExecCommandToString(ctx, cmd, node)
 	Expect(err).ToNot(HaveOccurred(), "Unable to crictl inspect containerID %q", containerID)
 
 	podcpus, err := cpuset.Parse(strings.Trim(output, "\n"))
@@ -797,7 +797,7 @@ func checkPodHTSiblings(ctx context.Context, testpod *corev1.Pod) bool {
 		"-c",
 		fmt.Sprintf("/bin/cat %s | /bin/sort -u", hostHTSiblingPaths.String()),
 	}
-	output, err = nodes.ExecCommandOnNode(ctx, cmd, workerRTNode)
+	output, err = nodes.ExecCommandToString(ctx, cmd, workerRTNode)
 	Expect(err).ToNot(
 		HaveOccurred(),
 		"Unable to read host thread_siblings_list files",
@@ -978,7 +978,7 @@ func logEventsForPod(testPod *corev1.Pod) {
 // getCPUswithLoadBalanceDisabled Return cpus which are not in any scheduling domain
 func getCPUswithLoadBalanceDisabled(ctx context.Context, targetNode *corev1.Node) ([]string, error) {
 	cmd := []string{"/bin/bash", "-c", "cat /proc/schedstat"}
-	schedstatData, err := nodes.ExecCommandOnNode(ctx, cmd, targetNode)
+	schedstatData, err := nodes.ExecCommandToString(ctx, cmd, targetNode)
 	if err != nil {
 		return nil, err
 	}

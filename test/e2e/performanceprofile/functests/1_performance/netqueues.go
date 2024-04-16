@@ -401,7 +401,7 @@ func getReservedCPUSize(CPU *performancev2.CPU) int {
 func getVendorID(ctx context.Context, node corev1.Node, device string) string {
 	cmd := []string{"bash", "-c",
 		fmt.Sprintf("cat /sys/class/net/%s/device/vendor", device)}
-	stdout, err := nodes.ExecCommandOnNode(ctx, cmd, &node)
+	stdout, err := nodes.ExecCommandToString(ctx, cmd, &node)
 	Expect(err).ToNot(HaveOccurred())
 	return stdout
 }
@@ -409,7 +409,7 @@ func getVendorID(ctx context.Context, node corev1.Node, device string) string {
 func getDeviceID(ctx context.Context, node corev1.Node, device string) string {
 	cmd := []string{"bash", "-c",
 		fmt.Sprintf("cat /sys/class/net/%s/device/device", device)}
-	stdout, err := nodes.ExecCommandOnNode(ctx, cmd, &node)
+	stdout, err := nodes.ExecCommandToString(ctx, cmd, &node)
 	Expect(err).ToNot(HaveOccurred())
 	return stdout
 }

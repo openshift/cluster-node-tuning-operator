@@ -2,6 +2,7 @@ package node_inspector
 
 import (
 	"context"
+	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -9,10 +10,17 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
+	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/daemonset"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
+	testpods "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 )
 
 const serviceAccountSuffix = "sa"
@@ -36,8 +44,11 @@ func Create(cli client.Client, namespace, name, image string) error {
 		return err
 	}
 	ds := createDaemonSet(name, namespace, serviceAccountName, image)
-	if err := cli.Create(context.Background(), ds); err != nil && !errors.IsAlreadyExists(err) {
-		return err
+	if err := cli.Create(context.Background(), ds); err != nil {
+		if !errors.IsAlreadyExists(err) {
+			return err
+		}
+		klog.Infof("The node inspector daemonset was not expected to be running")
 	}
 	if err := daemonset.WaitToBeRunning(cli, namespace, name); err != nil {
 		return err
@@ -58,8 +69,42 @@ func Delete(cli client.Client, namespace, name string) error {
 	return nil
 }
 
-func IsRunning(cli client.Client, namespace, name string) (bool,error){
+func isRunning(cli client.Client, namespace, name string) (bool, error) {
 	return daemonset.IsRunning(cli, namespace, name)
+}
+
+// getDaemonPodByNode returns the daemon pod that runs on the specified node
+func getDaemonPodByNode(node *corev1.Node) (*corev1.Pod, error) {
+	listOptions := &client.ListOptions{
+		Namespace:     testutils.NodeInspectorNamespace,
+		FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": node.Name}),
+		LabelSelector: labels.SelectorFromSet(labels.Set{"name": testutils.NodeInspectorName}),
+	}
+
+	pods := &corev1.PodList{}
+	if err := testclient.DataPlaneClient.List(context.TODO(), pods, listOptions); err != nil {
+		return nil, err
+	}
+	if len(pods.Items) < 1 {
+		return nil, fmt.Errorf("failed to get daemon pod for the node %q", node.Name)
+	}
+	return &pods.Items[0], nil
+}
+
+// ExecCommand executing the command on a daemon pod of the given node
+func ExecCommand(ctx context.Context, node *corev1.Node, command []string) ([]byte, error) {
+	// Ensure the node inspector is running
+	ok, err := isRunning(testclient.DataPlaneClient, testutils.NodeInspectorNamespace, testutils.NodeInspectorName)
+	if err != nil || !ok {
+		return nil, err
+	}
+	pod, err := getDaemonPodByNode(node)
+	if err != nil {
+		return nil, err
+	}
+	testlog.Infof("found daemon pod %s for node %s", pod.Name, node.Name)
+
+	return testpods.WaitForPodOutput(ctx, testclient.K8sClient, pod, command)
 }
 
 func createDaemonSet(name, namespace, serviceAccountName, image string) *appsv1.DaemonSet {

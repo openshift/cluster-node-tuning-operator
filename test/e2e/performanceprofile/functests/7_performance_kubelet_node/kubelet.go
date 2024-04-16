@@ -81,7 +81,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			}
 			kubeletArguments := []string{"/bin/bash", "-c", "ps -ef | grep kubelet | grep config"}
 			for _, node := range workerRTNodes {
-				stdout, err := nodes.ExecCommandOnNode(context.TODO(), kubeletArguments, &node)
+				stdout, err := nodes.ExecCommandToString(context.TODO(), kubeletArguments, &node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(strings.Contains(stdout, "300Mi")).To(BeTrue())
 			}
@@ -215,7 +215,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 				Expect(kubeletConfig.ImageMinimumGCAge.Seconds()).ToNot(Equal(180))
 			}
 			for _, node := range workerRTNodes {
-				stdout, err := nodes.ExecCommandOnNode(context.TODO(), kubeletArguments, &node)
+				stdout, err := nodes.ExecCommandToString(context.TODO(), kubeletArguments, &node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(strings.Contains(stdout, "300Mi")).To(BeTrue())
 			}

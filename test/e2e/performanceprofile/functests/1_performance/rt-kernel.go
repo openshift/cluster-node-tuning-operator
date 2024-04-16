@@ -65,7 +65,7 @@ var _ = Describe("[performance]RT Kernel", Ordered, func() {
 		}
 
 		cmd := []string{"uname", "-a"}
-		kernel, err := nodes.ExecCommandOnNode(context.TODO(), cmd, &nonPerformancesWorkers[0])
+		kernel, err := nodes.ExecCommandToString(context.TODO(), cmd, &nonPerformancesWorkers[0])
 		Expect(err).ToNot(HaveOccurred(), "failed to execute uname")
 		Expect(kernel).To(ContainSubstring("Linux"), "Node should have Linux string")
 

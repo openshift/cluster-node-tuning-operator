@@ -16,7 +16,7 @@ func IsVM(node *corev1.Node) (bool, error) {
 		"-c",
 		"systemd-detect-virt > /dev/null ; echo $?",
 	}
-	output, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), node, cmd)
+	output, err := nodes.ExecCommand(context.TODO(), node, cmd)
 	if err != nil {
 		return false, err
 	}

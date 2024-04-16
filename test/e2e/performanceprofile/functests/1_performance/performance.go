@@ -143,7 +143,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 
 		It("[test_id:31198] Should set CPU affinity kernel argument", func() {
 			for _, node := range workerRTNodes {
-				cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"cat", "/proc/cmdline"})
+				cmdline, err := nodes.ExecCommand(context.TODO(), &node, []string{"cat", "/proc/cmdline"})
 				Expect(err).ToNot(HaveOccurred())
 				// since systemd.cpu_affinity is calculated on node level using tuned we can check only the key in this context.
 				Expect(string(cmdline)).To(ContainSubstring("systemd.cpu_affinity="))
@@ -152,7 +152,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 
 		It("[test_id:32702] Should set CPU isolcpu's kernel argument managed_irq flag", func() {
 			for _, node := range workerRTNodes {
-				cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"cat", "/proc/cmdline"})
+				cmdline, err := nodes.ExecCommand(context.TODO(), &node, []string{"cat", "/proc/cmdline"})
 				Expect(err).ToNot(HaveOccurred())
 				if profile.Spec.CPU.BalanceIsolated != nil && *profile.Spec.CPU.BalanceIsolated == false {
 					Expect(string(cmdline)).To(ContainSubstring("isolcpus=domain,managed_irq,"))
@@ -165,7 +165,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		It("[test_id:27081][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Should set workqueue CPU mask", func() {
 			for _, node := range workerRTNodes {
 				By(fmt.Sprintf("Getting tuned.non_isolcpus kernel argument on %q", node.Name))
-				cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"cat", "/proc/cmdline"})
+				cmdline, err := nodes.ExecCommand(context.TODO(), &node, []string{"cat", "/proc/cmdline"})
 				Expect(err).ToNot(HaveOccurred())
 				re := regexp.MustCompile(`tuned.non_isolcpus=\S+`)
 				nonIsolcpusFullArgument := re.FindString(string(cmdline))
@@ -186,13 +186,13 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				}
 
 				By(fmt.Sprintf("Getting the virtual workqueue mask (/sys/devices/virtual/workqueue/cpumask) on %q", node.Name))
-				workqueueMaskData, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"cat", "/sys/devices/virtual/workqueue/cpumask"})
+				workqueueMaskData, err := nodes.ExecCommand(context.TODO(), &node, []string{"cat", "/sys/devices/virtual/workqueue/cpumask"})
 				Expect(err).ToNot(HaveOccurred())
 				workqueueMask := getTrimmedMaskFromData("virtual", workqueueMaskData)
 				expectMasksEqual(nonIsolcpusMaskNoDelimiters, workqueueMask)
 
 				By(fmt.Sprintf("Getting the writeback workqueue mask (/sys/bus/workqueue/devices/writeback/cpumask) on %q", node.Name))
-				workqueueWritebackMaskData, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"cat", "/sys/bus/workqueue/devices/writeback/cpumask"})
+				workqueueWritebackMaskData, err := nodes.ExecCommand(context.TODO(), &node, []string{"cat", "/sys/bus/workqueue/devices/writeback/cpumask"})
 				Expect(err).ToNot(HaveOccurred())
 				workqueueWritebackMask := getTrimmedMaskFromData("workqueue", workqueueWritebackMaskData)
 				expectMasksEqual(nonIsolcpusMaskNoDelimiters, workqueueWritebackMask)
@@ -204,12 +204,12 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				// updating the field to 4 as the latest proc/cmdline has been updated to
 				// BOOT_IMAGE=(hd0,gpt3)/boot/ostree/rhcos-<imageid> instead of BOOT_IMAGE=(hd1,gpt3)/ostree/rhcos-<imageId>
 				// TODO: Modify the awk script to be resilent to these changes or check if we can remove it completely
-				rhcosId, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"awk", "-F", "/", "{printf $4}", "/rootfs/proc/cmdline"})
+				rhcosId, err := nodes.ExecCommand(context.TODO(), &node, []string{"awk", "-F", "/", "{printf $4}", "/rootfs/proc/cmdline"})
 				Expect(err).ToNot(HaveOccurred())
-				initramfsImagesPath, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"find", filepath.Join("/rootfs/boot/ostree", string(rhcosId)), "-name", "*.img"})
+				initramfsImagesPath, err := nodes.ExecCommand(context.TODO(), &node, []string{"find", filepath.Join("/rootfs/boot/ostree", string(rhcosId)), "-name", "*.img"})
 				Expect(err).ToNot(HaveOccurred())
 				modifiedImagePath := strings.TrimPrefix(strings.TrimSpace(string(initramfsImagesPath)), "/rootfs")
-				initrd, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"chroot", "/rootfs", "lsinitrd", modifiedImagePath})
+				initrd, err := nodes.ExecCommand(context.TODO(), &node, []string{"chroot", "/rootfs", "lsinitrd", modifiedImagePath})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(string(initrd)).ShouldNot(ContainSubstring("'/etc/systemd/system.conf /etc/systemd/system.conf.d/setAffinity.conf'"))
 			}
@@ -224,10 +224,10 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 		It("[test_id:42400][crit:medium][vendor:cnf-qe@redhat.com][level:acceptance] stalld daemon is running as sched_fifo", func() {
 			for _, node := range workerRTNodes {
-				pid, err := nodes.ExecCommandOnNode(context.TODO(), []string{"pidof", "stalld"}, &node)
+				pid, err := nodes.ExecCommandToString(context.TODO(), []string{"pidof", "stalld"}, &node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(pid).ToNot(BeEmpty())
-				sched_tasks, err := nodes.ExecCommandOnNode(context.TODO(), []string{"chrt", "-ap", pid}, &node)
+				sched_tasks, err := nodes.ExecCommandToString(context.TODO(), []string{"chrt", "-ap", pid}, &node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(sched_tasks).To(ContainSubstring("scheduling policy: SCHED_FIFO"))
 				Expect(sched_tasks).To(ContainSubstring("scheduling priority: 10"))
@@ -235,20 +235,20 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 		It("[test_id:42696][crit:medium][vendor:cnf-qe@redhat.com][level:acceptance] Stalld runs in higher priority than ksoftirq and rcu{c,b}", func() {
 			for _, node := range workerRTNodes {
-				stalld_pid, err := nodes.ExecCommandOnNode(context.TODO(), []string{"pidof", "stalld"}, &node)
+				stalld_pid, err := nodes.ExecCommandToString(context.TODO(), []string{"pidof", "stalld"}, &node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(stalld_pid).ToNot(BeEmpty())
-				sched_tasks, err := nodes.ExecCommandOnNode(context.TODO(), []string{"chrt", "-ap", stalld_pid}, &node)
+				sched_tasks, err := nodes.ExecCommandToString(context.TODO(), []string{"chrt", "-ap", stalld_pid}, &node)
 				Expect(err).ToNot(HaveOccurred())
 				re := regexp.MustCompile("scheduling priority: ([0-9]+)")
 				match := re.FindStringSubmatch(sched_tasks)
 				stalld_prio, err := strconv.Atoi(match[1])
 				Expect(err).ToNot(HaveOccurred())
 
-				ksoftirq_pid, err := nodes.ExecCommandOnNode(context.TODO(), []string{"pgrep", "-f", "ksoftirqd", "-n"}, &node)
+				ksoftirq_pid, err := nodes.ExecCommandToString(context.TODO(), []string{"pgrep", "-f", "ksoftirqd", "-n"}, &node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(ksoftirq_pid).ToNot(BeEmpty())
-				sched_tasks, err = nodes.ExecCommandOnNode(context.TODO(), []string{"chrt", "-ap", ksoftirq_pid}, &node)
+				sched_tasks, err = nodes.ExecCommandToString(context.TODO(), []string{"chrt", "-ap", ksoftirq_pid}, &node)
 				Expect(err).ToNot(HaveOccurred())
 				match = re.FindStringSubmatch(sched_tasks)
 				ksoftirq_prio, err := strconv.Atoi(match[1])
@@ -263,10 +263,10 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				}
 				//rcuc/n : kthreads that are pinned to CPUs & are responsible to execute the callbacks of rcu threads .
 				//rcub/n : are boosting kthreads ,responsible to monitor per-cpu arrays of lists of tasks that were blocked while in an rcu read-side critical sections.
-				rcu_pid, err := nodes.ExecCommandOnNode(context.TODO(), []string{"pgrep", "-f", "rcu[c,b]", "-n"}, &node)
+				rcu_pid, err := nodes.ExecCommandToString(context.TODO(), []string{"pgrep", "-f", "rcu[c,b]", "-n"}, &node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(rcu_pid).ToNot(BeEmpty())
-				sched_tasks, err = nodes.ExecCommandOnNode(context.TODO(), []string{"chrt", "-ap", rcu_pid}, &node)
+				sched_tasks, err = nodes.ExecCommandToString(context.TODO(), []string{"chrt", "-ap", rcu_pid}, &node)
 				Expect(err).ToNot(HaveOccurred())
 				match = re.FindStringSubmatch(sched_tasks)
 				rcu_prio, err := strconv.Atoi(match[1])
@@ -283,7 +283,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		It("[test_id:28611][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Should set additional kernel arguments on the machine", func() {
 			if profile.Spec.AdditionalKernelArgs != nil {
 				for _, node := range workerRTNodes {
-					cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"cat", "/proc/cmdline"})
+					cmdline, err := nodes.ExecCommand(context.TODO(), &node, []string{"cat", "/proc/cmdline"})
 					Expect(err).ToNot(HaveOccurred())
 					for _, arg := range profile.Spec.AdditionalKernelArgs {
 						Expect(string(cmdline)).To(ContainSubstring(arg))
@@ -307,7 +307,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				}
 				// Getting the list of processes that are running on the root cgroup, filtering out the kernel threads (are presented in [square brackets]).
 				command := fmt.Sprintf("cat %s | xargs ps -o cmd | grep -v \"\\[\"", rootCgroupPath)
-				output, err := nodes.ExecCommandOnNode(context.TODO(), []string{"/bin/bash", "-c", command}, &node)
+				output, err := nodes.ExecCommandToString(context.TODO(), []string{"/bin/bash", "-c", command}, &node)
 				Expect(err).ToNot(HaveOccurred())
 				cmds := strings.Split(output, "\n")
 				processesFound = append(processesFound, cmds[1:]...)
@@ -370,7 +370,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				for _, vethinterface := range vethInterfaces {
 					devicePath := fmt.Sprintf("%s/%s", "/rootfs/sys/devices/virtual/net", vethinterface)
 					getRPSMaskCmd := []string{"find", devicePath, "-type", "f", "-name", "rps_cpus", "-exec", "cat", "{}", ";"}
-					devsRPS, err := nodes.ExecCommandOnNode(context.TODO(), getRPSMaskCmd, &node)
+					devsRPS, err := nodes.ExecCommandToString(context.TODO(), getRPSMaskCmd, &node)
 					Expect(err).ToNot(HaveOccurred())
 					for _, devRPS := range strings.Split(devsRPS, "\n") {
 						rpsCPUs, err := components.CPUMaskToCPUSet(devRPS)
@@ -410,7 +410,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			for _, node := range workerRTNodes {
 				By("verify the systemd RPS service uses the correct RPS mask")
 				cmd := []string{"sysctl", "-n", "net.core.rps_default_mask"}
-				rpsMaskContent, err := nodes.ExecCommandOnNode(context.TODO(), cmd, &node)
+				rpsMaskContent, err := nodes.ExecCommandToString(context.TODO(), cmd, &node)
 				Expect(err).ToNot(HaveOccurred(), "failed to exec command %q on node %q", cmd, node)
 				rpsMaskContent = strings.TrimSuffix(rpsMaskContent, "\n")
 				rpsCPUs, err := components.CPUMaskToCPUSet(rpsMaskContent)
@@ -427,7 +427,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					"-printf", "%p ",
 					"-exec", "cat", "{}", ";",
 				}
-				devsRPSContent, err := nodes.ExecCommandOnNode(context.TODO(), cmd, &node)
+				devsRPSContent, err := nodes.ExecCommandToString(context.TODO(), cmd, &node)
 				Expect(err).ToNot(HaveOccurred(), "failed to exec command %q on node %q", cmd, node.Name)
 				devsRPSMap := makeDevRPSMap(devsRPSContent)
 				for path, mask := range devsRPSMap {
@@ -446,7 +446,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					"-printf", "%p ",
 					"-exec", "cat", "{}", ";",
 				}
-				devsRPSContent, err = nodes.ExecCommandOnNode(context.TODO(), cmd, &node)
+				devsRPSContent, err = nodes.ExecCommandToString(context.TODO(), cmd, &node)
 				Expect(err).ToNot(HaveOccurred(), "failed to exec command %q on node %q", cmd, node.Name)
 
 				devsRPSMap = makeDevRPSMap(devsRPSContent)
@@ -463,7 +463,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				for _, node := range workerRTNodes {
 					// Verify the systemd RPS services were not created
 					cmd := []string{"ls", "/rootfs/etc/systemd/system/update-rps@.service"}
-					_, err := nodes.ExecCommandOnNode(context.TODO(), cmd, &node)
+					_, err := nodes.ExecCommandToString(context.TODO(), cmd, &node)
 					Expect(err).To(HaveOccurred())
 				}
 			}
@@ -1035,7 +1035,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 
 	It("[test_id:54083] Should have kernel param rcutree.kthread", func() {
 		for _, node := range workerRTNodes {
-			cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"cat", "/proc/cmdline"})
+			cmdline, err := nodes.ExecCommand(context.TODO(), &node, []string{"cat", "/proc/cmdline"})
 			Expect(err).ToNot(HaveOccurred(), "Failed to read /proc/cmdline")
 			Expect(string(cmdline)).To(ContainSubstring("rcutree.kthread_prio=11"), "Boot Parameters should contain rctree.kthread_prio=11")
 		}
@@ -1325,7 +1325,7 @@ func execSysctlOnWorkers(ctx context.Context, workerNodes []corev1.Node, sysctlM
 	for _, node := range workerNodes {
 		for param, expected := range sysctlMap {
 			By(fmt.Sprintf("executing the command \"sysctl -n %s\"", param))
-			out, err = nodes.ExecCommandOnMachineConfigDaemon(ctx, &node, []string{"sysctl", "-n", param})
+			out, err = nodes.ExecCommand(ctx, &node, []string{"sysctl", "-n", param})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(strings.TrimSpace(string(out))).Should(Equal(expected), "parameter %s value is not %s.", param, expected)
 		}
@@ -1340,7 +1340,7 @@ func checkSchedKnobs(ctx context.Context, workerNodes []corev1.Node, schedKnobs 
 		for param, expected := range schedKnobs {
 			By(fmt.Sprintf("Checking scheduler knob %s", param))
 			knob := fmt.Sprintf("/rootfs/sys/kernel/debug/sched/%s", param)
-			out, err = nodes.ExecCommandOnMachineConfigDaemon(ctx, &node, []string{"cat", knob})
+			out, err = nodes.ExecCommand(ctx, &node, []string{"cat", knob})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(strings.TrimSpace(string(out))).Should(Equal(expected), "parameter %s value is not %s.", param, expected)
 		}

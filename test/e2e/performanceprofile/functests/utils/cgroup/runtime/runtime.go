@@ -32,7 +32,7 @@ func GetContainerRuntimeTypeFor(ctx context.Context, c client.Client, pod *corev
 		"-c",
 		fmt.Sprintf("/bin/awk -F '\"'  '/runtime_path.*/ { print $2 }' %s", CRIORuntimeConfigFile),
 	}
-	out, err := nodes.ExecCommandOnNode(ctx, cmd, node)
+	out, err := nodes.ExecCommandToString(ctx, cmd, node)
 	if err != nil {
 		return "", fmt.Errorf("failed to execute command on node; cmd=%q node=%q err=%v", cmd, node.Name, err)
 	}
