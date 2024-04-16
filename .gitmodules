@@ -1,0 +1,3 @@
+[submodule "assets/tuned/tuned"]
+	path = assets/tuned/tuned
+	url = https://github.com/redhat-performance/tuned.git

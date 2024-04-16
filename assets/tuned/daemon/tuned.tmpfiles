@@ -1,2 +1,0 @@
-# tuned runtime directory
-d /run/tuned 0755 root root -

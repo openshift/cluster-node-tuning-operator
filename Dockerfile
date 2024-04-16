@@ -1,6 +1,7 @@
 FROM registry.ci.openshift.org/openshift/release:golang-1.20 AS builder
 WORKDIR /go/src/github.com/openshift/cluster-node-tuning-operator
 COPY . .
+RUN make update-tuned-submodule
 RUN make build
 
 FROM quay.io/centos/centos:stream9 as tuned
@@ -10,7 +11,7 @@ RUN INSTALL_PKGS=" \
       gcc git rpm-build make desktop-file-utils patch dnf-plugins-core \
       " && \
     dnf install --setopt=tsflags=nodocs -y $INSTALL_PKGS && \
-    cd assets/tuned/daemon && \
+    cd assets/tuned/tuned && \
     LC_COLLATE=C cat ../patches/*.diff | patch -Np1 && \
     dnf build-dep tuned.spec -y && \
     make rpm PYTHON=/usr/bin/python3 && \
