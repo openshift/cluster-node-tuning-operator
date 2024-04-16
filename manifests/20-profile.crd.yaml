@@ -74,6 +74,25 @@ spec:
                 required:
                 - tunedProfile
                 type: object
+              profile:
+                description: Tuned profiles.
+                items:
+                  description: A Tuned profile.
+                  properties:
+                    data:
+                      description: Specification of the Tuned profile to be consumed
+                        by the Tuned daemon.
+                      type: string
+                    name:
+                      description: Name of the Tuned profile to be used in the recommend
+                        section.
+                      minLength: 1
+                      type: string
+                  required:
+                  - data
+                  - name
+                  type: object
+                type: array
             required:
             - config
             type: object

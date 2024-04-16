@@ -101,7 +101,7 @@ func (c *Controller) syncHostedClusterTuneds() error {
 	}
 	// Anything left in hcMap should be deleted
 	for tunedName := range hcTunedMap {
-		if tunedName != tunedv1.TunedDefaultResourceName && tunedName != tunedv1.TunedRenderedResourceName {
+		if tunedName != tunedv1.TunedDefaultResourceName {
 			klog.V(1).Infof("deleting stale Tuned %s in hosted cluster", tunedName)
 			err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.WatchNamespace()).Delete(context.TODO(), tunedName, metav1.DeleteOptions{})
 			if err != nil {

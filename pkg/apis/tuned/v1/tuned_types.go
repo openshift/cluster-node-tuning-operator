@@ -153,6 +153,9 @@ type Profile struct {
 
 type ProfileSpec struct {
 	Config ProfileConfig `json:"config"`
+	// Tuned profiles.
+	// +optional
+	Profile []TunedProfile `json:"profile"`
 }
 
 type ProfileConfig struct {
