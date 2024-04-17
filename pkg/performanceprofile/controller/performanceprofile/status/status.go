@@ -32,6 +32,13 @@ const (
 	ConditionFailedGettingTunedProfileStatus = "GettingTunedStatusFailed"
 )
 
+type Writer interface {
+	// Update updates the status reported by the controller
+	Update(ctx context.Context, object client.Object, conditions []conditionsv1.Condition) error
+	// UpdateOwnedConditions updates the conditions of the components owned by the controller
+	UpdateOwnedConditions(ctx context.Context, object client.Object) error
+}
+
 func Update(ctx context.Context, client client.Client, profile *performancev2.PerformanceProfile, conditions []conditionsv1.Condition) error {
 	profileCopy := profile.DeepCopy()
 
