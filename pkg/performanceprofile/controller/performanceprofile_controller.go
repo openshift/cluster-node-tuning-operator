@@ -436,11 +436,6 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return reconcile.Result{}, nil
 	}
 
-	// remove components with the old name after the upgrade
-	if err := r.deleteDeprecatedComponents(instance); err != nil {
-		return ctrl.Result{}, err
-	}
-
 	pinningMode, err := r.getInfraPartitioningMode()
 	if err != nil {
 		return ctrl.Result{}, err
@@ -535,12 +530,6 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	return ctrl.Result{}, nil
-}
-
-func (r *PerformanceProfileReconciler) deleteDeprecatedComponents(instance *performancev2.PerformanceProfile) error {
-	// remove the machine config with the deprecated name
-	name := components.GetComponentName(instance.Name, components.ComponentNamePrefix)
-	return r.deleteMachineConfig(name)
 }
 
 func (r *PerformanceProfileReconciler) updateDegradedCondition(instance *performancev2.PerformanceProfile, conditionState string, conditionError error) (ctrl.Result, error) {
