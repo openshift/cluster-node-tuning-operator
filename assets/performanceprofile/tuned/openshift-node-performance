@@ -1,6 +1,12 @@
 [main]
 summary=Openshift node optimized for deterministic performance at the cost of increased power consumption, focused on low latency network performance. Based on Tuned 2.11 and Cluster node tuning (oc 4.5)
-include=openshift-node,cpu-partitioning
+
+# In case real time kernel is enabled the following include section will be evaluated as:
+# include=openshift-node,cpu-partitioning,openshift-node-performance-rt-<PerformanceProfile name>
+# Otherwise:
+# include=openshift-node,cpu-partitioning
+include=openshift-node,cpu-partitioning${f:regex_search_ternary:${f:exec:uname:-r}:rt:,openshift-node-performance-rt-{{.PerformanceProfileName}}:}
+
 
 # Inheritance of base profiles legend:
 # cpu-partitioning -> network-latency -> latency-performance
@@ -79,10 +85,6 @@ vm.stat_interval=10
 #> scheduled timers when starting a guaranteed workload (= 1)
 kernel.timer_migration=1
 #> network-latency
-# TODO once rhbz#2120328 is solved: kernel.numa_balancing, net.core.busy_read and net.core.busy_poll do not exist on RT kernels
-kernel.numa_balancing=0
-net.core.busy_read=50
-net.core.busy_poll=50
 net.ipv4.tcp_fastopen=3
 
 # If a workload mostly uses anonymous memory and it hits this limit, the entire
