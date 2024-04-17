@@ -637,26 +637,23 @@ func TunedProfiles(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedProfile {
 	m := map[string]tunedv1.TunedProfile{}
 
 	for _, tuned := range tunedSlice {
-		if tuned.Spec.Profile != nil {
-			for _, v := range tuned.Spec.Profile {
-				if v.Name != nil && v.Data != nil {
-					if existingProfile, found := m[*v.Name]; found {
-						if *v.Data == *existingProfile.Data {
-							klog.Infof("duplicate profiles names %s but they have the same contents", *v.Name)
-						} else {
-							klog.Errorf("ERROR: duplicate profiles named %s with different contents found in Tuned CR %q", *v.Name, tuned.Name)
-						}
+		if tuned.Spec.Profile == nil {
+			continue
+		}
+		for _, v := range tuned.Spec.Profile {
+			if v.Name != nil && v.Data != nil {
+				if existingProfile, found := m[*v.Name]; found {
+					if *v.Data == *existingProfile.Data {
+						klog.Infof("duplicate profiles names %s but they have the same contents", *v.Name)
+					} else {
+						klog.Errorf("ERROR: duplicate profiles named %s with different contents found in Tuned CR %q", *v.Name, tuned.Name)
 					}
-					m[*v.Name] = v
 				}
+				m[*v.Name] = v
 			}
 		}
 	}
 	for _, tunedProfile := range m {
-		if tunedProfile.Name == nil {
-			// This should never happen (openAPIV3Schema validation); ignore invalid profiles
-			continue
-		}
 		tunedProfiles = append(tunedProfiles, tunedProfile)
 	}
 
