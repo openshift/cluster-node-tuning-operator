@@ -641,16 +641,17 @@ func TunedProfiles(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedProfile {
 			continue
 		}
 		for _, v := range tuned.Spec.Profile {
-			if v.Name != nil && v.Data != nil {
-				if existingProfile, found := m[*v.Name]; found {
-					if *v.Data == *existingProfile.Data {
-						klog.Infof("duplicate profiles names %s but they have the same contents", *v.Name)
-					} else {
-						klog.Errorf("ERROR: duplicate profiles named %s with different contents found in Tuned CR %q", *v.Name, tuned.Name)
-					}
-				}
-				m[*v.Name] = v
+			if v.Name == nil || v.Data == nil {
+				continue
 			}
+			if existingProfile, found := m[*v.Name]; found {
+				if *v.Data == *existingProfile.Data {
+					klog.Infof("duplicate profiles names %s but they have the same contents", *v.Name)
+				} else {
+					klog.Errorf("ERROR: duplicate profiles named %s with different contents found in Tuned CR %q", *v.Name, tuned.Name)
+				}
+			}
+			m[*v.Name] = v
 		}
 	}
 	for _, tunedProfile := range m {
