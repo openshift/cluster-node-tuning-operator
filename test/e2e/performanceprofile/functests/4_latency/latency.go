@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -161,17 +162,9 @@ var _ = Describe("[performance] Latency Test", Ordered, func() {
 			if maximumLatency == -1 {
 				Skip("no maximum latency value provided, skip buckets latency check")
 			}
-
 			latencies := extractLatencyValues(`Maximum:\t*([\s\d]*)\(us\)`, latencyTestPod)
-			latenciesList := strings.Split(latencies, " ")
-			for _, lat := range latenciesList {
-				if lat == "" {
-					continue
-				}
-				curr, err := strconv.Atoi(lat)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(curr < maximumLatency).To(BeTrue(), "The current latency %d is bigger than the expected one %d", curr, maximumLatency)
-			}
+			maxLatencyMeasured := slices.Max(latencies)
+			Expect(maxLatencyMeasured < maximumLatency).To(BeTrue(), "The maximum latency measured %d is bigger than the expected one %d", maxLatencyMeasured, maximumLatency)
 		})
 	})
 
@@ -205,15 +198,9 @@ var _ = Describe("[performance] Latency Test", Ordered, func() {
 				Skip("no maximum latency value provided, skip buckets latency check")
 			}
 			latencies := extractLatencyValues(`# Max Latencies:\t*\s*(.*)\s*\t*`, latencyTestPod)
-			for _, lat := range strings.Split(latencies, " ") {
-				if lat == "" {
-					continue
-				}
+			maxLatencyMeasured := slices.Max(latencies)
+			Expect(maxLatencyMeasured < maximumLatency).To(BeTrue(), "The maximum latency measured %d is bigger than the expected one %d", maxLatencyMeasured, maximumLatency)
 
-				curr, err := strconv.Atoi(lat)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(curr < maximumLatency).To(BeTrue(), "The current latency %d is bigger than the expected one %d", curr, maximumLatency)
-			}
 		})
 	})
 
@@ -463,17 +450,28 @@ func createLatencyTestPod(testPod *corev1.Pod) {
 	Expect(err).ToNot(HaveOccurred(), "pod %q did not reach %q phase; error: %v", podKey, corev1.PodSucceeded, err)
 }
 
-func extractLatencyValues(exp string, pod *corev1.Pod) string {
+func extractLatencyValues(exp string, pod *corev1.Pod) []int {
+	GinkgoHelper()
+
 	out, err := pods.GetLogs(testclient.K8sClient, pod)
 	Expect(err).ToNot(HaveOccurred())
 
 	maximumRegex, err := regexp.Compile(exp)
 	Expect(err).ToNot(HaveOccurred())
 
-	latencies := maximumRegex.FindStringSubmatch(out)
-	Expect(len(latencies)).To(Equal(2))
+	output := maximumRegex.FindStringSubmatch(out)
+	Expect(len(output)).To(Equal(2))
 
-	return latencies[1]
+	var latencies []int
+	for _, lat := range strings.Split(output[1], " ") {
+		if lat == "" {
+			continue
+		}
+		curr, err := strconv.Atoi(lat)
+		Expect(err).ToNot(HaveOccurred())
+		latencies = append(latencies, curr)
+	}
+	return latencies
 }
 
 func isEqual(qty *resource.Quantity, amount int) bool {
