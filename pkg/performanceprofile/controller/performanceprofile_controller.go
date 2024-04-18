@@ -353,7 +353,7 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return reconcile.Result{}, err
 	}
 
-	if instance.DeletionTimestamp != nil {
+	if instance.GetDeletionTimestamp() != nil {
 		// delete components
 		if err := r.ComponentsHandler.Delete(ctx, instance.GetName()); err != nil {
 			klog.Errorf("failed to delete components: %v", err)
@@ -372,14 +372,13 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 			if err := r.Update(ctx, instance); err != nil {
 				return reconcile.Result{}, err
 			}
-
 			return reconcile.Result{}, nil
 		}
 	}
 
 	// add finalizer
 	if !hasFinalizer(instance, finalizer) {
-		instance.Finalizers = append(instance.Finalizers, finalizer)
+		instance.SetFinalizers(append(instance.GetFinalizers(), finalizer))
 		instance.Status.Conditions = status.GetProgressingConditions("DeploymentStarting", "Deployment is starting")
 		if err := r.Update(ctx, instance); err != nil {
 			return reconcile.Result{}, err
@@ -435,8 +434,8 @@ func (r *PerformanceProfileReconciler) isMixedCPUsEnabled(profile *performancev2
 	return profileutil.IsMixedCPUsEnabled(profile)
 }
 
-func hasFinalizer(profile *performancev2.PerformanceProfile, finalizer string) bool {
-	for _, f := range profile.Finalizers {
+func hasFinalizer(obj client.Object, finalizer string) bool {
+	for _, f := range obj.GetFinalizers() {
 		if f == finalizer {
 			return true
 		}
@@ -472,15 +471,15 @@ func (r *PerformanceProfileReconciler) getAndValidateMCP(ctx context.Context, in
 	return profileMCP, nil, nil
 }
 
-func removeFinalizer(profile *performancev2.PerformanceProfile, finalizer string) {
+func removeFinalizer(obj client.Object, finalizer string) {
 	var finalizers []string
-	for _, f := range profile.Finalizers {
+	for _, f := range obj.GetFinalizers() {
 		if f == finalizer {
 			continue
 		}
 		finalizers = append(finalizers, f)
 	}
-	profile.Finalizers = finalizers
+	obj.SetFinalizers(finalizers)
 }
 
 func namespacedName(obj metav1.Object) types.NamespacedName {
