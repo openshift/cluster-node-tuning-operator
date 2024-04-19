@@ -22,6 +22,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/runtimeclass"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/tuned"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/status"
 	testutils "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/utils/testing"
 	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
@@ -90,7 +91,7 @@ var _ = Describe("Controller", func() {
 			Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
 			key := types.NamespacedName{
-				Name:      machineconfig.GetMachineConfigName(profile),
+				Name:      machineconfig.GetMachineConfigName(profile.Name),
 				Namespace: metav1.NamespaceNone,
 			}
 
@@ -203,7 +204,7 @@ var _ = Describe("Controller", func() {
 			degradedCondition := conditionsv1.FindStatusCondition(updatedProfile.Status.Conditions, conditionsv1.ConditionDegraded)
 			Expect(degradedCondition.Status).To(Equal(corev1.ConditionTrue))
 			Expect(degradedCondition.Message).To(Equal("Test failure condition"))
-			Expect(degradedCondition.Reason).To(Equal(conditionKubeletFailed))
+			Expect(degradedCondition.Reason).To(Equal(status.ConditionKubeletFailed))
 		})
 
 		It("should not promote old failure condition", func() {
@@ -380,7 +381,7 @@ var _ = Describe("Controller", func() {
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
 				key := types.NamespacedName{
-					Name:      machineconfig.GetMachineConfigName(profile),
+					Name:      machineconfig.GetMachineConfigName(profile.Name),
 					Namespace: metav1.NamespaceNone,
 				}
 
@@ -532,7 +533,7 @@ var _ = Describe("Controller", func() {
 
 				By("Verifying MC update")
 				key = types.NamespacedName{
-					Name:      machineconfig.GetMachineConfigName(profile),
+					Name:      machineconfig.GetMachineConfigName(profile.Name),
 					Namespace: metav1.NamespaceNone,
 				}
 				mc := &mcov1.MachineConfig{}
@@ -660,7 +661,7 @@ var _ = Describe("Controller", func() {
 				degradedCondition := conditionsv1.FindStatusCondition(updatedProfile.Status.Conditions, conditionsv1.ConditionDegraded)
 				Expect(degradedCondition).ToNot(BeNil())
 				Expect(degradedCondition.Status).To(Equal(corev1.ConditionTrue))
-				Expect(degradedCondition.Reason).To(Equal(conditionReasonMCPDegraded))
+				Expect(degradedCondition.Reason).To(Equal(status.ConditionReasonMCPDegraded))
 				Expect(degradedCondition.Message).To(ContainSubstring(mcpMessage))
 			})
 
@@ -726,7 +727,7 @@ var _ = Describe("Controller", func() {
 				degradedCondition := conditionsv1.FindStatusCondition(updatedProfile.Status.Conditions, conditionsv1.ConditionDegraded)
 				Expect(degradedCondition).ToNot(BeNil())
 				Expect(degradedCondition.Status).To(Equal(corev1.ConditionTrue))
-				Expect(degradedCondition.Reason).To(Equal(conditionReasonTunedDegraded))
+				Expect(degradedCondition.Reason).To(Equal(status.ConditionReasonTunedDegraded))
 				Expect(degradedCondition.Message).To(ContainSubstring(tunedMessage))
 			})
 		})
@@ -753,7 +754,7 @@ var _ = Describe("Controller", func() {
 				degradedCondition := conditionsv1.FindStatusCondition(updatedProfile.Status.Conditions, conditionsv1.ConditionDegraded)
 				Expect(degradedCondition).ToNot(BeNil())
 				Expect(degradedCondition.Status).To(Equal(corev1.ConditionTrue))
-				Expect(degradedCondition.Reason).To(Equal(conditionBadMachineConfigLabels))
+				Expect(degradedCondition.Reason).To(Equal(status.ConditionBadMachineConfigLabels))
 				Expect(degradedCondition.Message).To(ContainSubstring("provided via profile.spec.machineConfigLabel do not match the MachineConfigPool"))
 			})
 		})
@@ -781,7 +782,7 @@ var _ = Describe("Controller", func() {
 				degradedCondition := conditionsv1.FindStatusCondition(updatedProfile.Status.Conditions, conditionsv1.ConditionDegraded)
 				Expect(degradedCondition).ToNot(BeNil())
 				Expect(degradedCondition.Status).To(Equal(corev1.ConditionTrue))
-				Expect(degradedCondition.Reason).To(Equal(conditionBadMachineConfigLabels))
+				Expect(degradedCondition.Reason).To(Equal(status.ConditionBadMachineConfigLabels))
 				Expect(degradedCondition.Message).To(ContainSubstring("generated from the profile.spec.nodeSelector"))
 			})
 		})
@@ -886,7 +887,7 @@ var _ = Describe("Controller", func() {
 
 			By("Verifying MC update")
 			key := types.NamespacedName{
-				Name:      machineconfig.GetMachineConfigName(profile),
+				Name:      machineconfig.GetMachineConfigName(profile.Name),
 				Namespace: metav1.NamespaceNone,
 			}
 			mc = &mcov1.MachineConfig{}
@@ -1002,7 +1003,7 @@ var _ = Describe("Controller", func() {
 
 			By("Verifying MC update")
 			key := types.NamespacedName{
-				Name:      machineconfig.GetMachineConfigName(profile),
+				Name:      machineconfig.GetMachineConfigName(profile.Name),
 				Namespace: metav1.NamespaceNone,
 			}
 			mc = &mcov1.MachineConfig{}
@@ -1048,7 +1049,7 @@ var _ = Describe("Controller", func() {
 
 			By("Verifying MC update")
 			key := types.NamespacedName{
-				Name:      machineconfig.GetMachineConfigName(profile),
+				Name:      machineconfig.GetMachineConfigName(profile.Name),
 				Namespace: metav1.NamespaceNone,
 			}
 			mc = &mcov1.MachineConfig{}

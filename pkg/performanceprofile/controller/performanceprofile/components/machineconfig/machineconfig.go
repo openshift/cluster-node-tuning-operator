@@ -119,7 +119,7 @@ const (
 
 // New returns new machine configuration object for performance sensitive workloads
 func New(profile *performancev2.PerformanceProfile, opts *components.MachineConfigOptions) (*machineconfigv1.MachineConfig, error) {
-	name := GetMachineConfigName(profile)
+	name := GetMachineConfigName(profile.Name)
 	mc := &machineconfigv1.MachineConfig{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: machineconfigv1.GroupVersion.String(),
@@ -157,8 +157,8 @@ func New(profile *performancev2.PerformanceProfile, opts *components.MachineConf
 }
 
 // GetMachineConfigName generates machine config name from the performance profile
-func GetMachineConfigName(profile *performancev2.PerformanceProfile) string {
-	name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+func GetMachineConfigName(profileName string) string {
+	name := components.GetComponentName(profileName, components.ComponentNamePrefix)
 	return fmt.Sprintf("50-%s", name)
 }
 

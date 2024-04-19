@@ -34,6 +34,9 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/status"
+
 	operatorv1helpers "github.com/openshift/library-go/pkg/operator/v1helpers"
 
 	corev1 "k8s.io/api/core/v1"
@@ -279,22 +282,22 @@ func (r *PerformanceProfileReconciler) ctrRuntimeConfToPerformanceProfile(ctx co
 	return allRequests
 }
 
-func (r *PerformanceProfileReconciler) getInfraPartitioningMode() (pinning apiconfigv1.CPUPartitioningMode, err error) {
+func getInfraPartitioningMode(ctx context.Context, client client.Client) (pinning apiconfigv1.CPUPartitioningMode, err error) {
 	key := types.NamespacedName{
 		Name: "cluster",
 	}
 	infra := &apiconfigv1.Infrastructure{}
 
-	if err = r.Client.Get(context.Background(), key, infra); err != nil {
+	if err = client.Get(ctx, key, infra); err != nil {
 		return
 	}
 
 	return infra.Status.CPUPartitioning, nil
 }
 
-func (r *PerformanceProfileReconciler) getContainerRuntimeName(ctx context.Context, profile *performancev2.PerformanceProfile) (mcov1.ContainerRuntimeDefaultRuntime, error) {
+func getContainerRuntimeName(ctx context.Context, client client.Client, mcpLabels map[string]string, profileName string) (mcov1.ContainerRuntimeDefaultRuntime, error) {
 	ctrcfgList := &mcov1.ContainerRuntimeConfigList{}
-	if err := r.List(ctx, ctrcfgList); err != nil {
+	if err := client.List(ctx, ctrcfgList); err != nil {
 		return "", err
 	}
 
@@ -302,34 +305,29 @@ func (r *PerformanceProfileReconciler) getContainerRuntimeName(ctx context.Conte
 		return mcov1.ContainerRuntimeDefaultRuntimeRunc, nil
 	}
 
-	mcp, err := r.getMachineConfigPoolByProfile(ctx, profile)
-	if err != nil {
-		return "", err
-	}
-
 	var ctrcfgs []*mcov1.ContainerRuntimeConfig
-	mcpLabels := labels.Set(mcp.Labels)
+	mcpSetLabels := labels.Set(mcpLabels)
 	for i := 0; i < len(ctrcfgList.Items); i++ {
 		ctrcfg := &ctrcfgList.Items[i]
 		ctrcfgSelector, err := metav1.LabelSelectorAsSelector(ctrcfg.Spec.MachineConfigPoolSelector)
 		if err != nil {
 			return "", err
 		}
-		if ctrcfgSelector.Matches(mcpLabels) {
+		if ctrcfgSelector.Matches(mcpSetLabels) {
 			ctrcfgs = append(ctrcfgs, ctrcfg)
 		}
 	}
 
 	if len(ctrcfgs) == 0 {
-		klog.Infof("no ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q; using default container runtime", mcpLabels.String(), profile.Name)
+		klog.Infof("no ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q; using default container runtime", mcpSetLabels.String(), profileName)
 		return mcov1.ContainerRuntimeDefaultRuntimeRunc, nil
 	}
 
 	if len(ctrcfgs) > 1 {
-		return "", fmt.Errorf("more than one ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q", mcpLabels.String(), profile.Name)
+		return "", fmt.Errorf("more than one ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q", mcpSetLabels.String(), profileName)
 	}
 
-	condition := getLatestContainerRuntimeConfigCondition(ctrcfgs[0].Status.Conditions)
+	condition := status.GetLatestContainerRuntimeConfigCondition(ctrcfgs[0].Status.Conditions)
 	if condition == nil {
 		return "", fmt.Errorf("ContainerRuntimeConfig: %q no conditions reported (yet)", ctrcfgs[0].Name)
 	}
@@ -371,7 +369,7 @@ func validateUpdateEvent(e *event.UpdateEvent) bool {
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	co, err := r.getClusterOperator()
+	co, err := resources.GetClusterOperator(ctx, r.Client)
 	if err != nil {
 		klog.Errorf("failed to get ClusterOperator: %v", err)
 		return reconcile.Result{}, err
@@ -402,14 +400,14 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	if instance.DeletionTimestamp != nil {
 		// delete components
-		if err := r.deleteComponents(instance); err != nil {
+		if err := r.deleteComponents(instance.GetName()); err != nil {
 			klog.Errorf("failed to delete components: %v", err)
 			r.Recorder.Eventf(instance, corev1.EventTypeWarning, "Deletion failed", "Failed to delete components: %v", err)
 			return reconcile.Result{}, err
 		}
 		r.Recorder.Eventf(instance, corev1.EventTypeNormal, "Deletion succeeded", "Succeeded to delete all components")
 
-		if r.isComponentsExist(instance) {
+		if r.isComponentsExist(instance.GetName()) {
 			return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 
@@ -427,7 +425,7 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// add finalizer
 	if !hasFinalizer(instance, finalizer) {
 		instance.Finalizers = append(instance.Finalizers, finalizer)
-		instance.Status.Conditions = r.getProgressingConditions("DeploymentStarting", "Deployment is starting")
+		instance.Status.Conditions = status.GetProgressingConditions("DeploymentStarting", "Deployment is starting")
 		if err := r.Update(ctx, instance); err != nil {
 			return reconcile.Result{}, err
 		}
@@ -436,32 +434,32 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return reconcile.Result{}, nil
 	}
 
-	pinningMode, err := r.getInfraPartitioningMode()
+	pinningMode, err := getInfraPartitioningMode(ctx, r.Client)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	ctrRuntime, err := r.getContainerRuntimeName(ctx, instance)
+	profileMCP, err := getMachineConfigPoolByProfile(ctx, r.Client, instance)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("could not determine high-performance runtime class container-runtime for profile %q; %w", instance.Name, err)
-	}
-	klog.Infof("using %q as high-performance runtime class container-runtime for profile %q", ctrRuntime, instance.Name)
-
-	profileMCP, err := r.getMachineConfigPoolByProfile(ctx, instance)
-	if err != nil {
-		conditions := r.getDegradedConditions(conditionFailedToFindMachineConfigPool, err.Error())
-		if err := r.updateStatus(instance, conditions); err != nil {
-			klog.Errorf("failed to update performance profile %q status: %v", instance.Name, err)
+		conditions := status.GetDegradedConditions(status.ConditionFailedToFindMachineConfigPool, err.Error())
+		if err := status.Update(ctx, r.Client, instance, conditions); err != nil {
+			klog.Errorf("failed to update performance profile %q status: %v", instance.GetName(), err)
 			return reconcile.Result{}, err
 		}
 
 		return reconcile.Result{}, nil
 	}
 
+	ctrRuntime, err := getContainerRuntimeName(ctx, r.Client, profileMCP.Labels, instance.GetName())
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("could not determine high-performance runtime class container-runtime for profile %q; %w", instance.GetName(), err)
+	}
+	klog.Infof("using %q as high-performance runtime class container-runtime for profile %q", ctrRuntime, instance.GetName())
+
 	if err := validateProfileMachineConfigPool(instance, profileMCP); err != nil {
-		conditions := r.getDegradedConditions(conditionBadMachineConfigLabels, err.Error())
-		if err := r.updateStatus(instance, conditions); err != nil {
-			klog.Errorf("failed to update performance profile %q status: %v", instance.Name, err)
+		conditions := status.GetDegradedConditions(status.ConditionBadMachineConfigLabels, err.Error())
+		if err := status.Update(ctx, r.Client, instance, conditions); err != nil {
+			klog.Errorf("failed to update performance profile %q status: %v", instance.GetName(), err)
 			return reconcile.Result{}, err
 		}
 
@@ -478,45 +476,45 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		},
 	})
 	if err != nil {
-		klog.Errorf("failed to deploy performance profile %q components: %v", instance.Name, err)
+		klog.Errorf("failed to deploy performance profile %q components: %v", instance.GetName(), err)
 		r.Recorder.Eventf(instance, corev1.EventTypeWarning, "Creation failed", "Failed to create all components: %v", err)
-		conditions := r.getDegradedConditions(conditionReasonComponentsCreationFailed, err.Error())
-		if err := r.updateStatus(instance, conditions); err != nil {
-			klog.Errorf("failed to update performance profile %q status: %v", instance.Name, err)
+		conditions := status.GetDegradedConditions(status.ConditionReasonComponentsCreationFailed, err.Error())
+		if err := status.Update(ctx, r.Client, instance, conditions); err != nil {
+			klog.Errorf("failed to update performance profile %q status: %v", instance.GetName(), err)
 			return reconcile.Result{}, err
 		}
 		return reconcile.Result{}, err
 	}
 
 	// get kubelet false condition
-	conditions, err := r.getKubeletConditionsByProfile(instance)
+	conditions, err := status.GetKubeletConditionsByProfile(ctx, r.Client, instance.GetName())
 	if err != nil {
-		return r.updateDegradedCondition(instance, conditionFailedGettingKubeletStatus, err)
+		return r.updateDegradedCondition(instance, status.ConditionFailedGettingKubeletStatus, err)
 	}
 
 	// get MCP degraded conditions
 	if conditions == nil {
-		conditions, err = r.getMCPDegradedCondition(profileMCP)
+		conditions, err = status.GetMCPDegradedCondition(profileMCP)
 		if err != nil {
-			return r.updateDegradedCondition(instance, conditionFailedGettingMCPStatus, err)
+			return r.updateDegradedCondition(instance, status.ConditionFailedGettingMCPStatus, err)
 		}
 	}
 
 	// get tuned profile degraded conditions
 	if conditions == nil {
-		conditions, err = r.getTunedConditionsByProfile(instance)
+		conditions, err = status.GetTunedConditionsByProfile(ctx, r.Client, instance)
 		if err != nil {
-			return r.updateDegradedCondition(instance, conditionFailedGettingTunedProfileStatus, err)
+			return r.updateDegradedCondition(instance, status.ConditionFailedGettingTunedProfileStatus, err)
 		}
 	}
 
 	// if conditions were not added due to machine config pool status change then set as available
 	if conditions == nil {
-		conditions = r.getAvailableConditions("")
+		conditions = status.GetAvailableConditions("")
 	}
 
-	if err := r.updateStatus(instance, conditions); err != nil {
-		klog.Errorf("failed to update performance profile %q status: %v", instance.Name, err)
+	if err := status.Update(ctx, r.Client, instance, conditions); err != nil {
+		klog.Errorf("failed to update performance profile %q status: %v", instance.GetName(), err)
 		// we still want to requeue after some, also in case of error, to avoid chance of multiple reboots
 		if result != nil {
 			return *result, nil
@@ -533,9 +531,9 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 }
 
 func (r *PerformanceProfileReconciler) updateDegradedCondition(instance *performancev2.PerformanceProfile, conditionState string, conditionError error) (ctrl.Result, error) {
-	conditions := r.getDegradedConditions(conditionState, conditionError.Error())
-	if err := r.updateStatus(instance, conditions); err != nil {
-		klog.Errorf("failed to update performance profile %q status: %v", instance.Name, err)
+	conditions := status.GetDegradedConditions(conditionState, conditionError.Error())
+	if err := status.Update(context.TODO(), r.Client, instance, conditions); err != nil {
+		klog.Errorf("failed to update performance profile %q status: %v", instance.GetName(), err)
 		return reconcile.Result{}, err
 	}
 	return reconcile.Result{}, conditionError
@@ -557,25 +555,25 @@ func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.Pe
 	}
 
 	// get mutated machine config
-	mcMutated, err := r.getMutatedMachineConfig(context.TODO(), components.MachineConfig)
+	mcMutated, err := resources.GetMutatedMachineConfig(context.TODO(), r.Client, components.MachineConfig)
 	if err != nil {
 		return nil, err
 	}
 
 	// get mutated kubelet config
-	kcMutated, err := r.getMutatedKubeletConfig(components.KubeletConfig)
+	kcMutated, err := resources.GetMutatedKubeletConfig(context.TODO(), r.Client, components.KubeletConfig)
 	if err != nil {
 		return nil, err
 	}
 
 	// get mutated performance tuned
-	performanceTunedMutated, err := r.getMutatedTuned(components.Tuned)
+	performanceTunedMutated, err := resources.GetMutatedTuned(context.TODO(), r.Client, components.Tuned)
 	if err != nil {
 		return nil, err
 	}
 
 	// get mutated RuntimeClass
-	runtimeClassMutated, err := r.getMutatedRuntimeClass(components.RuntimeClass)
+	runtimeClassMutated, err := resources.GetMutatedRuntimeClass(context.TODO(), r.Client, components.RuntimeClass)
 	if err != nil {
 		return nil, err
 	}
@@ -591,25 +589,25 @@ func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.Pe
 	}
 
 	if mcMutated != nil {
-		if err := r.createOrUpdateMachineConfig(mcMutated); err != nil {
+		if err := resources.CreateOrUpdateMachineConfig(context.TODO(), r.Client, mcMutated); err != nil {
 			return nil, err
 		}
 	}
 
 	if performanceTunedMutated != nil {
-		if err := r.createOrUpdateTuned(performanceTunedMutated, profile.Name); err != nil {
+		if err := resources.CreateOrUpdateTuned(context.TODO(), r.Client, performanceTunedMutated, profile.Name); err != nil {
 			return nil, err
 		}
 	}
 
 	if kcMutated != nil {
-		if err := r.createOrUpdateKubeletConfig(kcMutated); err != nil {
+		if err := resources.CreateOrUpdateKubeletConfig(context.TODO(), r.Client, kcMutated); err != nil {
 			return nil, err
 		}
 	}
 
 	if runtimeClassMutated != nil {
-		if err := r.createOrUpdateRuntimeClass(runtimeClassMutated); err != nil {
+		if err := resources.CreateOrUpdateRuntimeClass(context.TODO(), r.Client, runtimeClassMutated); err != nil {
 			return nil, err
 		}
 	}
@@ -618,47 +616,47 @@ func (r *PerformanceProfileReconciler) applyComponents(profile *performancev2.Pe
 	return &reconcile.Result{}, nil
 }
 
-func (r *PerformanceProfileReconciler) deleteComponents(profile *performancev2.PerformanceProfile) error {
-	tunedName := components.GetComponentName(profile.Name, components.ProfileNamePerformance)
-	if err := r.deleteTuned(tunedName, components.NamespaceNodeTuningOperator); err != nil {
+func (r *PerformanceProfileReconciler) deleteComponents(profileName string) error {
+	tunedName := components.GetComponentName(profileName, components.ProfileNamePerformance)
+	if err := resources.DeleteTuned(context.TODO(), r.Client, tunedName, components.NamespaceNodeTuningOperator); err != nil {
 		return err
 	}
 
-	name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
-	if err := r.deleteKubeletConfig(name); err != nil {
+	name := components.GetComponentName(profileName, components.ComponentNamePrefix)
+	if err := resources.DeleteKubeletConfig(context.TODO(), r.Client, name); err != nil {
 		return err
 	}
 
-	if err := r.deleteRuntimeClass(name); err != nil {
+	if err := resources.DeleteRuntimeClass(context.TODO(), r.Client, name); err != nil {
 		return err
 	}
 
-	if err := r.deleteMachineConfig(machineconfig.GetMachineConfigName(profile)); err != nil {
+	if err := resources.DeleteMachineConfig(context.TODO(), r.Client, machineconfig.GetMachineConfigName(profileName)); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (r *PerformanceProfileReconciler) isComponentsExist(profile *performancev2.PerformanceProfile) bool {
-	tunedName := components.GetComponentName(profile.Name, components.ProfileNamePerformance)
-	if _, err := r.getTuned(tunedName, components.NamespaceNodeTuningOperator); !k8serros.IsNotFound(err) {
+func (r *PerformanceProfileReconciler) isComponentsExist(profileName string) bool {
+	tunedName := components.GetComponentName(profileName, components.ProfileNamePerformance)
+	if _, err := resources.GetTuned(context.TODO(), r.Client, tunedName, components.NamespaceNodeTuningOperator); !k8serros.IsNotFound(err) {
 		klog.Infof("Tuned %q custom resource is still exists under the namespace %q", tunedName, components.NamespaceNodeTuningOperator)
 		return true
 	}
 
-	name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
-	if _, err := r.getKubeletConfig(name); !k8serros.IsNotFound(err) {
+	name := components.GetComponentName(profileName, components.ComponentNamePrefix)
+	if _, err := resources.GetKubeletConfig(context.TODO(), r.Client, name); !k8serros.IsNotFound(err) {
 		klog.Infof("Kubelet Config %q exists under the cluster", name)
 		return true
 	}
 
-	if _, err := r.getRuntimeClass(name); !k8serros.IsNotFound(err) {
+	if _, err := resources.GetRuntimeClass(context.TODO(), r.Client, name); !k8serros.IsNotFound(err) {
 		klog.Infof("Runtime class %q exists under the cluster", name)
 		return true
 	}
 
-	if _, err := r.getMachineConfig(context.TODO(), machineconfig.GetMachineConfigName(profile)); !k8serros.IsNotFound(err) {
+	if _, err := resources.GetMachineConfig(context.TODO(), r.Client, machineconfig.GetMachineConfigName(profileName)); !k8serros.IsNotFound(err) {
 		klog.Infof("Machine Config %q exists under the cluster", name)
 		return true
 	}
@@ -703,11 +701,11 @@ func namespacedName(obj metav1.Object) types.NamespacedName {
 	}
 }
 
-func (r *PerformanceProfileReconciler) getMachineConfigPoolByProfile(ctx context.Context, profile *performancev2.PerformanceProfile) (*mcov1.MachineConfigPool, error) {
+func getMachineConfigPoolByProfile(ctx context.Context, client client.Client, profile *performancev2.PerformanceProfile) (*mcov1.MachineConfigPool, error) {
 	nodeSelector := labels.Set(profile.Spec.NodeSelector)
 
 	mcpList := &mcov1.MachineConfigPoolList{}
-	if err := r.Client.List(ctx, mcpList); err != nil {
+	if err := client.List(ctx, mcpList); err != nil {
 		return nil, err
 	}
 

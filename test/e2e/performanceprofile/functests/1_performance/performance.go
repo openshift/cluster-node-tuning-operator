@@ -588,7 +588,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			Expect(runtimeClass.Handler).Should(Equal(machineconfig.HighPerformanceRuntime))
 
 			machineConfigKey := types.NamespacedName{
-				Name:      machineconfig.GetMachineConfigName(secondProfile),
+				Name:      machineconfig.GetMachineConfigName(secondProfile.Name),
 				Namespace: metav1.NamespaceNone,
 			}
 			machineConfig := &machineconfigv1.MachineConfig{}
@@ -639,7 +639,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("cannot find KubeletConfig object %s", initialKey.Name))
 
 			initialMachineConfigKey := types.NamespacedName{
-				Name:      machineconfig.GetMachineConfigName(profile),
+				Name:      machineconfig.GetMachineConfigName(profile.Name),
 				Namespace: metav1.NamespaceNone,
 			}
 			err = testclient.GetWithRetry(context.TODO(), initialMachineConfigKey, &machineconfigv1.MachineConfig{})
