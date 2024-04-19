@@ -1244,7 +1244,10 @@ func (c *Controller) removeTunedRendered() error {
 
 	_, err = c.listers.TunedResources.Get(tunedv1.TunedRenderedResourceName)
 	if err != nil {
-		if !errors.IsNotFound(err) {
+		if errors.IsNotFound(err) {
+			// Do not create any noise when TunedRenderedResourceName is not found (was already removed).
+			err = nil
+		} else {
 			err = fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
 		}
 	} else {
@@ -1427,7 +1430,8 @@ func (c *Controller) run(ctx context.Context) error {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
-	//
+	// Remove this code in the future.  This is for cleanup during upgrades only.
+	// The rendered resource is no longer used.
 	if err := c.removeTunedRendered(); err != nil {
 		klog.Error(err)
 	}
