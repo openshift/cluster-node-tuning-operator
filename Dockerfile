@@ -36,7 +36,6 @@ RUN INSTALL_PKGS=" \
     dnf install --setopt=tsflags=nodocs -y $INSTALL_PKGS && \
     rpm -V $INSTALL_PKGS && \
     dnf --setopt=tsflags=nodocs -y install /root/rpms/*.rpm && \
-    find /root/rpms -name \*.rpm -exec basename {} .rpm \; | xargs rpm -e --justdb && \
     rm -rf /var/lib/ocp-tuned/{tuned,performanceprofile} && \
     sed -Ei 's|^#?\s*enable_unix_socket\s*=.*$|enable_unix_socket = 1|;s|^#?\s*rollback\s*=.*$|rollback = not_on_exit|' /etc/tuned/tuned-main.conf && \
     touch /etc/sysctl.conf $APP_ROOT/provider && \
