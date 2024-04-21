@@ -144,7 +144,7 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 		When("workloads requests access for shared cpus", func() {
 			It("verify cpu load balancing still works with mixed cpus", func() {
 				rl := &corev1.ResourceList{
-					corev1.ResourceCPU:    resource.MustParse("2"),
+					corev1.ResourceCPU:    resource.MustParse("1"),
 					corev1.ResourceMemory: resource.MustParse("100Mi"),
 					sharedCpusResource:    resource.MustParse("1"),
 				}
