@@ -17,8 +17,7 @@ import (
 )
 
 const (
-	UNKNOWN            = "unknown"
-	disableWarningsEnv = "GHW_DISABLE_WARNINGS"
+	UNKNOWN = "unknown"
 )
 
 type closer interface {
@@ -50,4 +49,37 @@ func SafeIntFromFile(ctx *context.Context, path string) int {
 		return -1
 	}
 	return res
+}
+
+// ConcatStrings concatenate strings in a larger one. This function
+// addresses a very specific ghw use case. For a more general approach,
+// just use strings.Join()
+func ConcatStrings(items ...string) string {
+	return strings.Join(items, "")
+}
+
+// Convert strings to bool using strconv.ParseBool() when recognized, otherwise
+// use map lookup to convert strings like "Yes" "No" "On" "Off" to bool
+// `ethtool` uses on, off, yes, no (upper and lower case) rather than true and
+// false.
+func ParseBool(str string) (bool, error) {
+	if b, err := strconv.ParseBool(str); err == nil {
+		return b, err
+	} else {
+		ExtraBools := map[string]bool{
+			"on":  true,
+			"off": false,
+			"yes": true,
+			"no":  false,
+			// Return false instead of an error on empty strings
+			// For example from empty files in SysClassNet/Device
+			"": false,
+		}
+		if b, ok := ExtraBools[strings.ToLower(str)]; ok {
+			return b, nil
+		} else {
+			// Return strconv.ParseBool's error here
+			return b, err
+		}
+	}
 }

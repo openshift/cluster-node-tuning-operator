@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"strings"
@@ -85,6 +86,7 @@ func (r *KubernetesReporter) Dump(duration time.Duration, dumpSubpath string) {
 	}
 	r.logNodes(dumpSubpath)
 	r.logLogs(since, dumpSubpath)
+	r.logEvents(since, dumpSubpath)
 	r.logPods(dumpSubpath)
 
 	for _, cr := range r.crs {
@@ -177,6 +179,52 @@ func (r *KubernetesReporter) logLogs(since time.Time, dirName string) {
 			}
 		}
 
+	}
+}
+
+func (r *KubernetesReporter) logEvents(since time.Time, dirName string) {
+	f, err := logFileFor(r.reportPath, dirName, "events")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to open events file in [%s]: %v\n", dirName, err)
+		return
+	}
+	defer f.Close()
+
+	allNamespaces, err := r.clients.Namespaces().List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to list namespaces: %v\n", err)
+		return
+	}
+
+	for _, ns := range allNamespaces.Items {
+		if !r.namespaceToLog(ns.Name) {
+			continue
+		}
+
+		r.logEventsInNamespace(since, f, ns.Name)
+	}
+}
+
+func (r *KubernetesReporter) logEventsInNamespace(since time.Time, w io.Writer, namespace string) {
+	fmt.Fprintf(w, "%sDumping events for namespace %s\n", fileSeparator, namespace)
+
+	events, err := r.clients.Events(namespace).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to fetch events in ns[%s]: %v\n", namespace, err)
+		return
+	}
+
+	for _, event := range events.Items {
+		if event.CreationTimestamp.Time.Before(since) {
+			continue
+		}
+
+		j, err := json.MarshalIndent(event, "", "    ")
+		if err != nil {
+			fmt.Fprintf(w, "Failed to marshal event %T\n", event)
+			return
+		}
+		fmt.Fprintln(w, string(j))
 	}
 }
 
