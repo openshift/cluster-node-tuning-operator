@@ -21,7 +21,10 @@ func ExpectedCloneNetContent() []string {
 	}
 
 	filterLink := func(linkDest string) bool {
-		return !strings.Contains(linkDest, "devices/virtual/net")
+		if strings.Contains(linkDest, "devices/virtual/net") {
+			return false
+		}
+		return true
 	}
 
 	return cloneContentByClass("net", ifaceEntries, filterNone, filterLink)

@@ -9,7 +9,7 @@ require (
 	github.com/coreos/ignition/v2 v2.18.0
 	github.com/go-logr/stdr v1.2.2
 	github.com/google/go-cmp v0.6.0
-	github.com/jaypipes/ghw v0.12.0
+	github.com/jaypipes/ghw v0.8.1-0.20210605191321-eb162add542b
 	github.com/kevinburke/go-bindata v3.16.0+incompatible
 	github.com/onsi/ginkgo/v2 v2.17.1
 	github.com/onsi/gomega v1.33.0
@@ -233,7 +233,7 @@ replace (
 // All of the pinned dependencies below are basically issues that should be fixed either in this project or upstream.
 replace (
 	// TODO: ProcessorCore.Index is removed entirely in jaypipes/ghw > v0.11.0; investigate how to fix this.
-	github.com/jaypipes/ghw => github.com/jaypipes/ghw v0.11.0
+	github.com/jaypipes/ghw => github.com/jaypipes/ghw v0.8.1-0.20210605191321-eb162add542b
 	// The following is needed to make "go vet" pass, otherwise it fails on the vendor directory.
 	github.com/prometheus/client_golang => github.com/prometheus/client_golang v1.16.0
 	// TODO: cache.Options{} no longer takes field Namespaces; investigate if it is still needed.

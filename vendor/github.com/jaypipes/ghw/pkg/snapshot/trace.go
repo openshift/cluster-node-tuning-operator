@@ -9,7 +9,9 @@ package snapshot
 var trace func(msg string, args ...interface{})
 
 func init() {
-	trace = func(msg string, args ...interface{}) {}
+	trace = func(msg string, args ...interface{}) {
+		return
+	}
 }
 
 func SetTraceFunction(fn func(msg string, args ...interface{})) {

@@ -7,6 +7,8 @@
 package product
 
 import (
+	"fmt"
+
 	"github.com/jaypipes/ghw/pkg/context"
 	"github.com/jaypipes/ghw/pkg/marshal"
 	"github.com/jaypipes/ghw/pkg/option"
@@ -55,7 +57,8 @@ func (i *Info) String() string {
 		versionStr = " version=" + i.Version
 	}
 
-	return "product" + util.ConcatStrings(
+	res := fmt.Sprintf(
+		"product%s%s%s%s%s%s%s",
 		familyStr,
 		nameStr,
 		vendorStr,
@@ -64,6 +67,7 @@ func (i *Info) String() string {
 		skuStr,
 		versionStr,
 	)
+	return res
 }
 
 // New returns a pointer to a Info struct containing information
