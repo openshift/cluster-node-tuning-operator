@@ -439,7 +439,7 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	profileMCP, err := getMachineConfigPoolByProfile(ctx, r.Client, instance)
+	profileMCP, err := resources.GetMachineConfigPoolByProfile(ctx, r.Client, instance)
 	if err != nil {
 		conditions := status.GetDegradedConditions(status.ConditionFailedToFindMachineConfigPool, err.Error())
 		if err := status.Update(ctx, r.Client, instance, conditions); err != nil {
@@ -699,58 +699,6 @@ func namespacedName(obj metav1.Object) types.NamespacedName {
 		Namespace: obj.GetNamespace(),
 		Name:      obj.GetName(),
 	}
-}
-
-func getMachineConfigPoolByProfile(ctx context.Context, client client.Client, profile *performancev2.PerformanceProfile) (*mcov1.MachineConfigPool, error) {
-	nodeSelector := labels.Set(profile.Spec.NodeSelector)
-
-	mcpList := &mcov1.MachineConfigPoolList{}
-	if err := client.List(ctx, mcpList); err != nil {
-		return nil, err
-	}
-
-	filteredMCPList := filterMCPDuplications(mcpList.Items)
-
-	var profileMCPs []*mcov1.MachineConfigPool
-	for i := range filteredMCPList {
-		mcp := &mcpList.Items[i]
-
-		if mcp.Spec.NodeSelector == nil {
-			continue
-		}
-
-		mcpNodeSelector, err := metav1.LabelSelectorAsSelector(mcp.Spec.NodeSelector)
-		if err != nil {
-			return nil, err
-		}
-
-		if mcpNodeSelector.Matches(nodeSelector) {
-			profileMCPs = append(profileMCPs, mcp)
-		}
-	}
-
-	if len(profileMCPs) == 0 {
-		return nil, fmt.Errorf("failed to find MCP with the node selector that matches labels %q", nodeSelector.String())
-	}
-
-	if len(profileMCPs) > 1 {
-		return nil, fmt.Errorf("more than one MCP found that matches performance profile node selector %q", nodeSelector.String())
-	}
-
-	return profileMCPs[0], nil
-}
-
-func filterMCPDuplications(mcps []mcov1.MachineConfigPool) []mcov1.MachineConfigPool {
-	var filtered []mcov1.MachineConfigPool
-	items := map[string]mcov1.MachineConfigPool{}
-	for _, mcp := range mcps {
-		if _, exists := items[mcp.Name]; !exists {
-			items[mcp.Name] = mcp
-			filtered = append(filtered, mcp)
-		}
-	}
-
-	return filtered
 }
 
 func validateProfileMachineConfigPool(profile *performancev2.PerformanceProfile, profileMCP *mcov1.MachineConfigPool) error {
