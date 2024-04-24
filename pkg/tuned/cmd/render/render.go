@@ -22,7 +22,6 @@ import (
 
 	assets "github.com/openshift/cluster-node-tuning-operator/assets/tuned"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/operator"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/tuned"
 	"sigs.k8s.io/yaml"
@@ -208,9 +207,12 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 		return err
 	}
 
-	t := manifests.TunedRenderedResource(tuneD)
 	//extract all the profiles.
-	_, _, _, err = tunedpkg.ProfilesExtract(t.Spec.Profile, recommendedProfile)
+	tunedProfiles := []tunedv1.TunedProfile{}
+	for _, t := range tuneD {
+		tunedProfiles = append(tunedProfiles, t.Spec.Profile...)
+	}
+	_, _, _, err = tunedpkg.ProfilesExtract(tunedProfiles, recommendedProfile)
 	if err != nil {
 		klog.Errorf("error extracting tuned profiles : %v", err)
 		return fmt.Errorf("error extracting tuned profiles: %w", err)

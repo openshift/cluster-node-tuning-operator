@@ -397,10 +397,11 @@ func (c *Controller) sync(key wqKey) error {
 		}
 	}
 
-	klog.V(2).Infof("sync(): Tuned %s", tunedv1.TunedRenderedResourceName)
-	err = c.syncTunedRendered(cr)
+	klog.V(2).Infof("sync(): enableInformers")
+	// Enable/disable node/pod informers based on existing TuneD CRs.
+	err = c.enableInformers()
 	if err != nil {
-		return fmt.Errorf("failed to sync Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
+		return fmt.Errorf("failed to enable/disable informers: %v", err)
 	}
 
 	if key.name != tunedv1.TunedDefaultResourceName {
@@ -426,11 +427,6 @@ func (c *Controller) sync(key wqKey) error {
 	err = c.enqueueProfileUpdates()
 	if err != nil {
 		return err
-	}
-
-	if key.name == tunedv1.TunedRenderedResourceName {
-		// Do not start unused MachineConfig pruning unnecessarily for the rendered resource
-		return nil
 	}
 
 	// Tuned CR change can also mean some MachineConfigs the operator created are no longer needed;
@@ -514,15 +510,11 @@ func (c *Controller) syncTunedDefault() (*tunedv1.Tuned, error) {
 	return cr, nil
 }
 
-func (c *Controller) syncTunedRendered(tuned *tunedv1.Tuned) error {
+func (c *Controller) enableInformers() error {
 	tunedList, err := c.listers.TunedResources.List(labels.Everything())
 	if err != nil {
 		return fmt.Errorf("failed to list Tuned: %v", err)
 	}
-
-	crMf := ntomf.TunedRenderedResource(tunedList)
-	crMf.ObjectMeta.OwnerReferences = getDefaultTunedRefs(tuned)
-	crMf.Name = tunedv1.TunedRenderedResourceName
 
 	nodeLabelsUsed := c.pc.tunedsUseNodeLabels(tunedList)
 	if err = c.enableNodeInformer(nodeLabelsUsed); err != nil {
@@ -535,35 +527,6 @@ func (c *Controller) syncTunedRendered(tuned *tunedv1.Tuned) error {
 	if err = c.enablePodInformer(podLabelsUsed); err != nil {
 		return fmt.Errorf("failed to enable Pod informer: %v", err)
 	}
-
-	cr, err := c.listers.TunedResources.Get(tunedv1.TunedRenderedResourceName)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			klog.V(2).Infof("syncTunedRendered(): Tuned %s not found, creating one", crMf.Name)
-			_, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.WatchNamespace()).Create(context.TODO(), crMf, metav1.CreateOptions{})
-			if err != nil {
-				return fmt.Errorf("failed to create Tuned %s: %v", crMf.Name, err)
-			}
-			// Tuned created successfully
-			klog.Infof("created Tuned %s", crMf.Name)
-			return nil
-		}
-		return fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
-	}
-
-	if reflect.DeepEqual(crMf.Spec.Profile, cr.Spec.Profile) {
-		klog.V(2).Infof("syncTunedRendered(): Tuned %s doesn't need updating", crMf.Name)
-		return nil
-	}
-	cr = cr.DeepCopy() // never update the objects from cache
-	cr.Spec = crMf.Spec
-
-	klog.V(2).Infof("syncTunedRendered(): updating Tuned %s", cr.Name)
-	_, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.WatchNamespace()).Update(context.TODO(), cr, metav1.UpdateOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to update Tuned %s: %v", cr.Name, err)
-	}
-	klog.Infof("updated Tuned %s", cr.Name)
 
 	return nil
 }
@@ -627,6 +590,7 @@ func (c *Controller) syncDaemonSet(tuned *tunedv1.Tuned) error {
 func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	var (
 		tunedProfileName string
+		profilesAll      []tunedv1.TunedProfile
 		mcLabels         map[string]string
 		operand          tunedv1.OperandConfig
 		nodePoolName     string
@@ -661,22 +625,18 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	}
 
 	if ntoconfig.InHyperShift() {
-		tunedProfileName, nodePoolName, operand, err = c.pc.calculateProfileHyperShift(nodeName)
+		tunedProfileName, profilesAll, nodePoolName, operand, err = c.pc.calculateProfileHyperShift(nodeName)
 		if err != nil {
 			return err
 		}
 	} else {
-		tunedProfileName, mcLabels, operand, err = c.pc.calculateProfile(nodeName)
+		tunedProfileName, profilesAll, mcLabels, operand, err = c.pc.calculateProfile(nodeName)
 		if err != nil {
 			return err
 		}
 	}
 
 	metrics.ProfileCalculated(profileMf.Name, tunedProfileName)
-
-	if err != nil {
-		return fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
-	}
 
 	profile, err := c.listers.TunedProfiles.Get(profileMf.Name)
 	if err != nil {
@@ -694,6 +654,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 			profileMf.Spec.Config.TunedProfile = tunedProfileName
 			profileMf.Spec.Config.Debug = operand.Debug
 			profileMf.Spec.Config.TuneDConfig = operand.TuneDConfig
+			profileMf.Spec.Profile = profilesAll
 			profileMf.Status.Conditions = tunedpkg.InitializeStatusConditions()
 			_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.WatchNamespace()).Create(context.TODO(), profileMf, metav1.CreateOptions{})
 			if err != nil {
@@ -754,6 +715,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	if profile.Spec.Config.TunedProfile == tunedProfileName &&
 		profile.Spec.Config.Debug == operand.Debug &&
 		reflect.DeepEqual(profile.Spec.Config.TuneDConfig, operand.TuneDConfig) &&
+		reflect.DeepEqual(profile.Spec.Profile, profilesAll) &&
 		profile.Spec.Config.ProviderName == providerName {
 		klog.V(2).Infof("syncProfile(): no need to update Profile %s", nodeName)
 		return nil
@@ -762,6 +724,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	profile.Spec.Config.TunedProfile = tunedProfileName
 	profile.Spec.Config.Debug = operand.Debug
 	profile.Spec.Config.TuneDConfig = operand.TuneDConfig
+	profile.Spec.Profile = profilesAll
 	profile.Spec.Config.ProviderName = providerName
 	profile.Status.Conditions = tunedpkg.InitializeStatusConditions()
 
@@ -1274,6 +1237,30 @@ func (c *Controller) enablePodInformer(enable bool) error {
 	return nil
 }
 
+// Remove this function and associated code in the future.  This is for cleanup during upgrades only.
+// The rendered resource is no longer used.
+func (c *Controller) removeTunedRendered() error {
+	var err error
+
+	_, err = c.listers.TunedResources.Get(tunedv1.TunedRenderedResourceName)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Do not create any noise when TunedRenderedResourceName is not found (was already removed).
+			err = nil
+		} else {
+			err = fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
+		}
+	} else {
+		err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.WatchNamespace()).Delete(context.TODO(), tunedv1.TunedRenderedResourceName, metav1.DeleteOptions{})
+		if err != nil {
+			err = fmt.Errorf("failed to delete Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
+		} else {
+			klog.Infof("deleted Tuned %s", tunedv1.TunedRenderedResourceName)
+		}
+	}
+	return err
+}
+
 func (c *Controller) removeResources() error {
 	var lastErr error
 	dsMf := ntomf.TunedDaemonSet()
@@ -1293,18 +1280,10 @@ func (c *Controller) removeResources() error {
 		}
 	}
 
-	_, err = c.listers.TunedResources.Get(tunedv1.TunedRenderedResourceName)
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			lastErr = fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
-		}
-	} else {
-		err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.WatchNamespace()).Delete(ctx, tunedv1.TunedRenderedResourceName, metav1.DeleteOptions{})
-		if err != nil {
-			lastErr = fmt.Errorf("failed to delete Tuned %s: %v", tunedv1.TunedRenderedResourceName, err)
-		} else {
-			klog.Infof("deleted Tuned %s", tunedv1.TunedRenderedResourceName)
-		}
+	// Remove this code in the future.  This is for cleanup during upgrades only.
+	// The rendered resource is no longer used.
+	if err := c.removeTunedRendered(); err != nil {
+		lastErr = err
 	}
 
 	profileList, err := c.listers.TunedProfiles.List(labels.Everything())
@@ -1449,6 +1428,12 @@ func (c *Controller) run(ctx context.Context) error {
 	ok := cache.WaitForCacheSync(ctx.Done(), InformerFuncs...)
 	if !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
+	}
+
+	// Remove this code in the future.  This is for cleanup during upgrades only.
+	// The rendered resource is no longer used.
+	if err := c.removeTunedRendered(); err != nil {
+		klog.Error(err)
 	}
 
 	klog.V(1).Info("starting events processor")
