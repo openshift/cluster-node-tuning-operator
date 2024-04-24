@@ -27,6 +27,7 @@ type PinnedImageSetsGetter interface {
 type PinnedImageSetInterface interface {
 	Create(ctx context.Context, pinnedImageSet *v1alpha1.PinnedImageSet, opts v1.CreateOptions) (*v1alpha1.PinnedImageSet, error)
 	Update(ctx context.Context, pinnedImageSet *v1alpha1.PinnedImageSet, opts v1.UpdateOptions) (*v1alpha1.PinnedImageSet, error)
+	UpdateStatus(ctx context.Context, pinnedImageSet *v1alpha1.PinnedImageSet, opts v1.UpdateOptions) (*v1alpha1.PinnedImageSet, error)
 	Delete(ctx context.Context, name string, opts v1.DeleteOptions) error
 	DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error
 	Get(ctx context.Context, name string, opts v1.GetOptions) (*v1alpha1.PinnedImageSet, error)
@@ -34,6 +35,7 @@ type PinnedImageSetInterface interface {
 	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
 	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.PinnedImageSet, err error)
 	Apply(ctx context.Context, pinnedImageSet *machineconfigurationv1alpha1.PinnedImageSetApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.PinnedImageSet, err error)
+	ApplyStatus(ctx context.Context, pinnedImageSet *machineconfigurationv1alpha1.PinnedImageSetApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.PinnedImageSet, err error)
 	PinnedImageSetExpansion
 }
 
@@ -116,6 +118,21 @@ func (c *pinnedImageSets) Update(ctx context.Context, pinnedImageSet *v1alpha1.P
 	return
 }
 
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+func (c *pinnedImageSets) UpdateStatus(ctx context.Context, pinnedImageSet *v1alpha1.PinnedImageSet, opts v1.UpdateOptions) (result *v1alpha1.PinnedImageSet, err error) {
+	result = &v1alpha1.PinnedImageSet{}
+	err = c.client.Put().
+		Resource("pinnedimagesets").
+		Name(pinnedImageSet.Name).
+		SubResource("status").
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Body(pinnedImageSet).
+		Do(ctx).
+		Into(result)
+	return
+}
+
 // Delete takes name of the pinnedImageSet and deletes it. Returns an error if one occurs.
 func (c *pinnedImageSets) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	return c.client.Delete().
@@ -173,6 +190,35 @@ func (c *pinnedImageSets) Apply(ctx context.Context, pinnedImageSet *machineconf
 	err = c.client.Patch(types.ApplyPatchType).
 		Resource("pinnedimagesets").
 		Name(*name).
+		VersionedParams(&patchOpts, scheme.ParameterCodec).
+		Body(data).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// ApplyStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating ApplyStatus().
+func (c *pinnedImageSets) ApplyStatus(ctx context.Context, pinnedImageSet *machineconfigurationv1alpha1.PinnedImageSetApplyConfiguration, opts v1.ApplyOptions) (result *v1alpha1.PinnedImageSet, err error) {
+	if pinnedImageSet == nil {
+		return nil, fmt.Errorf("pinnedImageSet provided to Apply must not be nil")
+	}
+	patchOpts := opts.ToPatchOptions()
+	data, err := json.Marshal(pinnedImageSet)
+	if err != nil {
+		return nil, err
+	}
+
+	name := pinnedImageSet.Name
+	if name == nil {
+		return nil, fmt.Errorf("pinnedImageSet.Name must be provided to Apply")
+	}
+
+	result = &v1alpha1.PinnedImageSet{}
+	err = c.client.Patch(types.ApplyPatchType).
+		Resource("pinnedimagesets").
+		Name(*name).
+		SubResource("status").
 		VersionedParams(&patchOpts, scheme.ParameterCodec).
 		Body(data).
 		Do(ctx).
