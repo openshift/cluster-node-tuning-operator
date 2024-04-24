@@ -42,6 +42,7 @@ var workerRTNode *corev1.Node
 var profile *performancev2.PerformanceProfile
 
 const restartCooldownTime = 1 * time.Minute
+const cgroupRoot string = "/sys/fs/cgroup"
 
 var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 	var (
@@ -633,6 +634,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 			By("Starting the pod")
 			testpod.Spec.NodeSelector = testutils.NodeSelectorLabels
+			runtimeClass := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+			testpod.Spec.RuntimeClassName = &runtimeClass
 			testpod.Spec.Containers[0].Image = busyCpusImage
 			testpod.Spec.Containers[0].Resources.Limits[corev1.ResourceCPU] = resource.MustParse("2")
 			err = testclient.Client.Create(context.TODO(), testpod)
@@ -691,6 +694,23 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 					}
 					return nil
 				}, 2*time.Minute, 5*time.Second, "checking scheduling domains with pod running")
+			})
+
+			It("[test_id:73382]cpuset.cpus.exclusive of kubepods.slice should be updated", func() {
+				if !cgroupV2 {
+					Skip("cpuset.cpus.exclusive is part of cgroupv2 interfaces")
+				}
+				cpusetCfg := &controller.CpuSet{}
+				err := getter.Container(ctx, testpod, testpod.Spec.Containers[0].Name, cpusetCfg)
+				Expect(err).ToNot(HaveOccurred())
+				podCpuset, err := cpuset.Parse(cpusetCfg.Cpus)
+				kubepodsExclusiveCpus := fmt.Sprintf("%s/kubepods.slice/cpuset.cpus.exclusive", cgroupRoot)
+				cmd := []string{"cat", kubepodsExclusiveCpus}
+				exclusiveCpus, err := nodes.ExecCommandOnNode(ctx, cmd, workerRTNode)
+				Expect(err).ToNot(HaveOccurred())
+				exclusiveCpuset, err := cpuset.Parse(exclusiveCpus)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(podCpuset).To(Equal(exclusiveCpuset))
 			})
 		})
 
