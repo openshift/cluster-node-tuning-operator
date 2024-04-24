@@ -57,7 +57,7 @@ const (
 	//success messages regex
 	success = `SUCCESS.*1 Passed.*0 Failed.*2 Skipped`
 	//failure messages regex
-	latencyFail = `The current latency .* is bigger than the expected one`
+	latencyFail = `The maximum latency measured .* is bigger than the expected one`
 	fail        = `FAIL.*0 Passed.*1 Failed.*2 Skipped`
 	//hwlatdetect fail message regex
 	hwlatdetectFail = `Samples exceeding threshold: [^0]`
