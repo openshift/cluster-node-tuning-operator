@@ -61,27 +61,32 @@ const (
 const (
 	operandNamespace       = "openshift-cluster-node-tuning-operator"
 	programName            = version.OperandFilename
-	tunedProfilesDirCustom = "/etc/tuned"
+	tunedEtcDir            = "/etc/tuned"
+	tunedProfilesDirCustom = ocpTunedHome + "/profiles"
 	tunedProfilesDirSystem = "/usr/lib/tuned"
 	tunedConfFile          = "tuned.conf"
-	tunedMainConfFile      = "tuned-main.conf"
-	tunedActiveProfileFile = tunedProfilesDirCustom + "/active_profile"
-	tunedRecommendDir      = tunedProfilesDirCustom + "/recommend.d"
+	tunedMainConfPath      = tunedEtcDir + "/tuned-main.conf"
+	tunedActiveProfileFile = tunedEtcDir + "/active_profile"
+	tunedRecommendDir      = tunedEtcDir + "/recommend.d"
 	tunedRecommendFile     = tunedRecommendDir + "/50-openshift.conf"
 	tunedBootcmdlineEnvVar = "TUNED_BOOT_CMDLINE"
-	tunedBootcmdlineFile   = tunedProfilesDirCustom + "/bootcmdline"
+	tunedBootcmdlineFile   = tunedEtcDir + "/bootcmdline"
 	// A couple of seconds should be more than enough for TuneD daemon to gracefully stop;
 	// be generous and give it 10s.
-	tunedGracefulExitWait  = time.Second * time.Duration(10)
-	openshiftTunedHome     = "/var/lib/ocp-tuned"
-	openshiftTunedRunDir   = "/run/" + programName
-	openshiftTunedProvider = openshiftTunedHome + "/provider"
+	tunedGracefulExitWait = time.Second * time.Duration(10)
+	ocpTunedHome          = "/var/lib/ocp-tuned"
+	ocpTunedRunDir        = "/run/" + programName
+	ocpTunedProvider      = ocpTunedHome + "/provider"
 	// With the less aggressive rate limiter, retries will happen at 100ms*2^(retry_n-1):
 	// 100ms, 200ms, 400ms, 800ms, 1.6s, 3.2s, 6.4s, 12.8s, 25.6s, 51.2s, 102.4s, 3.4m, 6.8m, 13.7m, 27.3m
 	maxRetries = 15
 	// workqueue related constants
 	wqKindDaemon  = "daemon"
 	wqKindProfile = "profile"
+
+	ocpTunedImageEnv           = ocpTunedHome + "/image.env"
+	tunedProfilesDirCustomHost = ocpTunedHome + "/profiles"
+	tunedRecommendDirHost      = ocpTunedHome + "/recommend.d"
 )
 
 // Types
@@ -308,7 +313,7 @@ func profilesEqual(profileFile string, profileData string) bool {
 	return profileData == string(content)
 }
 
-// ProfilesExtract extracts TuneD daemon profiles to the daemon configuration directory.
+// ProfilesExtract extracts TuneD daemon profiles to tunedProfilesDirCustom directory.
 // Returns:
 //   - True if the data in the to-be-extracted recommended profile or the profiles being
 //     included from the current recommended profile have changed.
@@ -328,7 +333,7 @@ func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string)
 		// Add the recommended profile itself.
 		recommendedProfileDeps[recommendedProfile] = true
 	}
-	extracted := map[string]bool{} // TuneD profile names present in TuneD CR and successfully extracted to /etc/tuned/<profile>/
+	extracted := map[string]bool{} // TuneD profile names present in TuneD CR and successfully extracted to tunedProfilesDirCustom
 
 	for index, profile := range profiles {
 		if profile.Name == nil {
@@ -372,7 +377,7 @@ func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string)
 }
 
 // profilesSync extracts TuneD daemon profiles to the daemon configuration directory
-// and removes any TuneD profiles from /etc/tuned/<profile>/ once the same TuneD
+// and removes any TuneD profiles from <tunedProfilesDirCustom>/<profile>/ once the same TuneD
 // <profile> is no longer defined in the 'profiles' slice.
 // Returns:
 //   - True if the data in the to-be-extracted recommended profile or the profiles being
@@ -384,53 +389,68 @@ func profilesSync(profiles []tunedv1.TunedProfile, recommendedProfile string) (b
 		return change, err
 	}
 
-	// Deal with TuneD profiles absent from Tuned CRs, but still present in /etc/tuned/<profile>/ the recommended profile depends on.
-	for profile := range recommendedProfileDeps {
-		if len(profile) == 0 {
+	dirEntries, err := os.ReadDir(tunedProfilesDirCustom)
+	if err != nil {
+		return change, err
+	}
+
+	// Deal with TuneD profiles absent from Tuned CRs, but still present in <tunedProfilesDirCustom>/<profile>/
+	for _, dirEntry := range dirEntries {
+		profile := dirEntry.Name()
+		if !dirEntry.IsDir() {
+			// There shouldn't be anything but directories in <tunedProfilesDirCustom>, but if there is, skip it.
 			continue
 		}
 
-		if !extractedNew[profile] {
-			// TuneD profile does not exist in the Tuned CR, but the recommended profile depends on it.
-			profileDir := fmt.Sprintf("%s/%s", tunedProfilesDirCustom, profile)
-			if _, err := os.Stat(profileDir); err == nil {
-				// We have a stale TuneD profile directory in /etc/tuned/<profile>/
-				// Remove it.
-				err := os.RemoveAll(profileDir)
-				if err != nil {
-					return change, fmt.Errorf("failed to remove %q: %v", profileDir, err)
-				}
-				change = true
-				klog.Infof("removed TuneD profile %q", profileDir)
-			}
+		if len(profile) == 0 {
+			// This should never happen, but if it does, do not wipe the entire tunedProfilesDirCustom directory.
+			continue
+		}
+
+		if extractedNew[profile] {
+			// Do not delete the freshly extracted profiles.  These are the profiles present in the Profile CR.
+			continue
+		}
+		// This TuneD profile does not exist in the Profile CR, delete it.
+		profileDir := fmt.Sprintf("%s/%s", tunedProfilesDirCustom, profile)
+		err := os.RemoveAll(profileDir)
+		if err != nil {
+			return change, fmt.Errorf("failed to remove %q: %v", profileDir, err)
+		}
+		klog.Infof("removed TuneD profile %q", profileDir)
+
+		if recommendedProfileDeps[profile] {
+			// This TuneD profile does not exist in the Profile CR, but the recommended profile depends on it.
+			// Trigger a change to report a configuration issue -- we depend on a profile that does not exist.
+			change = true
 		}
 	}
 
 	return change, nil
 }
 
-// providerExtract extracts Cloud Provider name into openshiftTunedProvider file.
+// providerExtract extracts Cloud Provider name into ocpTunedProvider file.
 func providerExtract(provider string) error {
-	klog.Infof("extracting cloud provider name to %v", openshiftTunedProvider)
+	klog.Infof("extracting cloud provider name to %v", ocpTunedProvider)
 
-	f, err := os.Create(openshiftTunedProvider)
+	f, err := os.Create(ocpTunedProvider)
 	if err != nil {
-		return fmt.Errorf("failed to create cloud provider name file %q: %v", openshiftTunedProvider, err)
+		return fmt.Errorf("failed to create cloud provider name file %q: %v", ocpTunedProvider, err)
 	}
 	defer f.Close()
 	if _, err = f.WriteString(provider); err != nil {
-		return fmt.Errorf("failed to write cloud provider name file %q: %v", openshiftTunedProvider, err)
+		return fmt.Errorf("failed to write cloud provider name file %q: %v", ocpTunedProvider, err)
 	}
 
 	return nil
 }
 
-// Read the Cloud Provider name from openshiftTunedProvider file and
+// Read the Cloud Provider name from ocpTunedProvider file and
 // extract/write 'provider' only if the file does not exist or it does not
 // match 'provider'.  Returns indication whether the 'provider' changed and
 // an error if any.
 func providerSync(provider string) (bool, error) {
-	providerCurrent, err := os.ReadFile(openshiftTunedProvider)
+	providerCurrent, err := os.ReadFile(ocpTunedProvider)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return len(provider) > 0, providerExtract(provider)
@@ -443,6 +463,75 @@ func providerSync(provider string) (bool, error) {
 	}
 
 	return true, providerExtract(provider)
+}
+
+// switchTunedHome changes "native" container's home directory as defined by the
+// Containerfile to the container's home directory on the host itself.
+func switchTunedHome() error {
+	const (
+		ocpTunedHomeHost = "/host" + ocpTunedHome
+	)
+
+	// Create the container's home directory on the host.
+	if err := util.Mkdir(ocpTunedHomeHost); err != nil {
+		return fmt.Errorf("failed to create directory %q: %v", ocpTunedHomeHost, err)
+	}
+
+	// Delete the container's home directory.
+	if err := util.Delete(ocpTunedHome); err != nil {
+		return fmt.Errorf("failed to delete: %q: %v", ocpTunedHome, err)
+	}
+
+	if err := util.Symlink(ocpTunedHomeHost, ocpTunedHome); err != nil {
+		return fmt.Errorf("failed to link %q -> %q: %v", ocpTunedHome, ocpTunedHomeHost, err)
+	}
+
+	err := os.Chdir(ocpTunedHome)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func prepareOpenShiftTunedDir() error {
+	// Create the following directories unless they exist.
+	dirs := []string{
+		tunedRecommendDirHost,
+		tunedProfilesDirCustomHost,
+	}
+	for _, d := range dirs {
+		if err := util.Mkdir(d); err != nil {
+			return fmt.Errorf("failed to create directory %q: %v", d, err)
+		}
+	}
+
+	// Create the following symbolic links.
+	links := map[string]string{
+		tunedRecommendDirHost: tunedRecommendDir,
+	}
+	for target, source := range links {
+		if err := util.Symlink(target, source); err != nil {
+			return fmt.Errorf("failed to link %q -> %q: %v", source, target, err)
+		}
+	}
+
+	return nil
+}
+
+func writeOpenShiftTunedImageEnv() error {
+	klog.Infof("writing %v", ocpTunedImageEnv)
+
+	f, err := os.Create(ocpTunedImageEnv)
+	if err != nil {
+		return fmt.Errorf("failed to create file %q: %v", ocpTunedImageEnv, err)
+	}
+	defer f.Close()
+	if _, err = f.WriteString(fmt.Sprintf("NTO_IMAGE=%s\n", os.Getenv("CLUSTER_NODE_TUNED_IMAGE"))); err != nil {
+		return fmt.Errorf("failed to write file %q: %v", ocpTunedImageEnv, err)
+	}
+
+	return nil
 }
 
 func TunedRecommendFileWrite(profileName string) error {
@@ -487,7 +576,7 @@ func overridenSysctl(data string) string {
 }
 
 func (c *Controller) tunedCreateCmd() *exec.Cmd {
-	return TunedCreateCmd((c.daemon.restart & ctrlDebug) != 0)
+	return TunedCreateCmd(TunedCreateCmdline((c.daemon.restart & ctrlDebug) != 0))
 }
 
 func (c *Controller) tunedRun() {
@@ -749,7 +838,7 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 			if err = iniCfgSetKey(c.tunedMainCfg, "reapply_sysctl", !reapplySysctl); err != nil {
 				return false, err
 			}
-			err = iniFileSave(tunedProfilesDirCustom+"/"+tunedMainConfFile, c.tunedMainCfg)
+			err = iniFileSave(tunedMainConfPath, c.tunedMainCfg)
 			if err != nil {
 				return false, fmt.Errorf("failed to write global TuneD configuration file: %v", err)
 			}
@@ -1031,7 +1120,7 @@ func (c *Controller) informerEventHandler(workqueueKey wqKeyKube) cache.Resource
 // reentering this control loop should be made as it is an indication of an intentional
 // exit on request.
 func (c *Controller) changeWatcher() (err error) {
-	c.tunedMainCfg, err = iniFileLoad(tunedProfilesDirCustom + "/" + tunedMainConfFile)
+	c.tunedMainCfg, err = iniFileLoad(tunedMainConfPath)
 	if err != nil {
 		return fmt.Errorf("failed to load global TuneD configuration file: %v", err)
 	}
@@ -1186,14 +1275,44 @@ func retryLoop(c *Controller) (err error) {
 	}
 }
 
-func RunOperand(stopCh <-chan struct{}, version string, inCluster bool) error {
-	klog.Infof("starting %s %s; in-cluster: %v", programName, version, inCluster)
+func RunInCluster(stopCh <-chan struct{}, version string) error {
+	klog.Infof("starting in-cluster %s %s", programName, version)
 
+	if err := switchTunedHome(); err != nil {
+		return err
+	}
+
+	if err := prepareOpenShiftTunedDir(); err != nil {
+		return err
+	}
+
+	// Running in a k8s cluster pod with ocpTunedSystemdService unit present.
+	if err := writeOpenShiftTunedImageEnv(); err != nil {
+		return err
+	}
+
+	// The original way of running TuneD inside of a k8s container.
 	c, err := newController(stopCh)
 	if err != nil {
-		// This looks really bad, there was an error creating the Controller.
 		panic(err.Error())
 	}
 
 	return retryLoop(c)
+}
+
+func RunOutOfClusterOneShot(stopCh <-chan struct{}, version string) error {
+	klog.Infof("starting out-of-cluster %s %s", programName, version)
+
+	if err := prepareOpenShiftTunedDir(); err != nil {
+		return err
+	}
+
+	// Do not block the kubelet by running TuneD for longer than 60s.
+	err := TunedRunNoDaemon(60 * time.Second)
+	if err != nil {
+		// Just log this error.  We do not want to block the kubelet by failing the systemd service.
+		klog.Errorf("failed to run TuneD in one-shot mode: %v", err)
+	}
+
+	return nil
 }

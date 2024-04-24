@@ -89,12 +89,13 @@ const (
 )
 
 const (
-	systemdServiceIRQBalance  = "irqbalance.service"
-	systemdServiceKubelet     = "kubelet.service"
-	systemdServiceCrio        = "crio.service"
-	systemdServiceTypeOneshot = "oneshot"
-	systemdTargetMultiUser    = "multi-user.target"
-	systemdTrue               = "true"
+	systemdServiceIRQBalance   = "irqbalance.service"
+	systemdServiceKubelet      = "kubelet.service"
+	systemdServiceCrio         = "crio.service"
+	systemdServiceTunedOneShot = "ocp-tuned-one-shot.service"
+	systemdServiceTypeOneshot  = "oneshot"
+	systemdTargetMultiUser     = "multi-user.target"
+	systemdTrue                = "true"
 )
 
 const (
@@ -334,6 +335,14 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 		Name:     getSystemdService(clearIRQBalanceBannedCPUs),
 	})
 
+	// add ocp-tuned-one-shot service
+	ocpTunedOneShotServiceContent := getTunedOneShotSystemdUnit()
+	ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
+		Contents: &ocpTunedOneShotServiceContent,
+		Enabled:  ptr.To(true),
+		Name:     systemdServiceTunedOneShot,
+	})
+
 	if ok, ovsSliceName := MoveOvsIntoOwnSlice(); ok {
 		// Create the OVS slice that will lift the cpu restrictions for better kernel networking performance
 		// This is technically not necessary as systemd is smart enough
@@ -542,6 +551,60 @@ func getRPSUnitOptions(rpsMask string) []*unit.UnitOption {
 		// ExecStart
 		unit.NewUnitOption(systemdSectionService, systemdExecStart, cmd),
 	}
+}
+
+func getTunedOneShotSystemdUnit() string {
+	const unit = `[Unit]
+Description=TuneD service from NTO image
+After=firstboot-osupdate.target systemd-sysctl.service network.target polkit.service
+# Requires is necessary to start this unit before kubelet-dependencies.target
+Requires=kubelet-dependencies.target
+Before=kubelet-dependencies.target
+ConditionPathExists=/var/lib/ocp-tuned/image.env
+
+[Service]
+# https://www.redhat.com/sysadmin/podman-shareable-systemd-services
+# and also "podman systemd generate" uses "forking".  However, this
+# is strongly discouraged by "man systemd.service" and results in
+# failed dependency for the kubelet service.
+Type=oneshot
+# Restart=no is the default as of systemd 252, but be explicit.
+Restart=no
+ExecReload=/bin/pkill --signal HUP --pidfile /run/tuned/tuned.pid
+ExecStartPre=/bin/bash -c " \
+  mkdir -p /run/tuned "
+ExecStart=/usr/bin/podman run \
+    --rm \
+    --name openshift-tuned \
+    --privileged \
+    --authfile /var/lib/kubelet/config.json \
+    --net=host \
+    --pid=host \
+    --security-opt label=disable \
+    --log-driver=none \
+    --volume /var/lib/kubelet:/var/lib/kubelet:rslave,ro \
+    --volume /var/lib/ocp-tuned:/var/lib/ocp-tuned:rslave \
+    --volume /etc/modprobe.d:/etc/modprobe.d:rslave \
+    --volume /etc/sysconfig:/etc/sysconfig:rslave \
+    --volume /etc/sysctl.d:/etc/sysctl.d:rslave,ro \
+    --volume /etc/sysctl.conf:/etc/sysctl.conf:rslave,ro \
+    --volume /etc/systemd:/etc/systemd:rslave \
+    --volume /run/tuned:/run/tuned:rslave \
+    --volume /run/systemd:/run/systemd:rslave \
+    --volume /sys:/sys:rslave \
+    --entrypoint '["/usr/bin/cluster-node-tuning-operator","openshift-tuned","--in-cluster=false","--one-shot=true","-v=1"]' \
+    $NTO_IMAGE
+Environment=PODMAN_SYSTEMD_UNIT=%n
+EnvironmentFile=-/var/lib/ocp-tuned/image.env
+ExecStop=/usr/bin/podman stop -t 20 --ignore openshift-tuned
+ExecStopPost=/usr/bin/podman rm -f --ignore openshift-tuned
+
+[Install]
+# RequiredBy causes kubelet to depend on this service.
+RequiredBy=kubelet-dependencies.target
+`
+
+	return unit
 }
 
 func addContent(ignitionConfig *igntypes.Config, content []byte, dst string, mode *int) {
