@@ -284,7 +284,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters := []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
-					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate= {f:intel_recommended_pstate}", "idle=poll"}
+					"processor.max_cstate=1", "intel_idle.max_cstate=0", "idle=poll"}
 
 				wg := sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
@@ -306,6 +306,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						kernelParameters = append(kernelParameters, utilstuned.AddPstateParameter(context.TODO(), node))
 						utilstuned.CheckParameters(context.TODO(), node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
 					}()
 				}
@@ -344,7 +345,6 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				Expect(err).ToNot(HaveOccurred())
 				Expect(cmdline).To(ContainSubstring("intel_pstate=passive"))
 				Expect(cmdline).ToNot(ContainSubstring("intel_pstate=active"))
-				Expect(cmdline).ToNot(ContainSubstring("intel_pstate= {f:intel_recommended_pstate}"))
 
 				By("Verifying tuned profile")
 				key := types.NamespacedName{
@@ -405,7 +405,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters := []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
-					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate= {f:intel_recommended_pstate}", "idle=poll"}
+					"processor.max_cstate=1", "intel_idle.max_cstate=0", "idle=poll"}
 
 				wg := sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
@@ -427,6 +427,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						kernelParameters = append(kernelParameters, utilstuned.AddPstateParameter(context.TODO(), node))
 						utilstuned.CheckParameters(context.TODO(), node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
 					}()
 				}
@@ -606,7 +607,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters = []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
-					"processor.max_cstate=1", "intel_idle.max_cstate=0", "intel_pstate= {f:intel_recommended_pstate}", "idle=poll"}
+					"processor.max_cstate=1", "intel_idle.max_cstate=0", "idle=poll"}
 
 				wg = sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
@@ -628,6 +629,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
+						kernelParameters = append(kernelParameters, utilstuned.AddPstateParameter(context.TODO(), node))
 						utilstuned.CheckParameters(context.TODO(), node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
 					}()
 				}

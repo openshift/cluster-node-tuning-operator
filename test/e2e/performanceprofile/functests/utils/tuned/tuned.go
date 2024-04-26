@@ -21,6 +21,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 )
 
@@ -139,4 +140,40 @@ func GetProfile(ctx context.Context, cli client.Client, ns, name string) (*tuned
 		return nil, err
 	}
 	return p, nil
+}
+
+// AddPstateParameter returns the correct intel_pstate based on hw generation
+func AddPstateParameter(ctx context.Context, node *corev1.Node) string {
+	var (
+		filePath       = "/sys/devices/cpu/caps/pmu_name"
+		processorsName = []string{"sandybridge", "ivybridge", "haswell", "broadwell", "skylake"}
+		pstateDisabled = "intel_pstate=disable"
+		pstateActive   = "intel_pstate=active"
+		totalCpus      = 32
+	)
+
+	onlineCPUCount, err := nodes.ExecCommandOnNode(ctx, []string{"nproc", "--all"}, node)
+	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to execute command %q on node: %q", onlineCPUCount, node.Name)
+	onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
+	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to convert oneline cpu from string to integer on node: %q", node.Name)
+	// In this case, it is a vm, so pstate must be disabled
+	if onlineCPUInt < totalCpus {
+		return pstateDisabled
+	}
+
+	cmd := []string{"cat", filePath}
+	By(fmt.Sprintf("Executing %q", cmd))
+	pName, err := nodes.ExecCommandOnNode(ctx, cmd, node)
+	testlog.Infof("found processor name %s for node %s", pName, node.Name)
+	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to execute command %q on node: %q", cmd, node.Name)
+	if err != nil {
+		return pstateDisabled
+	}
+
+	for _, element := range processorsName {
+		if element == pName {
+			return pstateDisabled
+		}
+	}
+	return pstateActive
 }
