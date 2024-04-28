@@ -17,7 +17,9 @@ import (
 	performancev1alpha1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v1alpha1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	paocontroller "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/handler"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/status"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/spf13/cobra"
@@ -176,10 +178,11 @@ func operatorRun() {
 			klog.Exitf("failed to setup feature gates: %v", err)
 		}
 		if err = (&paocontroller.PerformanceProfileReconciler{
-			Client:      mgr.GetClient(),
-			Scheme:      mgr.GetScheme(),
-			Recorder:    mgr.GetEventRecorderFor("performance-profile-controller"),
-			FeatureGate: fg,
+			Client:            mgr.GetClient(),
+			Recorder:          mgr.GetEventRecorderFor("performance-profile-controller"),
+			FeatureGate:       fg,
+			ComponentsHandler: handler.NewHandler(mgr.GetClient(), mgr.GetScheme()),
+			StatusWriter:      status.NewWriter(mgr.GetClient()),
 		}).SetupWithManager(mgr); err != nil {
 			klog.Exitf("unable to create PerformanceProfile controller: %v", err)
 		}

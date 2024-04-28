@@ -18,6 +18,7 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/handler"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/kubeletconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/runtimeclass"
@@ -1137,9 +1138,10 @@ func newFakeReconciler(profile client.Object, initObjects ...runtime.Object) *Pe
 	fakeFeatureGateAccessor := featuregates.NewHardcodedFeatureGateAccessForTesting(nil, []configv1.FeatureGateName{configv1.FeatureGateMixedCPUsAllocation}, make(chan struct{}), nil)
 	fg, _ := fakeFeatureGateAccessor.CurrentFeatureGates()
 	return &PerformanceProfileReconciler{
-		Client:      fakeClient,
-		Scheme:      scheme.Scheme,
-		Recorder:    fakeRecorder,
-		FeatureGate: fg,
+		Client:            fakeClient,
+		Recorder:          fakeRecorder,
+		FeatureGate:       fg,
+		ComponentsHandler: handler.NewHandler(fakeClient, scheme.Scheme),
+		StatusWriter:      status.NewWriter(fakeClient),
 	}
 }
