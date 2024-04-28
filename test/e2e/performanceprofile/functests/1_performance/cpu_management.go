@@ -207,7 +207,10 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			testpod.Namespace = testutils.NamespaceTesting
 
 			isolatedCPUSet, _ := cpuset.Parse(isolatedCPU)
-			if cpuRequest > isolatedCPUSet.Size() {
+			// the worker node on which the pod will be scheduled has other pods already scheduled on it, and these also use a
+			// portion of the node's isolated cpus, and scheduling a pod requesting all the isolated cpus on the node (hence =)
+			// would fail because there is already a base cpu load on the node
+			if cpuRequest >= isolatedCPUSet.Size() {
 				Skip(fmt.Sprintf("cpus request %d is greater than the isolated cpus %d", cpuRequest, isolatedCPUSet.Size()))
 			}
 
