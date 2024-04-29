@@ -33,10 +33,6 @@ func TunedCreateCmdline(debug bool) (string, []string) {
 	return "/usr/sbin/tuned", args
 }
 
-func TunedCreateCmd(command string, args []string) *exec.Cmd {
-	return exec.Command(command, args...)
-}
-
 func configDaemonMode() (func(), error) {
 	daemon_key := "daemon"
 

@@ -347,7 +347,7 @@ func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string)
 		profileDir := fmt.Sprintf("%s/%s", tunedProfilesDirCustom, *profile.Name)
 		profileFile := fmt.Sprintf("%s/%s", profileDir, tunedConfFile)
 
-		if err := util.Mkdir(profileDir); err != nil {
+		if err := os.MkdirAll(profileDir, os.ModePerm); err != nil {
 			return change, extracted, recommendedProfileDeps, fmt.Errorf("failed to create TuneD profile directory %q: %v", profileDir, err)
 		}
 
@@ -473,7 +473,7 @@ func switchTunedHome() error {
 	)
 
 	// Create the container's home directory on the host.
-	if err := util.Mkdir(ocpTunedHomeHost); err != nil {
+	if err := os.MkdirAll(ocpTunedHomeHost, os.ModePerm); err != nil {
 		return fmt.Errorf("failed to create directory %q: %v", ocpTunedHomeHost, err)
 	}
 
@@ -501,7 +501,7 @@ func prepareOpenShiftTunedDir() error {
 		tunedProfilesDirCustomHost,
 	}
 	for _, d := range dirs {
-		if err := util.Mkdir(d); err != nil {
+		if err := os.MkdirAll(d, os.ModePerm); err != nil {
 			return fmt.Errorf("failed to create directory %q: %v", d, err)
 		}
 	}
@@ -522,12 +522,9 @@ func prepareOpenShiftTunedDir() error {
 func writeOpenShiftTunedImageEnv() error {
 	klog.Infof("writing %v", ocpTunedImageEnv)
 
-	f, err := os.Create(ocpTunedImageEnv)
+	content := fmt.Sprintf("NTO_IMAGE=%s\n", os.Getenv("CLUSTER_NODE_TUNED_IMAGE"))
+	err := os.WriteFile(ocpTunedImageEnv, []byte(content), 0644)
 	if err != nil {
-		return fmt.Errorf("failed to create file %q: %v", ocpTunedImageEnv, err)
-	}
-	defer f.Close()
-	if _, err = f.WriteString(fmt.Sprintf("NTO_IMAGE=%s\n", os.Getenv("CLUSTER_NODE_TUNED_IMAGE"))); err != nil {
 		return fmt.Errorf("failed to write file %q: %v", ocpTunedImageEnv, err)
 	}
 
@@ -536,7 +533,7 @@ func writeOpenShiftTunedImageEnv() error {
 
 func TunedRecommendFileWrite(profileName string) error {
 	klog.V(2).Infof("tunedRecommendFileWrite(): %s", profileName)
-	if err := util.Mkdir(tunedRecommendDir); err != nil {
+	if err := os.MkdirAll(tunedRecommendDir, os.ModePerm); err != nil {
 		return fmt.Errorf("failed to create directory %q: %v", tunedRecommendDir, err)
 	}
 	f, err := os.Create(tunedRecommendFile)
@@ -576,7 +573,9 @@ func overridenSysctl(data string) string {
 }
 
 func (c *Controller) tunedCreateCmd() *exec.Cmd {
-	return TunedCreateCmd(TunedCreateCmdline((c.daemon.restart & ctrlDebug) != 0))
+	command, args := TunedCreateCmdline((c.daemon.restart & ctrlDebug) != 0)
+
+	return exec.Command(command, args...)
 }
 
 func (c *Controller) tunedRun() {
