@@ -27,18 +27,20 @@ ENV PATH=${APP_ROOT}/bin:${PATH}
 ENV HOME=${APP_ROOT}
 ENV SYSTEMD_IGNORE_CHROOT=1
 WORKDIR ${APP_ROOT}
-COPY --from=tuned   /root/assets ${APP_ROOT}
-COPY --from=tuned   /root/rpmbuild/RPMS/noarch /root/rpms
+COPY --from=tuned /root/assets/bin /usr/local/bin
+COPY --from=tuned /root/rpmbuild/RPMS/noarch /root/rpms
 RUN INSTALL_PKGS=" \
       nmap-ncat procps-ng pciutils \
       " && \
-    mkdir -p /etc/grub.d/ /boot && \
+    mkdir -p /etc/grub.d/ /boot /var/lib/ocp-tuned && \
     dnf install --setopt=tsflags=nodocs -y $INSTALL_PKGS && \
     rpm -V $INSTALL_PKGS && \
     dnf --setopt=tsflags=nodocs -y install /root/rpms/*.rpm && \
-    rm -rf /var/lib/ocp-tuned/{tuned,performanceprofile} && \
-    sed -Ei 's|^#?\s*enable_unix_socket\s*=.*$|enable_unix_socket = 1|;s|^#?\s*rollback\s*=.*$|rollback = not_on_exit|' /etc/tuned/tuned-main.conf && \
-    touch /etc/sysctl.conf $APP_ROOT/provider && \
+    rm -rf /etc/tuned/recommend.d && \
+    echo auto > /etc/tuned/profile_mode && \
+    sed -Ei 's|^#?\s*enable_unix_socket\s*=.*$|enable_unix_socket = 1|;s|^#?\s*rollback\s*=.*$|rollback = not_on_exit|;s|^#?\s*profile_dirs\s*=.*$|profile_dirs = /var/lib/ocp-tuned/profiles,/usr/lib/tuned|' \
+      /etc/tuned/tuned-main.conf && \
+    touch /etc/sysctl.conf && \
     dnf clean all && \
     rm -rf /var/cache/yum ~/patches /root/rpms && \
     useradd -r -u 499 cluster-node-tuning-operator
