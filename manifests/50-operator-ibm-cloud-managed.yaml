@@ -16,6 +16,7 @@ spec:
   template:
     metadata:
       annotations:
+        openshift.io/required-scc: anyuid
         target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
       labels:
         name: cluster-node-tuning-operator
