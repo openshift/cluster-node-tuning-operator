@@ -41,6 +41,8 @@ import (
 var workerRTNode *corev1.Node
 var profile *performancev2.PerformanceProfile
 
+const restartCooldownTime = 1 * time.Minute
+
 var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 	var (
 		balanceIsolated          bool
@@ -169,6 +171,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				Expect(reservedCPUSet.IsSubsetOf(maskSet)).To(Equal(true), "The process should have cpu affinity: %s", reservedCPU)
 			}
 		})
+
 	})
 
 	Describe("Verification of cpu manager functionality", func() {
@@ -255,6 +258,55 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			Entry("[test_id:37860] Non-guaranteed POD can work on any CPU", context.TODO(), false),
 			Entry("[test_id:27492] Guaranteed POD should work on isolated cpu", context.TODO(), true),
 		)
+	})
+
+	Describe("Verification of cpu_manager_state file", func() {
+		var testpod *corev1.Pod
+		BeforeEach(func() {
+			testpod = pods.GetTestPod()
+			testpod.Namespace = testutils.NamespaceTesting
+			testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
+			testpod.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceMemory: resource.MustParse("200Mi"),
+					corev1.ResourceCPU:    resource.MustParse("2"),
+				},
+			}
+			err := testclient.Client.Create(context.TODO(), testpod)
+			testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+			logEventsForPod(testpod)
+			Expect(err).ToNot(HaveOccurred())
+		})
+		AfterEach(func() {
+			deleteTestPod(context.TODO(), testpod)
+		})
+		When("kubelet is restart", func() {
+			It("[test_id: 73501] defaultCpuset should not change", func() {
+				By("fetch Default cpu set from cpu manager state file before restart")
+				cpuManagerCpusetBeforeRestart, err := nodes.CpuManagerCpuSet(ctx, workerRTNode)
+				Expect(err).ToNot(HaveOccurred())
+				testlog.Infof("pre kubelet restart default cpuset: %v", cpuManagerCpusetBeforeRestart.String())
+				kubeletRestartCmd := []string{
+					"chroot",
+					"/rootfs",
+					"/bin/bash",
+					"-c",
+					"systemctl restart kubelet",
+				}
+
+				_, _ = nodes.ExecCommandOnNode(ctx, kubeletRestartCmd, workerRTNode)
+				nodes.WaitForReadyOrFail("post kubele restart", workerRTNode.Name, 20*time.Minute, 3*time.Second)
+				// giving kubelet more time to stabilize and initialize itself before
+				testlog.Infof("post restart: entering cooldown time: %v", restartCooldownTime)
+				time.Sleep(restartCooldownTime)
+
+				testlog.Infof("post restart: finished cooldown time: %v", restartCooldownTime)
+
+				By("fetch Default cpuset from cpu manager state after restart")
+				cpuManagerCpusetAfterRestart, err := nodes.CpuManagerCpuSet(ctx, workerRTNode)
+				Expect(cpuManagerCpusetBeforeRestart).To(Equal(cpuManagerCpusetAfterRestart))
+			})
+		})
 	})
 
 	Describe("Verification that IRQ load balance can be disabled per POD", func() {
