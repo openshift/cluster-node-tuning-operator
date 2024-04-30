@@ -636,6 +636,11 @@ var _ = Describe("Controller", func() {
 								},
 							},
 						},
+						Configuration: mcov1.MachineConfigPoolStatusConfiguration{
+							ObjectReference: corev1.ObjectReference{
+								Name: "test",
+							},
+						},
 					},
 					Status: mcov1.MachineConfigPoolStatus{
 						Conditions: []mcov1.MachineConfigPoolCondition{

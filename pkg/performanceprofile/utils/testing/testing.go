@@ -119,6 +119,11 @@ func NewProfileMCP() *mcov1.MachineConfigPool {
 			MachineConfigSelector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{MachineConfigLabelKey: MachineConfigLabelValue},
 			},
+			Configuration: mcov1.MachineConfigPoolStatusConfiguration{
+				ObjectReference: corev1.ObjectReference{
+					Name: "test",
+				},
+			},
 		},
 		Status: mcov1.MachineConfigPoolStatus{
 			Configuration: mcov1.MachineConfigPoolStatusConfiguration{

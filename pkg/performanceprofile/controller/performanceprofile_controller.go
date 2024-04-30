@@ -19,10 +19,11 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"os"
 	"reflect"
 	"time"
+
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 
 	apiconfigv1 "github.com/openshift/api/config/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -591,7 +592,7 @@ func (r *PerformanceProfileReconciler) reconcileCgroupsV1(ctx context.Context, i
 	}
 
 	// (TODO) This code can be removed in the future when the cgroupsv2 is supported
-	currentMC, err := r.getCurrentMachineConfigByMCP(ctx, profileMCP)
+	currentMC, err := r.getStagedMachineConfigByMCP(ctx, profileMCP)
 	if err != nil {
 		return reconcile.Result{}, err, true
 	}
