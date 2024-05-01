@@ -2,10 +2,10 @@ apiVersion: tuned.openshift.io/v1
 kind: Tuned
 metadata:
   creationTimestamp: null
+  labels:
+    performance.openshift.io/weak-owner-reference-name: manual
   name: openshift-node-performance-manual
   namespace: openshift-cluster-node-tuning-operator
-  labels:
-    performance.openshift.io/weak-owner-reference-name: "manual"
 spec:
   profile:
   - data: "[main]\nsummary=Openshift node optimized for deterministic performance

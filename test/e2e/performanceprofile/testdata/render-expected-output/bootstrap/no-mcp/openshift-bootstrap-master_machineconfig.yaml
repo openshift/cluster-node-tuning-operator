@@ -4,7 +4,7 @@ metadata:
   creationTimestamp: null
   labels:
     machineconfiguration.openshift.io/role: master
-    performance.openshift.io/weak-owner-reference-name: "openshift-bootstrap-master"
+    performance.openshift.io/weak-owner-reference-name: openshift-bootstrap-master
   name: 50-performance-openshift-bootstrap-master
 spec:
   baseOSExtensionsContainerImage: ""
