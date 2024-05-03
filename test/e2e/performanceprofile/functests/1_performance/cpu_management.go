@@ -704,13 +704,14 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				err := getter.Container(ctx, testpod, testpod.Spec.Containers[0].Name, cpusetCfg)
 				Expect(err).ToNot(HaveOccurred())
 				podCpuset, err := cpuset.Parse(cpusetCfg.Cpus)
+				Expect(err).ToNot(HaveOccurred(), "Unable to parse pod cpus")
 				kubepodsExclusiveCpus := fmt.Sprintf("%s/kubepods.slice/cpuset.cpus.exclusive", cgroupRoot)
 				cmd := []string{"cat", kubepodsExclusiveCpus}
 				exclusiveCpus, err := nodes.ExecCommandOnNode(ctx, cmd, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				exclusiveCpuset, err := cpuset.Parse(exclusiveCpus)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(podCpuset).To(Equal(exclusiveCpuset))
+				Expect(err).ToNot(HaveOccurred(), "unable to parse cpuset.cpus.exclusive")
+				Expect(podCpuset.Equals(exclusiveCpuset)).To(BeTrue())
 			})
 		})
 
