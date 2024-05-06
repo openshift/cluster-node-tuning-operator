@@ -28,17 +28,17 @@ func mergeMaps(src map[string]string, dst map[string]string) {
 
 // TODO: we should merge all create, get and delete methods
 
-func (r *PerformanceProfileReconciler) getCurrentMachineConfigByMCP(ctx context.Context, mcp *mcov1.MachineConfigPool) (*mcov1.MachineConfig, error) {
+func (r *PerformanceProfileReconciler) getStagedMachineConfigByMCP(ctx context.Context, mcp *mcov1.MachineConfigPool) (*mcov1.MachineConfig, error) {
 	if mcp == nil {
 		return nil, fmt.Errorf("nil MachineConfigPool object")
 	}
 
-	currentMCName := mcp.Status.Configuration.Name
+	currentMCName := mcp.Spec.Configuration.Name
 	if currentMCName == "" { // should never happen
 		return nil, fmt.Errorf("MCP %q missing configuration name", mcp.Name)
 	}
 
-	klog.Infof("checking current MachineConfig %q", currentMCName)
+	klog.Infof("checking staged MachineConfig %q", currentMCName)
 
 	return r.getMachineConfig(ctx, currentMCName)
 }
