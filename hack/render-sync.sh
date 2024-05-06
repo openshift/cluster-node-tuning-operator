@@ -41,4 +41,5 @@ function rendersync() {
 rendersync manual-cluster/performance base/performance default
 rendersync bootstrap-cluster/performance pinned-cluster/default bootstrap/no-mcp
 rendersync bootstrap-cluster/performance pinned-cluster/default bootstrap-cluster/extra-mcp bootstrap/extra-mcp
+rendersync bootstrap-cluster/performance pinned-cluster/default container-runtime-crun bootstrap/extra-ctrcfg
 rendersync --owner-ref none -- base/performance manual-cluster/performance no-ref 
