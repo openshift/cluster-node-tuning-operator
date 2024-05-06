@@ -289,6 +289,23 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 	})
 
+	Context("Using performance profile", func() {
+		It("[test_id: 73107] Should have system services running on the system.slice cgroup", func() {
+			for _, node := range workerRTNodes {
+				processesFound := make([]string, 0)
+				rootCgroupPath := "/rootfs/sys/fs/cgroup/cpuset/cgroup.procs"
+
+				// Getting the list of processes that are running on the root cgroup, filtering out the kernel threads (are presented in [square brackets]).
+				command := fmt.Sprintf("cat %s | xargs ps -o cmd | grep -v \"\\[\"", rootCgroupPath)
+				output, err := nodes.ExecCommandOnNode([]string{"/bin/bash", "-c", command}, &node)
+				Expect(err).ToNot(HaveOccurred())
+				cmds := strings.Split(output, "\n")
+				processesFound = append(processesFound, cmds[1:]...)
+				Expect(processesFound).To(BeEmpty(), "The node %s has the following processes on the root cgroup: %v", node.Name, processesFound)
+			}
+		})
+	})
+
 	Context("Tuned kernel parameters", func() {
 		It("[test_id:28466][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Should contain configuration injected through openshift-node-performance profile", func() {
 			sysctlMap := map[string]string{

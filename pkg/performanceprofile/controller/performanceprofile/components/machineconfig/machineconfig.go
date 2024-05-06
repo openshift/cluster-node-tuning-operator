@@ -75,6 +75,7 @@ const (
 	systemdSectionInstall  = "Install"
 	systemdDescription     = "Description"
 	systemdBefore          = "Before"
+	systemdAfter           = "After"
 	systemdEnvironment     = "Environment"
 	systemdType            = "Type"
 	systemdRemainAfterExit = "RemainAfterExit"
@@ -83,13 +84,12 @@ const (
 )
 
 const (
-	systemdServiceIRQBalance   = "irqbalance.service"
-	systemdServiceKubelet      = "kubelet.service"
-	systemdServiceCrio         = "crio.service"
-	systemdServiceTypeOneshot  = "oneshot"
-	systemdTargetMultiUser     = "multi-user.target"
-	systemdTargetNetworkOnline = "network-online.target"
-	systemdTrue                = "true"
+	systemdServiceIRQBalance  = "irqbalance.service"
+	systemdServiceKubelet     = "kubelet.service"
+	systemdServiceCrio        = "crio.service"
+	systemdServiceTypeOneshot = "oneshot"
+	systemdTargetMultiUser    = "multi-user.target"
+	systemdTrue               = "true"
 )
 
 const (
@@ -436,7 +436,9 @@ func getCpusetConfigureServiceOptions() []*unit.UnitOption {
 		// Description
 		unit.NewUnitOption(systemdSectionUnit, systemdDescription, "Move services to reserved cpuset"),
 		// Before
-		unit.NewUnitOption(systemdSectionUnit, systemdBefore, systemdTargetNetworkOnline),
+		unit.NewUnitOption(systemdSectionUnit, systemdBefore, systemdServiceKubelet),
+		// After
+		unit.NewUnitOption(systemdSectionUnit, systemdAfter, systemdServiceCrio),
 		// Type
 		unit.NewUnitOption(systemdSectionService, systemdType, systemdServiceTypeOneshot),
 		// ExecStart
