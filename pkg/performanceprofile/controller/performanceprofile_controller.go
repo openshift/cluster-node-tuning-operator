@@ -164,6 +164,54 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		Complete(r)
 }
 
+func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Manager, managementCluster cluster.Cluster) error {
+	// Running on hypershift controller should watch for the ConfigMaps created by Hypershift Operator in the
+	// controller namespace with the right label.
+	p := predicate.Funcs{
+		UpdateFunc: func(ue event.UpdateEvent) bool {
+			if !validateUpdateEvent(&ue) {
+				klog.InfoS("UpdateEvent NOT VALID", "objectName", ue.ObjectOld.GetName())
+				return false
+			}
+
+			_, hasLabel := ue.ObjectNew.GetLabels()[controllerGeneratedMachineConfig]
+			if hasLabel {
+				klog.InfoS("UpdateEvent has label", "objectName", ue.ObjectOld.GetName(), "label", controllerGeneratedMachineConfig)
+			}
+			return hasLabel
+		},
+		CreateFunc: func(ce event.CreateEvent) bool {
+			if ce.Object == nil {
+				klog.Error("Create event has no runtime object")
+				return false
+			}
+
+			_, hasLabel := ce.Object.GetLabels()[controllerGeneratedMachineConfig]
+			if hasLabel {
+				klog.InfoS("CreateEvent has label", "objectName", ce.Object.GetName(), "label", controllerGeneratedMachineConfig)
+			}
+			return hasLabel
+		},
+		DeleteFunc: func(de event.DeleteEvent) bool {
+			if de.Object == nil {
+				klog.Error("Delete event has no runtime object")
+				return false
+			}
+			_, hasLabel := de.Object.GetLabels()[controllerGeneratedMachineConfig]
+			if hasLabel {
+				klog.InfoS("DeleteEvent has label", "objectName", de.Object.GetName(), "label", controllerGeneratedMachineConfig)
+			}
+			return hasLabel
+		},
+	}
+
+	return ctrl.NewControllerManagedBy(mgr).
+		Named("performanceprofile_controller").
+		WatchesRawSource(source.Kind(managementCluster.GetCache(), &corev1.ConfigMap{}),
+			&handler.EnqueueRequestForObject{},
+			builder.WithPredicates(p)).Complete(r)
+}
+
 func (r *PerformanceProfileReconciler) mcpToPerformanceProfile(ctx context.Context, mcpObj client.Object) []reconcile.Request {
 	mcp := &mcov1.MachineConfigPool{}
 
