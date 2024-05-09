@@ -426,12 +426,14 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 func (r *PerformanceProfileReconciler) isMixedCPUsEnabled(profile *performancev2.PerformanceProfile) bool {
 	if !r.FeatureGate.Enabled(apiconfigv1.FeatureGateMixedCPUsAllocation) {
+func (r *PerformanceProfileReconciler) isMixedCPUsEnabled(object client.Object) bool {
+	if ntoconfig.InHyperShift() {
 		return false
 	}
-	if config.InHyperShift() {
+	if !r.FeatureGate.Enabled(apiconfigv1.FeatureGateMixedCPUsAllocation) {
 		return false
 	}
-	return profileutil.IsMixedCPUsEnabled(profile)
+	return profileutil.IsMixedCPUsEnabled(object.(*performancev2.PerformanceProfile))
 }
 
 func hasFinalizer(obj client.Object, finalizer string) bool {
