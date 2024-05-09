@@ -262,8 +262,8 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 
 			// After at least one NIC was configured, make sure that the selected NIC was NOT it
 
-			Expect(nodesDevices).To(ContainElement(node.Name))
-			Expect(nodesDevices[node.Name]).To(ContainElement(device))
+			Expect(nodesDevices).To(HaveKey(node.Name))
+			Expect(nodesDevices[node.Name]).To(HaveKey(device))
 			Expect(nodesDevices[node.Name][device]).ToNot(Equal(getReservedCPUSize(profile.Spec.CPU)))
 		})
 
