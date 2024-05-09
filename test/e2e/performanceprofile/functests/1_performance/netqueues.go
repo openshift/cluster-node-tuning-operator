@@ -142,7 +142,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 			}
 			//Verify the tuned profile is created on the worker-cnf nodes:
 			tunedCmd := []string{"bash", "-c",
-				fmt.Sprintf("cat %s | grep devices_udev_regex", tunedConfPath)}
+				fmt.Sprintf("grep devices_udev_regex %s", tunedConfPath)}
 
 			node, err := nodes.GetByName(nodeName)
 			Expect(err).ToNot(HaveOccurred())
@@ -189,7 +189,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 			}
 			//Verify the tuned profile is created on the worker-cnf nodes:
 			tunedCmd := []string{"bash", "-c",
-				fmt.Sprintf("cat %s | grep devices_udev_regex", tunedConfPath)}
+				fmt.Sprintf("grep devices_udev_regex %s", tunedConfPath)}
 
 			node, err := nodes.GetByName(nodeName)
 			Expect(err).ToNot(HaveOccurred())
@@ -245,7 +245,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 			}
 			//Verify the tuned profile is created on the worker-cnf nodes:
 			tunedCmd := []string{"bash", "-c",
-				fmt.Sprintf("cat %s | grep devices_udev_regex", tunedConfPath)}
+				fmt.Sprintf("grep devices_udev_regex %s", tunedConfPath)}
 
 			node, err := nodes.GetByName(nodeName)
 			Expect(err).ToNot(HaveOccurred())
@@ -304,7 +304,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 			}
 			//Verify the tuned profile is created on the worker-cnf nodes:
 			tunedCmd := []string{"bash", "-c",
-				fmt.Sprintf("cat %s | grep devices_udev_regex", tunedConfPath)}
+				fmt.Sprintf("grep devices_udev_regex %s", tunedConfPath)}
 
 			node, err = nodes.GetByName(nodeName)
 			Expect(err).ToNot(HaveOccurred())
