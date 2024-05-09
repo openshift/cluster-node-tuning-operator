@@ -1139,6 +1139,7 @@ func newFakeReconciler(profile client.Object, initObjects ...runtime.Object) *Pe
 	fg, _ := fakeFeatureGateAccessor.CurrentFeatureGates()
 	return &PerformanceProfileReconciler{
 		Client:            fakeClient,
+		ManagementClient:  fakeClient,
 		Recorder:          fakeRecorder,
 		FeatureGate:       fg,
 		ComponentsHandler: handler.NewHandler(fakeClient, scheme.Scheme),

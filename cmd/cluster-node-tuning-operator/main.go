@@ -181,6 +181,7 @@ func operatorRun() {
 		}
 		if err = (&paocontroller.PerformanceProfileReconciler{
 			Client:            mgr.GetClient(),
+			ManagementClient:  mgr.GetClient(),
 			Recorder:          mgr.GetEventRecorderFor("performance-profile-controller"),
 			FeatureGate:       fg,
 			ComponentsHandler: handler.NewHandler(mgr.GetClient(), mgr.GetScheme()),

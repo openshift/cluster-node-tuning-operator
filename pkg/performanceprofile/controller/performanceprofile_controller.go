@@ -61,6 +61,7 @@ const finalizer = "foreground-deletion"
 // PerformanceProfileReconciler reconciles a PerformanceProfile object
 type PerformanceProfileReconciler struct {
 	client.Client
+	ManagementClient  client.Client
 	Recorder          record.EventRecorder
 	FeatureGate       featuregates.FeatureGate
 	ComponentsHandler components.Handler
@@ -424,8 +425,6 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	return ctrl.Result{}, nil
 }
 
-func (r *PerformanceProfileReconciler) isMixedCPUsEnabled(profile *performancev2.PerformanceProfile) bool {
-	if !r.FeatureGate.Enabled(apiconfigv1.FeatureGateMixedCPUsAllocation) {
 func (r *PerformanceProfileReconciler) isMixedCPUsEnabled(object client.Object) bool {
 	if ntoconfig.InHyperShift() {
 		return false
