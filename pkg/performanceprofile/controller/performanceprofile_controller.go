@@ -29,7 +29,7 @@ import (
 	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/config"
+	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
@@ -45,18 +45,24 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-const finalizer = "foreground-deletion"
+const (
+	openshiftFinalizer               = "foreground-deletion"
+	hypershiftFinalizer              = "hypershift.openshift.io/foreground-deletion"
+	controllerGeneratedMachineConfig = "hypershift.openshift.io/performanceprofile-config"
+)
 
 // PerformanceProfileReconciler reconciles a PerformanceProfile object
 type PerformanceProfileReconciler struct {
@@ -387,21 +393,32 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
-	klog.Info("Reconciling PerformanceProfile")
-	// Fetch the PerformanceProfile instance
-	instance := &performancev2.PerformanceProfile{}
-	err = r.Get(ctx, req.NamespacedName, instance)
+	klog.InfoS("Reconciling", "reqNamespace", req.NamespacedName)
+	defer klog.InfoS("Exit Reconciling", "reqNamespace", req.NamespacedName)
+
+	var instance client.Object
+	instance = &performancev2.PerformanceProfile{}
+	finalizer := openshiftFinalizer
+	if ntoconfig.InHyperShift() {
+		instance = &corev1.ConfigMap{}
+		finalizer = hypershiftFinalizer
+	}
+
+	err = r.ManagementClient.Get(ctx, req.NamespacedName, instance)
 	if err != nil {
 		if k8serros.IsNotFound(err) {
-			// Request object not found, could have been deleted after reconcile request.
-			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
+			// Request object isn't found, could have been deleted after reconciled request.
+			// Owned objects are automatically garbage collected.
+			// For additional cleanup logic, use finalizers.
 			// Return and don't requeue
+			klog.InfoS("Instance not found", "reqNamespace", req.NamespacedName)
 			return reconcile.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
+		klog.ErrorS(err, "Reading failure", "reqNamespace", req.NamespacedName)
 		return reconcile.Result{}, err
 	}
-
+	instanceKey := client.ObjectKeyFromObject(instance)
 	if instance.GetDeletionTimestamp() != nil {
 		// delete components
 		if err := r.ComponentsHandler.Delete(ctx, instance.GetName()); err != nil {
@@ -417,22 +434,27 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 		// remove finalizer
 		if hasFinalizer(instance, finalizer) {
+			klog.InfoS("Remove finalizer", "instance", instanceKey.String())
 			removeFinalizer(instance, finalizer)
-			if err := r.Update(ctx, instance); err != nil {
+			if err := r.ManagementClient.Update(ctx, instance); err != nil {
 				return reconcile.Result{}, err
 			}
+			klog.InfoS("Finalizer Removed", "instance", instanceKey.String())
 			return reconcile.Result{}, nil
 		}
 	}
 
 	// add finalizer
 	if !hasFinalizer(instance, finalizer) {
+		klog.InfoS("Add finalizer", "instance", instanceKey.String())
 		instance.SetFinalizers(append(instance.GetFinalizers(), finalizer))
-		instance.Status.Conditions = status.GetProgressingConditions("DeploymentStarting", "Deployment is starting")
-		if err := r.Update(ctx, instance); err != nil {
+		if prof, ok := instance.(*performancev2.PerformanceProfile); ok {
+			prof.Status.Conditions = status.GetProgressingConditions("DeploymentStarting", "Deployment is starting")
+		}
+		if err = r.ManagementClient.Update(ctx, instance); err != nil {
 			return reconcile.Result{}, err
 		}
-
+		klog.InfoS("Finalizer added", "instance", instanceKey.String())
 		// we exit reconcile loop because we will have additional update reconcile
 		return reconcile.Result{}, nil
 	}

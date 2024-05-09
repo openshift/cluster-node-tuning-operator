@@ -26,6 +26,7 @@ import (
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -34,17 +35,23 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
+	"net/http"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/metrics"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/operator"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/cmd/render"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift"
+	hcpcomponents "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/components"
+	hcpstatus "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/status"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/tuned/cmd/operand"
 	tunedrender "github.com/openshift/cluster-node-tuning-operator/pkg/tuned/cmd/render"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
@@ -196,6 +203,46 @@ func operatorRun() {
 
 		if err = (&performancev2.PerformanceProfile{}).SetupWebhookWithManager(mgr); err != nil {
 			klog.Exitf("unable to create PerformanceProfile v2 webhook: %v", err)
+		}
+	} else {
+		// Hypershift configuration
+		restConfig, err := ntoclient.GetInClusterConfig()
+		if err != nil {
+			klog.Exitf("unable to create get InClusterConfiguration while creating PerformanceProfile controller: %v", err)
+		}
+
+		fOps := func(opts *cluster.Options) {
+			operatorNamespace := config.OperatorNamespace()
+			opts.Cache.Namespaces = []string{operatorNamespace}
+			opts.Scheme = mgr.GetScheme()
+			opts.MapperProvider = func(c *rest.Config, httpClient *http.Client) (meta.RESTMapper, error) {
+				return mgr.GetRESTMapper(), nil
+			}
+			opts.NewClient = func(config *rest.Config, options client.Options) (client.Client, error) {
+				c, err := client.New(config, options)
+				if err != nil {
+					return nil, err
+				}
+				return hypershift.NewControlPlaneClient(c, operatorNamespace), nil
+			}
+		}
+		managementCluster, err := cluster.New(restConfig, fOps)
+		if err != nil {
+			klog.Exitf("unable to create ManagementCluster while creating PerformanceProfile controller : %v", err)
+		}
+
+		if err := mgr.Add(managementCluster); err != nil {
+			klog.Exitf("unable to add ManagementCluster to manger while creating PerformanceProfile controller : %v", err)
+		}
+		if err = (&paocontroller.PerformanceProfileReconciler{
+			// dataPlaneClient
+			Client:            mgr.GetClient(),
+			ManagementClient:  managementCluster.GetClient(),
+			Recorder:          managementCluster.GetEventRecorderFor("performance-profile-controller"),
+			ComponentsHandler: hcpcomponents.NewHandler(managementCluster.GetClient(), mgr.GetClient(), mgr.GetScheme()),
+			StatusWriter:      hcpstatus.NewWriter(managementCluster.GetClient(), mgr.GetClient()),
+		}).SetupWithManagerForHypershift(mgr, managementCluster); err != nil {
+			klog.Exitf("unable to create PerformanceProfile controller: %v", err)
 		}
 	}
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

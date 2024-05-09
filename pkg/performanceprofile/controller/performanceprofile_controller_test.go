@@ -47,6 +47,7 @@ import (
 )
 
 var _ = Describe("Controller", func() {
+	const finalizer = "foreground-deletion"
 	var request reconcile.Request
 	var profile *performancev2.PerformanceProfile
 	var profileMCP *mcov1.MachineConfigPool
