@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -29,10 +30,12 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 )
 
+const tunedprofilesDirectory string = "/var/lib/ocp-tuned/profiles"
+
 var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() {
 	var workerRTNodes []corev1.Node
 	var profile, initialProfile *performancev2.PerformanceProfile
-	var performanceProfileName string
+	var tunedConfPath, performanceProfileName string
 
 	testutils.CustomBeforeAll(func() {
 		isSNO, err := cluster.IsSingleNode()
@@ -60,6 +63,8 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 			_, err := pods.WaitForPodOutput(context.TODO(), testclient.K8sClient, tunedPod, tunedCmd)
 			Expect(err).ToNot(HaveOccurred())
 		}
+
+		tunedConfPath = filepath.Join(tunedprofilesDirectory, tunedPaoProfile, "tuned.conf")
 	})
 
 	BeforeEach(func() {
@@ -137,7 +142,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 			}
 			//Verify the tuned profile is created on the worker-cnf nodes:
 			tunedCmd := []string{"bash", "-c",
-				fmt.Sprintf("cat /etc/tuned/openshift-node-performance-%s/tuned.conf | grep devices_udev_regex", performanceProfileName)}
+				fmt.Sprintf("grep devices_udev_regex %s", tunedConfPath)}
 
 			node, err := nodes.GetByName(nodeName)
 			Expect(err).ToNot(HaveOccurred())
@@ -184,7 +189,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 			}
 			//Verify the tuned profile is created on the worker-cnf nodes:
 			tunedCmd := []string{"bash", "-c",
-				fmt.Sprintf("cat /etc/tuned/openshift-node-performance-%s/tuned.conf | grep devices_udev_regex", performanceProfileName)}
+				fmt.Sprintf("grep devices_udev_regex %s", tunedConfPath)}
 
 			node, err := nodes.GetByName(nodeName)
 			Expect(err).ToNot(HaveOccurred())
@@ -240,7 +245,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 			}
 			//Verify the tuned profile is created on the worker-cnf nodes:
 			tunedCmd := []string{"bash", "-c",
-				fmt.Sprintf("cat /etc/tuned/openshift-node-performance-%s/tuned.conf | grep devices_udev_regex", performanceProfileName)}
+				fmt.Sprintf("grep devices_udev_regex %s", tunedConfPath)}
 
 			node, err := nodes.GetByName(nodeName)
 			Expect(err).ToNot(HaveOccurred())
@@ -299,7 +304,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() 
 			}
 			//Verify the tuned profile is created on the worker-cnf nodes:
 			tunedCmd := []string{"bash", "-c",
-				fmt.Sprintf("cat /etc/tuned/openshift-node-performance-%s/tuned.conf | grep devices_udev_regex", performanceProfileName)}
+				fmt.Sprintf("grep devices_udev_regex %s", tunedConfPath)}
 
 			node, err = nodes.GetByName(nodeName)
 			Expect(err).ToNot(HaveOccurred())
