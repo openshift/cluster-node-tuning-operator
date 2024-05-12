@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -19,12 +20,13 @@ const (
 )
 
 var (
-	assetsOutDir       string
-	assetsInDirs       []string
-	ppDir              string
-	testDataPath       string
-	defaultPinnedDir   string
-	snoLegacyPinnedDir string
+	assetsOutDir              string
+	assetsInDirs              []string
+	ppDir                     string
+	testDataPath              string
+	defaultPinnedDir          string
+	snoLegacyPinnedDir        string
+	containerRuntimeConfigDir string
 )
 
 var _ = Describe("render command e2e test", func() {
@@ -36,6 +38,7 @@ var _ = Describe("render command e2e test", func() {
 		defaultPinnedDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "pinned-cluster", "default")
 		snoLegacyPinnedDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "pinned-cluster", "single-node-legacy")
 		testDataPath = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "testdata")
+		containerRuntimeConfigDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "container-runtime-crun")
 		assetsInDirs = []string{assetsInDir, ppDir}
 	})
 
@@ -132,6 +135,22 @@ var _ = Describe("render command e2e test", func() {
 			cmd := exec.Command(cmdline[0], cmdline[1:]...)
 			runAndCompare(cmd, pinnedExpectedDir)
 
+		})
+	})
+
+	Context("With performance profile and matching extra ContainerRuntimeConfig during bootstrap", func() {
+		It("should render ContainerRuntimeConfig", func() {
+			renderDirs := append(assetsInDirs, containerRuntimeConfigDir)
+			cmdline := []string{
+				filepath.Join(binPath, "cluster-node-tuning-operator"),
+				"render",
+				"--asset-input-dir", strings.Join(renderDirs, ","),
+				"--asset-output-dir", assetsOutDir,
+			}
+			fmt.Fprintf(GinkgoWriter, "running: %v\n", cmdline)
+
+			cmd := exec.Command(cmdline[0], cmdline[1:]...)
+			runAndCompare(cmd, path.Join(bootstrapExpectedDir, "extra-ctrcfg"))
 		})
 	})
 
