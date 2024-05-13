@@ -381,24 +381,25 @@ func selectMachineConfigPool(pools []*mcfgv1.MachineConfigPool, selectors map[st
 
 func getContainerRuntimeName(profile *performancev2.PerformanceProfile, mcp *mcfgv1.MachineConfigPool, ctrcfgs []*mcfgv1.ContainerRuntimeConfig) (mcfgv1.ContainerRuntimeDefaultRuntime, error) {
 	mcpLabels := labels.Set(mcp.Labels)
+	var matchingCtrConfigs []*mcfgv1.ContainerRuntimeConfig
 	for _, ctrcfg := range ctrcfgs {
 		ctrcfgSelector, err := v1.LabelSelectorAsSelector(ctrcfg.Spec.MachineConfigPoolSelector)
 		if err != nil {
 			return "", err
 		}
 		if ctrcfgSelector.Matches(mcpLabels) {
-			ctrcfgs = append(ctrcfgs, ctrcfg)
+			matchingCtrConfigs = append(matchingCtrConfigs, ctrcfg)
 		}
 	}
 
-	if len(ctrcfgs) == 0 {
+	if len(matchingCtrConfigs) == 0 {
 		klog.Infof("no ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q; using default container runtime", mcpLabels.String(), profile.Name)
 		return mcfgv1.ContainerRuntimeDefaultRuntimeRunc, nil
 	}
 
-	if len(ctrcfgs) > 1 {
+	if len(matchingCtrConfigs) > 1 {
 		return "", fmt.Errorf("more than one ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q", mcpLabels.String(), profile.Name)
 	}
 
-	return ctrcfgs[0].Spec.ContainerRuntimeConfig.DefaultRuntime, nil
+	return matchingCtrConfigs[0].Spec.ContainerRuntimeConfig.DefaultRuntime, nil
 }
