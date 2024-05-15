@@ -21,12 +21,19 @@ import (
 	performancev1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v1"
 	performancev1alpha1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v1alpha1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	hypershiftutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 )
 
 var (
-	// Client defines the API client to run CRUD operations, that will be used for testing
+	// Client kept for backport compatibility until all tests will be converted
 	Client client.Client
+	// ControlPlaneClient defines the API client to run CRUD operations on the control plane cluster,
+	//that will be used for testing
+	ControlPlaneClient client.Client
+	// DataPlaneClient defines the API client to run CRUD operations on the data plane cluster,
+	//that will be used for testing
+	DataPlaneClient client.Client
 	// K8sClient defines k8s client to run subresource operations, for example you should use it to get pod logs
 	K8sClient *kubernetes.Clientset
 	// ClientsEnabled tells if the client from the package can be used
@@ -64,30 +71,58 @@ func init() {
 	}
 
 	var err error
-	Client, err = New()
+	Client, err = newClient()
 	if err != nil {
 		testlog.Info("Failed to initialize client, check the KUBECONFIG env variable", err.Error())
-		ClientsEnabled = false
+		return
+	}
+
+	ControlPlaneClient, err = NewControlPlane()
+	if err != nil {
+		testlog.Info("Failed to initialize ControlPlaneClient client, check the KUBECONFIG env variable", err.Error())
+		return
+	}
+	DataPlaneClient, err = NewDataPlane()
+	if err != nil {
+		testlog.Info("Failed to initialize DataPlaneClient client, check the KUBECONFIG env variable", err.Error())
 		return
 	}
 	K8sClient, err = NewK8s()
 	if err != nil {
 		testlog.Info("Failed to initialize k8s client, check the KUBECONFIG env variable", err.Error())
-		ClientsEnabled = false
 		return
 	}
 	ClientsEnabled = true
 }
 
-// New returns a controller-runtime client.
-func New() (client.Client, error) {
+func newClient() (client.Client, error) {
 	cfg, err := config.GetConfig()
 	if err != nil {
 		return nil, err
 	}
+	return client.New(cfg, client.Options{})
+}
 
-	c, err := client.New(cfg, client.Options{})
-	return c, err
+// NewControlPlane returns a new controller-runtime client for ControlPlaneClient cluster.
+func NewControlPlane() (client.Client, error) {
+	if hypershiftutils.IsHypershiftCluster() {
+		testlog.Info("creating ControlPlaneClient client for hypershift cluster")
+		return hypershiftutils.BuildControlPlaneClient()
+	}
+	return newClient()
+}
+
+// NewDataPlane returns a new controller-runtime client for DataPlaneClient cluster.
+func NewDataPlane() (client.Client, error) {
+	var c client.Client
+	var err error
+	if hypershiftutils.IsHypershiftCluster() {
+		testlog.Info("creating DataPlaneClient client for hypershift cluster")
+		c, err = hypershiftutils.BuildDataPlaneClient()
+	} else {
+		c, err = newClient()
+	}
+	return &dataPlaneImpl{c}, err
 }
 
 // NewK8s returns a kubernetes clientset
