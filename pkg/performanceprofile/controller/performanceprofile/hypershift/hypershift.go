@@ -17,8 +17,9 @@ import (
 
 // a set of keys which used to classify the encapsulated objects in the ConfigMap
 const (
-	TuningKey = "tuning"
-	ConfigKey = "config"
+	TuningKey                   = "tuning"
+	ConfigKey                   = "config"
+	HostedClustersNamespaceName = "clusters"
 )
 
 type ControlPlaneClientImpl struct {
@@ -84,7 +85,7 @@ func (ci *ControlPlaneClientImpl) getFromConfigMap(ctx context.Context, key clie
 }
 
 func (ci *ControlPlaneClientImpl) createInConfigMap(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
-	cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: obj.GetName(), Namespace: ci.managementClusterNamespaceName}}
+	cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: obj.GetName(), Namespace: HostedClustersNamespaceName}}
 	b, err := EncodeManifest(obj, scheme.Scheme)
 	if err != nil {
 		return err
