@@ -1368,8 +1368,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 	})
 
-	Context("Offlined CPU API", func() {
-		BeforeEach(func() {
+	Context("Offlined CPU API", Ordered, func() {
+		var numaCoreSiblings map[int]map[int][]int
+		BeforeAll(func() {
 			//Saving the old performance profile
 			initialProfile = profile.DeepCopy()
 
@@ -1384,6 +1385,10 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				if onlineCPUInt <= 8 {
 					Skip(fmt.Sprintf("Offlined CPU API tests need more than 8 CPUs online to work correctly, current online CPUs are %s", onlineCPUCount))
 				}
+			}
+			for _, node := range workerRTNodes {
+				numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
+				Expect(err).ToNot(HaveOccurred())
 			}
 		})
 
@@ -1424,23 +1429,17 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		It("[test_id:50964] Offline Higher CPUID's", func() {
 			var reserved, isolated, offline []string
-			// This map is of the form numaNode[core][cpu-siblings]
-			var numaCoreSiblings map[int]map[int][]int
-
-			// Get Per Numa Per core siblings
-			for _, node := range workerRTNodes {
-				numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
-			}
-			for numaNode := range numaCoreSiblings {
+			numaTopology := copyNumaCoreSiblings(numaCoreSiblings)
+			for numaNode := range numaTopology {
 				cores := make([]int, 0)
-				for k := range numaCoreSiblings[numaNode] {
+				for k := range numaTopology[numaNode] {
 					cores = append(cores, k)
 				}
 				sort.Ints(cores)
 				// Select the last core id
 				higherCoreIds := cores[len(cores)-1]
 				// Get cpu siblings from the selected cores and delete the selected cores  from the map
-				cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, higherCoreIds)
+				cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaTopology, higherCoreIds)
 				offline = append(offline, cpusiblings...)
 			}
 			offlineCpus := strings.Join(offline, ",")
@@ -1448,15 +1447,15 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			for reservedCores := 0; reservedCores < 2; reservedCores++ {
 				// Get the cpu siblings from the selected core and delete the siblings
 				// from the map. Selected siblings of cores are saved in reservedCpus
-				cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, reservedCores)
+				cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaTopology, reservedCores)
 				reserved = append(reserved, cpusiblings...)
 			}
 			reservedCpus := strings.Join(reserved, ",")
 			// Remaining core siblings available in the
-			// numaCoreSiblings map is used in isolatedCpus
-			for key := range numaCoreSiblings {
-				for k := range numaCoreSiblings[key] {
-					cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, k)
+			// numaTopology map is used in isolatedCpus
+			for key := range numaTopology {
+				for k := range numaTopology[key] {
+					cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaTopology, k)
 					isolated = append(isolated, cpusiblings...)
 				}
 			}
@@ -1497,35 +1496,31 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		It("[test_id:50965]Offline Middle CPUID's", func() {
 			var reserved, isolated, offline []string
-			// This map is of the form numaNode[core][cpu-siblings]
-			var numaCoreSiblings map[int]map[int][]int
+			numaTopology := copyNumaCoreSiblings(numaCoreSiblings)
 
-			for _, node := range workerRTNodes {
-				numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
-			}
-			for key := range numaCoreSiblings {
+			for key := range numaTopology {
 				cores := make([]int, 0)
-				for k := range numaCoreSiblings[key] {
+				for k := range numaTopology[key] {
 					cores = append(cores, k)
 				}
 				sort.Ints(cores)
 				middleCoreIds := cores[len(cores)/2]
-				siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, middleCoreIds)
+				siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaTopology, middleCoreIds)
 				offline = append(offline, siblings...)
 			}
 			offlineCpus := strings.Join(offline, ",")
 			for reservedCores := 0; reservedCores < 2; reservedCores++ {
 				// Get the cpu siblings from the selected core and delete the siblings
 				// from the map. Selected siblings of cores are saved in reservedCpus
-				siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, reservedCores)
+				siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaTopology, reservedCores)
 				reserved = append(reserved, siblings...)
 			}
 			reservedCpus := strings.Join(reserved, ",")
 			// Remaining core siblings available in the
-			// numaCoreSiblings map is used in isolatedCpus
-			for key := range numaCoreSiblings {
-				for k := range numaCoreSiblings[key] {
-					siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, k)
+			// numaTopology map is used in isolatedCpus
+			for key := range numaTopology {
+				for k := range numaTopology[key] {
+					siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaTopology, k)
 					isolated = append(isolated, siblings...)
 				}
 			}
@@ -1566,17 +1561,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		It("[test_id:50966]verify offlined parameter accepts multiple ranges of cpuid's", func() {
 			var reserved, isolated, offlined []string
-			//This map is of the form numaNode[core][cpu-siblings]
-			var numaCoreSiblings map[int]map[int][]int
-			for _, node := range workerRTNodes {
-				numaInfo, err := nodes.GetNumaNodes(&node)
-				Expect(err).ToNot(HaveOccurred())
-				if len(numaInfo) < 2 {
-					Skip(fmt.Sprintf("This test need 2 NUMA nodes.The number of NUMA nodes on node %s < 2", node.Name))
-				}
-			}
-			for _, node := range workerRTNodes {
-				numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
+			numaTopology := copyNumaCoreSiblings(numaCoreSiblings)
+			if len(numaCoreSiblings) < 2 {
+				Skip(fmt.Sprintf("This test need 2 NUMA nodes, available only %d", len(numaCoreSiblings)))
 			}
 			if len(numaCoreSiblings[0]) < 20 {
 				Skip(fmt.Sprintf("This test needs systems with at least 20 cores per socket"))
@@ -1585,29 +1572,29 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			for reservedCores := 0; reservedCores < 2; reservedCores++ {
 				// Get the cpu siblings from the selected core and delete the siblings
 				// from the map. Selected siblings of cores are saved in reservedCpus
-				siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, reservedCores)
+				siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaTopology, reservedCores)
 				reserved = append(reserved, siblings...)
 			}
 			reservedCpus := strings.Join(reserved, ",")
 			//Get Offline Core siblings . We take the total cores and
 			//from the middle we take core ids for calculating the ranges.
-			for key := range numaCoreSiblings {
+			for key := range numaTopology {
 				cores := make([]int, 0)
-				for k := range numaCoreSiblings[key] {
+				for k := range numaTopology[key] {
 					cores = append(cores, k)
 				}
 				sort.Ints(cores)
 				for i := 0; i < len(cores)/2; i++ {
-					siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, cores[i])
+					siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaTopology, cores[i])
 					offlined = append(offlined, siblings...)
 				}
 			}
 			offlinedCpus := nodes.GetNumaRanges(strings.Join(offlined, ","))
-			// Remaining core siblings available in the numaCoreSiblings
+			// Remaining core siblings available in the numaTopology
 			// map is used in isolatedCpus
-			for key := range numaCoreSiblings {
-				for k := range numaCoreSiblings[key] {
-					siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, k)
+			for key := range numaTopology {
+				for k := range numaTopology[key] {
+					siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaTopology, k)
 					isolated = append(isolated, siblings...)
 				}
 			}
@@ -1648,31 +1635,24 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		It("[test_id:50968]verify cpus mentioned in reserved or isolated cannot be offline", func() {
 			var reserved, isolated []string
-			//This map is of the form numaNode[core][cpu-siblings]
-			var numaCoreSiblings map[int]map[int][]int
-			for _, node := range workerRTNodes {
-				numaInfo, err := nodes.GetNumaNodes(&node)
-				Expect(err).ToNot(HaveOccurred())
-				if len(numaInfo) < 2 {
-					Skip(fmt.Sprintf("This test need 2 NUMA nodes.The number of NUMA nodes on node %s < 2", node.Name))
-				}
+			numaTopology := copyNumaCoreSiblings(numaCoreSiblings)
+			if len(numaCoreSiblings) < 2 {
+				Skip(fmt.Sprintf("This test need 2 NUMA nodes, available only %d", len(numaCoreSiblings)))
 			}
-			for _, node := range workerRTNodes {
-				numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
-			}
+
 			// Get reserved core siblings from 0, 1
 			for reservedCores := 0; reservedCores < 2; reservedCores++ {
 				// Get the cpu siblings from the selected core and delete the siblings
 				// from the map. Selected siblings of cores are saved in reservedCpus
-				siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, reservedCores)
+				siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaTopology, reservedCores)
 				reserved = append(reserved, siblings...)
 			}
 			reservedCpus := strings.Join(reserved, ",")
 			// Remaining core siblings available in the
-			// numaCoreSiblings map is used in isolatedCpus
-			for key := range numaCoreSiblings {
-				for k := range numaCoreSiblings[key] {
-					siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, k)
+			// numaTopology map is used in isolatedCpus
+			for key := range numaTopology {
+				for k := range numaTopology[key] {
+					siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaTopology, k)
 					isolated = append(isolated, siblings...)
 				}
 			}
@@ -1681,7 +1661,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			totalCpus := fmt.Sprintf("%s,%s", reservedCpus, isolatedCpus)
 			totalCpuSlice := strings.Split(totalCpus, ",")
 			// get partial cpus from the combined cpus
-			partialCpulist := (totalCpuSlice[:len(totalCpuSlice)/2])
+			partialCpulist := totalCpuSlice[:len(totalCpuSlice)/2]
 			offlineCpus := strings.Join(partialCpulist, ",")
 			// Create new performance with offlined
 			reservedSet := performancev2.CPUSet(reservedCpus)
@@ -1709,38 +1689,28 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		It("[test_id:50970]Offline CPUID's from multiple numa nodes", func() {
 			var reserved, isolated, offlined []string
-			//var offlineCPUs, reservedCpus, isolatedCpus string = "", "", ""
-			//This map is of the form numaNode[core][cpu-siblings]
-			var numaCoreSiblings map[int]map[int][]int
-			for _, node := range workerRTNodes {
-				numaInfo, err := nodes.GetNumaNodes(&node)
-				Expect(err).ToNot(HaveOccurred())
-				if len(numaInfo) < 2 {
-					Skip(fmt.Sprintf("This test need 2 NUMA nodes.The number of NUMA nodes on node %s < 2", node.Name))
-				}
+			numaTopology := copyNumaCoreSiblings(numaCoreSiblings)
+			if len(numaCoreSiblings) < 2 {
+				Skip(fmt.Sprintf("This test need 2 NUMA nodes, available only %d", len(numaCoreSiblings)))
 			}
-			for _, node := range workerRTNodes {
-				numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
-			}
-
 			// Get reserved core siblings from 0, 1
 			for reservedCores := 0; reservedCores < 2; reservedCores++ {
 				// Get the cpu siblings from the selected core and delete the siblings
 				// from the map. Selected siblings of cores are saved in reservedCpus
-				siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, reservedCores)
+				siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaTopology, reservedCores)
 				reserved = append(reserved, siblings...)
 			}
 			reservedCpus := strings.Join(reserved, ",")
 
 			discreteCores := []int{3, 13, 15, 24, 29}
 			for _, v := range discreteCores {
-				siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, v)
+				siblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaTopology, v)
 				offlined = append(offlined, siblings...)
 			}
 			offlineCpus := strings.Join(offlined, ",")
-			for key := range numaCoreSiblings {
-				for k := range numaCoreSiblings[key] {
-					cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, k)
+			for key := range numaTopology {
+				for k := range numaTopology[key] {
+					cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaTopology, k)
 					isolated = append(isolated, cpusiblings...)
 				}
 			}
@@ -1780,7 +1750,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			}
 		})
 
-		AfterEach(func() {
+		AfterAll(func() {
 			By("Reverting the Profile")
 			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
@@ -1788,8 +1758,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			spec, _ := json.Marshal(initialProfile.Spec)
 			// revert only if the profile changes.
 			if !bytes.Equal(currentSpec, spec) {
-				var numaCoreSiblings map[int]map[int][]int
-				var allCpus = []int{}
 				spec, err := json.Marshal(initialProfile.Spec)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(testclient.Client.Patch(context.TODO(), profile,
@@ -1804,27 +1772,16 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 				By("Waiting when mcp finishes updates")
 				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			}
 
-				// Verify cpus are back online when the offline parameters is removed
-				for _, node := range workerRTNodes {
-					numaCoreSiblings, err = nodes.GetCoreSiblings(&node)
-				}
-				for _, cores := range numaCoreSiblings {
-					for _, cpuSiblings := range cores {
-						for _, cpus := range cpuSiblings {
-							allCpus = append(allCpus, cpus)
-						}
-					}
-				}
-				for _, node := range workerRTNodes {
-					for _, v := range allCpus {
-						checkCpuStatusCmd := []string{"bash", "-c",
-							fmt.Sprintf("cat /sys/devices/system/cpu/cpu%d/online", v)}
-						fmt.Printf("Checking cpu%d is online\n", v)
-						stdout, err := nodes.ExecCommandOnNode(checkCpuStatusCmd, &node)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(stdout).Should(Equal("1"))
-					}
+			findcmd := `find /sys/devices/system/cpu/cpu* -type f -name online -exec cat {} \;`
+			checkCpuStatusCmd := []string{"bash", "-c", findcmd}
+			for _, node := range workerRTNodes {
+				stdout, err := nodes.ExecCommandOnNode(checkCpuStatusCmd, &node)
+				Expect(err).NotTo(HaveOccurred())
+				v := strings.Split(stdout, "\n")
+				for _, val := range v {
+					Expect(val).To(Equal("1"))
 				}
 			}
 		})
@@ -2233,4 +2190,20 @@ func removeLabels(nodeSelector map[string]string, targetNode *corev1.Node) {
 
 	By(fmt.Sprintf("Waiting when MCP %q complete updates and verifying that node reverted back configuration", testutils.RoleWorker))
 	mcps.WaitForCondition(testutils.RoleWorker, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+}
+
+// copyNumaCoreSiblings copies the existing numa topology to another
+// map required for offline tests.
+func copyNumaCoreSiblings(src map[int]map[int][]int) map[int]map[int][]int {
+	dst := make(map[int]map[int][]int)
+	for k, v := range src {
+		coresiblings := make(map[int][]int)
+		for core, cpus := range v {
+			newslice := make([]int, len(cpus))
+			copy(newslice, cpus)
+			coresiblings[core] = newslice
+		}
+		dst[k] = coresiblings
+	}
+	return dst
 }
