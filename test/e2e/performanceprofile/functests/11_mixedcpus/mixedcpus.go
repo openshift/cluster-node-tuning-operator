@@ -25,6 +25,7 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/utils/schedstat"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/controller"
@@ -141,6 +142,38 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 		})
 
 		When("workloads requests access for shared cpus", func() {
+			It("verify cpu load balancing still works with mixed cpus", func() {
+				rl := &corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("1"),
+					corev1.ResourceMemory: resource.MustParse("100Mi"),
+					sharedCpusResource:    resource.MustParse("1"),
+				}
+				p, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+					withRequests(rl),
+					withLimits(rl),
+					withAnnotations(map[string]string{"cpu-load-balancing.crio.io": "disable"}),
+					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
+				Expect(err).ToNot(HaveOccurred())
+				cfg := &controller.CpuSet{}
+				shared := mustParse(string(*profile.Spec.CPU.Shared))
+				err = getter.Container(ctx, p, p.Spec.Containers[0].Name, cfg)
+				Expect(err).ToNot(HaveOccurred())
+				cpusIncludingShared, err := cpuset.Parse(cfg.Cpus)
+				exclusivepodCpus := cpusIncludingShared.Difference(*shared)
+				Expect(err).ToNot(HaveOccurred(), "unable to parse cpuset used by pod")
+				// After the testpod is started get the schedstat and check for cpus
+				// not participating in scheduling domains
+				node := &corev1.Node{}
+				err = testclient.Client.Get(ctx, client.ObjectKey{Name: p.Spec.NodeName}, node)
+				Expect(err).ToNot(HaveOccurred())
+				checkSchedulingDomains(node, exclusivepodCpus, func(cpuIDs cpuset.CPUSet) error {
+					if !exclusivepodCpus.IsSubsetOf(cpuIDs) {
+						return fmt.Errorf("pod CPUs NOT entirely part of cpus with load balance disabled: %v vs %v", exclusivepodCpus, cpuIDs)
+					}
+					return nil
+				}, 2*time.Minute, 5*time.Second, "checking scheduling domains with pod running")
+
+			})
 			It("should have the shared cpus under its cgroups", func() {
 				rl := &corev1.ResourceList{
 					corev1.ResourceCPU:    resource.MustParse("1"),
@@ -578,4 +611,49 @@ func fetchSharedCPUsFromEnv(c *kubernetes.Clientset, p *corev1.Pod, containerNam
 		}
 	}
 	return shared
+}
+
+// getCPUswithLoadBalanceDisabled Return cpus which are not in any scheduling domain
+func getCPUswithLoadBalanceDisabled(ctx context.Context, targetNode *corev1.Node) ([]string, error) {
+	cmd := []string{"/bin/bash", "-c", "cat /proc/schedstat"}
+	schedstatData, err := nodes.ExecCommandOnNode(ctx, cmd, targetNode)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := schedstat.ParseData(strings.NewReader(schedstatData))
+	if err != nil {
+		return nil, err
+	}
+
+	cpusWithoutDomain := []string{}
+	for _, cpu := range info.GetCPUs() {
+		doms, ok := info.GetDomains(cpu)
+		if !ok {
+			return nil, fmt.Errorf("unknown cpu: %v", cpu)
+		}
+		if len(doms) > 0 {
+			continue
+		}
+		cpusWithoutDomain = append(cpusWithoutDomain, cpu)
+	}
+
+	return cpusWithoutDomain, nil
+}
+
+// checkSchedulingDomains Check cpus are part of any scheduling domain
+func checkSchedulingDomains(workerRTNode *corev1.Node, podCpus cpuset.CPUSet, testFunc func(cpuset.CPUSet) error, timeout, polling time.Duration, errMsg string) {
+	Eventually(func() error {
+		cpusNotInSchedulingDomains, err := getCPUswithLoadBalanceDisabled(context.TODO(), workerRTNode)
+		Expect(err).ToNot(HaveOccurred())
+		testlog.Infof("cpus with load balancing disabled are: %v", cpusNotInSchedulingDomains)
+		Expect(err).ToNot(HaveOccurred(), "unable to fetch cpus with load balancing disabled from /proc/schedstat")
+		cpuIDList, err := schedstat.MakeCPUIDListFromCPUList(cpusNotInSchedulingDomains)
+		if err != nil {
+			return err
+		}
+		cpuIDs := cpuset.New(cpuIDList...)
+		return testFunc(cpuIDs)
+	}).WithTimeout(2*time.Minute).WithPolling(5*time.Second).ShouldNot(HaveOccurred(), errMsg)
+
 }
