@@ -24,13 +24,13 @@ API_GO_HEADER_FILE:=$(API_TYPES_DIR)/header.go.txt
 CONTROLLER_GEN_VERSION :=v0.6.0
 
 # Container image-related variables
-IMAGE_BUILD_CMD=podman build --no-cache
+IMAGE_BUILD_CMD?=podman build --no-cache
 IMAGE_PUSH_CMD=podman push
-DOCKERFILE=Dockerfile
-REGISTRY=quay.io
-ORG=openshift
+DOCKERFILE?=Dockerfile
+REGISTRY?=quay.io
+ORG?=openshift
 TAG=$(shell git rev-parse --abbrev-ref HEAD)
-IMAGE=$(REGISTRY)/$(ORG)/origin-cluster-node-tuning-operator:$(TAG)
+IMAGE?=$(REGISTRY)/$(ORG)/origin-cluster-node-tuning-operator:$(TAG)
 
 # PAO variables
 CLUSTER ?= "ci"
