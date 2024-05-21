@@ -1,6 +1,7 @@
 package tuned
 
 import (
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -238,6 +239,63 @@ func TestProfileFingerprint(t *testing.T) {
 				t.Errorf("got=%v expected=%v", got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestChangeString(t *testing.T) {
+	testCases := []struct {
+		name     string
+		change   Change
+		expected string
+	}{
+		{
+			name:     "empty",
+			change:   Change{},
+			expected: "tuned.Change{}",
+		},
+		// common cases
+		{
+			name: "profile",
+			change: Change{
+				profile: true,
+			},
+			expected: "tuned.Change{profile:true}",
+		},
+		{
+			name: "profileStatus",
+			change: Change{
+				profileStatus: true,
+			},
+			expected: "tuned.Change{profileStatus:true}",
+		},
+		// check all the fields are represented. Keep me last
+		{
+			name:     "full",
+			change:   fullChange(),
+			expected: fmt.Sprintf("%#v", fullChange()),
+		},
+	}
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.change.String()
+			if got != tt.expected {
+				t.Errorf("got=%v expected=%v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func fullChange() Change {
+	return Change{
+		profile:            true,
+		profileStatus:      true,
+		daemonReload:       true,
+		debug:              true,
+		provider:           "test-provider",
+		reapplySysctl:      true,
+		recommendedProfile: "test-profile",
+		deferred:           true,
+		message:            "test-message",
 	}
 }
 
