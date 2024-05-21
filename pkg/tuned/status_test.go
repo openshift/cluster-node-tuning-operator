@@ -111,8 +111,8 @@ func TestComputeStatusConditions(t *testing.T) {
 					LastTransitionTime: metav1.Time{
 						Time: testTime(),
 					},
-					Reason:  "TunedSysctlOverride",
-					Message: "TuneD daemon issued one or more sysctl override message(s) during profile application. Use reapply_sysctl=true or remove conflicting sysctl test-error",
+					Reason:  "TunedDeferredUpdate",
+					Message: "Profile will be applied at the next node restart: test-error",
 				},
 			},
 		},
@@ -132,12 +132,12 @@ func TestComputeStatusConditions(t *testing.T) {
 				},
 				{
 					Type:   tunedv1.TunedDegraded,
-					Status: corev1.ConditionFalse,
+					Status: corev1.ConditionTrue,
 					LastTransitionTime: metav1.Time{
 						Time: testTime(),
 					},
-					Reason:  "TunedWarning",
-					Message: "No error messages observed by applying the TuneD daemon profile, only warning(s). TuneD stderr: test-error",
+					Reason:  "TunedDeferredUpdate",
+					Message: "Profile will be applied at the next node restart: test-error",
 				},
 			},
 		},

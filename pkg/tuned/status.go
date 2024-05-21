@@ -124,6 +124,10 @@ func computeStatusConditions(status Bits, message string, conditions []tunedv1.P
 		tunedDegradedCondition.Status = corev1.ConditionTrue
 		tunedDegradedCondition.Reason = "TunedError"
 		tunedDegradedCondition.Message = "TuneD daemon issued one or more error message(s) during profile application. TuneD stderr: " + message
+	} else if (status & scDeferred) != 0 {
+		tunedDegradedCondition.Status = corev1.ConditionTrue
+		tunedDegradedCondition.Reason = "TunedDeferredUpdate"
+		tunedDegradedCondition.Message = "Profile will be applied at the next node restart" + deferredMessage
 	} else if (status & scSysctlOverride) != 0 {
 		tunedDegradedCondition.Status = corev1.ConditionTrue // treat overrides as regular errors; users should use "reapply_sysctl: true" or remove conflicting sysctls
 		tunedDegradedCondition.Reason = "TunedSysctlOverride"
@@ -132,10 +136,6 @@ func computeStatusConditions(status Bits, message string, conditions []tunedv1.P
 		tunedDegradedCondition.Status = corev1.ConditionFalse // consider warnings from TuneD as non-fatal
 		tunedDegradedCondition.Reason = "TunedWarning"
 		tunedDegradedCondition.Message = "No error messages observed by applying the TuneD daemon profile, only warning(s). TuneD stderr: " + message
-	} else if (status & scDeferred) != 0 {
-		tunedDegradedCondition.Status = corev1.ConditionTrue
-		tunedDegradedCondition.Reason = "TunedDeferredUpdate"
-		tunedDegradedCondition.Message = "Profile will be applied at the next node restart" + deferredMessage
 	} else {
 		tunedDegradedCondition.Status = corev1.ConditionFalse
 		tunedDegradedCondition.Reason = "AsExpected"
