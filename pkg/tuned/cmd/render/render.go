@@ -213,7 +213,7 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 	for _, t := range tuneD {
 		tunedProfiles = append(tunedProfiles, t.Spec.Profile...)
 	}
-	_, _, _, err = tunedpkg.ProfilesExtract(tunedProfiles, recommendedProfile)
+	_, _, _, _, err = tunedpkg.ProfilesExtract(tunedProfiles, recommendedProfile)
 	if err != nil {
 		klog.Errorf("error extracting tuned profiles : %v", err)
 		return fmt.Errorf("error extracting tuned profiles: %w", err)
