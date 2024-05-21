@@ -43,6 +43,7 @@ const (
 	scError
 	scSysctlOverride
 	scReloading // reloading is true during the TuneD daemon reload.
+	scDeferred
 	scUnknown
 )
 
