@@ -135,6 +135,45 @@ type Change struct {
 	reapplySysctl bool
 	// The current recommended profile as calculated by the operator.
 	recommendedProfile string
+
+	// Is the current Change triggered by an object with the deferred annotation?
+	deferred bool
+	// Text to convey in status message, if present.
+	message string
+}
+
+func (ch Change) String() string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "tuned.Change{")
+	if ch.profile {
+		fmt.Fprintf(&sb, "profile:true")
+	}
+	if ch.profileStatus {
+		fmt.Fprintf(&sb, ", profileStatus:true")
+	}
+	if ch.daemonReload {
+		fmt.Fprintf(&sb, ", daemonReload:true")
+	}
+	if ch.debug {
+		fmt.Fprintf(&sb, ", debug:true")
+	}
+	if ch.provider != "" {
+		fmt.Fprintf(&sb, ", provider:%q", ch.provider)
+	}
+	if ch.reapplySysctl {
+		fmt.Fprintf(&sb, ", reapplySysctl:true")
+	}
+	if ch.recommendedProfile != "" {
+		fmt.Fprintf(&sb, ", recommendedProfile:%q", ch.recommendedProfile)
+	}
+	if ch.deferred {
+		fmt.Fprintf(&sb, ", deferred:true")
+	}
+	if ch.message != "" {
+		fmt.Fprintf(&sb, ", message:%q", ch.message)
+	}
+	fmt.Fprintf(&sb, "}")
+	return sb.String()
 }
 
 type Controller struct {
@@ -854,8 +893,8 @@ func (c *Controller) changeSyncerPostNodeRestart(change Change) {
 		return
 	}
 
-	klog.V(2).Infof("changeSyncerPostNodeRestart(%#v)", change)
-	defer klog.V(2).Infof("changeSyncerPostNodeRestart(%#v) done", change)
+	klog.V(2).Infof("changeSyncerPostNodeRestart(%s)", change.String())
+	defer klog.V(2).Infof("changeSyncerPostNodeRestart(%s) done", change.String())
 
 	profiles, recommended, err := profilesRepackPath(tunedRecommendFile, tunedProfilesDirCustom)
 	if err != nil {
@@ -877,8 +916,8 @@ func (c *Controller) changeSyncerPostNodeRestart(change Change) {
 }
 
 func (c *Controller) changeSyncerProfileStatus(change Change) (synced bool) {
-	klog.V(2).Infof("changeSyncerProfileStatus(%#v)", change)
-	defer klog.V(2).Infof("changeSyncerProfileStatus(%#v) done", change)
+	klog.V(2).Infof("changeSyncerProfileStatus(%s)", change.String())
+	defer klog.V(2).Infof("changeSyncerProfileStatus(%s) done", change.String())
 
 	if !change.profileStatus {
 		return true
@@ -891,7 +930,7 @@ func (c *Controller) changeSyncerProfileStatus(change Change) (synced bool) {
 	// 2) TuneD daemon was reloaded.  Make sure the node Profile k8s object is in sync with
 	//    the active profile, e.g. the Profile indicates the presence of the stall daemon on
 	//    the host if requested by the current active profile.
-	if err := c.updateTunedProfile(); err != nil {
+	if err := c.updateTunedProfile(change); err != nil {
 		klog.Error(err.Error())
 		return false // retry later
 	}
@@ -902,8 +941,10 @@ func (c *Controller) changeSyncerProfileStatus(change Change) (synced bool) {
 // current TuneD configuration and signals TuneD process reload or restart.
 func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 	var reload bool
+	var cfgUpdated bool
 
-	klog.V(2).Infof("changeSyncerTuneD()")
+	klog.V(2).Infof("changeSyncerTuneD(%s)", change.String())
+	defer klog.V(2).Infof("changeSyncerTuneD(%s) done updated=%v", change.String(), cfgUpdated)
 
 	if (c.daemon.status & scReloading) != 0 {
 		// This should not be necessary, but keep this here as a reminder.
@@ -931,7 +972,7 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 			klog.Infof("recommended profile (%s) matches current configuration", c.daemon.recommendedProfile)
 			// We do not need to reload the TuneD daemon, however, someone may have tampered with the k8s Profile status for this node.
 			// Make sure its status is up-to-date.
-			if err = c.updateTunedProfile(); err != nil {
+			if err = c.updateTunedProfile(change); err != nil {
 				klog.Error(err.Error())
 				return false, nil // retry later
 			}
@@ -976,27 +1017,26 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 	if reload {
 		c.daemon.restart |= ctrlReload
 	}
-	err = c.changeSyncerRestartOrReloadTuneD()
+
+	cfgUpdated, err = c.changeSyncerRestartOrReloadTuneD()
+	klog.V(2).Infof("changeSyncerTuneD() configuration updated: %v", cfgUpdated)
+	if err != nil {
+		return false, err
+	}
 
 	return err == nil, err
 }
 
-func (c *Controller) changeSyncerRestartOrReloadTuneD() error {
-	var err error
-
+func (c *Controller) changeSyncerRestartOrReloadTuneD() (bool, error) {
 	klog.V(2).Infof("changeSyncerRestartOrReloadTuneD()")
-
 	if (c.daemon.restart & ctrlRestart) != 0 {
 		// Complete restart of the TuneD daemon needed.  For example, debuging option is used or an option in tuned-main.conf file changed).
-		err = c.tunedRestart()
-		return err
+		return true, c.tunedRestart()
 	}
-
 	if (c.daemon.restart & ctrlReload) != 0 {
-		err = c.tunedReload()
+		return true, c.tunedReload()
 	}
-
-	return err
+	return false, nil
 }
 
 // Method changeSyncer performs k8s Profile object updates and TuneD daemon
@@ -1004,8 +1044,8 @@ func (c *Controller) changeSyncerRestartOrReloadTuneD() error {
 // synced and an error.  Only critical errors are returned, as non-nil errors
 // will cause restart of the main control loop -- the changeWatcher() method.
 func (c *Controller) changeSyncer(change Change) (bool, error) {
-	klog.V(2).Infof("changeSyncer(%#v)", change)
-	defer klog.V(2).Infof("changeSyncer(%#v) done", change)
+	klog.V(2).Infof("changeSyncer(%s)", change.String())
+	defer klog.V(2).Infof("changeSyncer(%s) done", change.String())
 	// Sync internal status after a TuneD reload
 	c.changeSyncerPostNodeRestart(change)
 	// Sync k8s Profile status if/when needed.
@@ -1123,29 +1163,26 @@ func (c *Controller) updateNodeAnnotations(node *corev1.Node, annotations map[st
 	return nil
 }
 
+func (c *Controller) daemonMessage(change Change, message string) string {
+	if len(message) > 0 {
+		return message
+	}
+	if len(change.message) > 0 {
+		return change.message
+	}
+	return c.daemon.stderr
+}
+
 // Method updateTunedProfile updates a Tuned Profile with information to report back
 // to the operator.  Note this method must be called only when the TuneD daemon is
 // not reloading.
-func (c *Controller) updateTunedProfile() (err error) {
-	var (
-		bootcmdline string
-	)
+func (c *Controller) updateTunedProfile(change Change) (err error) {
+	var bootcmdline string
 
 	if bootcmdline, err = GetBootcmdline(); err != nil {
 		// This should never happen unless something is seriously wrong (e.g. TuneD
 		// daemon no longer uses tunedBootcmdlineFile).  Do not continue.
 		return fmt.Errorf("unable to get kernel command-line parameters: %v", err)
-	}
-
-	profileName := getNodeName()
-	profile, err := c.listers.TunedProfiles.Get(profileName)
-	if err != nil {
-		return fmt.Errorf("failed to get Profile %s: %v", profileName, err)
-	}
-
-	activeProfile, err := getActiveProfile()
-	if err != nil {
-		return err
 	}
 
 	node, err := c.getNodeForProfile(c.nodeName)
@@ -1157,9 +1194,7 @@ func (c *Controller) updateTunedProfile() (err error) {
 		node.ObjectMeta.Annotations = map[string]string{}
 	}
 
-	statusConditions := computeStatusConditions(c.daemon.status, c.daemon.stderr, profile.Status.Conditions)
 	bootcmdlineAnnotVal, bootcmdlineAnnotSet := node.ObjectMeta.Annotations[tunedv1.TunedBootcmdlineAnnotationKey]
-
 	if !bootcmdlineAnnotSet || bootcmdlineAnnotVal != bootcmdline {
 		annotations := map[string]string{tunedv1.TunedBootcmdlineAnnotationKey: bootcmdline}
 		err = c.updateNodeAnnotations(node, annotations)
@@ -1168,9 +1203,41 @@ func (c *Controller) updateTunedProfile() (err error) {
 		}
 	}
 
+	return c.updateTunedProfileStatus(context.TODO(), change)
+}
+
+func (c *Controller) updateTunedProfileStatus(ctx context.Context, change Change) error {
+	activeProfile, err := getActiveProfile()
+	if err != nil {
+		return err
+	}
+
+	profile, err := c.listers.TunedProfiles.Get(c.nodeName)
+	if err != nil {
+		return fmt.Errorf("failed to get Profile %s: %v", c.nodeName, err)
+	}
+
+	var message string
+	wantsDeferred := util.HasDeferredUpdateAnnotation(profile.Annotations)
+	isApplied := (c.daemon.profileFingerprintUnpacked == c.daemon.profileFingerprintEffective)
+	klog.V(2).Infof("daemonStatus(): change: deferred=%v reload=%v applied=%v", wantsDeferred, change.daemonReload, isApplied)
+	if (wantsDeferred && !isApplied) && !change.daemonReload {
+		c.daemon.status |= scDeferred
+		recommendProfile, err := TunedRecommendFileRead()
+		if err == nil {
+			klog.V(2).Infof("updateTunedProfileStatus(): recommended profile %q (deferred)", recommendProfile)
+			message = c.daemonMessage(change, recommendProfile)
+		} else {
+			// just log and carry on, we will use this info to clarify status conditions
+			klog.Errorf("%s", err.Error())
+		}
+	}
+
+	statusConditions := computeStatusConditions(c.daemon.status, message, profile.Status.Conditions)
+
 	if profile.Status.TunedProfile == activeProfile &&
 		conditionsEqual(profile.Status.Conditions, statusConditions) {
-		klog.V(2).Infof("updateTunedProfile(): no need to update status of Profile %s", profile.Name)
+		klog.V(2).Infof("updateTunedProfileStatus(): no need to update status of Profile %s", profile.Name)
 		return nil
 	}
 
@@ -1178,7 +1245,7 @@ func (c *Controller) updateTunedProfile() (err error) {
 
 	profile.Status.TunedProfile = activeProfile
 	profile.Status.Conditions = statusConditions
-	_, err = c.clients.Tuned.TunedV1().Profiles(operandNamespace).UpdateStatus(context.TODO(), profile, metav1.UpdateOptions{})
+	_, err = c.clients.Tuned.TunedV1().Profiles(operandNamespace).UpdateStatus(ctx, profile, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update Profile %s status: %v", profile.Name, err)
 	}
@@ -1324,7 +1391,6 @@ func (c *Controller) changeWatcher() (err error) {
 			return fmt.Errorf("error watching filesystem: %v", err)
 
 		case ch := <-c.changeCh:
-			var synced bool
 			klog.V(2).Infof("changeCh")
 
 			synced, err := c.changeSyncer(ch)
