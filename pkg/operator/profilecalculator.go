@@ -150,6 +150,14 @@ func (pc *ProfileCalculator) nodeChangeHandler(nodeName string) (bool, error) {
 	return change, nil
 }
 
+type ComputedProfile struct {
+	TunedProfileName string
+	AllProfiles      []tunedv1.TunedProfile
+	MCLabels         map[string]string
+	NodePoolName     string
+	Operand          tunedv1.OperandConfig
+}
+
 // calculateProfile calculates a tuned profile for Node nodeName.
 //
 // Returns
@@ -158,14 +166,12 @@ func (pc *ProfileCalculator) nodeChangeHandler(nodeName string) (bool, error) {
 // * MachineConfig labels if the profile was selected by machineConfigLabels
 // * whether to run the Tuned daemon in debug mode on node nodeName
 // * an error if any
-func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, []tunedv1.TunedProfile, map[string]string, tunedv1.OperandConfig, error) {
-	var operand tunedv1.OperandConfig
-
+func (pc *ProfileCalculator) calculateProfile(nodeName string) (ComputedProfile, error) {
 	klog.V(3).Infof("calculateProfile(%s)", nodeName)
 	tunedList, err := pc.listers.TunedResources.List(labels.Everything())
 
 	if err != nil {
-		return "", nil, nil, operand, fmt.Errorf("failed to list Tuned: %v", err)
+		return ComputedProfile{}, fmt.Errorf("failed to list Tuned: %v", err)
 	}
 
 	profilesAll := tunedProfiles(tunedList)
@@ -199,12 +205,12 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, []tunedv
 				// is often unneeded and would likely have a performance impact.
 				node, err = pc.listers.Nodes.Get(nodeName)
 				if err != nil {
-					return i, "", nil, operand, err
+					return i, "", nil, tunedv1.OperandConfig{}, err
 				}
 
 				pools, err = pc.getPoolsForNode(node)
 				if err != nil {
-					return i, "", nil, operand, err
+					return i, "", nil, tunedv1.OperandConfig{}, err
 				}
 			}
 
@@ -214,7 +220,7 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, []tunedv
 			}
 		}
 		// No profile matches.  This is not necessarily a problem, e.g. when we check for matching profiles with the same priority.
-		return i, defaultProfile, nil, operand, nil
+		return i, defaultProfile, nil, tunedv1.OperandConfig{}, nil
 	}
 	iStop, tunedProfileName, mcLabels, operand, err := recommendProfile(nodeName, 0)
 
@@ -223,10 +229,16 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, []tunedv
 		// in the "recommend" section to select the default profile for the tuned daemon.
 		_, err = pc.listers.TunedResources.Get(tunedv1.TunedDefaultResourceName)
 		if err != nil {
-			return defaultProfile, nil, nil, operand, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
+			return ComputedProfile{
+				TunedProfileName: defaultProfile,
+				Operand:          operand,
+			}, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
 		}
 
-		return defaultProfile, nil, nil, operand, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
+		return ComputedProfile{
+			TunedProfileName: defaultProfile,
+			Operand:          operand,
+		}, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
 	}
 
 	// Make sure we do not have multiple matching profiles with the same priority.  If so, report a warning.
@@ -262,7 +274,12 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, []tunedv
 		}
 	}
 
-	return tunedProfileName, profilesAll, mcLabels, operand, err
+	return ComputedProfile{
+		TunedProfileName: tunedProfileName,
+		AllProfiles:      profilesAll,
+		MCLabels:         mcLabels,
+		Operand:          operand,
+	}, err
 }
 
 // calculateProfileHyperShift calculates a tuned profile for Node nodeName.
@@ -273,19 +290,17 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, []tunedv
 // * the NodePool name for this Node
 // * whether to run the Tuned daemon in debug mode on node nodeName
 // * an error if any
-func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (string, []tunedv1.TunedProfile, string, tunedv1.OperandConfig, error) {
-	var operand tunedv1.OperandConfig
-
+func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (ComputedProfile, error) {
 	klog.V(3).Infof("calculateProfileHyperShift(%s)", nodeName)
 
 	node, err := pc.listers.Nodes.Get(nodeName)
 	if err != nil {
-		return "", nil, "", operand, err
+		return ComputedProfile{}, err
 	}
 
 	nodePoolName, err := pc.getNodePoolNameForNode(node)
 	if err != nil {
-		return "", nil, "", operand, err
+		return ComputedProfile{}, err
 	}
 
 	// In HyperShift, we only consider the default profile and
@@ -295,11 +310,13 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (string
 			hypershiftNodePoolNameLabel: nodePoolName,
 		}))
 	if err != nil {
-		return "", nil, "", operand, fmt.Errorf("failed to list Tuneds in NodePool %s: %v", nodePoolName, err)
+		return ComputedProfile{}, fmt.Errorf("failed to list Tuneds in NodePool %s: %v", nodePoolName, err)
 	}
 	defaultTuned, err := pc.listers.TunedResources.Get(tunedv1.TunedDefaultResourceName)
 	if err != nil {
-		return defaultProfile, nil, "", operand, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
+		return ComputedProfile{
+			TunedProfileName: defaultProfile,
+		}, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
 	}
 	tunedList = append(tunedList, defaultTuned)
 
@@ -327,12 +344,16 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (string
 			}
 		}
 		// No profile matches.  This is not necessarily a problem, e.g. when we check for matching profiles with the same priority.
-		return i, defaultProfile, "", operand, nil
+		return i, defaultProfile, "", tunedv1.OperandConfig{}, nil
 	}
 	iStop, tunedProfileName, nodePoolName, operand, err := recommendProfile(nodeName, 0)
 
 	if iStop == len(recommendAll) {
-		return defaultProfile, profilesAll, "", operand, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
+		return ComputedProfile{
+			TunedProfileName: defaultProfile,
+			AllProfiles:      profilesAll,
+			Operand:          operand,
+		}, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
 	}
 
 	// Make sure we do not have multiple matching profiles with the same priority.  If so, report a warning.
@@ -368,7 +389,12 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (string
 		}
 	}
 
-	return tunedProfileName, profilesAll, nodePoolName, operand, err
+	return ComputedProfile{
+		TunedProfileName: tunedProfileName,
+		AllProfiles:      profilesAll,
+		NodePoolName:     nodePoolName,
+		Operand:          operand,
+	}, err
 }
 
 // profileMatches returns true, if Node 'nodeName' fulfills all the necessary
