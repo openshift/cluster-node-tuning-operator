@@ -1,0 +1,24 @@
+apiVersion: tuned.openshift.io/v1
+kind: Tuned
+metadata:
+  name: ocp-prof-deferred-basic-10
+  namespace: openshift-cluster-node-tuning-operator
+  annotations:
+    verificationCommand: "[\"/bin/cat\", \"/sys/devices/system/cpu/cpu0/power/energy_perf_bias\"]"
+    verificationOutput: "15"
+spec:
+  profile:
+  - data: |
+      [main]
+      summary=Custom OpenShift profile
+      include=openshift-node
+      [sysctl]
+      kernel.shmmni=8192
+      [cpu]
+      energy_perf_bias=power
+    name: test-cpu-energy
+  recommend:
+  - match:
+    - label: node-role.kubernetes.io/worker
+    priority: 15
+    profile: test-cpu-energy
