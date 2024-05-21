@@ -168,7 +168,7 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, []tunedv
 		return "", nil, nil, operand, fmt.Errorf("failed to list Tuned: %v", err)
 	}
 
-	profilesAll := TunedProfiles(tunedList)
+	profilesAll := tunedProfiles(tunedList)
 	recommendAll := TunedRecommend(tunedList)
 	recommendProfile := func(nodeName string, iStart int) (int, string, map[string]string, tunedv1.OperandConfig, error) {
 		var i int
@@ -303,7 +303,7 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (string
 	}
 	tunedList = append(tunedList, defaultTuned)
 
-	profilesAll := TunedProfiles(tunedList)
+	profilesAll := tunedProfiles(tunedList)
 	recommendAll := TunedRecommend(tunedList)
 	recommendProfile := func(nodeName string, iStart int) (int, string, string, tunedv1.OperandConfig, error) {
 		var i int
@@ -630,9 +630,9 @@ func (pc *ProfileCalculator) getNodePoolNameForNode(node *corev1.Node) (string, 
 	return nodePoolName, nil
 }
 
-// TunedRecommend returns a name-sorted TunedProfile slice out of
+// tunedProfiles returns a name-sorted TunedProfile slice out of
 // a slice of Tuned objects.
-func TunedProfiles(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedProfile {
+func tunedProfiles(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedProfile {
 	tunedProfiles := []tunedv1.TunedProfile{}
 	m := map[string]tunedv1.TunedProfile{}
 
