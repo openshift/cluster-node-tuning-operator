@@ -123,6 +123,9 @@ type Change struct {
 	// Do we need to update Tuned Profile status?
 	profileStatus bool
 
+	// is this Change caused by a TuneD daemon reload?
+	daemonReload bool
+
 	// The following keys are set when profile == true.
 	// Was debugging set in Profile k8s object?
 	debug bool
@@ -685,7 +688,10 @@ func (c *Controller) tunedRun() {
 
 	onDaemonReload := func() {
 		// Notify the event processor that the TuneD daemon finished reloading and that we might need to update Profile status.
-		c.wqTuneD.Add(wqKeyTuned{kind: wqKindDaemon, change: Change{profileStatus: true}})
+		c.wqTuneD.Add(wqKeyTuned{kind: wqKindDaemon, change: Change{
+			profileStatus: true,
+			daemonReload:  true,
+		}})
 	}
 
 	err := TunedRun(c.tunedCmd, &c.daemon, onDaemonReload)
@@ -846,6 +852,37 @@ func GetBootcmdline() (string, error) {
 	return responseString, nil
 }
 
+// changeSyncerPostDaemonReload syncronizes the daemon status after a tuned reload
+func (c *Controller) changeSyncerPostDaemonReload(change Change) {
+	if !change.daemonReload {
+		return
+	}
+
+	// TODO v=2
+	klog.Infof("changeSyncerPostDaemonReload(%#v)", change)
+	// TODO v=2
+	defer klog.Infof("changeSyncerPostDaemonReload(%#v) done", change)
+
+	profiles, recommended, err := profilesRepackPath(tunedRecommendFile, tunedProfilesDirCustom)
+	if err != nil {
+		// keep going, immediate updates are expected to work as usual
+		// and we expect the vast majority of updates to be immediate anyway
+		klog.Errorf("error repacking the profile: %v", err)
+		klog.Infof("deferred updates likely broken")
+	}
+
+	profileFP := profilesFingerprint(profiles, recommended)
+	if (c.daemon.status & scApplied) == 0 {
+		klog.Infof("changeSyncerPostDaemonReload(): profile not applied after tuned reload")
+		return
+	}
+
+	// TODO v=2
+	klog.Infof("changeSyncerPostDaemonReload(): current effective profile fingerprint %q -> %q", c.daemon.profileFingerprintEffective, profileFP)
+	c.daemon.profileFingerprintEffective = profileFP
+	c.daemon.status &= ^scDeferred // force clear even if it was never set.
+}
+
 func (c *Controller) changeSyncerProfileStatus(change Change) (synced bool) {
 	klog.V(2).Infof("changeSyncerProfileStatus(%#v)", change)
 	defer klog.V(2).Infof("changeSyncerProfileStatus(%#v) done", change)
@@ -973,12 +1010,15 @@ func (c *Controller) changeSyncerRestartOrReloadTuneD() error {
 // reloads as needed.  Returns indication whether the change was successfully
 // synced and an error.  Only critical errors are returned, as non-nil errors
 // will cause restart of the main control loop -- the changeWatcher() method.
-func (c *Controller) changeSyncer(change Change) (synced bool, err error) {
+func (c *Controller) changeSyncer(change Change) (bool, error) {
+	klog.Infof("changeSyncer(%#v)", change)            // TODO v=2
+	defer klog.Infof("changeSyncer(%#v) done", change) // TODO v=2
+	// Sync internal status after a TuneD reload
+	c.changeSyncerPostDaemonReload(change)
 	// Sync k8s Profile status if/when needed.
 	if !c.changeSyncerProfileStatus(change) {
 		return false, nil
 	}
-
 	// Extract TuneD configuration from k8s objects and restart/reload TuneD as needed.
 	return c.changeSyncerTuneD(change)
 }
