@@ -4,11 +4,15 @@ import (
 	"bufio"   // scanner
 	"bytes"   // bytes.Buffer
 	"context" // context.TODO()
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"  // errors.Is()
 	"fmt"     // Printf()
 	"math"    // math.Pow()
 	"os"      // os.Exit(), os.Stderr, ...
 	"os/exec" // os.Exec()
+	"path/filepath"
+	"sort"
 	"strings" // strings.Join()
 	"syscall" // syscall.SIGHUP, ...
 	"time"    // time.Second, ...
@@ -105,6 +109,12 @@ type Daemon struct {
 	// recommendedProfile is the TuneD profile the operator calculated to be applied.
 	// This variable is used to cache the value which was written to tunedRecommendFile.
 	recommendedProfile string
+	// profileFingerprintUnpacked is the fingerprint of the profile unpacked on the node.
+	// Relevant in the startup flow with deferred updates.
+	profileFingerprintUnpacked string
+	// profileFingerprintEffective is the fingerprint of the profile effective on the node.
+	// Relevant in the startup flow with deferred updates.
+	profileFingerprintEffective string
 }
 
 type Change struct {
@@ -326,23 +336,27 @@ func profilesEqual(profileFile string, profileData string) bool {
 // Returns:
 //   - True if the data in the to-be-extracted recommended profile or the profiles being
 //     included from the current recommended profile have changed.
+//   - If the data changed, the fingerprint of the new profile, or "" otherwise.
 //   - A map with successfully extracted TuneD profile names.
 //   - A map with names of TuneD profiles the current TuneD recommended profile depends on.
 //   - Error if any or nil.
-func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string) (bool, map[string]bool, map[string]bool, error) {
-	var (
-		change bool
-	)
-	klog.Infof("profilesExtract(): extracting %d TuneD profiles", len(profiles))
+func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string) (bool, string, map[string]bool, map[string]bool, error) {
+	klog.Infof("profilesExtract(): extracting %d TuneD profiles (recommended=%s)", len(profiles), recommendedProfile)
+	// Get a list of TuneD profiles names the recommended profile depends on.
+	deps := profileDepends(recommendedProfile)
+	// Add the recommended profile itself.
+	deps[recommendedProfile] = true
+	klog.Infof("profilesExtract(): profile deps: %#v", deps) // TODO v=2
+	return profilesExtractPathWithDeps(tunedProfilesDirCustom, profiles, recommendedProfile, deps)
+}
 
-	recommendedProfileDeps := map[string]bool{}
-	if len(recommendedProfile) > 0 {
-		// Get a list of TuneD profiles names the recommended profile depends on.
-		recommendedProfileDeps = profileDepends(recommendedProfile)
-		// Add the recommended profile itself.
-		recommendedProfileDeps[recommendedProfile] = true
-	}
-	extracted := map[string]bool{} // TuneD profile names present in TuneD CR and successfully extracted to tunedProfilesDirCustom
+// profilesExtractPathWithDeps is like ProfilesExtract but takes explicit profiles root dir path and
+// explicit dependencies, so it's easier to test. To be used only internally.
+func profilesExtractPathWithDeps(profilesRootDir string, profiles []tunedv1.TunedProfile, recommendedProfile string, recommendedProfileDeps map[string]bool) (bool, string, map[string]bool, map[string]bool, error) {
+	var (
+		change    bool            = false
+		extracted map[string]bool = map[string]bool{} // TuneD profile names present in TuneD CR and successfully extracted to tunedProfilesDirCustom
+	)
 
 	for index, profile := range profiles {
 		if profile.Name == nil {
@@ -353,11 +367,11 @@ func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string)
 			klog.Warningf("profilesExtract(): profile data missing for Profile %v", index)
 			continue
 		}
-		profileDir := fmt.Sprintf("%s/%s", tunedProfilesDirCustom, *profile.Name)
-		profileFile := fmt.Sprintf("%s/%s", profileDir, tunedConfFile)
+		profileDir := filepath.Join(profilesRootDir, *profile.Name)
+		profileFile := filepath.Join(profileDir, tunedConfFile)
 
 		if err := os.MkdirAll(profileDir, os.ModePerm); err != nil {
-			return change, extracted, recommendedProfileDeps, fmt.Errorf("failed to create TuneD profile directory %q: %v", profileDir, err)
+			return change, "", extracted, recommendedProfileDeps, fmt.Errorf("failed to create TuneD profile directory %q: %v", profileDir, err)
 		}
 
 		if recommendedProfileDeps[*profile.Name] {
@@ -368,21 +382,57 @@ func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string)
 			if !change {
 				un = "un"
 			}
-			klog.Infof("recommended TuneD profile %s content %schanged [%s]", recommendedProfile, un, *profile.Name)
+			klog.Infof("profilesExtract(): recommended TuneD profile %s content %schanged [%s]", recommendedProfile, un, *profile.Name)
 		}
 
-		f, err := os.Create(profileFile)
+		err := os.WriteFile(profileFile, []byte(*profile.Data), 0644)
 		if err != nil {
-			return change, extracted, recommendedProfileDeps, fmt.Errorf("failed to create TuneD profile file %q: %v", profileFile, err)
-		}
-		defer f.Close()
-		if _, err = f.WriteString(*profile.Data); err != nil {
-			return change, extracted, recommendedProfileDeps, fmt.Errorf("failed to write TuneD profile file %q: %v", profileFile, err)
+			return change, "", extracted, recommendedProfileDeps, fmt.Errorf("failed to write TuneD profile file %q: %v", profileFile, err)
 		}
 		extracted[*profile.Name] = true
+		// TODO v=2
+		klog.Infof("profilesExtract(): extracted profile %q to %q (%d bytes)", *profile.Name, profileFile, len(*profile.Data))
 	}
 
-	return change, extracted, recommendedProfileDeps, nil
+	profilesFP := profilesFingerprint(profiles, recommendedProfile)
+	klog.Infof("profilesExtract(): extracted profiles fingerprint: %s", profilesFP)
+	return change, profilesFP, extracted, recommendedProfileDeps, nil
+}
+
+func profilesRepackPath(rfPath, profilesRootDir string) ([]tunedv1.TunedProfile, string, error) {
+	recommendedProfile, err := TunedRecommendFileReadPath(rfPath)
+	if err != nil {
+		return nil, "", err
+	}
+	klog.Infof("profilesRepack(): recovered recommended profile: %q", recommendedProfile)
+
+	dents, err := os.ReadDir(profilesRootDir)
+	if err != nil {
+		return nil, "", err
+	}
+	var profiles []tunedv1.TunedProfile
+	for _, dent := range dents {
+		profileDir := filepath.Join(profilesRootDir, dent.Name())
+		if !dent.IsDir() {
+			klog.V(2).Infof("profilesRepack(): skipped entry %q: not a directory", profileDir)
+			continue
+		}
+		profilePath := filepath.Join(profileDir, tunedConfFile)
+		profileBytes, err := os.ReadFile(profilePath)
+		if err != nil {
+			return profiles, recommendedProfile, err
+		}
+		profileName := dent.Name()
+		profileData := string(profileBytes)
+		profiles = append(profiles, tunedv1.TunedProfile{
+			Name: &profileName,
+			Data: &profileData,
+		})
+		klog.V(2).Infof("profilesRepack(): recovered profile: %q from %q (%d bytes)", profileName, profilePath, len(profileBytes))
+	}
+
+	klog.V(2).Infof("profilesRepack(): recovered %d profiles", len(profiles))
+	return profiles, recommendedProfile, nil
 }
 
 // profilesSync extracts TuneD daemon profiles to the daemon configuration directory
@@ -391,16 +441,17 @@ func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string)
 // Returns:
 //   - True if the data in the to-be-extracted recommended profile or the profiles being
 //     included from the current recommended profile have changed.
+//   - The synced profile fingerprint.
 //   - Error if any or nil.
-func profilesSync(profiles []tunedv1.TunedProfile, recommendedProfile string) (bool, error) {
-	change, extractedNew, recommendedProfileDeps, err := ProfilesExtract(profiles, recommendedProfile)
+func profilesSync(profiles []tunedv1.TunedProfile, recommendedProfile string) (bool, string, error) {
+	change, profilesFP, extractedNew, recommendedProfileDeps, err := ProfilesExtract(profiles, recommendedProfile)
 	if err != nil {
-		return change, err
+		return change, "", err
 	}
 
 	dirEntries, err := os.ReadDir(tunedProfilesDirCustom)
 	if err != nil {
-		return change, err
+		return change, "", err
 	}
 
 	// Deal with TuneD profiles absent from Tuned CRs, but still present in <tunedProfilesDirCustom>/<profile>/
@@ -424,9 +475,9 @@ func profilesSync(profiles []tunedv1.TunedProfile, recommendedProfile string) (b
 		profileDir := fmt.Sprintf("%s/%s", tunedProfilesDirCustom, profile)
 		err := os.RemoveAll(profileDir)
 		if err != nil {
-			return change, fmt.Errorf("failed to remove %q: %v", profileDir, err)
+			return change, "", fmt.Errorf("failed to remove %q: %v", profileDir, err)
 		}
-		klog.Infof("removed TuneD profile %q", profileDir)
+		klog.Infof("profilesSync(): removed TuneD profile %q", profileDir)
 
 		if recommendedProfileDeps[profile] {
 			// This TuneD profile does not exist in the Profile CR, but the recommended profile depends on it.
@@ -435,22 +486,43 @@ func profilesSync(profiles []tunedv1.TunedProfile, recommendedProfile string) (b
 		}
 	}
 
-	return change, nil
+	return change, profilesFP, nil
+}
+
+// filterAndSortProfiles returns a slice of valid (non-nil name, non-nil data) profiles
+// from the given slice, and the returned slice have all the valid profiles sorted by name.
+func filterAndSortProfiles(profiles []tunedv1.TunedProfile) []tunedv1.TunedProfile {
+	profs := make([]tunedv1.TunedProfile, 0, len(profiles))
+	for _, prof := range profiles {
+		if prof.Name == nil {
+			continue
+		}
+		if prof.Data == nil {
+			continue
+		}
+		profs = append(profs, prof)
+	}
+	sort.Slice(profs, func(i, j int) bool { return *profs[i].Name < *profs[j].Name })
+	return profs
+}
+
+// profilesFingerprint returns a hash of `recommendedProfile` name joined with the data sections of all TuneD profiles in the `profiles` slice.
+func profilesFingerprint(profiles []tunedv1.TunedProfile, recommendedProfile string) string {
+	profiles = filterAndSortProfiles(profiles)
+	h := sha256.New()
+	h.Write([]byte(recommendedProfile))
+	for _, prof := range profiles {
+		h.Write([]byte(*prof.Data))
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // providerExtract extracts Cloud Provider name into ocpTunedProvider file.
 func providerExtract(provider string) error {
-	klog.Infof("extracting cloud provider name to %v", ocpTunedProvider)
-
-	f, err := os.Create(ocpTunedProvider)
-	if err != nil {
-		return fmt.Errorf("failed to create cloud provider name file %q: %v", ocpTunedProvider, err)
-	}
-	defer f.Close()
-	if _, err = f.WriteString(provider); err != nil {
+	klog.Infof("providerExtract(): extracting cloud provider name to %v", ocpTunedProvider)
+	if err := os.WriteFile(ocpTunedProvider, []byte(provider), 0o644); err != nil {
 		return fmt.Errorf("failed to write cloud provider name file %q: %v", ocpTunedProvider, err)
 	}
-
 	return nil
 }
 
@@ -540,21 +612,36 @@ func writeOpenShiftTunedImageEnv() error {
 	return nil
 }
 
-func TunedRecommendFileWrite(profileName string) error {
-	klog.V(2).Infof("tunedRecommendFileWrite(): %s", profileName)
-	if err := os.MkdirAll(tunedRecommendDir, os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create directory %q: %v", tunedRecommendDir, err)
+func TunedRecommendFileWritePath(rfPath, profileName string) error {
+	rfDir := filepath.Dir(rfPath)
+	klog.V(2).Infof("tunedRecommendFileWrite(): %s %s", profileName, rfDir)
+	if err := os.MkdirAll(rfDir, os.ModePerm); err != nil {
+		return fmt.Errorf("failed to create directory %q: %v", rfDir, err)
 	}
-	f, err := os.Create(tunedRecommendFile)
-	if err != nil {
-		return fmt.Errorf("failed to create file %q: %v", tunedRecommendFile, err)
+	data := []byte(fmt.Sprintf("[%s]\n", profileName))
+	if err := os.WriteFile(rfPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write file %q: %v", rfPath, err)
 	}
-	defer f.Close()
-	if _, err = f.WriteString(fmt.Sprintf("[%s]\n", profileName)); err != nil {
-		return fmt.Errorf("failed to write file %q: %v", tunedRecommendFile, err)
-	}
-	klog.Infof("written %q to set TuneD profile %s", tunedRecommendFile, profileName)
+	klog.Infof("tunedRecommendFileWrite(): written %q to set TuneD profile %s", rfPath, profileName)
 	return nil
+}
+
+func TunedRecommendFileReadPath(rfPath string) (string, error) {
+	data, err := os.ReadFile(rfPath)
+	if err != nil {
+		return "", err
+	}
+	recommended := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(string(data)), "["), "]")
+	klog.Infof("tunedRecommendFileRead(): read %q from %q", recommended, tunedRecommendFile)
+	return recommended, nil
+}
+
+func TunedRecommendFileWrite(profileName string) error {
+	return TunedRecommendFileWritePath(tunedRecommendFile, profileName)
+}
+
+func TunedRecommendFileRead() (string, error) {
+	return TunedRecommendFileReadPath(tunedRecommendFile)
 }
 
 // overridenSysctl returns name of a host-level sysctl that overrides TuneD-level sysctl,
@@ -824,7 +911,7 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 		if err != nil {
 			return false, fmt.Errorf("failed to get Profile %s: %v", c.nodeName, err)
 		}
-		changeProfiles, err := profilesSync(profile.Spec.Profile, c.daemon.recommendedProfile)
+		changeProfiles, _, err := profilesSync(profile.Spec.Profile, c.daemon.recommendedProfile)
 		if err != nil {
 			return false, err
 		}
@@ -1300,6 +1387,19 @@ func RunInCluster(stopCh <-chan struct{}, version string) error {
 	if err != nil {
 		panic(err.Error())
 	}
+
+	profiles, recommended, err := profilesRepackPath(tunedRecommendFile, tunedProfilesDirCustom)
+	if err != nil {
+		// keep going, immediate updates are expected to work as usual
+		// and we expect the vast majority of updates to be immediate anyway
+		klog.Errorf("error repacking the profile: %v", err)
+		klog.Infof("deferred updates likely broken")
+	}
+
+	profileFP := profilesFingerprint(profiles, recommended)
+	c.daemon.profileFingerprintUnpacked = profileFP
+	c.daemon.profileFingerprintEffective = profileFP
+	klog.Infof("starting: installed and effective profile fingerprint %q", profileFP)
 
 	return retryLoop(c)
 }
