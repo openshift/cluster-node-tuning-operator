@@ -153,6 +153,7 @@ func (pc *ProfileCalculator) nodeChangeHandler(nodeName string) (bool, error) {
 type ComputedProfile struct {
 	TunedProfileName string
 	AllProfiles      []tunedv1.TunedProfile
+	AnyDeferred      bool
 	MCLabels         map[string]string
 	NodePoolName     string
 	Operand          tunedv1.OperandConfig
@@ -174,6 +175,7 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (ComputedProfile,
 		return ComputedProfile{}, fmt.Errorf("failed to list Tuned: %v", err)
 	}
 
+	deferred := tunedProfilesAnyDeferred(tunedList)
 	profilesAll := tunedProfiles(tunedList)
 	recommendAll := TunedRecommend(tunedList)
 	recommendProfile := func(nodeName string, iStart int) (int, string, map[string]string, tunedv1.OperandConfig, error) {
@@ -277,6 +279,7 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (ComputedProfile,
 	return ComputedProfile{
 		TunedProfileName: tunedProfileName,
 		AllProfiles:      profilesAll,
+		AnyDeferred:      deferred,
 		MCLabels:         mcLabels,
 		Operand:          operand,
 	}, err
@@ -721,6 +724,17 @@ func TunedRecommend(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedRecommend {
 	})
 
 	return recommendAll
+}
+
+// tunedProfilesAnyDeferred returns true if any of the Tuned CRs in tunedSlice carry the deferred update annotation.
+func tunedProfilesAnyDeferred(tunedSlice []*tunedv1.Tuned) bool {
+	for _, tuned := range tunedSlice {
+		if util.HasDeferredUpdateAnnotation(tuned.Annotations) {
+			klog.Infof("tuned %s/%s is deferred", tuned.Namespace, tuned.Name)
+			return true
+		}
+	}
+	return false
 }
 
 // podLabelsUnique goes through Pod labels of all the Pods on a Node-wide

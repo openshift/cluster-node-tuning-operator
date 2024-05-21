@@ -645,6 +645,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 			}
 
 			klog.V(2).Infof("syncProfile(): Profile %s not found, creating one [%s]", profileMf.Name, computed.TunedProfileName)
+			profileMf.Annotations = util.ToggleDeferredUpdateAnnotation(profileMf.Annotations, computed.AnyDeferred)
 			profileMf.Spec.Config.TunedProfile = computed.TunedProfileName
 			profileMf.Spec.Config.Debug = computed.Operand.Debug
 			profileMf.Spec.Config.TuneDConfig = computed.Operand.TuneDConfig
@@ -705,16 +706,20 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		}
 	}
 
+	anns := util.ToggleDeferredUpdateAnnotation(profile.Annotations, computed.AnyDeferred)
+
 	// Minimize updates
 	if profile.Spec.Config.TunedProfile == computed.TunedProfileName &&
 		profile.Spec.Config.Debug == computed.Operand.Debug &&
 		reflect.DeepEqual(profile.Spec.Config.TuneDConfig, computed.Operand.TuneDConfig) &&
 		reflect.DeepEqual(profile.Spec.Profile, computed.AllProfiles) &&
+		util.HasDeferredUpdateAnnotation(profile.Annotations) == util.HasDeferredUpdateAnnotation(anns) &&
 		profile.Spec.Config.ProviderName == providerName {
 		klog.V(2).Infof("syncProfile(): no need to update Profile %s", nodeName)
 		return nil
 	}
 	profile = profile.DeepCopy() // never update the objects from cache
+	profile.Annotations = anns
 	profile.Spec.Config.TunedProfile = computed.TunedProfileName
 	profile.Spec.Config.Debug = computed.Operand.Debug
 	profile.Spec.Config.TuneDConfig = computed.Operand.TuneDConfig
@@ -727,7 +732,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	if err != nil {
 		return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
 	}
-	klog.Infof("updated profile %s [%s]", profile.Name, computed.TunedProfileName)
+	klog.Infof("updated profile %s [%s] (deferred=%v)", profile.Name, computed.TunedProfileName, util.HasDeferredUpdateAnnotation(profile.Annotations))
 
 	return nil
 }
