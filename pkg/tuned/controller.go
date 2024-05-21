@@ -759,22 +759,24 @@ func GetBootcmdline() (string, error) {
 }
 
 func (c *Controller) changeSyncerProfileStatus(change Change) (synced bool) {
-	klog.V(2).Infof("changeSyncerProfileStatus()")
+	klog.V(2).Infof("changeSyncerProfileStatus(%#v)", change)
+	defer klog.V(2).Infof("changeSyncerProfileStatus(%#v) done", change)
 
-	if change.profileStatus {
-		// One or both of the following happened:
-		// 1) tunedBootcmdlineFile changed on the filesystem.  This is very likely the result of
-		//    applying a TuneD profile by the TuneD daemon.  Make sure the node Profile k8s object
-		//    is in sync with tunedBootcmdlineFile so the operator can take an appropriate action.
-		// 2) TuneD daemon was reloaded.  Make sure the node Profile k8s object is in sync with
-		//    the active profile, e.g. the Profile indicates the presence of the stall daemon on
-		//    the host if requested by the current active profile.
-		if err := c.updateTunedProfile(); err != nil {
-			klog.Error(err.Error())
-			return false // retry later
-		}
+	if !change.profileStatus {
+		return true
 	}
 
+	// One or both of the following happened:
+	// 1) tunedBootcmdlineFile changed on the filesystem.  This is very likely the result of
+	//    applying a TuneD profile by the TuneD daemon.  Make sure the node Profile k8s object
+	//    is in sync with tunedBootcmdlineFile so the operator can take an appropriate action.
+	// 2) TuneD daemon was reloaded.  Make sure the node Profile k8s object is in sync with
+	//    the active profile, e.g. the Profile indicates the presence of the stall daemon on
+	//    the host if requested by the current active profile.
+	if err := c.updateTunedProfile(); err != nil {
+		klog.Error(err.Error())
+		return false // retry later
+	}
 	return true
 }
 
