@@ -289,7 +289,8 @@ func fullChange() Change {
 	return Change{
 		profile:            true,
 		profileStatus:      true,
-		daemonReload:       true,
+		tunedReload:        true,
+		nodeRestart:        true,
 		debug:              true,
 		provider:           "test-provider",
 		reapplySysctl:      true,
