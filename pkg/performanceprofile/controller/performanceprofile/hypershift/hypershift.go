@@ -90,7 +90,7 @@ func (ci *ControlPlaneClientImpl) createInConfigMap(ctx context.Context, obj cli
 	if err != nil {
 		return err
 	}
-	cm.Data[TuningKey] = string(b)
+	cm.Data = map[string]string{TuningKey: string(b)}
 	return ci.Client.Create(ctx, cm, opts...)
 }
 
