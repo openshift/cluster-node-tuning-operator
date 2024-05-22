@@ -3,6 +3,7 @@ package hypershift
 import (
 	"bytes"
 	"context"
+	"fmt"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -73,13 +74,25 @@ func (ci *ControlPlaneClientImpl) getFromConfigMap(ctx context.Context, key clie
 	if err != nil {
 		return err
 	}
+
+	cmKey := client.ObjectKeyFromObject(cm)
 	var objAsYAML string
-	// can't have both
+	var tuningKeyFound, configKeyFound bool
 	if s, ok := cm.Data[TuningKey]; ok {
 		objAsYAML = s
+		tuningKeyFound = true
 	}
-	if s, ok := cm.Data[ConfigKey]; ok {
+	if s, ok2 := cm.Data[ConfigKey]; ok2 {
 		objAsYAML = s
+		configKeyFound = true
+	}
+	// can't have both
+	if tuningKeyFound && configKeyFound {
+		return fmt.Errorf("ConfigMap %s has both %s and %s keys", cmKey.String(), TuningKey, ConfigKey)
+	}
+	if !tuningKeyFound && !configKeyFound {
+		return fmt.Errorf("could not get %s from ConfigMap %s, keys %s and %s are missing",
+			obj.GetObjectKind().GroupVersionKind().Kind, cmKey.String(), TuningKey, ConfigKey)
 	}
 	return DecodeManifest([]byte(objAsYAML), scheme.Scheme, obj)
 }
