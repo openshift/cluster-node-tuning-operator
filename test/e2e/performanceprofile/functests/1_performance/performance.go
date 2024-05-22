@@ -39,6 +39,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/infrastructure"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
@@ -78,7 +79,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred(), "cannot get profile by node labels %v", testutils.NodeSelectorLabels)
 	})
 
-	Context("Tuned CRs generated from profile", func() {
+	Context("Tuned CRs generated from profile", Label(string(label.Tier0)), func() {
 		tunedExpectedName := components.GetComponentName(testutils.PerformanceProfileName, components.ProfileNamePerformance)
 		It("[test_id:31748] Should have the expected name for tuned from the profile owner object", func() {
 			tunedList := &tunedv1.TunedList{}
@@ -139,7 +140,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 	})
 
-	Context("Pre boot tuning adjusted by tuned ", func() {
+	Context("Pre boot tuning adjusted by tuned ", Label(string(label.Tier0)), func() {
 
 		It("[test_id:31198] Should set CPU affinity kernel argument", func() {
 			for _, node := range workerRTNodes {
@@ -279,7 +280,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 
 	})
 
-	Context("Additional kernel arguments added from perfomance profile", func() {
+	Context("Additional kernel arguments added from perfomance profile", Label(string(label.Tier0)), func() {
 		It("[test_id:28611][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Should set additional kernel arguments on the machine", func() {
 			if profile.Spec.AdditionalKernelArgs != nil {
 				for _, node := range workerRTNodes {
@@ -293,7 +294,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 	})
 
-	Context("Using performance profile", func() {
+	Context("Using performance profile", Label(string(label.Tier0)), func() {
 		It("Should have system services running on the system.slice cgroup", func() {
 			for _, node := range workerRTNodes {
 				processesFound := make([]string, 0)
@@ -316,7 +317,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 	})
 
-	Context("Tuned kernel parameters", func() {
+	Context("Tuned kernel parameters", Label(string(label.Tier0)), func() {
 		It("[test_id:28466][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Should contain configuration injected through openshift-node-performance profile", func() {
 			sysctlMap := map[string]string{
 				"kernel.hung_task_timeout_secs": "600",
@@ -338,7 +339,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 	})
 
-	Context("RPS configuration", func() {
+	Context("RPS configuration", Label(string(label.Tier1)), func() {
 		BeforeEach(func() {
 			if profile.Spec.CPU == nil || profile.Spec.CPU.Reserved == nil {
 				Skip("Test Skipped due nil Reserved cpus")
@@ -470,7 +471,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 	})
 
-	Context("Network latency parameters adjusted by the Node Tuning Operator", func() {
+	Context("Network latency parameters adjusted by the Node Tuning Operator", Label(string(label.Tier0)), func() {
 		It("[test_id:28467][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Should contain configuration injected through the openshift-node-performance profile", func() {
 			sysctlMap := map[string]string{
 				"net.ipv4.tcp_fastopen":     "3",
@@ -494,7 +495,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 	})
 
-	Context("Create second performance profiles on a cluster", func() {
+	Context("Create second performance profiles on a cluster", Label(string(label.Tier0)), func() {
 		var secondMCP *mcov1.MachineConfigPool
 		var secondProfile *performancev2.PerformanceProfile
 		var newRole = "worker-new"
@@ -647,7 +648,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 	})
 
-	Context("Verify API Conversions", func() {
+	Context("Verify API Conversions", Label(string(label.Tier0)), func() {
 		verifyV2V1 := func() {
 			By("Checking v2 -> v1 conversion")
 			v1Profile := &performancev1.PerformanceProfile{}
@@ -842,7 +843,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 	})
 
-	Context("Validation webhook", func() {
+	Context("Validation webhook", Label(string(label.Tier0)), func() {
 		BeforeEach(func() {
 			if discovery.Enabled() {
 				Skip("Discovery mode enabled, test skipped because it creates incorrect profiles")
@@ -914,7 +915,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			})
 		})
 
-		Context("with API version v1 profile", func() {
+		Context("with API version v1 profile", Label(string(label.Tier0)), func() {
 			var v1Profile *performancev1.PerformanceProfile
 
 			BeforeEach(func() {
@@ -973,7 +974,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			})
 		})
 
-		Context("with profile version v2", func() {
+		Context("with profile version v2", Label(string(label.Tier0)), func() {
 			var v2Profile *performancev2.PerformanceProfile
 
 			BeforeEach(func() {
@@ -1033,7 +1034,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 	})
 
-	It("[test_id:54083] Should have kernel param rcutree.kthread", func() {
+	It("[test_id:54083] Should have kernel param rcutree.kthread", Label(string(label.Tier0)), func() {
 		for _, node := range workerRTNodes {
 			cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &node, []string{"cat", "/proc/cmdline"})
 			Expect(err).ToNot(HaveOccurred(), "Failed to read /proc/cmdline")

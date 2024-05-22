@@ -27,6 +27,7 @@ import (
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
@@ -73,7 +74,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 		By(fmt.Sprintf("verifying worker node %q", targetNode.Name))
 	})
 
-	Context("Verify GloballyDisableIrqLoadBalancing Spec field", func() {
+	Context("Verify GloballyDisableIrqLoadBalancing Spec field", Label(string(label.Tier0)), func() {
 		It("[test_id:36150] Verify that IRQ load balancing is enabled/disabled correctly", func() {
 
 			irqLoadBalancingDisabled := profile.Spec.GloballyDisableIrqLoadBalancing != nil && *profile.Spec.GloballyDisableIrqLoadBalancing
@@ -180,7 +181,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 		})
 	})
 
-	Context("Verify irqbalance configuration handling", func() {
+	Context("Verify irqbalance configuration handling", Label(string(label.Tier0)), func() {
 		It("Should not overwrite the banned CPU set on tuned restart", func() {
 			if profile.Status.RuntimeClass == nil {
 				Skip("runtime class not generated")
