@@ -4,12 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
-
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
 	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 )
 
@@ -81,7 +80,7 @@ func (w *writer) updateDegradedCondition(instance client.Object, conditionState 
 }
 
 func (w *writer) update(ctx context.Context, profile *performancev2.PerformanceProfile, conditions []conditionsv1.Condition) error {
-	updatedStatus := CalculateUpdatedStatus(&profile.Status, profile.Name, conditions)
+	updatedStatus := CalculateUpdated(&profile.Status, profile.Name, "", conditions)
 	if updatedStatus == nil {
 		return nil
 	}

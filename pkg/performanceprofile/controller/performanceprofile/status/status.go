@@ -5,12 +5,6 @@ import (
 	"context"
 	"time"
 
-	mcov1 "github.com/openshift/api/machineconfiguration/v1"
-	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
-	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
-	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,6 +12,14 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	mcov1 "github.com/openshift/api/machineconfiguration/v1"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	nto "github.com/openshift/cluster-node-tuning-operator/pkg/operator"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
+	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 )
 
 const (
@@ -267,7 +269,7 @@ func removeUnMatchedTunedProfiles(nodes []corev1.Node, profiles []tunedv1.Profil
 	return filteredProfiles
 }
 
-func CalculateUpdatedStatus(prevStatus *performancev2.PerformanceProfileStatus, profileName string, conditions []conditionsv1.Condition) *performancev2.PerformanceProfileStatus {
+func CalculateUpdated(prevStatus *performancev2.PerformanceProfileStatus, profileName, npName string, conditions []conditionsv1.Condition) *performancev2.PerformanceProfileStatus {
 	statusCopy := prevStatus.DeepCopy()
 
 	if conditions != nil {
@@ -295,11 +297,14 @@ func CalculateUpdatedStatus(prevStatus *performancev2.PerformanceProfileStatus, 
 	}
 
 	if statusCopy.Tuned == nil {
-		tunedNamespacedname := types.NamespacedName{
+		tunedNamespacedName := types.NamespacedName{
 			Name:      components.GetComponentName(profileName, components.ProfileNamePerformance),
 			Namespace: components.NamespaceNodeTuningOperator,
 		}
-		tunedStatus := tunedNamespacedname.String()
+		if npName != "" {
+			tunedNamespacedName.Name = nto.MakeTunedUniqueName(tunedNamespacedName.Name, npName)
+		}
+		tunedStatus := tunedNamespacedName.String()
 		statusCopy.Tuned = &tunedStatus
 		modified = true
 	}
