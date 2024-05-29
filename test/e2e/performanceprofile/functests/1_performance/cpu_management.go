@@ -595,6 +595,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		var testpod *corev1.Pod
 		var allTestpods map[types.UID]*corev1.Pod
 		var busyCpusImage string
+		var targetNode = &corev1.Node{}
 		annotations := map[string]string{
 			"cpu-load-balancing.crio.io": "disable",
 			"cpu-quota.crio.io":          "disable",
@@ -644,6 +645,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			logEventsForPod(testpod)
 			Expect(err).ToNot(HaveOccurred(), "failed to create guaranteed pod %v", testpod)
 			allTestpods[testpod.UID] = testpod
+			err = testclient.Client.Get(ctx, client.ObjectKey{Name: testpod.Spec.NodeName}, targetNode)
+			Expect(err).ToNot(HaveOccurred(), "failed to fetch the node on which pod %v is running", testpod)
 		})
 
 		AfterAll(func() {
@@ -688,7 +691,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				By("Getting the CPU scheduling flags")
 				// After the testpod is started get the schedstat and check for cpus
 				// not participating in scheduling domains
-				checkSchedulingDomains(workerRTNode, podCpus, func(cpuIDs cpuset.CPUSet) error {
+				checkSchedulingDomains(targetNode, podCpus, func(cpuIDs cpuset.CPUSet) error {
 					if !podCpus.IsSubsetOf(cpuIDs) {
 						return fmt.Errorf("pod CPUs NOT entirely part of cpus with load balance disabled: %v vs %v", podCpus, cpuIDs)
 					}
@@ -707,7 +710,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred(), "Unable to parse pod cpus")
 				kubepodsExclusiveCpus := fmt.Sprintf("%s/kubepods.slice/cpuset.cpus.exclusive", cgroupRoot)
 				cmd := []string{"cat", kubepodsExclusiveCpus}
-				exclusiveCpus, err := nodes.ExecCommandOnNode(ctx, cmd, workerRTNode)
+				exclusiveCpus, err := nodes.ExecCommandOnNode(ctx, cmd, targetNode)
 				Expect(err).ToNot(HaveOccurred())
 				exclusiveCpuset, err := cpuset.Parse(exclusiveCpus)
 				Expect(err).ToNot(HaveOccurred(), "unable to parse cpuset.cpus.exclusive")
