@@ -176,38 +176,24 @@ func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Ma
 	p := predicate.Funcs{
 		UpdateFunc: func(ue event.UpdateEvent) bool {
 			if !validateUpdateEvent(&ue) {
-				klog.InfoS("UpdateEvent NOT VALID", "objectName", ue.ObjectOld.GetName())
+				klog.V(4).InfoS("UpdateEvent not valid", "objectName", ue.ObjectOld.GetName())
 				return false
 			}
-
-			_, hasLabel := ue.ObjectNew.GetLabels()[controllerGeneratedMachineConfig]
-			if hasLabel {
-				klog.InfoS("UpdateEvent has label", "objectName", ue.ObjectOld.GetName(), "label", controllerGeneratedMachineConfig)
-			}
-			return hasLabel
+			return validateLabels(ue.ObjectNew, "UpdateEvent")
 		},
 		CreateFunc: func(ce event.CreateEvent) bool {
 			if ce.Object == nil {
 				klog.Error("Create event has no runtime object")
 				return false
 			}
-
-			_, hasLabel := ce.Object.GetLabels()[controllerGeneratedMachineConfig]
-			if hasLabel {
-				klog.InfoS("CreateEvent has label", "objectName", ce.Object.GetName(), "label", controllerGeneratedMachineConfig)
-			}
-			return hasLabel
+			return validateLabels(ce.Object, "CreateEvent")
 		},
 		DeleteFunc: func(de event.DeleteEvent) bool {
 			if de.Object == nil {
 				klog.Error("Delete event has no runtime object")
 				return false
 			}
-			_, hasLabel := de.Object.GetLabels()[controllerGeneratedMachineConfig]
-			if hasLabel {
-				klog.InfoS("DeleteEvent has label", "objectName", de.Object.GetName(), "label", controllerGeneratedMachineConfig)
-			}
-			return hasLabel
+			return validateLabels(de.Object, "DeleteEvent")
 		},
 	}
 
@@ -216,6 +202,14 @@ func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Ma
 		WatchesRawSource(source.Kind(managementCluster.GetCache(), &corev1.ConfigMap{}),
 			&handler.EnqueueRequestForObject{},
 			builder.WithPredicates(p)).Complete(r)
+}
+
+func validateLabels(obj client.Object, eventType string) bool {
+	_, hasLabel := obj.GetLabels()[controllerGeneratedMachineConfig]
+	if hasLabel {
+		klog.V(4).InfoS("Label found", "label", controllerGeneratedMachineConfig, "eventType", eventType, "objectName", obj.GetName())
+	}
+	return hasLabel
 }
 
 func (r *PerformanceProfileReconciler) mcpToPerformanceProfile(ctx context.Context, mcpObj client.Object) []reconcile.Request {
