@@ -179,7 +179,7 @@ func GetKubeletConditionsByProfile(ctx context.Context, client client.Client, pr
 func GetTunedConditionsByProfile(ctx context.Context, cli client.Client, profile *performancev2.PerformanceProfile) ([]conditionsv1.Condition, error) {
 	tunedProfileList := &tunedv1.ProfileList{}
 	if err := cli.List(ctx, tunedProfileList); err != nil {
-		klog.Errorf("Cannot list Tuned Profiles to match with profile %q : %v", profile.Name, err)
+		klog.Errorf("Cannot list Tuned Profiles to match with profile %q: %v", profile.Name, err)
 		return nil, err
 	}
 

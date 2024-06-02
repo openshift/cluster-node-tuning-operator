@@ -76,34 +76,29 @@ func (h *handler) Exists(ctx context.Context, profileName string) bool {
 	operatorNamespace := config.OperatorNamespace()
 	tunedName := components.GetComponentName(profileName, components.ProfileNamePerformance)
 	if _, err := resources.GetTuned(ctx, h.controlPlaneClient, tunedName, operatorNamespace); !k8serrors.IsNotFound(err) {
-		klog.Infof("Tuned %q is still exists under the namespace %q", tunedName, operatorNamespace)
+		klog.Infof("Tuned %q is still exists in the namespace %q", tunedName, operatorNamespace)
 		return true
 	}
 
 	name := components.GetComponentName(profileName, components.ComponentNamePrefix)
 	if _, err := resources.GetKubeletConfig(ctx, h.controlPlaneClient, name); !k8serrors.IsNotFound(err) {
-		klog.Infof("Kubelet Config %q exists under the namespace %q", name, operatorNamespace)
+		klog.Infof("Kubelet Config %q exists in the namespace %q", name, operatorNamespace)
 		return true
 	}
 
 	if _, err := resources.GetRuntimeClass(ctx, h.dataPlaneClient, name); !k8serrors.IsNotFound(err) {
-		klog.Infof("Runtime class %q exists under the hosted cluster", name)
+		klog.Infof("Runtime class %q exists in the hosted cluster", name)
 		return true
 	}
 
 	if _, err := resources.GetMachineConfig(ctx, h.controlPlaneClient, machineconfig.GetMachineConfigName(profileName)); !k8serrors.IsNotFound(err) {
-		klog.Infof("Machine Config %q exists under the namespace %q", name, operatorNamespace)
+		klog.Infof("Machine Config %q exists in the namespace %q", name, operatorNamespace)
 		return true
 	}
 	return false
 }
 
 func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.EventRecorder, options *components.Options) error {
-	// TODO  handle naming
-	// Jose left the following comment:
-	// Make PerformanceProfile names unique if a PerformanceProfile is duplicated across NodePools
-	// for example, if one ConfigMap is referenced in multiple NodePools
-	// need to check whether this comment is relevant or not.
 	instance, ok := obj.(*corev1.ConfigMap)
 	if !ok {
 		return fmt.Errorf("wrong type conversion; want=ConfigMap got=%T", obj)

@@ -172,7 +172,7 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 }
 
 func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Manager, managementCluster cluster.Cluster) error {
-	// Running on hypershift controller should watch for the ConfigMaps created by Hypershift Operator in the
+	// Running on HyperShift controller should watch for the ConfigMaps created by HyperShift Operator in the
 	// controller namespace with the right label.
 	p := predicate.Funcs{
 		UpdateFunc: func(ue event.UpdateEvent) bool {
@@ -388,8 +388,8 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
-	klog.InfoS("Reconciling", "reqNamespace", req.NamespacedName)
-	defer klog.InfoS("Exit Reconciling", "reqNamespace", req.NamespacedName)
+	klog.V(4).InfoS("Reconciling", "reqNamespace", req.NamespacedName)
+	defer klog.V(4).InfoS("Exit Reconciling", "reqNamespace", req.NamespacedName)
 
 	var instance client.Object
 	instance = &performancev2.PerformanceProfile{}
@@ -511,7 +511,7 @@ func hasFinalizer(obj client.Object, finalizer string) bool {
 
 func (r *PerformanceProfileReconciler) getAndValidateMCP(ctx context.Context, instance client.Object) (*mcov1.MachineConfigPool, *reconcile.Result, error) {
 	profile, ok := instance.(*performancev2.PerformanceProfile)
-	// can happen on Hypershift, which expects ConfigMap instead.
+	// can happen on HyperShift, which expects ConfigMap instead.
 	// but on hypershift we do not have MCPs anyway, so it's fine to return empty here.
 	if !ok {
 		return nil, nil, nil

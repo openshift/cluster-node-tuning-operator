@@ -146,23 +146,23 @@ func (h *handler) Delete(ctx context.Context, profileName string) error {
 func (h *handler) Exists(ctx context.Context, profileName string) bool {
 	tunedName := components.GetComponentName(profileName, components.ProfileNamePerformance)
 	if _, err := resources.GetTuned(ctx, h.Client, tunedName, components.NamespaceNodeTuningOperator); !k8serros.IsNotFound(err) {
-		klog.Infof("Tuned %q custom resource is still exists under the namespace %q", tunedName, components.NamespaceNodeTuningOperator)
+		klog.Infof("Tuned %q custom resource is still exists in the namespace %q", tunedName, components.NamespaceNodeTuningOperator)
 		return true
 	}
 
 	name := components.GetComponentName(profileName, components.ComponentNamePrefix)
 	if _, err := resources.GetKubeletConfig(ctx, h.Client, name); !k8serros.IsNotFound(err) {
-		klog.Infof("Kubelet Config %q exists under the cluster", name)
+		klog.Infof("Kubelet Config %q exists in the cluster", name)
 		return true
 	}
 
 	if _, err := resources.GetRuntimeClass(ctx, h.Client, name); !k8serros.IsNotFound(err) {
-		klog.Infof("Runtime class %q exists under the cluster", name)
+		klog.Infof("Runtime class %q exists in the cluster", name)
 		return true
 	}
 
 	if _, err := resources.GetMachineConfig(ctx, h.Client, machineconfig.GetMachineConfigName(profileName)); !k8serros.IsNotFound(err) {
-		klog.Infof("Machine Config %q exists under the cluster", name)
+		klog.Infof("Machine Config %q exists in the cluster", name)
 		return true
 	}
 	return false

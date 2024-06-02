@@ -205,7 +205,7 @@ func operatorRun() {
 			klog.Exitf("unable to create PerformanceProfile v2 webhook: %v", err)
 		}
 	} else {
-		// Hypershift configuration
+		// HyperShift configuration
 		restConfig, err := ntoclient.GetInClusterConfig()
 		if err != nil {
 			klog.Exitf("unable to create get InClusterConfiguration while creating PerformanceProfile controller: %v", err)
@@ -228,11 +228,11 @@ func operatorRun() {
 		}
 		managementCluster, err := cluster.New(restConfig, fOps)
 		if err != nil {
-			klog.Exitf("unable to create ManagementCluster while creating PerformanceProfile controller : %v", err)
+			klog.Exitf("unable to create ManagementCluster while creating PerformanceProfile controller: %v", err)
 		}
 
 		if err := mgr.Add(managementCluster); err != nil {
-			klog.Exitf("unable to add ManagementCluster to manger while creating PerformanceProfile controller : %v", err)
+			klog.Exitf("unable to add ManagementCluster to manger while creating PerformanceProfile controller: %v", err)
 		}
 		if err = (&paocontroller.PerformanceProfileReconciler{
 			// dataPlaneClient
