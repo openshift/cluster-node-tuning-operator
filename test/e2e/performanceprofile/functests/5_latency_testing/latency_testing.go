@@ -235,7 +235,9 @@ func getValidValuesTests(toolToTest string) []latencyTest {
 	successGinkgoTimeout := "200s"
 	testSet = append(testSet, latencyTest{testDelay: "140", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, testCpus: "4", outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
 	testSet = append(testSet, latencyTest{testDelay: "0", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, testCpus: "4", outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
+	// Covers the scenario of BZ 2055267 as well
 	testSet = append(testSet, latencyTest{testDelay: "0", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, testCpus: "6", outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
+
 	testSet = append(testSet, latencyTest{testDelay: "1", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
 	testSet = append(testSet, latencyTest{testDelay: "60", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
 	testSet = append(testSet, latencyTest{testRuntime: "2", testCpus: "5", testMaxLatency: untunedLatencyThreshold, outputMsgs: []string{skip, skipOddCpuNumber}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
@@ -245,12 +247,9 @@ func getValidValuesTests(toolToTest string) []latencyTest {
 	}
 	if toolToTest == oslat {
 		testSet = append(testSet, latencyTest{testRuntime: successRuntime, testMaxLatency: "1", oslatMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
-		//TODO add tests when requested cpus for oslat is 2 once BZ 2055267 is resolved
 		testSet = append(testSet, latencyTest{testRuntime: successRuntime, oslatMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
-		//TODO: update isolated CPUs in PP to 1 and restore the original set post test
 	}
 	if toolToTest == cyclictest {
-		//TODO add tests when requested cpus for cyclictest is 2 or less once BZ 2094046 is resolved
 		testSet = append(testSet, latencyTest{testRuntime: successRuntime, testMaxLatency: "1", cyclictestMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
 		testSet = append(testSet, latencyTest{testRuntime: successRuntime, cyclictestMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
 	}
@@ -283,15 +282,20 @@ func getNegativeTests(toolToTest string) []latencyTest {
 	testSet = append(testSet, latencyTest{testRuntime: "2", testMaxLatency: "1", testCpus: fmt.Sprint(math.MaxInt32 + 1), outputMsgs: []string{invalidCpuNumber, fail}, toolToTest: toolToTest})
 	testSet = append(testSet, latencyTest{testRuntime: "2", testCpus: "-1", outputMsgs: []string{invalidCpuNumber, fail}, toolToTest: toolToTest})
 	testSet = append(testSet, latencyTest{testRuntime: "2", testCpus: "0", outputMsgs: []string{invalidCpuNumber, fail}, toolToTest: toolToTest})
+
 	if toolToTest == oslat {
 		testSet = append(testSet, latencyTest{testRuntime: "2", oslatMaxLatency: "&", outputMsgs: []string{incorrectOslatMaxLatency, fail}, toolToTest: toolToTest})
 		testSet = append(testSet, latencyTest{testRuntime: "2", oslatMaxLatency: fmt.Sprint(math.MaxInt32 + 1), outputMsgs: []string{invalidNumberOslatMaxLatency, fail}, toolToTest: toolToTest})
 		testSet = append(testSet, latencyTest{testRuntime: "2", oslatMaxLatency: "-3", outputMsgs: []string{invalidNumberOslatMaxLatency, fail}, toolToTest: toolToTest})
+		// Covers the scenario of BZ 2094046
+		testSet = append(testSet, latencyTest{testRuntime: "2", testCpus: "2", outputMsgs: []string{unexpectedError, fail}, toolToTest: toolToTest})
 	}
 	if toolToTest == cyclictest {
 		testSet = append(testSet, latencyTest{testRuntime: "2", cyclictestMaxLatency: "&", outputMsgs: []string{incorrectCyclictestMaxLatency, fail}, toolToTest: toolToTest})
 		testSet = append(testSet, latencyTest{testRuntime: "2", cyclictestMaxLatency: fmt.Sprint(math.MaxInt32 + 1), outputMsgs: []string{invalidNumberCyclictestMaxLatency, fail}, toolToTest: toolToTest})
 		testSet = append(testSet, latencyTest{testRuntime: "2", cyclictestMaxLatency: "-3", outputMsgs: []string{invalidNumberCyclictestMaxLatency, fail}, toolToTest: toolToTest})
+		// Covers the scenario of BZ 2094046
+		testSet = append(testSet, latencyTest{testRuntime: "2", testCpus: "2", outputMsgs: []string{unexpectedError, fail}, toolToTest: toolToTest})
 	}
 	if toolToTest == hwlatdetect {
 		testSet = append(testSet, latencyTest{testRuntime: "2", hwlatdetectMaxLatency: "&", outputMsgs: []string{incorrectHwlatdetectMaxLatency, fail}, toolToTest: toolToTest})
