@@ -828,7 +828,8 @@ func GetMemoryNodes(ctx context.Context, testPod *corev1.Pod, targetNode *corev1
 		cpusetMemsPath = filepath.Join(fullPath, "cpuset.mems")
 	}
 	cmd = []string{"cat", cpusetMemsPath}
-	memoryNodes, err = nodes.ExecCommandToString(ctx, cmd, targetNode)
+	out, err = nodes.ExecCommand(ctx, targetNode, cmd)
+	memoryNodes = testutils.ToString(out)
 	testlog.Infof("test pod %s with container id %s has Memory nodes %s", testPod.Name, containerID, memoryNodes)
 	return memoryNodes, err
 }

@@ -731,8 +731,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				testlog.Infof("test pod %s with container id %s cgroup path %s", testpod.Name, containerID, cpusetCpusPath)
 				By("Verify powersetting of cpus used by the pod")
 				cmd = []string{"cat", cpusetCpusPath}
-				output, err := nodes.ExecCommandToString(context.TODO(), cmd, &workerRTNodes[0])
+				out, err = nodes.ExecCommand(context.TODO(), &workerRTNodes[0], cmd)
 				Expect(err).ToNot(HaveOccurred())
+				output := testutils.ToString(out)
 				cpus, err := cpuset.Parse(output)
 				targetCpus := cpus.List()
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), targetCpus, &workerRTNodes[0], "0", "schedutil")
@@ -835,8 +836,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				testlog.Infof("test pod %s with container id %s cgroup path %s", testpod.Name, containerID, cpusetCpusPath)
 				By("Verify powersetting of cpus used by the pod")
 				cmd = []string{"cat", cpusetCpusPath}
-				output, err := nodes.ExecCommandToString(context.TODO(), cmd, &workerRTNodes[0])
+				out, err = nodes.ExecCommand(context.TODO(), &workerRTNodes[0], cmd)
 				Expect(err).ToNot(HaveOccurred())
+				output := testutils.ToString(out)
 				cpus, err := cpuset.Parse(output)
 				targetCpus := cpus.List()
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), targetCpus, &workerRTNodes[0], "n/a", "performance")
@@ -939,16 +941,18 @@ func deleteTestPod(ctx context.Context, testpod *corev1.Pod) {
 func checkCpuGovernorsAndResumeLatency(ctx context.Context, cpus []int, targetNode *corev1.Node, pm_qos string, governor string) error {
 	for _, cpu := range cpus {
 		cmd := []string{"/bin/bash", "-c", fmt.Sprintf("cat /sys/devices/system/cpu/cpu%d/power/pm_qos_resume_latency_us", cpu)}
-		output, err := nodes.ExecCommandToString(ctx, cmd, targetNode)
+		out, err := nodes.ExecCommand(ctx, targetNode, cmd)
 		if err != nil {
 			return err
 		}
+		output := testutils.ToString(out)
 		Expect(output).To(Equal(pm_qos))
 		cmd = []string{"/bin/bash", "-c", fmt.Sprintf("cat /sys/devices/system/cpu/cpu%d/cpufreq/scaling_governor", cpu)}
-		output, err = nodes.ExecCommandToString(ctx, cmd, targetNode)
+		out, err = nodes.ExecCommand(ctx, targetNode, cmd)
 		if err != nil {
 			return err
 		}
+		output = testutils.ToString(out)
 		Expect(output).To(Equal(governor))
 	}
 	return nil
@@ -964,8 +968,9 @@ func checkHardwareCapability(ctx context.Context, workerRTNodes []corev1.Node) {
 			Skip(fmt.Sprintf("This test need 2 NUMA nodes.The number of NUMA nodes on node %s < 2", node.Name))
 		}
 		// Additional check so that test gets skipped on vm with fake numa
-		onlineCPUCount, err := nodes.ExecCommandToString(ctx, []string{"nproc", "--all"}, &node)
+		out, err := nodes.ExecCommand(ctx, &node, []string{"nproc", "--all"})
 		Expect(err).ToNot(HaveOccurred())
+		onlineCPUCount := testutils.ToString(out)
 		onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
 		Expect(err).ToNot(HaveOccurred())
 		if onlineCPUInt < totalCpus {

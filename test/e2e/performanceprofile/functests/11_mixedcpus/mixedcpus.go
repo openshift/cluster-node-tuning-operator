@@ -81,7 +81,8 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 			// test arbitrary one should be good enough
 			worker := &workers[0]
 			cmd := isFileExistCmd(kubeletMixedCPUsConfigFile)
-			found, err := nodes.ExecCommandToString(ctx, cmd, worker)
+			out, err := nodes.ExecCommand(ctx, worker, cmd)
+			found := testutils.ToString(out)
 			Expect(err).ToNot(HaveOccurred(), "failed to execute command on node; cmd=%q node=%q", cmd, worker)
 			Expect(found).To(Equal("true"), "file not found; file=%q", kubeletMixedCPUsConfigFile)
 		})
@@ -112,7 +113,8 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 				"-c",
 				fmt.Sprintf("/bin/awk  -F '\"' '/shared_cpuset.*/ { print $2 }' %s", runtime.CRIORuntimeConfigFile),
 			}
-			cpus, err := nodes.ExecCommandToString(ctx, cmd, worker)
+			out, err := nodes.ExecCommand(ctx, worker, cmd)
+			cpus := testutils.ToString(out)
 			Expect(err).ToNot(HaveOccurred(), "failed to execute command on node; cmd=%q node=%q", cmd, worker)
 			cpus = strings.Trim(cpus, "\n")
 			crioShared := mustParse(cpus)
@@ -268,7 +270,7 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 
 				cmd := kubeletRestartCmd()
 				// The command would fail since it aborts all the pods during restart
-				_, _ = nodes.ExecCommandToString(ctx, cmd, node)
+				_, _ = nodes.ExecCommand(ctx, node, cmd)
 				// check that the node is ready after we restart Kubelet
 				nodes.WaitForReadyOrFail("post restart", node.Name, 20*time.Minute, 3*time.Second)
 
@@ -616,7 +618,8 @@ func fetchSharedCPUsFromEnv(c *kubernetes.Clientset, p *corev1.Pod, containerNam
 // getCPUswithLoadBalanceDisabled Return cpus which are not in any scheduling domain
 func getCPUswithLoadBalanceDisabled(ctx context.Context, targetNode *corev1.Node) ([]string, error) {
 	cmd := []string{"/bin/bash", "-c", "cat /proc/schedstat"}
-	schedstatData, err := nodes.ExecCommandToString(ctx, cmd, targetNode)
+	out, err := nodes.ExecCommand(ctx, targetNode, cmd)
+	schedstatData := testutils.ToString(out)
 	if err != nil {
 		return nil, err
 	}

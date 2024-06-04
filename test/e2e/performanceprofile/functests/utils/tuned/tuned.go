@@ -48,11 +48,12 @@ func GetPod(ctx context.Context, node *corev1.Node) (*corev1.Pod, error) {
 func WaitForStalldTo(ctx context.Context, run bool, interval, timeout time.Duration, node *corev1.Node) error {
 	return wait.PollUntilContextTimeout(ctx, interval, timeout, true, func(ctx context.Context) (bool, error) {
 		cmd := []string{"/bin/bash", "-c", "pidof stalld || echo \"stalld not running\""}
-		stalldPid, err := nodes.ExecCommandToString(ctx, cmd, node)
+		out, err := nodes.ExecCommand(ctx, node, cmd)
 		if err != nil {
 			klog.Errorf("failed to execute command %q on node: %q; %v", cmd, node.Name, err)
 			return false, err
 		}
+		stalldPid := testutils.ToString(out)
 		_, err = strconv.Atoi(stalldPid)
 		if !run { // we don't want stalld to run
 			if err == nil {
@@ -71,9 +72,9 @@ func WaitForStalldTo(ctx context.Context, run bool, interval, timeout time.Durat
 func CheckParameters(ctx context.Context, node *corev1.Node, sysctlMap map[string]string, kernelParameters []string, stalld, rtkernel bool) {
 	cmd := []string{"/bin/bash", "-c", "pidof stalld || echo \"stalld not running\""}
 	By(fmt.Sprintf("Executing %q", cmd))
-	stalldPid, err := nodes.ExecCommandToString(ctx, cmd, node)
+	out, err := nodes.ExecCommand(ctx, node, cmd)
 	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to execute command %q on node: %q; %v", cmd, node.Name, err)
-
+	stalldPid := testutils.ToString(out)
 	_, err = strconv.Atoi(stalldPid)
 	if stalld {
 		ExpectWithOffset(1, err).ToNot(HaveOccurred(),
@@ -103,15 +104,17 @@ func CheckParameters(ctx context.Context, node *corev1.Node, sysctlMap map[strin
 	for param, expected := range sysctlMap {
 		cmd = []string{"sysctl", "-n", param}
 		By(fmt.Sprintf("Executing %q", cmd))
-		out, err := nodes.ExecCommandToString(ctx, cmd, node)
+		output, err := nodes.ExecCommand(ctx, node, cmd)
 		ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to execute command %q on node: %q", cmd, node.Name)
+		out := testutils.ToString(output)
 		ExpectWithOffset(1, out).Should(Equal(expected), "parameter %s value is not %s", param, expected)
 	}
 
 	cmd = []string{"cat", "/proc/cmdline"}
 	By(fmt.Sprintf("Executing %q", cmd))
-	cmdline, err := nodes.ExecCommandToString(ctx, cmd, node)
+	out, err = nodes.ExecCommand(ctx, node, cmd)
 	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to execute command %q on node: %q", cmd, node.Name)
+	cmdline := testutils.ToString(out)
 
 	for _, param := range kernelParameters {
 		ExpectWithOffset(1, cmdline).To(ContainSubstring(param))
@@ -120,8 +123,9 @@ func CheckParameters(ctx context.Context, node *corev1.Node, sysctlMap map[strin
 	if !rtkernel {
 		cmd = []string{"uname", "-a"}
 		By(fmt.Sprintf("Executing %q", cmd))
-		kernel, err := nodes.ExecCommandToString(ctx, cmd, node)
+		out, err := nodes.ExecCommand(ctx, node, cmd)
 		ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to execute command %q on node: %q", cmd, node.Name)
+		kernel := testutils.ToString(out)
 		ExpectWithOffset(1, kernel).To(ContainSubstring("Linux"), "kernel should be Linux")
 
 		err = nodes.HasPreemptRTKernel(ctx, node)
@@ -152,8 +156,9 @@ func AddPstateParameter(ctx context.Context, node *corev1.Node) string {
 		totalCpus      = 32
 	)
 
-	onlineCPUCount, err := nodes.ExecCommandToString(ctx, []string{"nproc", "--all"}, node)
-	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to execute command %q on node: %q", onlineCPUCount, node.Name)
+	out, err := nodes.ExecCommand(ctx, node, []string{"nproc", "--all"})
+	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to execute command %q on node: %q", out, node.Name)
+	onlineCPUCount := testutils.ToString(out)
 	onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
 	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to convert oneline cpu from string to integer on node: %q", node.Name)
 	// In this case, it is a vm, so pstate must be disabled
@@ -163,12 +168,13 @@ func AddPstateParameter(ctx context.Context, node *corev1.Node) string {
 
 	cmd := []string{"cat", filePath}
 	By(fmt.Sprintf("Executing %q", cmd))
-	pName, err := nodes.ExecCommandToString(ctx, cmd, node)
-	testlog.Infof("found processor name %s for node %s", pName, node.Name)
+	out, err = nodes.ExecCommand(ctx, node, cmd)
 	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "failed to execute command %q on node: %q", cmd, node.Name)
 	if err != nil {
 		return pstateDisabled
 	}
+	pName := testutils.ToString(out)
+	testlog.Infof("found processor name %s for node %s", pName, node.Name)
 
 	for _, element := range processorsName {
 		if element == pName {

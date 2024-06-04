@@ -65,8 +65,9 @@ var _ = Describe("[performance]RT Kernel", Ordered, func() {
 		}
 
 		cmd := []string{"uname", "-a"}
-		kernel, err := nodes.ExecCommandToString(context.TODO(), cmd, &nonPerformancesWorkers[0])
+		out, err := nodes.ExecCommand(context.TODO(), &nonPerformancesWorkers[0], cmd)
 		Expect(err).ToNot(HaveOccurred(), "failed to execute uname")
+		kernel := testutils.ToString(out)
 		Expect(kernel).To(ContainSubstring("Linux"), "Node should have Linux string")
 
 		err = nodes.HasPreemptRTKernel(context.TODO(), &nonPerformancesWorkers[0])

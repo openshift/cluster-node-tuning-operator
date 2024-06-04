@@ -145,17 +145,6 @@ func ExecCommand(ctx context.Context, node *corev1.Node, command []string) ([]by
 	return nodeInspector.ExecCommand(ctx, node, command)
 }
 
-// ExecCommandToString returns the output of the command execution in a string format
-func ExecCommandToString(ctx context.Context, cmd []string, node *corev1.Node) (string, error) {
-	out, err := ExecCommand(ctx, node, cmd)
-	if err != nil {
-		return "", err
-	}
-
-	trimmedString := strings.Trim(string(out), "\n")
-	return strings.ReplaceAll(trimmedString, "\r", ""), nil
-}
-
 // GetKubeletConfig returns KubeletConfiguration loaded from the node /etc/kubernetes/kubelet.conf
 func GetKubeletConfig(ctx context.Context, node *corev1.Node) (*kubeletconfigv1beta1.KubeletConfiguration, error) {
 	command := []string{"cat", path.Join("/rootfs", testutils.FilePathKubeletConfig)}
@@ -217,15 +206,16 @@ func HasPreemptRTKernel(ctx context.Context, node *corev1.Node) error {
 	// with rpm-ostree rpm -q is telling you what you're booted into always,
 	// because ostree binds together (kernel, userspace) as a single commit.
 	cmd := []string{"chroot", "/rootfs", "rpm", "-q", "kernel-rt-core"}
-	if _, err := ExecCommandToString(ctx, cmd, node); err != nil {
+	if _, err := ExecCommand(ctx, node, cmd); err != nil {
 		return err
 	}
 
 	cmd = []string{"/bin/bash", "-c", "cat /rootfs/sys/kernel/realtime"}
-	out, err := ExecCommandToString(ctx, cmd, node)
+	output, err := ExecCommand(ctx, node, cmd)
 	if err != nil {
 		return err
 	}
+	out := testutils.ToString(output)
 
 	if out != "1" {
 		return fmt.Errorf("RT kernel disabled")
@@ -236,7 +226,12 @@ func HasPreemptRTKernel(ctx context.Context, node *corev1.Node) error {
 
 func GetDefaultSmpAffinityRaw(ctx context.Context, node *corev1.Node) (string, error) {
 	cmd := []string{"cat", "/proc/irq/default_smp_affinity"}
-	return ExecCommandToString(ctx, cmd, node)
+	out, err := ExecCommand(ctx, node, cmd)
+	if err != nil {
+		return "", err
+	}
+	output := testutils.ToString(out)
+	return output, nil
 }
 
 // GetDefaultSmpAffinitySet returns the default smp affinity mask for the node
@@ -256,10 +251,11 @@ func GetDefaultSmpAffinitySet(ctx context.Context, node *corev1.Node) (cpuset.CP
 // GetOnlineCPUsSet returns the list of online (being scheduled) CPUs on the node
 func GetOnlineCPUsSet(ctx context.Context, node *corev1.Node) (cpuset.CPUSet, error) {
 	command := []string{"cat", sysDevicesOnlineCPUs}
-	onlineCPUs, err := ExecCommandToString(ctx, command, node)
+	out, err := ExecCommand(ctx, node, command)
 	if err != nil {
 		return cpuset.New(), err
 	}
+	onlineCPUs := testutils.ToString(out)
 	return cpuset.Parse(onlineCPUs)
 }
 
@@ -267,8 +263,9 @@ func GetOnlineCPUsSet(ctx context.Context, node *corev1.Node) (cpuset.CPUSet, er
 // Use a random cpuID from the return value of GetOnlineCPUsSet if not sure
 func GetSMTLevel(ctx context.Context, cpuID int, node *corev1.Node) int {
 	cmd := []string{"/bin/sh", "-c", fmt.Sprintf("cat /sys/devices/system/cpu/cpu%d/topology/thread_siblings_list | tr -d \"\n\r\"", cpuID)}
-	threadSiblingsList, err := ExecCommandToString(ctx, cmd, node)
+	out, err := ExecCommand(ctx, node, cmd)
 	ExpectWithOffset(1, err).ToNot(HaveOccurred())
+	threadSiblingsList := testutils.ToString(out)
 	// how many thread sibling you have = SMT level
 	// example: 2-way SMT means 2 threads sibling for each thread
 	cpus, err := cpuset.Parse(strings.TrimSpace(string(threadSiblingsList)))
@@ -279,11 +276,12 @@ func GetSMTLevel(ctx context.Context, cpuID int, node *corev1.Node) int {
 // GetNumaNodes returns the number of numa nodes and the associated cpus as list on the node
 func GetNumaNodes(ctx context.Context, node *corev1.Node) (map[int][]int, error) {
 	lscpuCmd := []string{"lscpu", "-e=node,core,cpu", "-J"}
-	cmdout, err := ExecCommandToString(ctx, lscpuCmd, node)
+	out, err := ExecCommand(ctx, node, lscpuCmd)
 	var numaNode, cpu int
 	if err != nil {
 		return nil, err
 	}
+	cmdout := testutils.ToString(out)
 	numaCpus := make(map[int][]int)
 	var result NumaNodes
 	err = json.Unmarshal([]byte(cmdout), &result)
@@ -305,7 +303,8 @@ func GetNumaNodes(ctx context.Context, node *corev1.Node) (map[int][]int, error)
 // GetCoreSiblings returns the siblings of core per numa node
 func GetCoreSiblings(ctx context.Context, node *corev1.Node) (map[int]map[int][]int, error) {
 	lscpuCmd := []string{"lscpu", "-e=node,core,cpu", "-J"}
-	out, err := ExecCommandToString(ctx, lscpuCmd, node)
+	output, err := ExecCommand(ctx, node, lscpuCmd)
+	out := testutils.ToString(output)
 	var result NumaNodes
 	var numaNode, core, cpu int
 	coreSiblings := make(map[int]map[int][]int)

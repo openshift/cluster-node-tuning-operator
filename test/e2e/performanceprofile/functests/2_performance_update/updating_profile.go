@@ -48,10 +48,20 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 	chkIrqbalance := []string{"cat", "/rootfs/etc/sysconfig/irqbalance"}
 
 	chkCmdLineFn := func(ctx context.Context, node *corev1.Node) (string, error) {
-		return nodes.ExecCommandToString(ctx, chkCmdLine, node)
+		out, err := nodes.ExecCommand(ctx, node, chkCmdLine)
+		if err != nil {
+			return "", err
+		}
+		output := testutils.ToString(out)
+		return output, nil
 	}
 	chkKubeletConfigFn := func(ctx context.Context, node *corev1.Node) (string, error) {
-		return nodes.ExecCommandToString(ctx, chkKubeletConfig, node)
+		out, err := nodes.ExecCommand(ctx, node, chkKubeletConfig)
+		if err != nil {
+			return "", err
+		}
+		output := testutils.ToString(out)
+		return output, nil
 	}
 
 	chkHugepages2MFn := func(ctx context.Context, node *corev1.Node) (string, error) {
@@ -166,8 +176,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			for _, node := range workerRTNodes {
 				for i := 0; i < 2; i++ {
 					nodeCmd := []string{"cat", hugepagesPathForNode(i, 2)}
-					result, err := nodes.ExecCommandToString(context.TODO(), nodeCmd, &node)
+					out, err := nodes.ExecCommand(context.TODO(), &node, nodeCmd)
 					Expect(err).ToNot(HaveOccurred())
+					result := testutils.ToString(out)
 
 					t, err := strconv.Atoi(result)
 					Expect(err).ToNot(HaveOccurred())
@@ -307,8 +318,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		It("[test_id:28612]Verify that Kernel arguments can me updated (added, removed) thru performance profile", func() {
 			for _, node := range workerRTNodes {
-				cmdline, err := nodes.ExecCommandToString(context.TODO(), chkCmdLine, &node)
+				out, err := nodes.ExecCommand(context.TODO(), &node, chkCmdLine)
 				Expect(err).ToNot(HaveOccurred(), "failed to execute %s", chkCmdLine)
+				cmdline := testutils.ToString(out)
 
 				// Verifying that new argument was added
 				Expect(cmdline).To(ContainSubstring("new-argument=test"))
@@ -446,8 +458,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		It("[test_id:28440]Verifies that nodeSelector can be updated in performance profile", func() {
 			kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), newCnfNode)
 			Expect(kubeletConfig.TopologyManagerPolicy).ToNot(BeEmpty())
-			cmdline, err := nodes.ExecCommandToString(context.TODO(), chkCmdLine, newCnfNode)
+			out, err := nodes.ExecCommand(context.TODO(), newCnfNode, chkCmdLine)
 			Expect(err).ToNot(HaveOccurred(), "failed to execute %s", chkCmdLine)
+			cmdline := testutils.ToString(out)
 			Expect(cmdline).To(ContainSubstring("tuned.non_isolcpus"))
 
 		})
@@ -467,8 +480,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			err = nodes.HasPreemptRTKernel(context.TODO(), newCnfNode)
 			Expect(err).To(HaveOccurred())
 
-			cmdline, err := nodes.ExecCommandToString(context.TODO(), chkCmdLine, newCnfNode)
+			out, err := nodes.ExecCommand(context.TODO(), newCnfNode, chkCmdLine)
 			Expect(err).ToNot(HaveOccurred(), "failed to execute %s", chkCmdLine)
+			cmdline := testutils.ToString(out)
 			Expect(cmdline).NotTo(ContainSubstring("tuned.non_isolcpus"))
 
 			kblcfg, err := nodes.GetKubeletConfig(context.TODO(), newCnfNode)
@@ -478,8 +492,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			reservedCPU := string(*profile.Spec.CPU.Reserved)
 			cpuMask, err := components.CPUListToHexMask(reservedCPU)
 			Expect(err).ToNot(HaveOccurred(), "failed to list in Hex %s", reservedCPU)
-			irqBal, err := nodes.ExecCommandToString(context.TODO(), chkIrqbalance, newCnfNode)
+			out, err = nodes.ExecCommand(context.TODO(), newCnfNode, chkIrqbalance)
 			Expect(err).ToNot(HaveOccurred(), "failed to execute %s", chkIrqbalance)
+			irqBal := testutils.ToString(out)
 			Expect(irqBal).NotTo(ContainSubstring(cpuMask))
 		})
 
@@ -558,8 +573,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			initialProfile = profile.DeepCopy()
 
 			for _, node := range workerRTNodes {
-				onlineCPUCount, err := nodes.ExecCommandToString(context.TODO(), []string{"nproc", "--all"}, &node)
+				out, err := nodes.ExecCommand(context.TODO(), &node, []string{"nproc", "--all"})
 				Expect(err).ToNot(HaveOccurred())
+				onlineCPUCount := testutils.ToString(out)
 
 				onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
 				Expect(err).ToNot(HaveOccurred())
@@ -602,8 +618,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			workerRTNodes = getUpdatedNodes()
 			//Check offlined cpus are setting correctly
 			for _, node := range workerRTNodes {
-				offlinedOutput, err := nodes.ExecCommandToString(context.TODO(), []string{"cat", "/sys/devices/system/cpu/offline"}, &node)
+				out, err := nodes.ExecCommand(context.TODO(), &node, []string{"cat", "/sys/devices/system/cpu/offline"})
 				Expect(err).ToNot(HaveOccurred())
+				offlinedOutput := testutils.ToString(out)
 				offlinedCPUSet, err := cpuset.Parse(offlinedOutput)
 				offlinedCPUSetProfile, err := cpuset.Parse(string(offlined))
 				Expect(err).ToNot(HaveOccurred())
@@ -670,8 +687,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			workerRTNodes = getUpdatedNodes()
 			// Check offlined cpus are setting correctly
 			for _, node := range workerRTNodes {
-				offlinedOutput, err := nodes.ExecCommandToString(context.TODO(), []string{"cat", "/sys/devices/system/cpu/offline"}, &node)
+				out, err := nodes.ExecCommand(context.TODO(), &node, []string{"cat", "/sys/devices/system/cpu/offline"})
 				Expect(err).ToNot(HaveOccurred())
+				offlinedOutput := testutils.ToString(out)
 				offlinedCPUSet, err := cpuset.Parse(offlinedOutput)
 				offlinedCPUSetProfile, err := cpuset.Parse(string(offlinedSet))
 				Expect(err).ToNot(HaveOccurred())
@@ -734,8 +752,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			workerRTNodes = getUpdatedNodes()
 			//Check offlined cpus are setting correctly
 			for _, node := range workerRTNodes {
-				offlinedOutput, err := nodes.ExecCommandToString(context.TODO(), []string{"cat", "/sys/devices/system/cpu/offline"}, &node)
+				out, err := nodes.ExecCommand(context.TODO(), &node, []string{"cat", "/sys/devices/system/cpu/offline"})
 				Expect(err).ToNot(HaveOccurred())
+				offlinedOutput := testutils.ToString(out)
 				offlinedCPUSet, err := cpuset.Parse(offlinedOutput)
 				offlinedCPUSetProfile, err := cpuset.Parse(string(offlinedSet))
 				Expect(err).ToNot(HaveOccurred())
@@ -808,8 +827,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			workerRTNodes = getUpdatedNodes()
 			//Check offlined cpus are setting correctly
 			for _, node := range workerRTNodes {
-				offlinedOutput, err := nodes.ExecCommandToString(context.TODO(), []string{"cat", "/sys/devices/system/cpu/offline"}, &node)
+				out, err := nodes.ExecCommand(context.TODO(), &node, []string{"cat", "/sys/devices/system/cpu/offline"})
 				Expect(err).ToNot(HaveOccurred())
+				offlinedOutput := testutils.ToString(out)
 				offlinedCPUSet, err := cpuset.Parse(offlinedOutput)
 				offlinedCPUSetProfile, err := cpuset.Parse(string(offlinedSet))
 				Expect(err).ToNot(HaveOccurred())
@@ -924,8 +944,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			workerRTNodes = getUpdatedNodes()
 			//Check offlined cpus are setting correctly
 			for _, node := range workerRTNodes {
-				offlinedOutput, err := nodes.ExecCommandToString(context.TODO(), []string{"cat", "/sys/devices/system/cpu/offline"}, &node)
+				out, err := nodes.ExecCommand(context.TODO(), &node, []string{"cat", "/sys/devices/system/cpu/offline"})
 				Expect(err).ToNot(HaveOccurred())
+				offlinedOutput := testutils.ToString(out)
 				offlinedCPUSet, err := cpuset.Parse(offlinedOutput)
 				offlinedCPUSetProfile, err := cpuset.Parse(string(offlinedSet))
 				Expect(err).ToNot(HaveOccurred())
@@ -960,8 +981,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			findcmd := `find /sys/devices/system/cpu/cpu* -type f -name online -exec cat {} \;`
 			checkCpuStatusCmd := []string{"bash", "-c", findcmd}
 			for _, node := range workerRTNodes {
-				stdout, err := nodes.ExecCommandToString(context.TODO(), checkCpuStatusCmd, &node)
+				out, err := nodes.ExecCommand(context.TODO(), &node, checkCpuStatusCmd)
 				Expect(err).NotTo(HaveOccurred())
+				stdout := testutils.ToString(out)
 				v := strings.Split(stdout, "\n")
 				for _, val := range v {
 					Expect(val).To(Equal("1"))
@@ -1006,8 +1028,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			var reserved, isolated []string
 			var onlineCPUInt int
 			for _, node := range workerRTNodes {
-				onlineCPUCount, err := nodes.ExecCommandToString(context.TODO(), []string{"nproc", "--all"}, &node)
+				out, err := nodes.ExecCommand(context.TODO(), &node, []string{"nproc", "--all"})
 				Expect(err).ToNot(HaveOccurred())
+				onlineCPUCount := testutils.ToString(out)
 				onlineCPUInt, err = strconv.Atoi(onlineCPUCount)
 				Expect(err).ToNot(HaveOccurred())
 				if onlineCPUInt <= 8 {
@@ -1065,8 +1088,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				// Verify the systemd RPS service uses the correct RPS mask
 				var maskContent string
 				cmd := []string{"sysctl", "-n", "net.core.rps_default_mask"}
-				maskContent, err := nodes.ExecCommandToString(context.TODO(), cmd, &node)
+				out, err := nodes.ExecCommand(context.TODO(), &node, cmd)
 				Expect(err).ToNot(HaveOccurred(), "failed to exec command %q on node %q", cmd, node)
+				maskContent = testutils.ToString(out)
 				rpsMaskContent := strings.Trim(maskContent, "\n")
 				rpsCPUs, err := components.CPUMaskToCPUSet(rpsMaskContent)
 				Expect(err).ToNot(HaveOccurred(), "failed to parse RPS mask %q", rpsMaskContent)
@@ -1081,8 +1105,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					"-name", "rps_cpus",
 					"-exec", "cat", "{}", ";",
 				}
-				devsRPS, err := nodes.ExecCommandToString(context.TODO(), cmd, &node)
+				out, err = nodes.ExecCommand(context.TODO(), &node, cmd)
 				Expect(err).ToNot(HaveOccurred(), "failed to exec command %q on node %q", cmd, node.Name)
+				devsRPS := testutils.ToString(out)
 				for _, devRPS := range strings.Split(devsRPS, "\n") {
 					rpsCPUs, err = components.CPUMaskToCPUSet(devRPS)
 					Expect(err).ToNot(HaveOccurred())
@@ -1114,7 +1139,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			for _, node := range workerRTNodes {
 				// Verify the systemd RPS services were not created
 				cmd := []string{"ls", "/rootfs/etc/systemd/system/update-rps@.service"}
-				_, err := nodes.ExecCommandToString(context.TODO(), cmd, &node)
+				_, err := nodes.ExecCommand(context.TODO(), &node, cmd)
 				Expect(err).To(HaveOccurred())
 			}
 		})
@@ -1141,8 +1166,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 				cmd := []string{"cat", "/rootfs/etc/crio/crio.conf.d/99-runtimes.conf"}
 				for i := 0; i < len(workerRTNodes); i++ {
-					out, err := nodes.ExecCommandToString(context.TODO(), cmd, &workerRTNodes[i])
+					output, err := nodes.ExecCommand(context.TODO(), &workerRTNodes[i], cmd)
 					Expect(err).ToNot(HaveOccurred(), "cannot get 99-runtimes.conf from %q", workerRTNodes[i].Name)
+					out := testutils.ToString(output)
 					By(fmt.Sprintf("checking node: %q", workerRTNodes[i].Name))
 					Expect(out).To(ContainSubstring("/bin/runc"))
 					Expect(out).To(ContainSubstring("/run/runc"))
@@ -1173,7 +1199,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(ctrcfg.Spec.ContainerRuntimeConfig.DefaultRuntime == machineconfigv1.ContainerRuntimeDefaultRuntimeCrun).To(BeTrue())
 				cmd := []string{"cat", "/rootfs/etc/crio/crio.conf.d/99-runtimes.conf"}
 				for i := 0; i < len(workerRTNodes); i++ {
-					out, err := nodes.ExecCommandToString(context.TODO(), cmd, &workerRTNodes[i])
+					out, err := nodes.ExecCommand(context.TODO(), &workerRTNodes[i], cmd)
 					Expect(err).ToNot(HaveOccurred(), "cannot get 99-runtimes.conf from %q", workerRTNodes[i].Name)
 					By(fmt.Sprintf("checking node: %q", workerRTNodes[i].Name))
 					Expect(out).To(ContainSubstring("/usr/bin/crun"))
@@ -1214,10 +1240,11 @@ func countHugepagesOnNode(ctx context.Context, node *corev1.Node, sizeInMb int) 
 	count := 0
 	for i := 0; i < len(numaInfo); i++ {
 		nodeCmd := []string{"cat", hugepagesPathForNode(i, sizeInMb)}
-		result, err := nodes.ExecCommandToString(ctx, nodeCmd, node)
+		out, err := nodes.ExecCommand(ctx, node, nodeCmd)
 		if err != nil {
 			return 0, err
 		}
+		result := testutils.ToString(out)
 		t, err := strconv.Atoi(result)
 		if err != nil {
 			return 0, err
