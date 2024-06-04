@@ -26,6 +26,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 
 	apiconfigv1 "github.com/openshift/api/config/v1"
+	apifeatures "github.com/openshift/api/features"
 	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
@@ -493,7 +494,7 @@ func (r *PerformanceProfileReconciler) isMixedCPUsEnabled(object client.Object) 
 	if ntoconfig.InHyperShift() {
 		return false
 	}
-	if !r.FeatureGate.Enabled(apiconfigv1.FeatureGateMixedCPUsAllocation) {
+	if !r.FeatureGate.Enabled(apifeatures.FeatureGateMixedCPUsAllocation) {
 		return false
 	}
 	return profileutil.IsMixedCPUsEnabled(object.(*performancev2.PerformanceProfile))
