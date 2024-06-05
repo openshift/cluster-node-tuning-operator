@@ -1,6 +1,6 @@
 module github.com/openshift/cluster-node-tuning-operator
 
-go 1.21
+go 1.22
 
 require (
 	github.com/RHsyseng/operator-utils v0.0.0-20200213165520-1a022eb07a43
