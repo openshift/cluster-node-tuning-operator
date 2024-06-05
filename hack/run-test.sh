@@ -92,6 +92,7 @@ main() {
     if [ "$ONLY_CLI_PRINT" = true ]; then
         print "Skipping execution as requested by user ... "
     else
+        trap '{ echo "Running cleanup test suite"; ginkgo test/e2e/performanceprofile/functests/Z_deconfig --flake-attempts=2 --junit-report=report.xml; }' EXIT SIGINT SIGTERM SIGSTOP
         print "Executing test suites ... "
         GOFLAGS=-mod=vendor ginkgo ${GINKGO_FLAGS}
     fi

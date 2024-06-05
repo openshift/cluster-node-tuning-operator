@@ -42,6 +42,13 @@ var TestingNamespace = &corev1.Namespace{
 	},
 }
 
+// NodeInspectorNamespace is the namespace used for deploying a daemonset that will be used to executing commands on nodes.
+var NodeInspectorNamespace = &corev1.Namespace{
+	ObjectMeta: metav1.ObjectMeta{
+		Name: testutils.NodeInspectorNamespace,
+	},
+}
+
 // WaitForDeletion waits until the namespace will be removed from the cluster
 func WaitForDeletion(name string, timeout time.Duration) error {
 	key := types.NamespacedName{

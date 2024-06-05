@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/bugzilla"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/jira"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/bugzilla"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/jira"
 
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 
@@ -112,4 +113,9 @@ func KnownIssueBugzilla(bugId int) {
 	} else {
 		testlog.Infof(fmt.Sprintf("Test is linked to a closed Bugzilla bug rhbz#%d - %s", bug.Id, bug.Summary))
 	}
+}
+
+func ToString(b []byte) string {
+	trimmedString := strings.Trim(string(b), "\n")
+	return strings.ReplaceAll(trimmedString, "\r", "")
 }

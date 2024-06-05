@@ -10,12 +10,12 @@ import (
 
 func Status(ctx context.Context, unitfile string, node *corev1.Node) (string, error) {
 	cmd := []string{"/bin/bash", "-c", fmt.Sprintf("chroot /rootfs systemctl status %s --lines=0 --no-pager", unitfile)}
-	out, err := nodes.ExecCommandOnMachineConfigDaemon(ctx, node, cmd)
+	out, err := nodes.ExecCommand(ctx, node, cmd)
 	return string(out), err
 }
 
 func ShowProperty(ctx context.Context, unitfile string, property string, node *corev1.Node) (string, error) {
 	cmd := []string{"/bin/bash", "-c", fmt.Sprintf("chroot /rootfs systemctl show -p %s %s --no-pager", property, unitfile)}
-	out, err := nodes.ExecCommandOnMachineConfigDaemon(ctx, node, cmd)
+	out, err := nodes.ExecCommand(ctx, node, cmd)
 	return string(out), err
 }

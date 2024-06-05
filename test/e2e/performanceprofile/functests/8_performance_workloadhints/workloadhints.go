@@ -341,7 +341,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				}
 
 				By("Verifying node kernel arguments")
-				cmdline, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &workerRTNodes[0], []string{"cat", "/proc/cmdline"})
+				cmdline, err := nodes.ExecCommand(context.TODO(), &workerRTNodes[0], []string{"cat", "/proc/cmdline"})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(cmdline).To(ContainSubstring("intel_pstate=passive"))
 				Expect(cmdline).ToNot(ContainSubstring("intel_pstate=active"))
@@ -718,7 +718,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				containerCgroup := ""
 				pid, err := nodes.ContainerPid(context.TODO(), &workerRTNodes[0], containerID)
 				cmd := []string{"cat", fmt.Sprintf("/rootfs/proc/%s/cgroup", pid)}
-				out, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &workerRTNodes[0], cmd)
+				out, err := nodes.ExecCommand(context.TODO(), &workerRTNodes[0], cmd)
 				containerCgroup, err = cgroup.PidParser(out)
 				cgroupv2, err := cgroup.IsVersion2(context.TODO(), testclient.Client)
 				Expect(err).ToNot(HaveOccurred())
@@ -731,8 +731,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				testlog.Infof("test pod %s with container id %s cgroup path %s", testpod.Name, containerID, cpusetCpusPath)
 				By("Verify powersetting of cpus used by the pod")
 				cmd = []string{"cat", cpusetCpusPath}
-				output, err := nodes.ExecCommandOnNode(context.TODO(), cmd, &workerRTNodes[0])
+				out, err = nodes.ExecCommand(context.TODO(), &workerRTNodes[0], cmd)
 				Expect(err).ToNot(HaveOccurred())
+				output := testutils.ToString(out)
 				cpus, err := cpuset.Parse(output)
 				targetCpus := cpus.List()
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), targetCpus, &workerRTNodes[0], "0", "schedutil")
@@ -822,7 +823,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 				pid, err := nodes.ContainerPid(context.TODO(), &workerRTNodes[0], containerID)
 				cmd := []string{"cat", fmt.Sprintf("/rootfs/proc/%s/cgroup", pid)}
-				out, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), &workerRTNodes[0], cmd)
+				out, err := nodes.ExecCommand(context.TODO(), &workerRTNodes[0], cmd)
 				containerCgroup, err = cgroup.PidParser(out)
 				cgroupv2, err := cgroup.IsVersion2(context.TODO(), testclient.Client)
 				Expect(err).ToNot(HaveOccurred())
@@ -835,8 +836,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				testlog.Infof("test pod %s with container id %s cgroup path %s", testpod.Name, containerID, cpusetCpusPath)
 				By("Verify powersetting of cpus used by the pod")
 				cmd = []string{"cat", cpusetCpusPath}
-				output, err := nodes.ExecCommandOnNode(context.TODO(), cmd, &workerRTNodes[0])
+				out, err = nodes.ExecCommand(context.TODO(), &workerRTNodes[0], cmd)
 				Expect(err).ToNot(HaveOccurred())
+				output := testutils.ToString(out)
 				cpus, err := cpuset.Parse(output)
 				targetCpus := cpus.List()
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), targetCpus, &workerRTNodes[0], "n/a", "performance")
@@ -939,16 +941,18 @@ func deleteTestPod(ctx context.Context, testpod *corev1.Pod) {
 func checkCpuGovernorsAndResumeLatency(ctx context.Context, cpus []int, targetNode *corev1.Node, pm_qos string, governor string) error {
 	for _, cpu := range cpus {
 		cmd := []string{"/bin/bash", "-c", fmt.Sprintf("cat /sys/devices/system/cpu/cpu%d/power/pm_qos_resume_latency_us", cpu)}
-		output, err := nodes.ExecCommandOnNode(ctx, cmd, targetNode)
+		out, err := nodes.ExecCommand(ctx, targetNode, cmd)
 		if err != nil {
 			return err
 		}
+		output := testutils.ToString(out)
 		Expect(output).To(Equal(pm_qos))
 		cmd = []string{"/bin/bash", "-c", fmt.Sprintf("cat /sys/devices/system/cpu/cpu%d/cpufreq/scaling_governor", cpu)}
-		output, err = nodes.ExecCommandOnNode(ctx, cmd, targetNode)
+		out, err = nodes.ExecCommand(ctx, targetNode, cmd)
 		if err != nil {
 			return err
 		}
+		output = testutils.ToString(out)
 		Expect(output).To(Equal(governor))
 	}
 	return nil
@@ -964,8 +968,9 @@ func checkHardwareCapability(ctx context.Context, workerRTNodes []corev1.Node) {
 			Skip(fmt.Sprintf("This test need 2 NUMA nodes.The number of NUMA nodes on node %s < 2", node.Name))
 		}
 		// Additional check so that test gets skipped on vm with fake numa
-		onlineCPUCount, err := nodes.ExecCommandOnNode(ctx, []string{"nproc", "--all"}, &node)
+		out, err := nodes.ExecCommand(ctx, &node, []string{"nproc", "--all"})
 		Expect(err).ToNot(HaveOccurred())
+		onlineCPUCount := testutils.ToString(out)
 		onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
 		Expect(err).ToNot(HaveOccurred())
 		if onlineCPUInt < totalCpus {

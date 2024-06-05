@@ -377,7 +377,7 @@ func waitForNodeReadyOrFail(tag, nodeName string, timeout, polling time.Duration
 
 func runCommandOnNodeThroughMCD(ctx context.Context, node *corev1.Node, description, command string) (string, error) {
 	testlog.Infof("node %q: before %s", node.Name, description)
-	out, err := testnodes.ExecCommandOnMachineConfigDaemon(ctx, node, []string{"sh", "-c", command})
+	out, err := testnodes.ExecCommand(ctx, node, []string{"sh", "-c", command})
 	testlog.Infof("node %q: output=[%s]", node.Name, string(out))
 	testlog.Infof("node %q: after %s", node.Name, description)
 	return string(out), err

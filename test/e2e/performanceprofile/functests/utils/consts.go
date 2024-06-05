@@ -102,6 +102,12 @@ const (
 	// NamespaceTesting contains the name of the testing namespace
 	NamespaceTesting = "performance-addon-operators-testing"
 )
+const (
+	// NodeInspectorName contains the name of node inspector name
+	NodeInspectorName = "node-inspector"
+	// NodeInspectorNamespace contains the name of node inspector namespace
+	NodeInspectorNamespace = "node-inspector-ns"
+)
 
 const (
 	// FilePathKubeletConfig contains the kubelet.conf file path
