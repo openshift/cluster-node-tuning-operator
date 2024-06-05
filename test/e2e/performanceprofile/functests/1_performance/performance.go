@@ -304,6 +304,31 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Expect(processesFound).To(BeEmpty(), "The node %s has the following processes on the root cgroup: %v", node.Name, processesFound)
 			}
 		})
+
+		It("Check for agetty process system.slice cgroup", func() {
+			for _, node := range workerRTNodes {
+				agettyPidCommand := "pgrep agetty"
+				agettyPidOutput, err := nodes.ExecCommandOnNode([]string{"/bin/bash", "-c", agettyPidCommand}, &node)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(agettyPidOutput).ToNot(BeEmpty())
+				agettyPids := strings.Fields(agettyPidOutput)
+				Expect(len(agettyPids)).To(BeNumerically(">", 0), "No agetty PIDs found on node %s", node.Name)
+				for _, agettyPid := range agettyPids {
+					cgroupCommand := fmt.Sprintf("cat /proc/%s/cgroup", agettyPid)
+					cgroupOutput, err := nodes.ExecCommandOnNode([]string{"/bin/bash", "-c", cgroupCommand}, &node)
+					Expect(err).ToNot(HaveOccurred())
+					lines := strings.Split(cgroupOutput, "\n")
+					var cpusetLine string
+					for _, line := range lines {
+						if strings.Contains(line, "cpuset") {
+							cpusetLine = line
+							break
+						}
+					}
+					Expect(cpusetLine).ToNot(BeEmpty(), "No cpuset line found in cgroup output for PID %s on node %s", agettyPid, node.Name)
+				}
+			}
+		})
 	})
 
 	Context("Tuned kernel parameters", func() {
