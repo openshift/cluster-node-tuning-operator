@@ -1,0 +1,6 @@
+# https://docs.snyk.io/scan-applications/snyk-code/using-snyk-code-from-the-cli/excluding-directories-and-files-from-the-snyk-code-cli-test
+exclude:
+  global:
+    - "vendor/github.com/onsi/ginkgo/v2/internal/suite.go"
+    - "vendor/sigs.k8s.io/controller-runtime/pkg/log/log.go"
+    - "vendor/github.com/jaypipes/ghw/pkg/block/block_linux.go"
