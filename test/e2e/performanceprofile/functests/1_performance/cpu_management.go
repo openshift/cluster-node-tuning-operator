@@ -32,6 +32,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/events"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
@@ -107,7 +108,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	Describe("Verification of configuration on the worker node", func() {
+	Describe("Verification of configuration on the worker node", Label(string(label.Tier0)), func() {
 		It("[test_id:28528][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Verify CPU reservation on the node", func() {
 			By(fmt.Sprintf("Allocatable CPU should be less than capacity by %d", len(listReservedCPU)))
 			capacityCPU, _ := workerRTNode.Status.Capacity.Cpu().AsInt64()
@@ -181,7 +182,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 	})
 
-	Describe("Verification of cpu manager functionality", func() {
+	Describe("Verification of cpu manager functionality", Label(string(label.Tier0)), func() {
 		var testpod *corev1.Pod
 		var discoveryFailed bool
 
@@ -268,7 +269,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		)
 	})
 
-	Describe("Verification of cpu_manager_state file", func() {
+	Describe("Verification of cpu_manager_state file", Label(string(label.Tier0)), func() {
 		var testpod *corev1.Pod
 		BeforeEach(func() {
 			testpod = pods.GetTestPod()
@@ -317,7 +318,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		})
 	})
 
-	Describe("Verification that IRQ load balance can be disabled per POD", func() {
+	Describe("Verification that IRQ load balance can be disabled per POD", Label(string(label.Tier0)), func() {
 		var smtLevel int
 		var testpod *corev1.Pod
 
@@ -401,7 +402,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		})
 	})
 
-	When("reserved CPUs specified", func() {
+	When("reserved CPUs specified", Label(string(label.Tier0)), func() {
 		var testpod *corev1.Pod
 
 		BeforeEach(func() {
@@ -475,7 +476,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		})
 	})
 
-	When("strict NUMA aligment is requested", func() {
+	When("strict NUMA aligment is requested", Label(string(label.Tier0)), func() {
 		var testpod *corev1.Pod
 
 		BeforeEach(func() {
@@ -527,7 +528,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			Expect(isSMTAlignmentError(updatedPod)).To(BeTrue(), "pod %s failed for wrong reason: %q", updatedPod.Name, updatedPod.Status.Reason)
 		})
 	})
-	Describe("Hyper-thread aware scheduling for guaranteed pods", func() {
+	Describe("Hyper-thread aware scheduling for guaranteed pods", Label(string(label.Tier1)), func() {
 		var testpod *corev1.Pod
 
 		BeforeEach(func() {
@@ -601,7 +602,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		)
 
 	})
-	Context("Crio Annotations", func() {
+	Context("Crio Annotations", Label(string(label.Tier0)), func() {
 		var testpod *corev1.Pod
 		var allTestpods map[types.UID]*corev1.Pod
 		var busyCpusImage string

@@ -25,6 +25,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
@@ -70,7 +71,7 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 
 	// We have multiple hugepages e2e tests under the upstream, so the only thing that we should check, if the PAO configure
 	// correctly number of hugepages that will be available on the node
-	Context("[rfe_id:27369]when NUMA node specified", func() {
+	Context("[rfe_id:27369]when NUMA node specified", Label(string(label.Tier0)), func() {
 		It("[test_id:27752][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] should be allocated on the specifed NUMA node", func() {
 			for _, page := range profile.Spec.HugePages.Pages {
 				if page.Node == nil {
@@ -92,7 +93,7 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 		})
 	})
 
-	Context("with multiple sizes", func() {
+	Context("with multiple sizes", Label(string(label.Tier0)), func() {
 		It("[test_id:34080] should be supported and available for the container usage", func() {
 			for _, page := range profile.Spec.HugePages.Pages {
 				hugepagesSize, err := machineconfig.GetHugepagesSizeKilobytes(page.Size)
@@ -121,7 +122,7 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 		})
 	})
 
-	Context("[rfe_id:27354]Huge pages support for container workloads", func() {
+	Context("[rfe_id:27354]Huge pages support for container workloads", Label(string(label.Tier0)), func() {
 		var testpod *corev1.Pod
 
 		AfterEach(func() {

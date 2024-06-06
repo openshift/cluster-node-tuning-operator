@@ -10,10 +10,11 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 )
 
-var _ = Describe("[performance]RT Kernel", Ordered, func() {
+var _ = Describe("[performance]RT Kernel", Ordered, Label(string(label.Tier0)), func() {
 	var discoveryFailed bool
 	var profile *performancev2.PerformanceProfile
 	var err error

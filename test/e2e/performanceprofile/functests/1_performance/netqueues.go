@@ -24,6 +24,7 @@ import (
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
@@ -32,7 +33,7 @@ import (
 
 const tunedprofilesDirectory string = "/var/lib/ocp-tuned/profiles"
 
-var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, func() {
+var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(string(label.Tier1)), func() {
 	var workerRTNodes []corev1.Node
 	var profile, initialProfile *performancev2.PerformanceProfile
 	var tunedConfPath, performanceProfileName string
