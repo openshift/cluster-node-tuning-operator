@@ -588,13 +588,6 @@ func (c *Controller) syncDaemonSet(tuned *tunedv1.Tuned) error {
 }
 
 func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
-	var (
-		tunedProfileName string
-		profilesAll      []tunedv1.TunedProfile
-		mcLabels         map[string]string
-		operand          tunedv1.OperandConfig
-		nodePoolName     string
-	)
 	profileMf := ntomf.TunedProfile()
 	profileMf.ObjectMeta.OwnerReferences = getDefaultTunedRefs(tuned)
 
@@ -624,19 +617,20 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		return nil
 	}
 
+	var computed ComputedProfile
 	if ntoconfig.InHyperShift() {
-		tunedProfileName, profilesAll, nodePoolName, operand, err = c.pc.calculateProfileHyperShift(nodeName)
+		computed, err = c.pc.calculateProfileHyperShift(nodeName)
 		if err != nil {
 			return err
 		}
 	} else {
-		tunedProfileName, profilesAll, mcLabels, operand, err = c.pc.calculateProfile(nodeName)
+		computed, err = c.pc.calculateProfile(nodeName)
 		if err != nil {
 			return err
 		}
 	}
 
-	metrics.ProfileCalculated(profileMf.Name, tunedProfileName)
+	metrics.ProfileCalculated(profileMf.Name, computed.TunedProfileName)
 
 	profile, err := c.listers.TunedProfiles.Get(profileMf.Name)
 	if err != nil {
@@ -650,18 +644,18 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 				return err
 			}
 
-			klog.V(2).Infof("syncProfile(): Profile %s not found, creating one [%s]", profileMf.Name, tunedProfileName)
-			profileMf.Spec.Config.TunedProfile = tunedProfileName
-			profileMf.Spec.Config.Debug = operand.Debug
-			profileMf.Spec.Config.TuneDConfig = operand.TuneDConfig
-			profileMf.Spec.Profile = profilesAll
+			klog.V(2).Infof("syncProfile(): Profile %s not found, creating one [%s]", profileMf.Name, computed.TunedProfileName)
+			profileMf.Spec.Config.TunedProfile = computed.TunedProfileName
+			profileMf.Spec.Config.Debug = computed.Operand.Debug
+			profileMf.Spec.Config.TuneDConfig = computed.Operand.TuneDConfig
+			profileMf.Spec.Profile = computed.AllProfiles
 			profileMf.Status.Conditions = tunedpkg.InitializeStatusConditions()
 			_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.WatchNamespace()).Create(context.TODO(), profileMf, metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to create Profile %s: %v", profileMf.Name, err)
 			}
 			// Profile created successfully
-			klog.Infof("created profile %s [%s]", profileMf.Name, tunedProfileName)
+			klog.Infof("created profile %s [%s]", profileMf.Name, computed.TunedProfileName)
 			return nil
 		}
 
@@ -685,25 +679,25 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		// is a part of. If nodePoolName is the empty string, it either means that Node label
 		// based matching was used, or we don't know the NodePool, so we should not sync the
 		// MachineConfigs.
-		if nodePoolName != "" {
-			if profile.Status.TunedProfile == tunedProfileName && profileApplied(profile) {
+		if computed.NodePoolName != "" {
+			if profile.Status.TunedProfile == computed.TunedProfileName && profileApplied(profile) {
 				// Synchronize MachineConfig only once the (calculated) TuneD profile 'tunedProfileName'
 				// has been successfully applied.
-				err := c.syncMachineConfigHyperShift(nodePoolName, profile)
+				err := c.syncMachineConfigHyperShift(computed.NodePoolName, profile)
 				if err != nil {
 					return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
 				}
 			}
 		}
 	} else {
-		if mcLabels != nil {
+		if computed.MCLabels != nil {
 			// The TuneD daemon profile 'tunedProfileName' for nodeName matched with MachineConfig
 			// labels 'mcLabels' set for additional machine configuration.  Sync the operator-created
 			// MachineConfig based on 'mcLabels'.
-			if profile.Status.TunedProfile == tunedProfileName && profileApplied(profile) {
+			if profile.Status.TunedProfile == computed.TunedProfileName && profileApplied(profile) {
 				// Synchronize MachineConfig only once the (calculated) TuneD profile 'tunedProfileName'
 				// has been successfully applied.
-				err := c.syncMachineConfig(mcLabels, profile)
+				err := c.syncMachineConfig(computed.MCLabels, profile)
 				if err != nil {
 					return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
 				}
@@ -711,29 +705,29 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		}
 	}
 
-	// Only update Profile if the spec needs to be changed.
-	if profile.Spec.Config.TunedProfile == tunedProfileName &&
-		profile.Spec.Config.Debug == operand.Debug &&
-		reflect.DeepEqual(profile.Spec.Config.TuneDConfig, operand.TuneDConfig) &&
-		reflect.DeepEqual(profile.Spec.Profile, profilesAll) &&
+	// Minimize updates
+	if profile.Spec.Config.TunedProfile == computed.TunedProfileName &&
+		profile.Spec.Config.Debug == computed.Operand.Debug &&
+		reflect.DeepEqual(profile.Spec.Config.TuneDConfig, computed.Operand.TuneDConfig) &&
+		reflect.DeepEqual(profile.Spec.Profile, computed.AllProfiles) &&
 		profile.Spec.Config.ProviderName == providerName {
 		klog.V(2).Infof("syncProfile(): no need to update Profile %s", nodeName)
 		return nil
 	}
 	profile = profile.DeepCopy() // never update the objects from cache
-	profile.Spec.Config.TunedProfile = tunedProfileName
-	profile.Spec.Config.Debug = operand.Debug
-	profile.Spec.Config.TuneDConfig = operand.TuneDConfig
-	profile.Spec.Profile = profilesAll
+	profile.Spec.Config.TunedProfile = computed.TunedProfileName
+	profile.Spec.Config.Debug = computed.Operand.Debug
+	profile.Spec.Config.TuneDConfig = computed.Operand.TuneDConfig
 	profile.Spec.Config.ProviderName = providerName
+	profile.Spec.Profile = computed.AllProfiles
 	profile.Status.Conditions = tunedpkg.InitializeStatusConditions()
 
-	klog.V(2).Infof("syncProfile(): updating Profile %s [%s]", profile.Name, tunedProfileName)
+	klog.V(2).Infof("syncProfile(): updating Profile %s [%s]", profile.Name, computed.TunedProfileName)
 	_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.WatchNamespace()).Update(context.TODO(), profile, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
 	}
-	klog.Infof("updated profile %s [%s]", profile.Name, tunedProfileName)
+	klog.Infof("updated profile %s [%s]", profile.Name, computed.TunedProfileName)
 
 	return nil
 }

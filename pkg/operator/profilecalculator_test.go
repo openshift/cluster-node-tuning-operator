@@ -123,7 +123,7 @@ func TestTunedProfiles(t *testing.T) {
 	)
 
 	for i, tc := range tests {
-		tunedProfilesSorted := TunedProfiles(tc.input)
+		tunedProfilesSorted := tunedProfiles(tc.input)
 
 		if !reflect.DeepEqual(tc.expectedOutput, tunedProfilesSorted) {
 			t.Errorf(

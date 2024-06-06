@@ -124,7 +124,6 @@ type Change struct {
 }
 
 type Controller struct {
-	kubeconfig *restclient.Config
 	kubeclient kubernetes.Interface
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
@@ -136,6 +135,8 @@ type Controller struct {
 	clients *ntoclient.Clients
 
 	daemon Daemon
+
+	nodeName string
 
 	tunedCmd     *exec.Cmd       // external command (tuned) being prepared or run
 	tunedExit    chan bool       // bi-directional channel to signal and register TuneD daemon exit
@@ -184,7 +185,7 @@ func getKubeClient() (kubernetes.Interface, error) {
 	return kubeClient, nil
 }
 
-func newController(stopCh <-chan struct{}) (*Controller, error) {
+func newController(nodeName string, stopCh <-chan struct{}) (*Controller, error) {
 	kubeconfig, err := ntoclient.GetConfig()
 	if err != nil {
 		return nil, err
@@ -194,10 +195,18 @@ func newController(stopCh <-chan struct{}) (*Controller, error) {
 		return nil, err
 	}
 
+	tunedclient, err := tunedset.NewForConfig(kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+
 	listers := &ntoclient.Listers{}
-	clients := &ntoclient.Clients{}
+	clients := &ntoclient.Clients{
+		Tuned: tunedclient,
+	}
+
 	controller := &Controller{
-		kubeconfig:  kubeconfig,
+		nodeName:    nodeName,
 		kubeclient:  kubeclient,
 		listers:     listers,
 		clients:     clients,
@@ -259,12 +268,12 @@ func (c *Controller) sync(key wqKeyKube) error {
 	switch {
 	case key.kind == wqKindProfile:
 		var change Change
-		if key.name != getNodeName() {
+		if key.name != c.nodeName {
 			return nil
 		}
 		klog.V(2).Infof("sync(): Profile %s", key.name)
 
-		profile, err := c.listers.TunedProfiles.Get(getNodeName())
+		profile, err := c.listers.TunedProfiles.Get(c.nodeName)
 		if err != nil {
 			return fmt.Errorf("failed to get Profile %s: %v", key.name, err)
 		}
@@ -309,7 +318,6 @@ func profilesEqual(profileFile string, profileData string) bool {
 	if err != nil {
 		content = []byte{}
 	}
-
 	return profileData == string(content)
 }
 
@@ -751,22 +759,24 @@ func GetBootcmdline() (string, error) {
 }
 
 func (c *Controller) changeSyncerProfileStatus(change Change) (synced bool) {
-	klog.V(2).Infof("changeSyncerProfileStatus()")
+	klog.V(2).Infof("changeSyncerProfileStatus(%#v)", change)
+	defer klog.V(2).Infof("changeSyncerProfileStatus(%#v) done", change)
 
-	if change.profileStatus {
-		// One or both of the following happened:
-		// 1) tunedBootcmdlineFile changed on the filesystem.  This is very likely the result of
-		//    applying a TuneD profile by the TuneD daemon.  Make sure the node Profile k8s object
-		//    is in sync with tunedBootcmdlineFile so the operator can take an appropriate action.
-		// 2) TuneD daemon was reloaded.  Make sure the node Profile k8s object is in sync with
-		//    the active profile, e.g. the Profile indicates the presence of the stall daemon on
-		//    the host if requested by the current active profile.
-		if err := c.updateTunedProfile(); err != nil {
-			klog.Error(err.Error())
-			return false // retry later
-		}
+	if !change.profileStatus {
+		return true
 	}
 
+	// One or both of the following happened:
+	// 1) tunedBootcmdlineFile changed on the filesystem.  This is very likely the result of
+	//    applying a TuneD profile by the TuneD daemon.  Make sure the node Profile k8s object
+	//    is in sync with tunedBootcmdlineFile so the operator can take an appropriate action.
+	// 2) TuneD daemon was reloaded.  Make sure the node Profile k8s object is in sync with
+	//    the active profile, e.g. the Profile indicates the presence of the stall daemon on
+	//    the host if requested by the current active profile.
+	if err := c.updateTunedProfile(); err != nil {
+		klog.Error(err.Error())
+		return false // retry later
+	}
 	return true
 }
 
@@ -809,9 +819,9 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 			}
 		}
 
-		profile, err := c.listers.TunedProfiles.Get(getNodeName())
+		profile, err := c.listers.TunedProfiles.Get(c.nodeName)
 		if err != nil {
-			return false, fmt.Errorf("failed to get Profile %s: %v", getNodeName(), err)
+			return false, fmt.Errorf("failed to get Profile %s: %v", c.nodeName, err)
 		}
 		changeProfiles, err := profilesSync(profile.Spec.Profile, c.daemon.recommendedProfile)
 		if err != nil {
@@ -1016,7 +1026,7 @@ func (c *Controller) updateTunedProfile() (err error) {
 		return err
 	}
 
-	node, err := c.getNodeForProfile(getNodeName())
+	node, err := c.getNodeForProfile(c.nodeName)
 	if err != nil {
 		return err
 	}
@@ -1050,7 +1060,6 @@ func (c *Controller) updateTunedProfile() (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to update Profile %s status: %v", profile.Name, err)
 	}
-
 	return nil
 }
 
@@ -1064,7 +1073,7 @@ func (c *Controller) informerEventHandler(workqueueKey wqKeyKube) cache.Resource
 			}
 
 			workqueueKey.name = accessor.GetName()
-			if workqueueKey.kind == wqKindProfile && workqueueKey.name == getNodeName() {
+			if workqueueKey.kind == wqKindProfile && workqueueKey.name == c.nodeName {
 				// When moving this code elsewhere, consider whether it is desirable
 				// to disable system tuned on nodes that should not be managed by
 				// openshift-tuned.
@@ -1128,11 +1137,6 @@ func (c *Controller) changeWatcher() (err error) {
 	// Start retrying at 100ms with a maximum of 1800s.
 	c.wqKube = workqueue.NewRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(100*time.Millisecond, 1800*time.Second))
 	c.wqTuneD = workqueue.NewRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(100*time.Millisecond, 1800*time.Second))
-
-	c.clients.Tuned, err = tunedset.NewForConfig(c.kubeconfig)
-	if err != nil {
-		return err
-	}
 
 	tunedInformerFactory := tunedinformers.NewSharedInformerFactoryWithOptions(
 		c.clients.Tuned,
@@ -1291,7 +1295,7 @@ func RunInCluster(stopCh <-chan struct{}, version string) error {
 	}
 
 	// The original way of running TuneD inside of a k8s container.
-	c, err := newController(stopCh)
+	c, err := newController(getNodeName(), stopCh)
 	if err != nil {
 		panic(err.Error())
 	}
