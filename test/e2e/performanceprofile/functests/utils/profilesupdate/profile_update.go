@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"reflect"
 
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -15,8 +17,10 @@ import (
 	profilecontroller "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 )
 
@@ -76,4 +80,42 @@ func ApplyProfile(profile *performancev2.PerformanceProfile) error {
 		return fmt.Errorf("the profile %q was not updated as expected", updatedProfile.Name)
 	}
 	return nil
+}
+
+func WaitForTuningUpdating(ctx context.Context, profile *performancev2.PerformanceProfile) {
+	GinkgoHelper()
+	// In case we are on OCP, we can query the MCP to determine if the update has started.
+	if !hypershift.IsHypershiftCluster() {
+		performanceMCP, err := mcps.GetByProfile(profile)
+		Expect(err).ToNot(HaveOccurred())
+		mcps.WaitForCondition(performanceMCP, mcv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+		return
+	}
+
+	// On hypershift we can check the nodepool UpdatingConfig condition to determine if the update has started.
+	hostedClusterName, err := hypershift.GetHostedClusterName()
+	Expect(err).ToNot(HaveOccurred())
+	np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
+	Expect(err).ToNot(HaveOccurred())
+	err = nodepools.WaitForUpdatingConfig(ctx, testclient.ControlPlaneClient, np.Name, np.Namespace)
+	Expect(err).ToNot(HaveOccurred())
+}
+
+func WaitForTuningUpdated(ctx context.Context, profile *performancev2.PerformanceProfile) {
+	GinkgoHelper()
+	// In case we are on OCP, we can query the MCP to determine if the update has completed.
+	if !hypershift.IsHypershiftCluster() {
+		performanceMCP, err := mcps.GetByProfile(profile)
+		Expect(err).ToNot(HaveOccurred())
+		mcps.WaitForCondition(performanceMCP, mcv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+		return
+	}
+
+	// On hypershift, we can check the nodepool UpdatingConfig condition to determine if the update has completed.
+	hostedClusterName, err := hypershift.GetHostedClusterName()
+	Expect(err).ToNot(HaveOccurred())
+	np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
+	Expect(err).ToNot(HaveOccurred())
+	err = nodepools.WaitForConfigToBeReady(ctx, testclient.ControlPlaneClient, np.Name, np.Namespace)
+	Expect(err).ToNot(HaveOccurred())
 }
