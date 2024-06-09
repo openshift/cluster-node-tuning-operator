@@ -17,6 +17,7 @@ import (
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:path=featuregates,scope=Cluster
 // +kubebuilder:subresource:status
+// +kubebuilder:metadata:annotations=release.openshift.io/bootstrap-required=true
 type FeatureGate struct {
 	metav1.TypeMeta `json:",inline"`
 
@@ -147,9 +148,4 @@ type FeatureGateList struct {
 	metav1.ListMeta `json:"metadata"`
 
 	Items []FeatureGate `json:"items"`
-}
-
-type FeatureGateEnabledDisabled struct {
-	Enabled  []FeatureGateDescription
-	Disabled []FeatureGateDescription
 }

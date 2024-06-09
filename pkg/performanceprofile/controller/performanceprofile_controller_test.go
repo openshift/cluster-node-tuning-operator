@@ -14,6 +14,7 @@ import (
 	igntypes "github.com/coreos/ignition/config/v2_2/types"
 	apiconfigv1 "github.com/openshift/api/config/v1"
 	configv1 "github.com/openshift/api/config/v1"
+	apifeatures "github.com/openshift/api/features"
 	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
@@ -47,6 +48,7 @@ import (
 )
 
 var _ = Describe("Controller", func() {
+	const finalizer = "foreground-deletion"
 	var request reconcile.Request
 	var profile *performancev2.PerformanceProfile
 	var profileMCP *mcov1.MachineConfigPool
@@ -1135,10 +1137,11 @@ func newFakeReconciler(profile client.Object, initObjects ...runtime.Object) *Pe
 	initObjects = append(initObjects, profile)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithStatusSubresource(profile).WithRuntimeObjects(initObjects...).WithInterceptorFuncs(MCPInterceptor()).Build()
 	fakeRecorder := record.NewFakeRecorder(10)
-	fakeFeatureGateAccessor := featuregates.NewHardcodedFeatureGateAccessForTesting(nil, []configv1.FeatureGateName{configv1.FeatureGateMixedCPUsAllocation}, make(chan struct{}), nil)
+	fakeFeatureGateAccessor := featuregates.NewHardcodedFeatureGateAccessForTesting(nil, []configv1.FeatureGateName{apifeatures.FeatureGateMixedCPUsAllocation}, make(chan struct{}), nil)
 	fg, _ := fakeFeatureGateAccessor.CurrentFeatureGates()
 	return &PerformanceProfileReconciler{
 		Client:            fakeClient,
+		ManagementClient:  fakeClient,
 		Recorder:          fakeRecorder,
 		FeatureGate:       fg,
 		ComponentsHandler: handler.NewHandler(fakeClient, scheme.Scheme),
