@@ -590,13 +590,13 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Namespace: metav1.NamespaceNone,
 			}
 			kubeletConfig := &machineconfigv1.KubeletConfig{}
-			err := testclient.GetWithRetry(context.TODO(), configKey, kubeletConfig)
+			err := testclient.GetWithRetry(context.TODO(), testclient.ControlPlaneClient, configKey, kubeletConfig)
 			Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("cannot find KubeletConfig object %s", configKey.Name))
 			Expect(kubeletConfig.Spec.MachineConfigPoolSelector.MatchLabels[machineconfigv1.MachineConfigRoleLabelKey]).Should(Equal(newRole))
 			Expect(kubeletConfig.Spec.KubeletConfig.Raw).Should(ContainSubstring("restricted"), "Can't find value in KubeletConfig")
 
 			runtimeClass := &nodev1.RuntimeClass{}
-			err = testclient.GetWithRetry(context.TODO(), configKey, runtimeClass)
+			err = testclient.GetWithRetry(context.TODO(), testclient.DataPlaneClient, configKey, runtimeClass)
 			Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("cannot find RuntimeClass profile object %s", runtimeClass.Name))
 			Expect(runtimeClass.Handler).Should(Equal(machineconfig.HighPerformanceRuntime))
 
@@ -605,7 +605,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Namespace: metav1.NamespaceNone,
 			}
 			machineConfig := &machineconfigv1.MachineConfig{}
-			err = testclient.GetWithRetry(context.TODO(), machineConfigKey, machineConfig)
+			err = testclient.GetWithRetry(context.TODO(), testclient.ControlPlaneClient, machineConfigKey, machineConfig)
 			Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("cannot find MachineConfig object %s", configKey.Name))
 			Expect(machineConfig.Labels[machineconfigv1.MachineConfigRoleLabelKey]).Should(Equal(newRole))
 
@@ -615,7 +615,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Namespace: components.NamespaceNodeTuningOperator,
 			}
 			tunedProfile := &tunedv1.Tuned{}
-			err = testclient.GetWithRetry(context.TODO(), tunedKey, tunedProfile)
+			err = testclient.GetWithRetry(context.TODO(), testclient.ControlPlaneClient, tunedKey, tunedProfile)
 			Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("cannot find Tuned profile object %s", tunedKey.Name))
 			Expect(tunedProfile.Spec.Recommend[0].MachineConfigLabels[machineconfigv1.MachineConfigRoleLabelKey]).Should(Equal(newRole))
 			Expect(*tunedProfile.Spec.Profile[0].Data).Should(ContainSubstring("NEW_ARGUMENT"), "Can't find value in Tuned profile")
@@ -648,14 +648,14 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Name:      components.GetComponentName(profile.Name, components.ComponentNamePrefix),
 				Namespace: components.NamespaceNodeTuningOperator,
 			}
-			err = testclient.GetWithRetry(context.TODO(), initialKey, &machineconfigv1.KubeletConfig{})
+			err = testclient.GetWithRetry(context.TODO(), testclient.ControlPlaneClient, initialKey, &machineconfigv1.KubeletConfig{})
 			Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("cannot find KubeletConfig object %s", initialKey.Name))
 
 			initialMachineConfigKey := types.NamespacedName{
 				Name:      machineconfig.GetMachineConfigName(profile.Name),
 				Namespace: metav1.NamespaceNone,
 			}
-			err = testclient.GetWithRetry(context.TODO(), initialMachineConfigKey, &machineconfigv1.MachineConfig{})
+			err = testclient.GetWithRetry(context.TODO(), testclient.ControlPlaneClient, initialMachineConfigKey, &machineconfigv1.MachineConfig{})
 			Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("cannot find MachineConfig object %s", initialKey.Name))
 		})
 	})
@@ -694,7 +694,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred(), "Failed getting v1Profile")
 
 			v2Profile := &performancev2.PerformanceProfile{}
-			err = testclient.GetWithRetry(context.TODO(), key, v2Profile)
+			err = testclient.GetWithRetry(context.TODO(), testclient.ControlPlaneClient, key, v2Profile)
 			Expect(err).ToNot(HaveOccurred(), "Failed getting v2Profile")
 			Expect(verifyV2Conversion(v2Profile, v1Profile)).ToNot(HaveOccurred())
 		}
@@ -740,7 +740,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			}()
 
 			v1Profile = &performancev1.PerformanceProfile{}
-			err = testclient.GetWithRetry(context.TODO(), key, v1Profile)
+			err = testclient.GetWithRetry(context.TODO(), testclient.ControlPlaneClient, key, v1Profile)
 			Expect(err).ToNot(HaveOccurred(), "Failed getting v1profile")
 			Expect(verifyV1alpha1Conversion(v1alpha1Profile, v1Profile)).ToNot(HaveOccurred())
 		}

@@ -149,10 +149,10 @@ func NewK8s() (*kubernetes.Clientset, error) {
 	return clientset, nil
 }
 
-func GetWithRetry(ctx context.Context, key client.ObjectKey, obj client.Object) error {
+func GetWithRetry(ctx context.Context, cli client.Client, key client.ObjectKey, obj client.Object) error {
 	var err error
 	EventuallyWithOffset(1, func() error {
-		err = Client.Get(ctx, key, obj)
+		err = cli.Get(ctx, key, obj)
 		if err != nil {
 			testlog.Infof("Getting %s failed, retrying: %v", key.Name, err)
 		}

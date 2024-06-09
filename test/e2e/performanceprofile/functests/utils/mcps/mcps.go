@@ -75,7 +75,7 @@ func GetByName(name string) (*machineconfigv1.MachineConfigPool, error) {
 		Name:      name,
 		Namespace: metav1.NamespaceNone,
 	}
-	err := testclient.GetWithRetry(context.TODO(), key, mcp)
+	err := testclient.GetWithRetry(context.TODO(), testclient.DataPlaneClient, key, mcp)
 	return mcp, err
 }
 
