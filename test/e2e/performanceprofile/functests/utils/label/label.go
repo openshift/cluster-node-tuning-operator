@@ -79,3 +79,15 @@ const (
 	// QE maintains tests and reviews result
 	Tier3 Tier = "tier-3"
 )
+
+// Platform is a label that used to specify the type of platform on which
+// tests are supposed to run
+type Platform string
+
+const (
+	// OpenShift means that tests are relevant only for OpenShift platform
+	OpenShift Platform = "openshift"
+
+	// HyperShift means that tests relevant only for HyperShift platform
+	HyperShift Platform = "hypershift"
+)
