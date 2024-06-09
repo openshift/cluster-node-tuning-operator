@@ -2,6 +2,7 @@ package nodepools
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -43,4 +44,21 @@ func waitForCondition(ctx context.Context, c client.Client, NpName, namespace st
 		}
 		return conditionFunc(np.Status.Conditions), nil
 	})
+}
+
+func GetByClusterName(ctx context.Context, c client.Client, hostedClusterName string) (*hypershiftv1beta1.NodePool, error) {
+	npList := &hypershiftv1beta1.NodePoolList{}
+	if err := c.List(ctx, npList); err != nil {
+		return nil, err
+	}
+	var np *hypershiftv1beta1.NodePool
+	for i := 0; i < len(npList.Items); i++ {
+		if npList.Items[i].Spec.ClusterName == hostedClusterName {
+			np = &npList.Items[i]
+		}
+	}
+	if np == nil {
+		return nil, fmt.Errorf("failed to find nodePool associated with cluster %q; existing nodePools are: %+v", hostedClusterName, npList.Items)
+	}
+	return np, nil
 }
