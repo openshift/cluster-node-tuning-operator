@@ -36,6 +36,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 )
 
 var RunningOnSingleNode bool
@@ -258,12 +259,10 @@ func attachProfileToNodePool(ctx context.Context, performanceProfile *performanc
 	// if the profile exists, don't wait for nodePool to get into updating state
 	if !profileAlreadyExists {
 		testlog.Infof("wait for node pool %q transition into update config state", key.String())
-		err = nodepools.WaitForUpdatingConfig(ctx, testclient.ControlPlaneClient, np.Name, np.Namespace)
-		Expect(err).ToNot(HaveOccurred(), "nodePool %q is not in UpdatingConfig state", key.String())
+		profilesupdate.WaitForTuningUpdating(ctx, performanceProfile)
 	}
 	testlog.Infof("wait for node pool %q transition into config ready state", key.String())
-	err = nodepools.WaitForConfigToBeReady(ctx, testclient.ControlPlaneClient, np.Name, np.Namespace)
-	Expect(err).ToNot(HaveOccurred(), "nodePool %q config is not ready", key.String())
+	profilesupdate.WaitForTuningUpdated(ctx, performanceProfile)
 }
 
 func printEnvs() {
