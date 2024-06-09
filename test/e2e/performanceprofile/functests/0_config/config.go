@@ -21,7 +21,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	mcv1 "github.com/openshift/api/machineconfiguration/v1"
-	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
@@ -249,17 +248,10 @@ func attachProfileToNodePool(ctx context.Context, performanceProfile *performanc
 	}
 	// for debugging purposes
 	printEnvs()
-	npList := &hypershiftv1beta1.NodePoolList{}
-	Expect(testclient.ControlPlaneClient.List(ctx, npList)).To(Succeed())
 	hostedClusterName, err := hypershift.GetHostedClusterName()
 	Expect(err).ToNot(HaveOccurred())
-	var np *hypershiftv1beta1.NodePool
-	for i := 0; i < len(npList.Items); i++ {
-		if npList.Items[i].Spec.ClusterName == hostedClusterName {
-			np = &npList.Items[i]
-		}
-	}
-	Expect(np).ToNot(BeNil(), "failed to find nodePool associated with cluster %q; existing nodePools are: %+v", hostedClusterName, npList.Items)
+	np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
+	Expect(err).ToNot(HaveOccurred())
 	np.Spec.TuningConfig = []corev1.LocalObjectReference{{Name: performanceProfile.Name}}
 	Expect(testclient.ControlPlaneClient.Update(ctx, np)).To(Succeed())
 	key := client.ObjectKeyFromObject(np)
