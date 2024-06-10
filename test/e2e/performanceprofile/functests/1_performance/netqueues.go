@@ -2,7 +2,6 @@ package __performance
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -10,11 +9,9 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/cpuset"
 	"k8s.io/utils/pointer"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -86,14 +83,8 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 
 	AfterEach(func() {
 		By("Reverting the Profile")
-		spec, err := json.Marshal(initialProfile.Spec)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(testclient.Client.Patch(context.TODO(), profile,
-			client.RawPatch(
-				types.JSONPatchType,
-				[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-			),
-		)).ToNot(HaveOccurred())
+		profile.Spec = initialProfile.Spec
+		testclient.ControlPlaneClient.Update(context.TODO(), profile)
 	})
 
 	Context("Updating performance profile for netqueues", func() {
