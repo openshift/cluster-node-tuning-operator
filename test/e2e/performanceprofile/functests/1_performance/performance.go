@@ -507,7 +507,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 	})
 
-	Context("Create second performance profiles on a cluster", Label(string(label.Tier0)), func() {
+	Context("Create second performance profiles on a cluster", Label(string(label.Tier0), string(label.OpenShift)), func() {
 		var secondMCP *mcov1.MachineConfigPool
 		var secondProfile *performancev2.PerformanceProfile
 		var newRole = "worker-new"
@@ -660,7 +660,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 	})
 
-	Context("Verify API Conversions", Label(string(label.Tier0)), func() {
+	Context("Verify API Conversions", Label(string(label.Tier0), string(label.OpenShift)), func() {
 		verifyV2V1 := func() {
 			By("Checking v2 -> v1 conversion")
 			v1Profile := &performancev1.PerformanceProfile{}
@@ -855,7 +855,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 	})
 
-	Context("Validation webhook", Label(string(label.Tier0)), func() {
+	Context("Validation webhook", Label(string(label.Tier0), string(label.OpenShift)), func() {
 		BeforeEach(func() {
 			if discovery.Enabled() {
 				Skip("Discovery mode enabled, test skipped because it creates incorrect profiles")
@@ -927,7 +927,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			})
 		})
 
-		Context("with API version v1 profile", Label(string(label.Tier0)), func() {
+		Context("with API version v1 profile", Label(string(label.Tier0), string(label.OpenShift)), func() {
 			var v1Profile *performancev1.PerformanceProfile
 
 			BeforeEach(func() {

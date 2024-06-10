@@ -55,7 +55,7 @@ var _ = Describe("[performance]RT Kernel", Ordered, Label(string(label.Tier0)), 
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("[test_id:28526][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] a node without performance profile applied should not have RT kernel installed", func() {
+	It("[test_id:28526][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] a node without performance profile applied should not have RT kernel installed", Label(string(label.OpenShift)), func() {
 
 		By("Skipping test if cluster does not have another available worker node")
 		nonPerformancesWorkers, err := nodes.GetNonPerformancesWorkers(profile.Spec.NodeSelector)
