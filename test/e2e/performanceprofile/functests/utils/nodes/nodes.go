@@ -101,7 +101,7 @@ func GetByRole(role string) ([]corev1.Node, error) {
 // GetBySelector returns all nodes with the specified selector
 func GetBySelector(selector labels.Selector) ([]corev1.Node, error) {
 	nodes := &corev1.NodeList{}
-	if err := testclient.Client.List(context.TODO(), nodes, &client.ListOptions{LabelSelector: selector}); err != nil {
+	if err := testclient.DataPlaneClient.List(context.TODO(), nodes, &client.ListOptions{LabelSelector: selector}); err != nil {
 		return nil, err
 	}
 	return nodes.Items, nil
@@ -119,7 +119,7 @@ func GetByName(nodeName string) (*corev1.Node, error) {
 	key := types.NamespacedName{
 		Name: nodeName,
 	}
-	if err := testclient.Client.Get(context.TODO(), key, node); err != nil {
+	if err := testclient.DataPlaneClient.Get(context.TODO(), key, node); err != nil {
 		return nil, fmt.Errorf("failed to get node for the node %q", nodeName)
 	}
 	return node, nil
@@ -341,7 +341,7 @@ func TunedForNode(node *corev1.Node, sno bool) *corev1.Pod {
 
 	tunedList := &corev1.PodList{}
 	Eventually(func() bool {
-		if err := testclient.Client.List(context.TODO(), tunedList, listOptions); err != nil {
+		if err := testclient.DataPlaneClient.List(context.TODO(), tunedList, listOptions); err != nil {
 			return false
 		}
 

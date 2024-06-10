@@ -32,7 +32,7 @@ func GetPod(ctx context.Context, node *corev1.Node) (*corev1.Pod, error) {
 		LabelSelector: labels.SelectorFromSet(labels.Set{"openshift-app": "tuned"}),
 	}
 
-	if err := testclient.Client.List(ctx, podList, opts); err != nil {
+	if err := testclient.DataPlaneClient.List(ctx, podList, opts); err != nil {
 		return nil, fmt.Errorf("couldn't get a list of TuneD Pods; %w", err)
 	}
 
@@ -90,7 +90,7 @@ func CheckParameters(ctx context.Context, node *corev1.Node, sysctlMap map[strin
 	}
 
 	tuned := &tunedv1.Tuned{}
-	ExpectWithOffset(1, testclient.Client.Get(context.TODO(), key, tuned)).ToNot(HaveOccurred(),
+	ExpectWithOffset(1, testclient.ControlPlaneClient.Get(context.TODO(), key, tuned)).ToNot(HaveOccurred(),
 		"cannot find the cluster Node Tuning Operator object "+key.String())
 
 	if stalld {
