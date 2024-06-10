@@ -96,7 +96,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 
 					condStatus := corev1.ConditionUnknown
 					EventuallyWithOffset(1, context.TODO(), func() bool {
-						tunedProfile, err := e2etuned.GetProfile(context.TODO(), testclient.Client, components.NamespaceNodeTuningOperator, node.Name)
+						tunedProfile, err := e2etuned.GetProfile(context.TODO(), testclient.DataPlaneClient, components.NamespaceNodeTuningOperator, node.Name)
 						Expect(err).ToNot(HaveOccurred(), "failed to get Tuned Profile for node %q", node.Name)
 						for _, cond := range tunedProfile.Status.Conditions {
 							if cond.Type != tunedv1.TunedProfileApplied {
@@ -228,7 +228,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			data, _ := json.Marshal(testpod)
 			testlog.Infof("using testpod:\n%s", string(data))
 
-			err = testclient.Client.Create(context.TODO(), testpod)
+			err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
 			defer func() {
 				if testpod != nil {
