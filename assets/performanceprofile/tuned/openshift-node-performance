@@ -24,7 +24,46 @@ isolated_cores={{.IsolatedCpus}}
 {{end}}
 
 not_isolated_cores_expanded=${f:cpulist_invert:${isolated_cores_expanded}}
-automatic_pstate=${f:intel_recommended_pstate}
+
+# Intel specific tuning options
+{{if ${f:lscpu_check:"^Vendor ID:\s*(.*)$"} == "GenuineIntel"}}
+iommu=+intel_iommu=on iommu=pt
+hpc_cstate=+processor.max_cstate=1 intel_idle.max_cstate=0
+pppm_pstate=+intel_pstate=active
+hwt_pstate=+intel_pstate=passive
+default_pstate=+intel_pstate=${f:intel_recommended_pstate}
+# AMD specific tuning options
+{{else if ${f:lscpu_check:"^Vendor ID:\s*(.*)$"} == "AuthenticAMD"}}
+iommu=+amd_iommu=on iommu=pt
+hpc_cstate=+processor.max_cstate=1
+pppm_pstate=+amd_pstate=active
+hwt_pstate=+amd_pstate=passive
+default_pstate=+amd_pstate=guided
+{{end}}
+
+# x86 specific tuning options
+{{ if ${f:lscpu_check:"^Architecture:\s*(.*)$"} == "x86_64"}}
+
+{{if .PerPodPowerManagement}}
+cmdline_pstate=${pppm_pstate}
+{{else if .HardwareTuning}}
+cmdline_pstate=${hwt_pstate}
+{{else}}
+cmdline_pstate=${default_pstate}
+{{end}}
+
+realtime_args=+tsc=reliable nmi_watchdog=0 mce=off
+
+# aarch64 specific tuning options
+{{ else if ${f:lscpu_check:"^Architecture:\s*(.*)$"} == "aarch64"}}
+iommu=+iommu.passthrough=1
+# No RT args for ARM
+realtime_args=
+# No pstate args for ARM
+cmdline_pstate=
+# No cstate for ARM
+hpc_cstate=
+{{end}}
 
 {{if .PerPodPowerManagement}}
 [cpu]
@@ -135,7 +174,7 @@ initrd_dst_img=
 initrd_add_dir=
 
 # overrides cpu-partitioning cmdline
-cmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded} intel_iommu=on iommu=pt
+cmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded} ${iommu}
 
 {{if .StaticIsolation}}
 cmdline_isolation=+isolcpus=domain,managed_irq,${isolated_cores}
@@ -144,11 +183,11 @@ cmdline_isolation=+isolcpus=managed_irq,${isolated_cores}
 {{end}}
 
 {{if .RealTimeHint}}
-cmdline_realtime=+nohz_full=${isolated_cores} tsc=reliable nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11
+cmdline_realtime=+nohz_full=${isolated_cores} nosoftlockup skew_tick=1 rcutree.kthread_prio=11 ${realtime_args}
 {{end}}
 
 {{if .HighPowerConsumption}}
-cmdline_power_performance=+processor.max_cstate=1 intel_idle.max_cstate=0
+cmdline_power_performance=${hpc_cstate}
 {{end}}
 
 {{if and .HighPowerConsumption .RealTimeHint}}
@@ -160,14 +199,6 @@ cmdline_hugepages=+ default_hugepagesz={{.DefaultHugepagesSize}} {{end}} {{if .H
 
 {{if .AdditionalArgs}}
 cmdline_additionalArg=+{{.AdditionalArgs}} 
-{{end}}
-
-{{if .PerPodPowerManagement}}
-cmdline_pstate=+intel_pstate=passive
-{{else if .HardwareTuning}}
-cmdline_pstate=+intel_pstate=active
-{{else}}
-cmdline_pstate=+intel_pstate=${automatic_pstate}
 {{end}}
 
 [rtentsk]
