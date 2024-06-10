@@ -54,7 +54,7 @@ func getDiscoveryPerformanceProfile(performanceProfiles []performancev2.Performa
 		selector := labels.SelectorFromSet(profile.Spec.NodeSelector)
 
 		profileNodes := &corev1.NodeList{}
-		if err := testclient.Client.List(context.TODO(), profileNodes, &client.ListOptions{LabelSelector: selector}); err != nil {
+		if err := testclient.DataPlaneClient.List(context.TODO(), profileNodes, &client.ListOptions{LabelSelector: selector}); err != nil {
 			return nil, err
 		}
 

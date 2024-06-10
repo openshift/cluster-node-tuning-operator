@@ -88,11 +88,11 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Namespace: components.NamespaceNodeTuningOperator,
 			}
 			tuned := &tunedv1.Tuned{}
-			err := testclient.Client.Get(context.TODO(), key, tuned)
+			err := testclient.ControlPlaneClient.Get(context.TODO(), key, tuned)
 			Expect(err).ToNot(HaveOccurred(), "cannot find the Cluster Node Tuning Operator object %q", tuned.Name)
 
 			Eventually(func() bool {
-				err := testclient.Client.List(context.TODO(), tunedList)
+				err := testclient.ControlPlaneClient.List(context.TODO(), tunedList)
 				Expect(err).NotTo(HaveOccurred())
 				for t := range tunedList.Items {
 					tunedItem := tunedList.Items[t]
@@ -125,7 +125,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					Namespace: components.NamespaceNodeTuningOperator,
 				}
 				tunedProfile := &tunedv1.Profile{}
-				err := testclient.Client.Get(context.TODO(), key, tunedProfile)
+				err := testclient.DataPlaneClient.Get(context.TODO(), key, tunedProfile)
 				Expect(err).ToNot(HaveOccurred(), "Failed to get the Tuned profile for node %s", node.Name)
 				degradedCondition := findCondition(tunedProfile.Status.Conditions, "Degraded")
 				Expect(degradedCondition).ToNot(BeNil(), "Degraded condition not found in Tuned profile status")
@@ -307,7 +307,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			for _, node := range workerRTNodes {
 				processesFound := make([]string, 0)
 				rootCgroupPath := "/rootfs/sys/fs/cgroup/cpuset/cgroup.procs"
-				isV2, err := cgroup.IsVersion2(context.TODO(), testclient.Client)
+				isV2, err := cgroup.IsVersion2(context.TODO(), testclient.DataPlaneClient)
 				if err != nil {
 					Expect(err).ToNot(HaveOccurred())
 				}
@@ -341,7 +341,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Namespace: components.NamespaceNodeTuningOperator,
 			}
 			tuned := &tunedv1.Tuned{}
-			err := testclient.Client.Get(context.TODO(), key, tuned)
+			err := testclient.ControlPlaneClient.Get(context.TODO(), key, tuned)
 			Expect(err).ToNot(HaveOccurred(), "cannot find the Cluster Node Tuning Operator object "+key.String())
 			validateTunedActiveProfile(context.TODO(), workerRTNodes)
 			execSysctlOnWorkers(context.TODO(), workerRTNodes, sysctlMap)
@@ -499,7 +499,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Namespace: components.NamespaceNodeTuningOperator,
 			}
 			tuned := &tunedv1.Tuned{}
-			err := testclient.Client.Get(context.TODO(), key, tuned)
+			err := testclient.ControlPlaneClient.Get(context.TODO(), key, tuned)
 			Expect(err).ToNot(HaveOccurred(), "cannot find the Cluster Node Tuning Operator object "+components.ProfileNamePerformance)
 			validateTunedActiveProfile(context.TODO(), workerRTNodes)
 			execSysctlOnWorkers(context.TODO(), workerRTNodes, sysctlMap)
@@ -564,7 +564,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				},
 			}
 
-			Expect(testclient.Client.Create(context.TODO(), secondMCP)).ToNot(HaveOccurred())
+			Expect(testclient.DataPlaneClient.Create(context.TODO(), secondMCP)).ToNot(HaveOccurred())
 		})
 
 		AfterEach(func() {
@@ -582,7 +582,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 
 		It("[test_id:32364] Verifies that cluster can have multiple profiles", func() {
-			Expect(testclient.Client.Create(context.TODO(), secondProfile)).ToNot(HaveOccurred())
+			Expect(testclient.ControlPlaneClient.Create(context.TODO(), secondProfile)).ToNot(HaveOccurred())
 
 			By("Checking that new KubeletConfig, MachineConfig and RuntimeClass created")
 			configKey := types.NamespacedName{
@@ -626,7 +626,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			}, 30, 5).Should(Equal(corev1.ConditionFalse))
 
 			By("Remove second profile and verify that KubeletConfig and MachineConfig were removed")
-			Expect(testclient.Client.Delete(context.TODO(), secondProfile)).ToNot(HaveOccurred())
+			Expect(testclient.ControlPlaneClient.Delete(context.TODO(), secondProfile)).ToNot(HaveOccurred())
 
 			profileKey := types.NamespacedName{
 				Name:      secondProfile.Name,
@@ -638,10 +638,10 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				return mcps.GetConditionStatus(testutils.RoleWorkerCNF, machineconfigv1.MachineConfigPoolUpdating)
 			}, 30, 5).Should(Equal(corev1.ConditionFalse))
 
-			Expect(testclient.Client.Get(context.TODO(), configKey, kubeletConfig)).To(HaveOccurred(), fmt.Sprintf("KubeletConfig %s should be removed", configKey.Name))
-			Expect(testclient.Client.Get(context.TODO(), machineConfigKey, machineConfig)).To(HaveOccurred(), fmt.Sprintf("MachineConfig %s should be removed", configKey.Name))
-			Expect(testclient.Client.Get(context.TODO(), configKey, runtimeClass)).To(HaveOccurred(), fmt.Sprintf("RuntimeClass %s should be removed", configKey.Name))
-			Expect(testclient.Client.Get(context.TODO(), tunedKey, tunedProfile)).To(HaveOccurred(), fmt.Sprintf("Tuned profile object %s should be removed", tunedKey.Name))
+			Expect(testclient.ControlPlaneClient.Get(context.TODO(), configKey, kubeletConfig)).To(HaveOccurred(), fmt.Sprintf("KubeletConfig %s should be removed", configKey.Name))
+			Expect(testclient.ControlPlaneClient.Get(context.TODO(), machineConfigKey, machineConfig)).To(HaveOccurred(), fmt.Sprintf("MachineConfig %s should be removed", configKey.Name))
+			Expect(testclient.ControlPlaneClient.Get(context.TODO(), configKey, runtimeClass)).To(HaveOccurred(), fmt.Sprintf("RuntimeClass %s should be removed", configKey.Name))
+			Expect(testclient.ControlPlaneClient.Get(context.TODO(), tunedKey, tunedProfile)).To(HaveOccurred(), fmt.Sprintf("Tuned profile object %s should be removed", tunedKey.Name))
 
 			By("Checking that initial KubeletConfig and MachineConfig still exist")
 			initialKey := types.NamespacedName{
@@ -669,7 +669,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Namespace: profile.Namespace,
 			}
 
-			err := testclient.Client.Get(context.TODO(), key, v1Profile)
+			err := testclient.ControlPlaneClient.Get(context.TODO(), key, v1Profile)
 			Expect(err).ToNot(HaveOccurred(), "Failed getting v1Profile")
 			Expect(verifyV2Conversion(profile, v1Profile)).ToNot(HaveOccurred())
 
@@ -679,10 +679,10 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			v1Profile.Spec.NodeSelector = map[string]string{"v1/v1": "v1"}
 			v1Profile.Spec.MachineConfigPoolSelector = nil
 			v1Profile.Spec.MachineConfigLabel = nil
-			Expect(testclient.Client.Create(context.TODO(), v1Profile)).ToNot(HaveOccurred())
+			Expect(testclient.ControlPlaneClient.Create(context.TODO(), v1Profile)).ToNot(HaveOccurred())
 
 			defer func() {
-				Expect(testclient.Client.Delete(context.TODO(), v1Profile)).ToNot(HaveOccurred())
+				Expect(testclient.ControlPlaneClient.Delete(context.TODO(), v1Profile)).ToNot(HaveOccurred())
 				Expect(profiles.WaitForDeletion(key, 60*time.Second)).ToNot(HaveOccurred())
 			}()
 
@@ -690,7 +690,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Name:      v1Profile.Name,
 				Namespace: v1Profile.Namespace,
 			}
-			err = testclient.Client.Get(context.TODO(), key, v1Profile)
+			err = testclient.ControlPlaneClient.Get(context.TODO(), key, v1Profile)
 			Expect(err).ToNot(HaveOccurred(), "Failed getting v1Profile")
 
 			v2Profile := &performancev2.PerformanceProfile{}
@@ -707,7 +707,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Namespace: profile.Namespace,
 			}
 
-			err := testclient.Client.Get(context.TODO(), key, v1Profile)
+			err := testclient.ControlPlaneClient.Get(context.TODO(), key, v1Profile)
 			Expect(err).ToNot(HaveOccurred(), "Failed acquiring a v1 profile")
 
 			By("Checking v1 -> v1alpha1 conversion")
@@ -717,7 +717,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Namespace: v1Profile.Namespace,
 			}
 
-			err = testclient.Client.Get(context.TODO(), key, v1alpha1Profile)
+			err = testclient.ControlPlaneClient.Get(context.TODO(), key, v1alpha1Profile)
 			Expect(err).ToNot(HaveOccurred(), "Failed getting v1alpha1Profile")
 			Expect(verifyV1alpha1Conversion(v1alpha1Profile, v1Profile)).ToNot(HaveOccurred())
 
@@ -727,7 +727,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			v1alpha1Profile.Spec.NodeSelector = map[string]string{"v1alpha/v1alpha": "v1alpha"}
 			v1alpha1Profile.Spec.MachineConfigPoolSelector = nil
 			v1alpha1Profile.Spec.MachineConfigLabel = nil
-			Expect(testclient.Client.Create(context.TODO(), v1alpha1Profile)).ToNot(HaveOccurred())
+			Expect(testclient.ControlPlaneClient.Create(context.TODO(), v1alpha1Profile)).ToNot(HaveOccurred())
 
 			key = types.NamespacedName{
 				Name:      v1alpha1Profile.Name,
@@ -735,7 +735,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			}
 
 			defer func() {
-				Expect(testclient.Client.Delete(context.TODO(), v1alpha1Profile)).ToNot(HaveOccurred())
+				Expect(testclient.ControlPlaneClient.Delete(context.TODO(), v1alpha1Profile)).ToNot(HaveOccurred())
 				Expect(profiles.WaitForDeletion(key, 60*time.Second)).ToNot(HaveOccurred())
 			}()
 
@@ -755,7 +755,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					Name:      profile.Name,
 					Namespace: profile.Namespace,
 				}
-				err := testclient.Client.Get(context.TODO(), key, profile)
+				err := testclient.ControlPlaneClient.Get(context.TODO(), key, profile)
 				Expect(err).ToNot(HaveOccurred(), "Failed to get profile")
 
 				profile.Name = testProfileName
@@ -765,7 +765,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				profile.Spec.MachineConfigPoolSelector = nil
 				profile.Spec.MachineConfigLabel = nil
 
-				err = testclient.Client.Create(context.TODO(), profile)
+				err = testclient.ControlPlaneClient.Create(context.TODO(), profile)
 				Expect(err).ToNot(HaveOccurred(), "Failed to create profile")
 
 				// we need to get updated profile object after the name and spec changes
@@ -773,7 +773,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					Name:      profile.Name,
 					Namespace: profile.Namespace,
 				}
-				err = testclient.Client.Get(context.TODO(), key, profile)
+				err = testclient.ControlPlaneClient.Get(context.TODO(), key, profile)
 				Expect(err).ToNot(HaveOccurred(), "Failed to get profile")
 			})
 
@@ -800,7 +800,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			})
 
 			AfterEach(func() {
-				Expect(testclient.Client.Delete(context.TODO(), profile)).ToNot(HaveOccurred())
+				Expect(testclient.ControlPlaneClient.Delete(context.TODO(), profile)).ToNot(HaveOccurred())
 				Expect(profiles.WaitForDeletion(types.NamespacedName{
 					Name:      profile.Name,
 					Namespace: profile.Namespace,
@@ -815,7 +815,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					Name:      profile.Name,
 					Namespace: profile.Namespace,
 				}
-				err := testclient.Client.Get(context.TODO(), key, profile)
+				err := testclient.ControlPlaneClient.Get(context.TODO(), key, profile)
 				Expect(err).ToNot(HaveOccurred(), "Failed getting v1Profile")
 
 				profile.Name = "without-numa"
@@ -825,12 +825,12 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				profile.Spec.MachineConfigPoolSelector = nil
 				profile.Spec.MachineConfigLabel = nil
 
-				err = testclient.Client.Create(context.TODO(), profile)
+				err = testclient.ControlPlaneClient.Create(context.TODO(), profile)
 				Expect(err).ToNot(HaveOccurred(), "Failed to create profile without NUMA")
 			})
 
 			AfterEach(func() {
-				Expect(testclient.Client.Delete(context.TODO(), profile)).ToNot(HaveOccurred())
+				Expect(testclient.ControlPlaneClient.Delete(context.TODO(), profile)).ToNot(HaveOccurred())
 				Expect(profiles.WaitForDeletion(types.NamespacedName{
 					Name:      profile.Name,
 					Namespace: profile.Namespace,
@@ -863,7 +863,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 
 		validateObject := func(obj client.Object, message string) {
-			err := testclient.Client.Create(context.TODO(), obj)
+			err := testclient.ControlPlaneClient.Create(context.TODO(), obj)
 			Expect(err).To(HaveOccurred(), "expected the validation error")
 			Expect(err.Error()).To(ContainSubstring(message))
 		}
@@ -1368,7 +1368,7 @@ func validateTunedActiveProfile(ctx context.Context, wrknodes []corev1.Node) {
 
 	// check if some another Tuned profile overwrites PAO profile
 	tunedList := &tunedv1.TunedList{}
-	err = testclient.Client.List(ctx, tunedList)
+	err = testclient.ControlPlaneClient.List(ctx, tunedList)
 	Expect(err).NotTo(HaveOccurred())
 
 	for _, t := range tunedList.Items {
