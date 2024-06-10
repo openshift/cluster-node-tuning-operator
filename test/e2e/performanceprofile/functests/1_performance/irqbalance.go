@@ -11,7 +11,6 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/cpuset"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -146,14 +145,8 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 
 			defer func() { // return initial configuration
 				By("reverting the profile into its initial state")
-				spec, err := json.Marshal(initialProfile.Spec)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(testclient.Client.Patch(context.TODO(), profile,
-					client.RawPatch(
-						types.JSONPatchType,
-						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-					),
-				)).ToNot(HaveOccurred())
+				profile.Spec = initialProfile.Spec
+				Expect(testclient.ControlPlaneClient.Update(context.TODO(), profile)).ToNot(HaveOccurred())
 				// in the initial profile `GloballyDisableIrqLoadBalancing` value should be false,
 				// so we expect the banned cpu set to be empty
 				Eventually(verifyNodes).WithArguments(false).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).ShouldNot(HaveOccurred())
@@ -167,16 +160,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 
 			By(fmt.Sprintf("Modifying profile: irqLoadBalancingDisabled switched to %v", irqLoadBalancingDisabled))
 
-			spec, err := json.Marshal(profile.Spec)
-			Expect(err).ToNot(HaveOccurred())
-
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			Expect(testclient.Client.Patch(context.TODO(), profile,
-				client.RawPatch(
-					types.JSONPatchType,
-					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-				),
-			)).ToNot(HaveOccurred())
+			Expect(testclient.ControlPlaneClient.Update(context.TODO(), profile)).ToNot(HaveOccurred())
 			Eventually(verifyNodes).WithArguments(irqLoadBalancingDisabled).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).ShouldNot(HaveOccurred())
 		})
 	})
