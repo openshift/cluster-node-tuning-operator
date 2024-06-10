@@ -254,7 +254,10 @@ pao-functests-mixedcpus:
 	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/11_mixedcpus" -p "-v -r --fail-fast --flake-attempts=2 --junit-report=report.xml" -m "Running MixedCPUs Tests"
 
 .PHONY: pao-functests-hypershift
-pao-functests-hypershift:
+pao-functests-hypershift: cluster-label-worker-cnf pao-functests-hypershift-only
+
+.PHONY: pao-functests-hypershift-only
+pao-functests-hypershift-only:
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
 	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config" -p "-vv -r --fail-fast --flake-attempts=2 --junit-report=report.xml" -m "Running Functional Tests over Hypershift"
