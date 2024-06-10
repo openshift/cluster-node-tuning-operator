@@ -55,7 +55,7 @@ func GetTestPod() *corev1.Pod {
 // WaitForDeletion waits until the pod will be removed from the cluster
 func WaitForDeletion(ctx context.Context, pod *corev1.Pod, timeout time.Duration) error {
 	return wait.PollUntilContextTimeout(ctx, time.Second, timeout, true, func(ctx context.Context) (bool, error) {
-		if err := testclient.Client.Get(ctx, client.ObjectKeyFromObject(pod), pod); errors.IsNotFound(err) {
+		if err := testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(pod), pod); errors.IsNotFound(err) {
 			return true, nil
 		}
 		return false, nil
@@ -66,7 +66,7 @@ func WaitForDeletion(ctx context.Context, pod *corev1.Pod, timeout time.Duration
 func WaitForCondition(ctx context.Context, podKey client.ObjectKey, conditionType corev1.PodConditionType, conditionStatus corev1.ConditionStatus, timeout time.Duration) (*corev1.Pod, error) {
 	updatedPod := &corev1.Pod{}
 	err := wait.PollUntilContextTimeout(ctx, time.Second, timeout, true, func(ctx context.Context) (bool, error) {
-		if err := testclient.Client.Get(ctx, podKey, updatedPod); err != nil {
+		if err := testclient.DataPlaneClient.Get(ctx, podKey, updatedPod); err != nil {
 			return false, nil
 		}
 		for _, c := range updatedPod.Status.Conditions {
@@ -83,7 +83,7 @@ func WaitForCondition(ctx context.Context, podKey client.ObjectKey, conditionTyp
 func WaitForPredicate(ctx context.Context, podKey client.ObjectKey, timeout time.Duration, pred func(pod *corev1.Pod) (bool, error)) (*corev1.Pod, error) {
 	updatedPod := &corev1.Pod{}
 	err := wait.PollUntilContextTimeout(ctx, time.Second, timeout, true, func(ctx context.Context) (bool, error) {
-		if err := testclient.Client.Get(ctx, podKey, updatedPod); err != nil {
+		if err := testclient.DataPlaneClient.Get(ctx, podKey, updatedPod); err != nil {
 			return false, nil
 		}
 
@@ -100,7 +100,7 @@ func WaitForPredicate(ctx context.Context, podKey client.ObjectKey, timeout time
 func WaitForPhase(ctx context.Context, podKey client.ObjectKey, phase corev1.PodPhase, timeout time.Duration) (*corev1.Pod, error) {
 	updatedPod := &corev1.Pod{}
 	err := wait.PollUntilContextTimeout(ctx, time.Second, timeout, true, func(ctx context.Context) (bool, error) {
-		if err := testclient.Client.Get(ctx, podKey, updatedPod); err != nil {
+		if err := testclient.DataPlaneClient.Get(ctx, podKey, updatedPod); err != nil {
 			return false, nil
 		}
 
@@ -202,7 +202,7 @@ func GetContainerIDByName(pod *corev1.Pod, containerName string) (string, error)
 		Name:      pod.Name,
 		Namespace: pod.Namespace,
 	}
-	if err := testclient.Client.Get(context.TODO(), key, updatedPod); err != nil {
+	if err := testclient.DataPlaneClient.Get(context.TODO(), key, updatedPod); err != nil {
 		return "", err
 	}
 	// Find the container by name
@@ -237,7 +237,7 @@ func GetPodsOnNode(ctx context.Context, nodeName string) ([]corev1.Pod, error) {
 	listOptions := &client.ListOptions{
 		FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": nodeName}),
 	}
-	err := testclient.Client.List(ctx, &pods, listOptions)
+	err := testclient.DataPlaneClient.List(ctx, &pods, listOptions)
 	return pods.Items, err
 }
 
