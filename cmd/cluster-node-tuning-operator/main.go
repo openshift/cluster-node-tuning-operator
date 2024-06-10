@@ -9,8 +9,6 @@ import (
 	"runtime"
 	"time"
 
-	"net/http"
-
 	apiconfigv1 "github.com/openshift/api/config/v1"
 	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 	configclient "github.com/openshift/client-go/config/clientset/versioned"
@@ -20,19 +18,24 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	paocontroller "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/handler"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/status"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
+	"net/http"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -158,6 +161,12 @@ func operatorRun() {
 		klog.Exit(err)
 	}
 
+	if !config.InHyperShift() {
+		if err := migratePinnedSingleNodeInfraStatus(restConfig, scheme); err != nil {
+			klog.Fatalf("unable to migrate pinned single node infra status: %v", err)
+		}
+	}
+
 	controller, err := operator.NewController()
 	if err != nil {
 		klog.Fatalf("failed to create new controller: %v", err)
@@ -239,6 +248,69 @@ func operatorRun() {
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		klog.Exitf("manager exited with non-zero code: %v", err)
 	}
+}
+
+// During upgrade from 4.13 -> 4.14, this logic will update the authoritative flag in the new
+// Infrastructures.Status.CPUPartitioning to migrate Single Node clusters to the new method.
+// Note:
+// This method will also execute during fresh installs on SNO using the legacy method. We are
+// generating the bootstrap files during that process, when this method then executes, it will only
+// update the API flag as intended, and since the bootstrap configs will already exist, nothing will happen.
+//
+// TODO: Revisit after 4.14 to remove logic when no longer needed.
+func migratePinnedSingleNodeInfraStatus(cfg *rest.Config, scheme *apiruntime.Scheme) error {
+	k8sclient, err := client.New(cfg, client.Options{Scheme: scheme})
+	if err != nil {
+		return err
+	}
+
+	key := types.NamespacedName{
+		Name: "cluster",
+	}
+	infra := &apiconfigv1.Infrastructure{}
+	if err := k8sclient.Get(context.Background(), key, infra); err != nil {
+		return err
+	}
+
+	// If partitioning is on, we don't need to do anymore checks
+	if infra.Status.CPUPartitioning != apiconfigv1.CPUPartitioningNone {
+		return nil
+	}
+
+	// If we are in single node we need to do another check for upgrades from 4.12
+	// this should only be triggered during the first upgrade
+	if infra.Status.ControlPlaneTopology == apiconfigv1.SingleReplicaTopologyMode {
+		nodes := &corev1.NodeList{}
+		if err := k8sclient.List(context.Background(), nodes); err != nil {
+			return err
+		}
+		foundPinningCapacity := false
+		for _, node := range nodes.Items {
+			// Since we're in single node mode, we break early.
+			if _, ok := node.Status.Allocatable[corev1.ResourceName("management.workload.openshift.io/cores")]; ok {
+				foundPinningCapacity = true
+				break
+			}
+		}
+		if foundPinningCapacity {
+			ctx := context.Background()
+			pinning := apiconfigv1.CPUPartitioningAllNodes
+			infraCopy := infra.DeepCopy()
+			infraCopy.Status.CPUPartitioning = pinning
+			mc, err := machineconfig.BootstrapWorkloadPinningMC("master", &pinning)
+			if err != nil {
+				return err
+			}
+			// If the bootstrap MC already exists or the error is nil,
+			// we continue with updating the infra status
+			err = k8sclient.Create(ctx, mc)
+			if errors.IsAlreadyExists(err) || err == nil {
+				return k8sclient.Status().Update(ctx, infraCopy)
+			}
+		}
+	}
+
+	return nil
 }
 
 func setupFeatureGates(ctx context.Context, config *rest.Config, operatorNamespace string) (featuregates.FeatureGate, error) {
