@@ -17,7 +17,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -28,10 +27,10 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 	e2etuned "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 	"github.com/openshift/cluster-node-tuning-operator/test/framework"
@@ -45,7 +44,6 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 	var workerRTNodes []corev1.Node
 	var targetNode *corev1.Node
 	var profile, initialProfile *performancev2.PerformanceProfile
-	var performanceMCP string
 	var err error
 
 	BeforeEach(func() {
@@ -60,13 +58,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 
 		initialProfile = profile.DeepCopy()
 
-		performanceMCP, err = mcps.GetByProfile(profile)
-		Expect(err).ToNot(HaveOccurred())
-
-		// Verify that worker and performance MCP have updated state equals to true
-		for _, mcpName := range []string{testutils.RoleWorker, performanceMCP} {
-			mcps.WaitForCondition(mcpName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
-		}
+		profilesupdate.WaitForTuningUpdated(context.TODO(), profile)
 
 		nodeIdx := pickNodeIdx(workerRTNodes)
 		targetNode = &workerRTNodes[nodeIdx]
