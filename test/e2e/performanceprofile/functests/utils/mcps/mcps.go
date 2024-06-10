@@ -42,7 +42,7 @@ func GetByLabel(key, value string) ([]machineconfigv1.MachineConfigPool, error) 
 	}
 	selector = selector.Add(*req)
 	mcps := &machineconfigv1.MachineConfigPoolList{}
-	if err := testclient.Client.List(context.TODO(), mcps, &client.ListOptions{LabelSelector: selector}); err != nil {
+	if err := testclient.DataPlaneClient.List(context.TODO(), mcps, &client.ListOptions{LabelSelector: selector}); err != nil {
 		return nil, err
 	}
 	if len(mcps.Items) > 0 {
@@ -51,7 +51,7 @@ func GetByLabel(key, value string) ([]machineconfigv1.MachineConfigPool, error) 
 	// fallback to look for a mcp with the same nodeselector.
 	// key value may come from a node selector, so looking for a mcp
 	// that targets the same nodes is legit
-	if err := testclient.Client.List(context.TODO(), mcps); err != nil {
+	if err := testclient.DataPlaneClient.List(context.TODO(), mcps); err != nil {
 		return nil, err
 	}
 	res := []machineconfigv1.MachineConfigPool{}
@@ -87,7 +87,7 @@ func GetByNameNoRetry(name string) (*machineconfigv1.MachineConfigPool, error) {
 		Name:      name,
 		Namespace: metav1.NamespaceNone,
 	}
-	err := testclient.Client.Get(context.TODO(), key, mcp)
+	err := testclient.DataPlaneClient.Get(context.TODO(), key, mcp)
 	return mcp, err
 }
 
@@ -275,7 +275,7 @@ func WaitForProfilePickedUp(mcpName string, profile *performancev2.PerformancePr
 func WaitForDeletion(ctx context.Context, mcpKey types.NamespacedName, timeout time.Duration) error {
 	return wait.PollUntilContextTimeout(ctx, 5*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		mcp := &machineconfigv1.MachineConfigPool{}
-		if err := testclient.Client.Get(ctx, mcpKey, mcp); apierrors.IsNotFound(err) {
+		if err := testclient.DataPlaneClient.Get(ctx, mcpKey, mcp); apierrors.IsNotFound(err) {
 			return true, nil
 		}
 		return false, nil
@@ -284,14 +284,14 @@ func WaitForDeletion(ctx context.Context, mcpKey types.NamespacedName, timeout t
 
 func Delete(name string) error {
 	mcp := &machineconfigv1.MachineConfigPool{}
-	if err := testclient.Client.Get(context.TODO(), types.NamespacedName{Name: name}, mcp); err != nil {
+	if err := testclient.DataPlaneClient.Get(context.TODO(), types.NamespacedName{Name: name}, mcp); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
 
-	if err := testclient.Client.Delete(context.TODO(), mcp); err != nil {
+	if err := testclient.DataPlaneClient.Delete(context.TODO(), mcp); err != nil {
 		return err
 	}
 	return WaitForDeletion(context.TODO(), client.ObjectKey{Name: name}, 2*time.Minute)

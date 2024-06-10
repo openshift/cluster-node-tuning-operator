@@ -13,7 +13,7 @@ import (
 // IsSingleNode validates if the environment is single node cluster
 func IsSingleNode() (bool, error) {
 	nodes := &corev1.NodeList{}
-	if err := testclient.Client.List(context.TODO(), nodes, &client.ListOptions{}); err != nil {
+	if err := testclient.DataPlaneClient.List(context.TODO(), nodes, &client.ListOptions{}); err != nil {
 		return false, err
 	}
 	return len(nodes.Items) == 1, nil
