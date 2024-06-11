@@ -260,7 +260,7 @@ pao-functests-hypershift: cluster-label-worker-cnf pao-functests-hypershift-only
 pao-functests-hypershift-only:
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
-	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config" -p "-vv --label-filter="!openshift" -r --fail-fast --flake-attempts=2 --junit-report=report.xml" -m "Running Functional Tests over Hypershift"
+	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/1_performance" -p "-vv --label-filter="!openshift" -r --fail-fast --flake-attempts=2 --timeout=2h --junit-report=report.xml" -m "Running Functional Tests over Hypershift"
 
 .PHONY: cluster-clean-pao
 cluster-clean-pao:
