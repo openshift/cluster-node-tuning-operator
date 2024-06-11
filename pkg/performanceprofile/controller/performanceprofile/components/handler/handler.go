@@ -42,6 +42,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if profileutil.IsPaused(profile) {
+		// this is expected to be exceptional, hence we omit V()
 		klog.Infof("Ignoring reconcile loop for pause performance profile %s", profile.Name)
 		return nil
 	}
@@ -50,7 +51,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	if err != nil {
 		return fmt.Errorf("could not determine high-performance runtime class container-runtime for profile %q; %w", profile.Name, err)
 	}
-	klog.Infof("using %q as high-performance runtime class container-runtime for profile %q", ctrRuntime, profile.Name)
+	klog.V(2).Infof("using %q as high-performance runtime class container-runtime for profile %q", ctrRuntime, profile.Name)
 
 	opts.MachineConfig.DefaultRuntime = ctrRuntime
 	components, err := manifestset.GetNewComponents(profile, opts)
@@ -146,23 +147,23 @@ func (h *handler) Delete(ctx context.Context, profileName string) error {
 func (h *handler) Exists(ctx context.Context, profileName string) bool {
 	tunedName := components.GetComponentName(profileName, components.ProfileNamePerformance)
 	if _, err := resources.GetTuned(ctx, h.Client, tunedName, components.NamespaceNodeTuningOperator); !k8serros.IsNotFound(err) {
-		klog.Infof("Tuned %q custom resource is still exists in the namespace %q", tunedName, components.NamespaceNodeTuningOperator)
+		klog.V(1).Infof("Tuned %q custom resource is still exists in the namespace %q", tunedName, components.NamespaceNodeTuningOperator)
 		return true
 	}
 
 	name := components.GetComponentName(profileName, components.ComponentNamePrefix)
 	if _, err := resources.GetKubeletConfig(ctx, h.Client, name); !k8serros.IsNotFound(err) {
-		klog.Infof("Kubelet Config %q exists in the cluster", name)
+		klog.V(1).Infof("Kubelet Config %q exists in the cluster", name)
 		return true
 	}
 
 	if _, err := resources.GetRuntimeClass(ctx, h.Client, name); !k8serros.IsNotFound(err) {
-		klog.Infof("Runtime class %q exists in the cluster", name)
+		klog.V(1).Infof("Runtime class %q exists in the cluster", name)
 		return true
 	}
 
 	if _, err := resources.GetMachineConfig(ctx, h.Client, machineconfig.GetMachineConfigName(profileName)); !k8serros.IsNotFound(err) {
-		klog.Infof("Machine Config %q exists in the cluster", name)
+		klog.V(1).Infof("Machine Config %q exists in the cluster", name)
 		return true
 	}
 	return false
@@ -192,7 +193,7 @@ func (h *handler) getContainerRuntimeName(ctx context.Context, profile *performa
 	}
 
 	if len(ctrcfgs) == 0 {
-		klog.Infof("no ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q; using default container runtime", mcpSetLabels.String(), profile.Name)
+		klog.V(1).Infof("no ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q; using default container runtime", mcpSetLabels.String(), profile.Name)
 		return mcov1.ContainerRuntimeDefaultRuntimeRunc, nil
 	}
 

@@ -83,7 +83,7 @@ func GetClusterOperator(ctx context.Context, cli client.Client) (*apiconfigv1.Cl
 func CreateOrUpdateMachineConfig(ctx context.Context, cli client.Client, mc *mcov1.MachineConfig) error {
 	_, err := GetMachineConfig(ctx, cli, mc.Name)
 	if errors.IsNotFound(err) {
-		klog.Infof("Create machine-config %q", mc.Name)
+		klog.V(1).Infof("Create machine-config %q", mc.Name)
 		if err := cli.Create(ctx, mc); err != nil {
 			return err
 		}
@@ -94,7 +94,7 @@ func CreateOrUpdateMachineConfig(ctx context.Context, cli client.Client, mc *mco
 		return err
 	}
 
-	klog.Infof("Update machine-config %q", mc.Name)
+	klog.V(2).Infof("Update machine-config %q", mc.Name)
 	return cli.Update(ctx, mc)
 }
 
@@ -162,7 +162,7 @@ func GetMutatedKubeletConfig(ctx context.Context, cli client.Client, kc *mcov1.K
 func CreateOrUpdateKubeletConfig(ctx context.Context, cli client.Client, kc *mcov1.KubeletConfig) error {
 	_, err := GetKubeletConfig(ctx, cli, kc.Name)
 	if errors.IsNotFound(err) {
-		klog.Infof("Create kubelet-config %q", kc.Name)
+		klog.V(1).Infof("Create kubelet-config %q", kc.Name)
 		if err := cli.Create(ctx, kc); err != nil {
 			return err
 		}
@@ -173,7 +173,7 @@ func CreateOrUpdateKubeletConfig(ctx context.Context, cli client.Client, kc *mco
 		return err
 	}
 
-	klog.Infof("Update kubelet-config %q", kc.Name)
+	klog.V(2).Infof("Update kubelet-config %q", kc.Name)
 	return cli.Update(ctx, kc)
 }
 
@@ -232,7 +232,7 @@ func CreateOrUpdateTuned(ctx context.Context, cli client.Client, tuned *tunedv1.
 
 	_, err := GetTuned(ctx, cli, tuned.Name, tuned.Namespace)
 	if errors.IsNotFound(err) {
-		klog.Infof("Create tuned %q under the namespace %q", tuned.Name, tuned.Namespace)
+		klog.V(1).Infof("Create tuned %q in the namespace %q", tuned.Name, tuned.Namespace)
 		if err := cli.Create(ctx, tuned); err != nil {
 			return err
 		}
@@ -243,7 +243,7 @@ func CreateOrUpdateTuned(ctx context.Context, cli client.Client, tuned *tunedv1.
 		return err
 	}
 
-	klog.Infof("Update tuned %q under the namespace %q", tuned.Name, tuned.Namespace)
+	klog.V(2).Infof("Update tuned %q in the namespace %q", tuned.Name, tuned.Namespace)
 	return cli.Update(ctx, tuned)
 }
 
@@ -320,7 +320,7 @@ func GetMutatedRuntimeClass(ctx context.Context, cli client.Client, runtimeClass
 func CreateOrUpdateRuntimeClass(ctx context.Context, cli client.Client, runtimeClass *nodev1.RuntimeClass) error {
 	_, err := GetRuntimeClass(ctx, cli, runtimeClass.Name)
 	if errors.IsNotFound(err) {
-		klog.Infof("Create runtime class %q", runtimeClass.Name)
+		klog.V(1).Infof("Create runtime class %q", runtimeClass.Name)
 		if err := cli.Create(ctx, runtimeClass); err != nil {
 			return err
 		}
@@ -331,7 +331,7 @@ func CreateOrUpdateRuntimeClass(ctx context.Context, cli client.Client, runtimeC
 		return err
 	}
 
-	klog.Infof("Update runtime class %q", runtimeClass.Name)
+	klog.V(2).Infof("Update runtime class %q", runtimeClass.Name)
 	return cli.Update(ctx, runtimeClass)
 }
 

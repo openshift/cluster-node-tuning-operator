@@ -290,7 +290,7 @@ func (r *PerformanceProfileReconciler) ctrRuntimeConfToPerformanceProfile(ctx co
 		klog.Errorf("failed to get container runtime config; name=%q err=%v", ctrRuntimeConfObj.GetName(), err)
 		return nil
 	}
-	klog.Infof("reconciling from ContainerRuntimeConfig %q", ctrcfg.Name)
+	klog.V(2).Infof("reconciling from ContainerRuntimeConfig %q", ctrcfg.Name)
 
 	selector, err := metav1.LabelSelectorAsSelector(ctrcfg.Spec.MachineConfigPoolSelector)
 	if err != nil {
@@ -309,7 +309,7 @@ func (r *PerformanceProfileReconciler) ctrRuntimeConfToPerformanceProfile(ctx co
 		return nil
 	}
 
-	klog.Infof("reconciling from ContainerRuntimeConfig %q selector %v: %d MCPs", ctrcfg.Name, ctrcfg.Spec.MachineConfigPoolSelector, len(mcps.Items))
+	klog.V(2).Infof("reconciling from ContainerRuntimeConfig %q selector %v: %d MCPs", ctrcfg.Name, ctrcfg.Spec.MachineConfigPoolSelector, len(mcps.Items))
 
 	profiles := &performancev2.PerformanceProfileList{}
 	err = r.List(ctx, profiles)
@@ -383,7 +383,7 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	operatorReleaseVersion := os.Getenv("RELEASE_VERSION")
 	operandReleaseVersion := operatorv1helpers.FindOperandVersion(co.Status.Versions, tunedv1.TunedOperandName)
 	if operandReleaseVersion == nil || operatorReleaseVersion != operandReleaseVersion.Version {
-		// Upgrade in progress
+		// Upgrade in progress. Should happen rarely, so we omit V()
 		klog.Infof("operator and operand release versions do not match")
 		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
 	}

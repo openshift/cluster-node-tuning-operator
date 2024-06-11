@@ -3,6 +3,7 @@ package status
 import (
 	"context"
 	"fmt"
+
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -128,6 +129,6 @@ func (w *writer) update(ctx context.Context, profile *performancev2.PerformanceP
 		return nil
 	}
 
-	klog.Infof("Updating the performance profile %q status", profile.Name)
+	klog.V(4).Infof("Updating the performance profile %q status", profile.Name)
 	return w.Client.Status().Update(ctx, profileCopy)
 }
