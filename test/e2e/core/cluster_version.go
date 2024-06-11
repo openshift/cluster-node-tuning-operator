@@ -17,7 +17,7 @@ var _ = ginkgo.Describe("[core][cluster_version] Node Tuning Operator host, cont
 		node *coreapi.Node
 	)
 
-	ginkgo.It("host, container OS and cluster version retrievable", func() {
+	ginkgo.It("container OS and cluster version retrievable", func() {
 		ginkgo.By("getting a list of worker nodes")
 		nodes, err := util.GetNodesByRole(cs, "worker")
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -28,13 +28,8 @@ var _ = ginkgo.Describe("[core][cluster_version] Node Tuning Operator host, cont
 		pod, err := util.GetTunedForNode(cs, node)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		ginkgo.By(fmt.Sprintf("getting the host OS version on node %s", node.Name))
-		out, err := util.ExecCmdInPod(pod, "cat", "/host/etc/os-release")
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		util.Logf("%s", out)
-
 		ginkgo.By("getting the TuneD container OS version")
-		out, err = util.ExecCmdInPod(pod, "cat", "/etc/os-release")
+		out, err := util.ExecCmdInPod(pod, "cat", "/etc/os-release")
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		util.Logf("%s", out)
 
