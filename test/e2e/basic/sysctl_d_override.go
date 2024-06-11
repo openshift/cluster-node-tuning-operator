@@ -21,15 +21,15 @@ var _ = ginkgo.Describe("[basic][sysctl_d_override] Node Tuning Operator /etc/sy
 	const (
 		sysctlVar               = "net.ipv4.neigh.default.gc_thresh1"
 		sysctlValSet            = "256"
-		sysctlFile              = "/host/etc/sysctl.d/zzz.conf"
+		sysctlFile              = "/rootfs/etc/sysctl.d/zzz.conf"
 		profileSysctlOverride   = "../testing_manifests/sysctl_override.yaml"
 		nodeLabelSysctlOverride = "tuned.openshift.io/sysctl-override"
 	)
 
 	ginkgo.Context("sysctl.d override", func() {
 		var (
-			node *coreapi.Node
-			pod  *coreapi.Pod
+			node        *coreapi.Node
+			pod, mcdPod *coreapi.Pod
 		)
 
 		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of ginkgo.It()
@@ -39,8 +39,8 @@ var _ = ginkgo.Describe("[basic][sysctl_d_override] Node Tuning Operator /etc/sy
 			if node != nil {
 				util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelSysctlOverride+"-")
 			}
-			if pod != nil {
-				util.ExecAndLogCommand("oc", "exec", "-n", ntoconfig.WatchNamespace(), pod.Name, "--", "rm", sysctlFile)
+			if mcdPod != nil {
+				util.ExecAndLogCommand("oc", "exec", "-n", util.MCONamespace, mcdPod.Name, "--", "rm", sysctlFile)
 			}
 			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileSysctlOverride)
 		})
@@ -62,6 +62,9 @@ var _ = ginkgo.Describe("[basic][sysctl_d_override] Node Tuning Operator /etc/sy
 			pod, err = util.GetTunedForNode(cs, node)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
+			mcdPod, err = util.GetMCDForNode(cs, node)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
 			// Expect the default worker node profile applied prior to getting any current values.
 			ginkgo.By(fmt.Sprintf("waiting for TuneD profile %s on node %s", util.GetDefaultWorkerProfile(node), node.Name))
 			err = util.WaitForProfileConditionStatus(cs, pollInterval, waitDuration, node.Name, util.GetDefaultWorkerProfile(node), tunedv1.TunedProfileApplied, coreapi.ConditionTrue)
@@ -72,11 +75,11 @@ var _ = ginkgo.Describe("[basic][sysctl_d_override] Node Tuning Operator /etc/sy
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("writing %s override file on the host with %s=%s", sysctlFile, sysctlVar, sysctlValSet))
-			_, _, err = util.ExecAndLogCommand("oc", "exec", "-n", ntoconfig.WatchNamespace(), pod.Name, "--", "sh", "-c",
+			_, _, err = util.ExecAndLogCommand("oc", "exec", "-n", util.MCONamespace, mcdPod.Name, "--", "sh", "-c",
 				fmt.Sprintf("echo %s=%s > %s; sync %s", sysctlVar, sysctlValSet, sysctlFile, sysctlFile))
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			util.ExecAndLogCommand("oc", "rsh", "-n", ntoconfig.WatchNamespace(), pod.Name, "cat", sysctlFile)
+			util.ExecAndLogCommand("oc", "rsh", "-n", util.MCONamespace, mcdPod.Name, "cat", sysctlFile)
 
 			ginkgo.By(fmt.Sprintf("deleting Pod %s", pod.Name))
 			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "pod", pod.Name, "--wait")
@@ -118,7 +121,7 @@ var _ = ginkgo.Describe("[basic][sysctl_d_override] Node Tuning Operator /etc/sy
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("removing %s override file on the host", sysctlFile))
-			_, _, err = util.ExecAndLogCommand("oc", "exec", "-n", ntoconfig.WatchNamespace(), pod.Name, "--", "rm", sysctlFile)
+			_, _, err = util.ExecAndLogCommand("oc", "exec", "-n", util.MCONamespace, mcdPod.Name, "--", "rm", sysctlFile)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("deleting Pod %s", pod.Name))

@@ -29,6 +29,8 @@ const (
 	DefaultMasterProfile = "openshift-control-plane"
 	// The default worker profile.  See: assets/tuned/manifests/default-cr-tuned.yaml
 	DefaultWorkerProfile = "openshift-node"
+	// MCO namespace
+	MCONamespace = "openshift-machine-config-operator"
 )
 
 // Logf formats using the default formats for its operands and writes to
@@ -76,6 +78,26 @@ func GetTunedForNode(cs *framework.ClientSet, node *corev1.Node) (*corev1.Pod, e
 			return nil, fmt.Errorf("failed to find a TuneD Pod for node %s", node.Name)
 		}
 		return nil, fmt.Errorf("too many (%d) TuneD Pods for node %s", len(podList.Items), node.Name)
+	}
+	return &podList.Items[0], nil
+}
+
+// GetMCDForNode returns a MCD Pod that runs on a given node.
+func GetMCDForNode(cs *framework.ClientSet, node *corev1.Node) (*corev1.Pod, error) {
+	listOptions := metav1.ListOptions{
+		FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": node.Name}).String(),
+	}
+	listOptions.LabelSelector = labels.SelectorFromSet(labels.Set{"k8s-app": "machine-config-daemon"}).String()
+
+	podList, err := cs.Pods(MCONamespace).List(context.TODO(), listOptions)
+	if err != nil {
+		return nil, err
+	}
+	if len(podList.Items) != 1 {
+		if len(podList.Items) == 0 {
+			return nil, fmt.Errorf("failed to find MCD for node %s", node.Name)
+		}
+		return nil, fmt.Errorf("too many (%d) MCD Pods for node %s", len(podList.Items), node.Name)
 	}
 	return &podList.Items[0], nil
 }
