@@ -19,11 +19,10 @@ COPY hack/dockerfile_install_support.sh /tmp
 RUN /bin/bash /tmp/dockerfile_install_support.sh
 
 COPY manifests/*.yaml manifests/image-references /manifests/
-ENV APP_ROOT=/var/lib/ocp-tuned
-ENV PATH=${APP_ROOT}/bin:${PATH}
-ENV HOME=${APP_ROOT}
+ENV HOME=/run/ocp-tuned
 ENV SYSTEMD_IGNORE_CHROOT=1
-WORKDIR ${APP_ROOT}
+WORKDIR ${HOME}
+
 RUN dnf clean all && \
     rm -rf /var/cache/yum ~/patches /root/rpms && \
     useradd -r -u 499 cluster-node-tuning-operator

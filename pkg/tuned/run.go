@@ -72,6 +72,24 @@ func configDaemonMode() (func(), error) {
 	return restoreF, nil
 }
 
+// TunedRsyncEtcToHost propagates the changes from container's read-only TuneD /etc/tuned.orig
+// directory to the container's Memory-backed read-write TuneD /etc/tuned directory.
+// This function only serves the purpose to enable readOnlyRootFilesystem for the NTO operand.
+func TunedRsyncEtc() error {
+	const (
+		source = "/etc/tuned.orig/"
+		target = tunedEtcDir
+	)
+
+	cmd := exec.Command("rsync", "--delete", "-av", source, target)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("rsync of %q to %q failed: %v\n%s", source, target, err, out)
+	}
+
+	return nil
+}
+
 func TunedRunNoDaemon(timeout time.Duration) error {
 	var (
 		cmd    *exec.Cmd
