@@ -33,6 +33,7 @@ spec:
         name: tuned
         securityContext:
           privileged: true
+          readOnlyRootFilesystem: true
         terminationMessagePath: /dev/termination-log
         terminationMessagePolicy: FallbackToLogsOnError
         volumeMounts:

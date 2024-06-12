@@ -8,6 +8,7 @@ INSTALL_PKGS="nmap-ncat procps-ng pciutils"
 # TuneD pre-installation steps
 cp -r /root/assets/bin/* /usr/local/bin
 mkdir -p /etc/grub.d/ /boot /run/ocp-tuned
+chown -R 499:499 /run/ocp-tuned	# the operator must be able to write metrics client CA in a temporary directory
 
 source /etc/os-release
 if [[ "${ID}" == "centos" ]]; then
@@ -43,8 +44,12 @@ else
 fi
 
 # TuneD post-installation steps
-rm -rf /etc/tuned/recommend.d
+rm -rf /etc/tuned/recommend.d /var/lib/tuned
 echo auto > /etc/tuned/profile_mode
 sed -Ei 's|^#?\s*enable_unix_socket\s*=.*$|enable_unix_socket = 1|;s|^#?\s*rollback\s*=.*$|rollback = not_on_exit|;s|^#?\s*profile_dirs\s*=.*$|profile_dirs = /usr/lib/tuned/profiles,/usr/lib/tuned,/var/lib/ocp-tuned/profiles|' \
   /etc/tuned/tuned-main.conf
+mv /etc/tuned /etc/tuned.orig
+ln -s /var/lib/ocp-tuned/tuned /etc/tuned
+ln -s /host/var/lib/ocp-tuned /var/lib/ocp-tuned
+ln -s /host/var/lib/tuned /var/lib/tuned
 touch /etc/sysctl.conf
