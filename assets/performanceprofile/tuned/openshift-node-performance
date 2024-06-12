@@ -25,44 +25,20 @@ isolated_cores={{.IsolatedCpus}}
 
 not_isolated_cores_expanded=${f:cpulist_invert:${isolated_cores_expanded}}
 
-# Intel specific tuning options
+# Check for x86 tuning
+{{if ${f:lscpu_check:"^Architecture:\s*(.*)$"} == "x86_64"}}
+
+# Check for CPU Vendor
 {{if ${f:lscpu_check:"^Vendor ID:\s*(.*)$"} == "GenuineIntel"}}
-iommu=+intel_iommu=on iommu=pt
-hpc_cstate=+processor.max_cstate=1 intel_idle.max_cstate=0
-pppm_pstate=+intel_pstate=active
-hwt_pstate=+intel_pstate=passive
-default_pstate=+intel_pstate=${f:intel_recommended_pstate}
-# AMD specific tuning options
+include=openshift-node-performance-intel-x86
 {{else if ${f:lscpu_check:"^Vendor ID:\s*(.*)$"} == "AuthenticAMD"}}
-iommu=+amd_iommu=on iommu=pt
-hpc_cstate=+processor.max_cstate=1
-pppm_pstate=+amd_pstate=active
-hwt_pstate=+amd_pstate=passive
-default_pstate=+amd_pstate=guided
+include=openshift-node-performance-amd-x86
 {{end}}
 
-# x86 specific tuning options
-{{ if ${f:lscpu_check:"^Architecture:\s*(.*)$"} == "x86_64"}}
-
-{{if .PerPodPowerManagement}}
-cmdline_pstate=${pppm_pstate}
-{{else if .HardwareTuning}}
-cmdline_pstate=${hwt_pstate}
-{{else}}
-cmdline_pstate=${default_pstate}
-{{end}}
-
-realtime_args=+tsc=reliable nmi_watchdog=0 mce=off
-
-# aarch64 specific tuning options
+# Check for aarch64 tuning
 {{ else if ${f:lscpu_check:"^Architecture:\s*(.*)$"} == "aarch64"}}
-iommu=+iommu.passthrough=1
-# No RT args for ARM
-realtime_args=
-# No pstate args for ARM
-cmdline_pstate=
-# No cstate for ARM
-hpc_cstate=
+# Don't bother checking the vendor name for aarch64 since its usage is inconsistent
+include=openshift-node-performance-arm-aarch64
 {{end}}
 
 {{if .PerPodPowerManagement}}
