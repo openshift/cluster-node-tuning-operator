@@ -1,5 +1,7 @@
 [main]
-Summary=Platform specific tuning for AMD x86
+summary=Platform specific tuning for AMD x86
+
+include=openshift-node-performance
 
 [variables]
 

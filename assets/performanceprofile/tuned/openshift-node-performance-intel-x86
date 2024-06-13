@@ -1,5 +1,7 @@
 [main]
-Summary=Platform specific tuning for Intel x86
+summary=Platform specific tuning for Intel x86
+
+include=openshift-node-performance
 
 [variables]
 
