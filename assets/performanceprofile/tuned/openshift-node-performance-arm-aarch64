@@ -1,8 +1,6 @@
 [main]
 summary=Platform specific tuning for aarch64
 
-include=openshift-node-performance
-
 [variables]
 
 # aarch64 specific tuning options

@@ -1,11 +1,16 @@
 [main]
 summary=Openshift node optimized for deterministic performance at the cost of increased power consumption, focused on low latency network performance. Based on Tuned 2.11 and Cluster node tuning (oc 4.5)
 
+# The final result of this import depends on both cpu vendor, cpu architecture, and whether the rt kernel is enabled
+# The following examples use Intel x86 as an example
 # In case real time kernel is enabled the following include section will be evaluated as:
-# include=openshift-node,cpu-partitioning,openshift-node-performance-rt-<PerformanceProfile name>
+# include=openshift-node,cpu-partitioning,openshift-node-performance-intel-x86,openshift-node-performance-rt-<PerformanceProfile name>
 # Otherwise:
-# include=openshift-node,cpu-partitioning
-include=openshift-node,cpu-partitioning${f:regex_search_ternary:${f:exec:uname:-r}:rt:,openshift-node-performance-rt-{{.PerformanceProfileName}}:}
+# include=openshift-node,cpu-partitioning,okpenshift-node-performance-intel-x86
+# This include will also evaluate for other CPU vendors and architectures, such as:
+# include=openshift-node,cpu-partitioning,openshift-node-performance-amd-x86
+# include=openshift-node,cpu-partitioning,openshift-node-performance-arm-aarch64
+include=openshift-node-performance-${f:lscpu_check:Vendor ID\:\s*GenuineIntel:intel:AuthenticAMD:amd:ARM:arm}-${f:lscpu_check:Architecture\:\s*x86_64:x86:aarch64:aarch64},openshift-node,cpu-partitioning${f:regex_search_ternary:${f:exec:uname:-r}:rt:,openshift-node-performance-rt-{{.PerformanceProfileName}}:}
 
 # Inheritance of base profiles legend:
 # cpu-partitioning -> network-latency -> latency-performance
