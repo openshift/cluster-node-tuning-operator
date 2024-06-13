@@ -293,13 +293,16 @@ gather-sysinfo-tests: build-gather-sysinfo
 render-sync: build
 	hack/render-sync.sh
 
+build-e2e-%:
+	@hack/build-test-bin.sh $(shell echo $@ | sed -e 's/^build-e2e-//' )
+
 pao-build-e2e-%:
-	@hack/build-test-bin.sh $(shell echo $@ | sed -e 's/^pao-build-e2e-//' )
+	@hack/build-pao-test-bin.sh $(shell echo $@ | sed -e 's/^pao-build-e2e-//' )
 
 .PHONY: pao-build-e2e
 pao-build-e2e:
 	@for suite in $(PAO_E2E_SUITES); do \
-		hack/build-test-bin.sh $$suite; \
+		hack/build-pao-test-bin.sh $$suite; \
 	done
 
 .PHONY: pao-clean-e2e
