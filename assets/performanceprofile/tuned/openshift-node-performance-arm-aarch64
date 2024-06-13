@@ -1,3 +1,8 @@
+[main]
+Summary=Platform specific tuning for aarch64
+
+[variables]
+
 # aarch64 specific tuning options
 iommu=+iommu.passthrough=1
 # No RT args for ARM

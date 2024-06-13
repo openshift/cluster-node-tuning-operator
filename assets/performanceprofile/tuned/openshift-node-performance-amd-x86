@@ -1,3 +1,8 @@
+[main]
+Summary=Platform specific tuning for AMD x86
+
+[variables]
+
 # AMD specific tuning options
 iommu=+amd_iommu=on iommu=pt
 hpc_cstate=+processor.max_cstate=1
