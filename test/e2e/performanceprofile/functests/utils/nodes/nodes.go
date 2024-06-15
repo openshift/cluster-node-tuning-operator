@@ -27,6 +27,7 @@ import (
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
+	hypershiftutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	nodeInspector "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/node_inspector"
 )
@@ -101,9 +102,16 @@ func GetByRole(role string) ([]corev1.Node, error) {
 // GetBySelector returns all nodes with the specified selector
 func GetBySelector(selector labels.Selector) ([]corev1.Node, error) {
 	nodes := &corev1.NodeList{}
-	if err := testclient.DataPlaneClient.List(context.TODO(), nodes, &client.ListOptions{LabelSelector: selector}); err != nil {
+	listOptions := &client.ListOptions{}
+
+	if !hypershiftutils.IsHypershiftCluster() {
+		listOptions.LabelSelector = selector
+	}
+
+	if err := testclient.DataPlaneClient.List(context.TODO(), nodes, listOptions); err != nil {
 		return nil, err
 	}
+
 	return nodes.Items, nil
 }
 
