@@ -61,9 +61,11 @@ import (
 )
 
 const (
-	openshiftFinalizer               = "foreground-deletion"
-	hypershiftFinalizer              = "hypershift.openshift.io/foreground-deletion"
-	controllerGeneratedMachineConfig = "hypershift.openshift.io/performanceprofile-config"
+	openshiftFinalizer                    = "foreground-deletion"
+	hypershiftFinalizer                   = "hypershift.openshift.io/foreground-deletion"
+	ControllerGeneratedPerformanceProfile = "hypershift.openshift.io/performanceprofile-config"
+	ControllerGeneratedMachineConfig      = "hypershift.openshift.io/nto-generated-machine-config"
+	ControllerGeneratedTunedConfig        = "hypershift.openshift.io/tuned-config"
 )
 
 // PerformanceProfileReconciler reconciles a PerformanceProfile object
