@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"reflect"
+
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer/json"
@@ -42,11 +45,25 @@ func (ci *ControlPlaneClientImpl) Get(ctx context.Context, key client.ObjectKey,
 	return ci.Client.Get(ctx, key, obj, opts...)
 }
 
+func (ci *ControlPlaneClientImpl) List(ctx context.Context, objList client.ObjectList, opts ...client.ListOption) error {
+	if IsEncapsulatedInConfigMap(objList) {
+		return ci.listFromConfigMaps(ctx, objList, opts...)
+	}
+	return ci.Client.List(ctx, objList, opts...)
+}
+
 func (ci *ControlPlaneClientImpl) Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
 	if IsEncapsulatedInConfigMap(obj) {
 		return ci.createInConfigMap(ctx, obj, opts...)
 	}
 	return ci.Client.Create(ctx, obj, opts...)
+}
+
+func (ci *ControlPlaneClientImpl) Update(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+	if IsEncapsulatedInConfigMap(obj) {
+		return ci.updateConfigMap(ctx, obj, opts...)
+	}
+	return ci.Client.Update(ctx, obj, opts...)
 }
 
 func IsEncapsulatedInConfigMap(obj runtime.Object) bool {
@@ -66,6 +83,37 @@ func NewControlPlaneClient(c client.Client, ns string) *ControlPlaneClientImpl {
 		Client:                         c,
 		managementClusterNamespaceName: ns,
 	}
+}
+
+func (ci *ControlPlaneClientImpl) listFromConfigMaps(ctx context.Context, listObj client.ObjectList, opts ...client.ListOption) error {
+	cmList, err := ci.getCorrespondingConfigMaps(ctx, listObj)
+	if err != nil {
+		return err
+	}
+
+	var objectType reflect.Type
+	switch listObj.(type) {
+	case *performancev2.PerformanceProfileList:
+		objectType = reflect.TypeOf(performancev2.PerformanceProfile{})
+	case *machineconfigv1.KubeletConfigList:
+		objectType = reflect.TypeOf(machineconfigv1.KubeletConfig{})
+	case *machineconfigv1.MachineConfigList:
+		objectType = reflect.TypeOf(machineconfigv1.MachineConfig{})
+	case *tunedv1.TunedList:
+		objectType = reflect.TypeOf(tunedv1.Tuned{})
+	default:
+		return fmt.Errorf("unsupported object list type: %T", listObj)
+	}
+
+	listValue := reflect.ValueOf(listObj).Elem().FieldByName("Items")
+	for _, cm := range cmList.Items {
+		object := reflect.New(objectType).Interface().(client.Object)
+		if err := validateAndExtractObjectFromConfigMap(&cm, ci.Scheme(), object); err != nil {
+			return err
+		}
+		listValue.Set(reflect.Append(listValue, reflect.ValueOf(object).Elem()))
+	}
+	return nil
 }
 
 func (ci *ControlPlaneClientImpl) getFromConfigMap(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
@@ -109,6 +157,34 @@ func validateAndExtractObjectFromConfigMap(cm *corev1.ConfigMap, scheme *runtime
 	return nil
 }
 
+func (ci *ControlPlaneClientImpl) getCorrespondingConfigMaps(ctx context.Context, obj runtime.Object) (*corev1.ConfigMapList, error) {
+	var labelSelector string
+	switch obj.(type) {
+	case *performancev2.PerformanceProfile, *performancev2.PerformanceProfileList:
+		labelSelector = "hypershift.openshift.io/performanceprofile-config"
+	case *machineconfigv1.KubeletConfig, *machineconfigv1.KubeletConfigList:
+		labelSelector = "hypershift.openshift.io/nto-generated-machine-config"
+	case *machineconfigv1.MachineConfig, *machineconfigv1.MachineConfigList:
+		labelSelector = "hypershift.openshift.io/nto-generated-machine-config"
+	case *tunedv1.Tuned, *tunedv1.TunedList:
+		labelSelector = "hypershift.openshift.io/tuned-config"
+	default:
+		return nil, fmt.Errorf("unsupported object type: %T", obj)
+	}
+
+	listOpts := client.ListOptions{
+		Namespace:     ci.managementClusterNamespaceName,
+		LabelSelector: labels.SelectorFromSet(labels.Set{labelSelector: "true"}),
+	}
+
+	cmList := &corev1.ConfigMapList{}
+	if err := ci.Client.List(ctx, cmList, &listOpts); err != nil {
+		return nil, err
+	}
+
+	return cmList, nil
+}
+
 func (ci *ControlPlaneClientImpl) createInConfigMap(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
 	cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: obj.GetName(), Namespace: HostedClustersNamespaceName}}
 	b, err := EncodeManifest(obj, scheme.Scheme)
@@ -117,6 +193,16 @@ func (ci *ControlPlaneClientImpl) createInConfigMap(ctx context.Context, obj cli
 	}
 	cm.Data = map[string]string{TuningKey: string(b)}
 	return ci.Client.Create(ctx, cm, opts...)
+}
+
+func (ci *ControlPlaneClientImpl) updateConfigMap(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+	cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: obj.GetName(), Namespace: HostedClustersNamespaceName}}
+	b, err := EncodeManifest(obj, scheme.Scheme)
+	if err != nil {
+		return err
+	}
+	cm.Data = map[string]string{TuningKey: string(b)}
+	return ci.Client.Update(ctx, cm, opts...)
 }
 
 func EncodeManifest(obj runtime.Object, scheme *runtime.Scheme) ([]byte, error) {
