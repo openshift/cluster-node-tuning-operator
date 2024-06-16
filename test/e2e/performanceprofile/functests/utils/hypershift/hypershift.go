@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -81,4 +82,16 @@ func buildClient(kubeConfigPath string) (client.Client, error) {
 		return nil, err
 	}
 	return c, nil
+}
+
+func BuildRestConfig() (*rest.Config, error) {
+	kcPath, ok := os.LookupEnv(HostedClusterKubeConfigEnv)
+	if !ok {
+		return nil, fmt.Errorf("failed to build hosted-cluster client for hypershift, environment variable %q is not defined", HostedClusterKubeConfigEnv)
+	}
+	restConfig, err := clientcmd.BuildConfigFromFlags("", kcPath)
+	if err != nil {
+		return nil, err
+	}
+	return restConfig, nil
 }
