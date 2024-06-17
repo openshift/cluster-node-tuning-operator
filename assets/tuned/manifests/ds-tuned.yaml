@@ -23,7 +23,7 @@ spec:
     spec:
       serviceAccountName: tuned
       containers:
-      - command: ["/usr/bin/cluster-node-tuning-operator","openshift-tuned","--in-cluster","-v=0"]
+      - command: ["/usr/bin/cluster-node-tuning-operator","ocp-tuned","--in-cluster","-v=0"]
         resources:
           requests:
             cpu: 10m

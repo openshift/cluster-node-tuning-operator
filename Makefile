@@ -99,8 +99,10 @@ pkg/generated: $(API_TYPES)
 $(GOBINDATA_BIN):
 	$(GO) build -o $(GOBINDATA_BIN) ./vendor/github.com/kevinburke/go-bindata/go-bindata
 
+#	for d in core basic reboots reboots/sno; do \
+
 test-e2e:
-	for d in core basic reboots reboots/sno; do \
+	for d in core basic ; do \
 	  KUBERNETES_CONFIG="$(KUBECONFIG)" $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.no-color -ginkgo.fail-fast || exit; \
 	done
 

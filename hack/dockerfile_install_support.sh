@@ -7,7 +7,7 @@ INSTALL_PKGS="nmap-ncat procps-ng pciutils"
 
 # TuneD pre-installation steps
 cp -r /root/assets/bin /usr/local/bin
-mkdir -p /etc/grub.d/ /boot /var/lib/ocp-tuned
+mkdir -p /etc/grub.d/ /boot /run/ocp-tuned
 
 source /etc/os-release
 if [[ "${ID}" == "centos" ]]; then
