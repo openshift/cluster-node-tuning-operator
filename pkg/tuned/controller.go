@@ -480,6 +480,11 @@ func prepareOpenShiftTunedDir() error {
 		tunedRecommendDirHost,
 		tunedProfilesDirCustomHost,
 	}
+
+	if err := TunedRsyncEtcToHost(); err != nil {
+		return err
+	}
+
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, os.ModePerm); err != nil {
 			return fmt.Errorf("failed to create directory %q: %v", d, err)

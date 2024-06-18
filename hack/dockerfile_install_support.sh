@@ -47,4 +47,7 @@ rm -rf /etc/tuned/recommend.d
 echo auto > /etc/tuned/profile_mode
 sed -Ei 's|^#?\s*enable_unix_socket\s*=.*$|enable_unix_socket = 1|;s|^#?\s*rollback\s*=.*$|rollback = not_on_exit|;s|^#?\s*profile_dirs\s*=.*$|profile_dirs = /usr/lib/tuned,/var/lib/ocp-tuned/profiles|' \
   /etc/tuned/tuned-main.conf
-touch /etc/sysctl.conf
+mv /etc/tuned /etc/tuned.orig
+ln -s /var/lib/ocp-tuned/tuned /etc/tuned
+ln -s /run/ocp-tuned/persist /var/lib/ocp-tuned
+#touch /etc/sysctl.conf	# do we still need this?
