@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"slices"
 
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
@@ -36,8 +37,17 @@ import (
 
 const (
 	hugepagesSize2M = "2M"
+	hugepagesSize32M = "32M"
+	hugepagesSize512M = "512M"
 	hugepagesSize1G = "1G"
 )
+
+var validHugepagesSizes = []string{
+	hugepagesSize2M, // Supported on x86 and aarch64 (with 4k kernel pages)
+	hugepagesSize32M, // Supported on aarch64 (with 16k kernel pages)
+	hugepagesSize512M, // Supported on aarch64 (with 64k kernel pages)
+	hugepagesSize1G, // Supported on x86
+}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *PerformanceProfile) ValidateCreate() (admission.Warnings, error) {
@@ -218,14 +228,14 @@ func (r *PerformanceProfile) validateHugePages() field.ErrorList {
 	// validate that default hugepages size has correct value, currently we support only 2M and 1G(x86_64 architecture)
 	if r.Spec.HugePages.DefaultHugePagesSize != nil {
 		defaultSize := *r.Spec.HugePages.DefaultHugePagesSize
-		if defaultSize != hugepagesSize1G && defaultSize != hugepagesSize2M {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec.hugepages.defaultHugepagesSize"), r.Spec.HugePages.DefaultHugePagesSize, fmt.Sprintf("hugepages default size should be equal to %q or %q", hugepagesSize1G, hugepagesSize2M)))
+		if !slices.Contains(validHugepagesSizes, defaultSize) {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec.hugepages.defaultHugepagesSize"), r.Spec.HugePages.DefaultHugePagesSize, fmt.Sprintf("hugepages default size should be equal to one of %v", validHugepagesSizes)))
 		}
 	}
 
 	for i, page := range r.Spec.HugePages.Pages {
-		if page.Size != hugepagesSize1G && page.Size != hugepagesSize2M {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec.hugepages.pages"), r.Spec.HugePages.Pages, fmt.Sprintf("the page size should be equal to %q or %q", hugepagesSize1G, hugepagesSize2M)))
+		if !slices.Contains(validHugepagesSizes, page.Size) {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec.hugepages.pages"), r.Spec.HugePages.Pages, fmt.Sprintf("the page size should be equal to one of %v", validHugepagesSizes)))
 		}
 
 		allErrs = append(allErrs, r.validatePageDuplication(&page, r.Spec.HugePages.Pages[i+1:])...)
