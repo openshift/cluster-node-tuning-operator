@@ -23,6 +23,7 @@ import (
 	"regexp"
 	"slices"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
@@ -42,11 +43,16 @@ const (
 	hugepagesSize1G = "1G"
 )
 
-var validHugepagesSizes = []string{
-	hugepagesSize2M, // Supported on x86 and aarch64 (with 4k kernel pages)
-	hugepagesSize32M, // Supported on aarch64 (with 16k kernel pages)
-	hugepagesSize512M, // Supported on aarch64 (with 64k kernel pages)
-	hugepagesSize1G, // Supported on x86
+var x86ValidHugepagesSizes = []string{
+	hugepagesSize2M,
+	hugepagesSize1G,
+}
+
+// Each kernel page size has only a single valid hugepage size on aarch64
+var aarch64ValidHugepagesSizes = []string{
+	hugepagesSize2M, // With 4k kernel pages
+	hugepagesSize32M, // With 16k kernel pages
+	hugepagesSize512M, // With 64k kernel pages
 }
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
@@ -117,6 +123,7 @@ func (r *PerformanceProfile) ValidateBasicFields() field.ErrorList {
 
 	allErrs = append(allErrs, r.validateCPUs()...)
 	allErrs = append(allErrs, r.validateSelectors()...)
+	allErrs = append(allErrs, r.validateAllNodesAreSameCpuArchitectureAndCapacity()...)
 	allErrs = append(allErrs, r.validateHugePages()...)
 	allErrs = append(allErrs, r.validateNUMA()...)
 	allErrs = append(allErrs, r.validateNet()...)
@@ -211,11 +218,85 @@ func (r *PerformanceProfile) validateSelectors() field.ErrorList {
 			allErrs = append(allErrs, field.Invalid(
 				field.NewPath("spec.nodeSelector"),
 				r.Spec.NodeSelector,
-				"machineConfigLabels or machineConfigPoolSelector are not set, but we  can not set it automatically because of an invalid NodeSelector label key that can't be split into domain/role"))
+				"machineConfigLabels or machineConfigPoolSelector are not set, but we can not set it automatically because of an invalid NodeSelector label key that can't be split into domain/role"))
 		}
 	}
 
 	return allErrs
+}
+
+func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitectureAndCapacity() field.ErrorList {
+	var allErrs field.ErrorList
+
+	nodes, err := r.getNodesList()
+
+	if err != nil {
+		return err
+	}
+
+	// Get the architecture and cpu capacity from the first node in the list
+	expectedArchitecture := nodes[0].NodeSystemInfo.architecture
+	expectedCpuCapacity := getCpuCapacityForNode(nodes[0])
+
+	if expectedArchitecture == "" {
+		allErrs = append(allErrs, 
+			field.InternalError(
+				field.NewPath("spec.nodeSelector"),
+				r.Spec.NodeSelector,
+				fmt.Printf("Failed to detect architecture for node %s", nodes[0]),
+			),
+		)
+	}
+
+	if expectedCpuCapacity == "" {
+		allErrs = append(allErrs, 
+			field.InternalError(
+				field.NewPath("spec.nodeSelector"),
+				r.Spec.NodeSelector,
+				fmt.Printf("Failed to detect cpu capacity for node %s", nodes[0]),
+			),
+		)
+	}
+
+	// If we failed to detect one of the key metrics there is not much point to continue
+	// We would likely just get an error for every single node with the same error
+	if len(allErrs) != 0 {
+		return allErrs
+	}
+
+	// Make sure all other nodes have the same value
+	for i := 1; i < len(nodes); i++ {
+		if nodes[i].NodeSystemInfo.architecture != expectedArchitecture {
+			allErrs = append(allErrs,
+				field.Invalid(
+					field.NewPath("spec.nodeSelector"),
+					r.Spec.NodeSelector,
+					fmt.Printf("Node %s is not the same architecture as expected %s", nodes[i], expectedArchitecture),
+				),
+			)
+		}
+		if getCpuCapacityForNode(nodes[i]) != expectedCpuCapacity {
+			allErrs = append(allErrs,
+				field.Invalid(
+					field.NewPath("spec.nodeSelector"),
+					r.Spec.NodeSelector,
+					fmt.Printf("Node %s is not the same CPU capacity as expected %s", nodes[i], expectedArchitecture),
+				),
+			)
+		}
+	}
+
+	return allErrs
+}
+
+func getCpuCapacityForNode(node client.Object) string {
+	cpuKey := "cpu"
+	for key, value := range node.status.capacity {
+		if key == cpuKey {
+			return value
+		}
+	}
+	return ""
 }
 
 func (r *PerformanceProfile) validateHugePages() field.ErrorList {
@@ -225,23 +306,110 @@ func (r *PerformanceProfile) validateHugePages() field.ErrorList {
 		return allErrs
 	}
 
-	// validate that default hugepages size has correct value, currently we support only 2M and 1G(x86_64 architecture)
+	x86, err := r.isX86()
+	if err != nil {
+		allErrs = append(allErrs, err)
+	}
+
+	aarch64, err := r.isAarch64()
+	if err != nil {
+		allErrs = append(allErrs, err)
+	}
+
 	if r.Spec.HugePages.DefaultHugePagesSize != nil {
 		defaultSize := *r.Spec.HugePages.DefaultHugePagesSize
-		if !slices.Contains(validHugepagesSizes, defaultSize) {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec.hugepages.defaultHugepagesSize"), r.Spec.HugePages.DefaultHugePagesSize, fmt.Sprintf("hugepages default size should be equal to one of %v", validHugepagesSizes)))
+		errField := "spec.hugepages.defaultHugepagesSize"
+		errMsg := "hugepages default size should be equal to one of"
+
+		if x86 && !slices.Contains(x86ValidHugepagesSizes, defaultSize) {
+			allErrs = append(
+				allErrs,
+				field.Invalid(
+					field.NewPath(errField),
+					r.Spec.HugePages.DefaultHugePagesSize,
+					fmt.Sprintf("%s %v", errMsg, x86ValidHugepagesSizes),
+				),
+			)
+		} else if aarch64 && !slices.Contains(aarch64ValidHugepagesSizes, defaultSize) {
+			allErrs = append(
+				allErrs,
+				field.Invalid(
+					field.NewPath(errField),
+					r.Spec.HugePages.DefaultHugePagesSize,
+					fmt.Sprintf("%s %v", errMsg, aarch64ValidHugepagesSizes),
+				),
+			)
+		} else {
+			allErrs = append(
+				allErrs,
+				field.Invalid(
+					field.NewPath(errField),
+					r.Spec.HugePages.DefaultHugePagesSize,
+					"Failed to detect architecture, unable to validate default hugepage size",
+				),
+			)
 		}
 	}
 
 	for i, page := range r.Spec.HugePages.Pages {
-		if !slices.Contains(validHugepagesSizes, page.Size) {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec.hugepages.pages"), r.Spec.HugePages.Pages, fmt.Sprintf("the page size should be equal to one of %v", validHugepagesSizes)))
+		errField := "spec.hugepages.pages"
+		errMsg := "the page size should be equal to one of"
+		if x86 && !slices.Contains(x86ValidHugepagesSizes, page.Size) {
+			allErrs = append(
+				allErrs,
+				field.Invalid(
+					field.NewPath(errField),
+					r.Spec.HugePages.Pages,
+					fmt.Sprintf("%s %v", errMsg, x86ValidHugepagesSizes),
+				),
+			)
+		} else if aarch64 && !slices.Contains(aarch64ValidHugepagesSizes, page.Size) {
+			allErrs = append(
+				allErrs,
+				field.Invalid(
+					field.NewPath(errField),
+					r.Spec.HugePages.Pages,
+					fmt.Sprintf("%s %v", errMsg, aarch64ValidHugepagesSizes),
+				),
+			)
+		} else {
+			allErrs = append(
+				allErrs,
+				field.Invalid(
+					field.NewPath(errField),
+					r.Spec.HugePages.Pages,
+					"Failed to detect architecture, unable to validate hugepage size",
+				),
+			)
 		}
 
 		allErrs = append(allErrs, r.validatePageDuplication(&page, r.Spec.HugePages.Pages[i+1:])...)
 	}
 
 	return allErrs
+}
+
+func (r *PerformanceProfile) getArchitecture() (string, err) {
+	nodes, err := r.getNodesList()
+	if err != nil {
+		return "", err
+	}
+
+	// The nodes would have already been verified to all have the same architecture
+	// So we can just return the first result here
+	return nodes[0].NodeSystemInfo.architecture, nil
+}
+
+func (r *PerformanceProfile) isX86() (bool, err) {
+	x86Value := "amd64"
+	arch, err := r.getArchitecture()
+	return arch == x86Value, err
+}
+
+func (r *PerformanceProfile) isAarch64() (bool, err) {
+	aarch64Value := "aarch64"
+	arch, err := r.getArchitecture()
+	return arch == aarch64Value, err
 }
 
 func (r *PerformanceProfile) validatePageDuplication(page *HugePage, pages []HugePage) field.ErrorList {
@@ -377,4 +545,30 @@ func (r *PerformanceProfile) validateCpuFrequency() field.ErrorList {
 	}
 
 	return allErrs
+}
+
+func (r *PerformanceProfile) getNodesList() (client.ObjectList, err) {
+	// Get the nodes from the client using the node selector in the profile
+	var nodes client.ObjectList
+	err := validatorClient.List(context.TODO(), nodes, &client.ListOptions{
+		LabelSelect: r.spec.NodeSelector,
+	})
+
+	if err != nil {
+		return nil, field.Error(
+			field.NewPath("spec.nodeselector"),
+			r.spec.NodeSelector,
+			err,
+		)
+	}
+
+	if len(nodes) == 0 {
+		return nil, field.Error(
+			field.NewPath("spec.nodeselector"),
+			r.spec.NodeSelector,
+			fmt.Printf("Failed to find any nodes using node selector %s", r.spec.NodeSelector),
+		)
+	}
+
+	return nodes, err
 }
