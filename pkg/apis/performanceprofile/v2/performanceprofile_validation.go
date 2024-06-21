@@ -261,7 +261,7 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitecture() field.Erro
 
 	// Make sure all other nodes have the same value
 	for i := 1; i < len(nodes); i++ {
-		if getCpuArchitectureForNode(node[i]) != expectedArchitecture {
+		if getCpuArchitectureForNode(nodes[i]) != expectedArchitecture {
 			allErrs = append(allErrs,
 				field.Invalid(
 					field.NewPath("spec.nodeSelector"),
