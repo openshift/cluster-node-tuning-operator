@@ -109,15 +109,6 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 				},
 			}
 			profile.Spec.HugePages = requiredHugepages
-
-			if !*profile.Spec.RealTimeKernel.Enabled {
-				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.Bool(true),
-				}
-			}
-			profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-				RealTime: pointer.Bool(true),
-			}
 			profile.Spec.CPU = &performancev2.CPU{
 				Reserved: &reservedSet,
 				Isolated: &isolatedSet,
@@ -308,14 +299,6 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 					},
 				},
 			}
-			if !*profile.Spec.RealTimeKernel.Enabled {
-				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.Bool(true),
-				}
-			}
-			profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-				RealTime: pointer.Bool(true),
-			}
 			profile.Spec.CPU = &performancev2.CPU{
 				Reserved: &reservedSet,
 				Isolated: &isolatedSet,
@@ -480,14 +463,6 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 					},
 				},
 			}
-			if !*profile.Spec.RealTimeKernel.Enabled {
-				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.Bool(true),
-				}
-			}
-			profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-				RealTime: pointer.Bool(true),
-			}
 			profile.Spec.CPU = &performancev2.CPU{
 				Reserved: &reservedSet,
 				Isolated: &isolatedSet,
@@ -626,14 +601,6 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 						Node:  pointer.Int32(1),
 					},
 				},
-			}
-			if !*profile.Spec.RealTimeKernel.Enabled {
-				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.Bool(true),
-				}
-			}
-			profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-				RealTime: pointer.Bool(true),
 			}
 			profile.Spec.CPU = &performancev2.CPU{
 				Reserved: &reservedSet,
