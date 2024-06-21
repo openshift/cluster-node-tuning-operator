@@ -126,7 +126,8 @@ func (r *PerformanceProfile) ValidateBasicFields() field.ErrorList {
 
 	allErrs = append(allErrs, r.validateCPUs()...)
 	allErrs = append(allErrs, r.validateSelectors()...)
-	allErrs = append(allErrs, r.validateAllNodesAreSameCpuArchitectureAndCapacity()...)
+	allErrs = append(allErrs, r.validateAllNodesAreSameCpuArchitecture()...)
+	allErrs = append(allErrs, r.validateAllNodesAreSameCpuCapacity()...)
 	allErrs = append(allErrs, r.validateHugePages()...)
 	allErrs = append(allErrs, r.validateNUMA()...)
 	allErrs = append(allErrs, r.validateNet()...)
@@ -228,7 +229,7 @@ func (r *PerformanceProfile) validateSelectors() field.ErrorList {
 	return allErrs
 }
 
-func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitectureAndCapacity() field.ErrorList {
+func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitecture() field.ErrorList {
 	var allErrs field.ErrorList
 
 	nodes, err := r.getNodesList()
@@ -237,9 +238,9 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitectureAndCapacity()
 		return err
 	}
 
-	// Get the architecture and cpu capacity from the first node in the list
+	// We need to use one of the nodes as a reference for comparing against the rest
+	// The first item in the list is simple and easy to use
 	expectedArchitecture := nodes[0].NodeSystemInfo.architecture
-	expectedCpuCapacity := getCpuCapacityForNode(nodes[0])
 
 	if expectedArchitecture == "" {
 		allErrs = append(allErrs, 
@@ -249,23 +250,12 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitectureAndCapacity()
 				fmt.Printf("Failed to detect architecture for node %s", nodes[0]),
 			),
 		)
-	}
 
-	if expectedCpuCapacity == "" {
-		allErrs = append(allErrs, 
-			field.InternalError(
-				field.NewPath("spec.nodeSelector"),
-				r.Spec.NodeSelector,
-				fmt.Printf("Failed to detect cpu capacity for node %s", nodes[0]),
-			),
-		)
-	}
-
-	// If we failed to detect one of the key metrics there is not much point to continue
-	// We would likely just get an error for every single node with the same error
-	if len(allErrs) != 0 {
+		// If we failed to detect cpu architefcture there is not much point to continue
+		// We would likely just get an error for every single node with the same error
 		return allErrs
 	}
+
 
 	// Make sure all other nodes have the same value
 	for i := 1; i < len(nodes); i++ {
@@ -278,6 +268,41 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitectureAndCapacity()
 				),
 			)
 		}
+	}
+
+	return allErrs
+}
+
+func (r *PerformanceProfile) validateAllNodesAreSameCpuCapacity() field.ErrorList {
+	var allErrs field.ErrorList
+
+	nodes, err := r.getNodesList()
+
+	if err != nil {
+		allErrs = append(allErrs, err)
+		return allErrs
+	}
+
+	// We need to use one of the nodes as a reference for comparing against the rest
+	// The first item in the list is simple and easy to use
+	expectedCpuCapacity := getCpuCapacityForNode(nodes[0])
+
+	if expectedCpuCapacity == "" {
+		allErrs = append(allErrs, 
+			field.InternalError(
+				field.NewPath("spec.nodeSelector"),
+				r.Spec.NodeSelector,
+				fmt.Printf("Failed to detect cpu capacity for node %s", nodes[0]),
+			),
+		)
+
+		// If we failed to detect cpu capacity there is not much point to continue
+		// We would likely just get an error for every single node with the same error
+		return allErrs
+	}
+
+	// Make sure all other nodes have the same value
+	for i := 1; i < len(nodes); i++ {
 		if getCpuCapacityForNode(nodes[i]) != expectedCpuCapacity {
 			allErrs = append(allErrs,
 				field.Invalid(
