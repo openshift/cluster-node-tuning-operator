@@ -419,8 +419,9 @@ func (r *PerformanceProfile) getArchitecture() (string, err) {
 		return "", err
 	}
 
-	// The nodes would have already been verified to all have the same architecture
-	// So we can just return the first result here
+	// This funtion implicitly relies on `validateAllNodesAreSameCpuArchitecture` to have already been run
+	// Under that assumption we can return any node from the list since they should all be the same architecture
+	// However it is simple and easy to just return the first node
 	return nodes[0].NodeSystemInfo.architecture, nil
 }
 
