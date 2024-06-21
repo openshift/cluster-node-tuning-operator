@@ -770,7 +770,147 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		})
 	})
 
+	Context("Runc cpus isolation", func() {
+		var guaranteedPod, secondPod *corev1.Pod
+
+		AfterEach(func() {
+			cmd := []string{"rm", "-f", "/rootfs/var/roothome/create"}
+			nodes.ExecCommand(ctx, workerRTNode, cmd)
+			deletePod(ctx, guaranteedPod)
+			deletePod(ctx, secondPod)
+		})
+
+		It("[test_id: 74461] Verify that runc excludes the cpus used by guaranteed pod", func() {
+			guaranteedPod = getGuaranteedPod(ctx, workerRTNode)
+			secondPod = getNonGuaranteedPod(ctx, workerRTNode)
+			containerIDs := make([]string, 2)
+
+			var err error
+			containerIDs[0], err = pods.GetContainerIDByName(guaranteedPod, "test")
+			Expect(err).ToNot(HaveOccurred())
+			containerIDs[1], err = pods.GetContainerIDByName(secondPod, "test")
+			Expect(err).ToNot(HaveOccurred())
+			for _, containerID := range containerIDs {
+				path := fmt.Sprintf("/rootfs/var/run/containers/storage/overlay-containers/%s/userdata/config.json", containerID)
+				cmd := []string{"/bin/bash", "-c", fmt.Sprintf("cat %s >> /rootfs/var/roothome/create", path)}
+				nodes.ExecCommand(ctx, workerRTNode, cmd)
+			}
+			cmd := []string{"cat", "/rootfs/var/roothome/create"}
+			output, err := nodes.ExecCommand(context.TODO(), workerRTNode, cmd)
+			Expect(err).ToNot(HaveOccurred())
+
+			out := testutils.ToString(output)
+			hostnameRe := regexp.MustCompile(`"hostname":\s+"([^"]+)"`)
+			cpusRe := regexp.MustCompile(`"cpus":\s+"([^"]+)"`)
+
+			hostnameMatches := hostnameRe.FindAllStringSubmatch(out, -1)
+			cpusMatches := cpusRe.FindAllStringSubmatch(out, -1)
+			if len(hostnameMatches) == 0 || len(cpusMatches) == 0 {
+				Fail("Failed to extract hostname or cpus information")
+			}
+			uniqueCombinations := make(map[string]struct{})
+			zippedMatches := make([]map[string]string, 0)
+			for i := 0; i < len(hostnameMatches) && i < len(cpusMatches); i++ {
+				combination := fmt.Sprintf("%s-%s", hostnameMatches[i][1], cpusMatches[i][1])
+				if _, exists := uniqueCombinations[combination]; !exists {
+					uniqueCombinations[combination] = struct{}{}
+					zippedMatches = append(zippedMatches, map[string]string{
+						"hostname": hostnameMatches[i][1],
+						"cpus":     cpusMatches[i][1],
+					})
+				}
+			}
+
+			parseCPUs := func(cpuStr string) []int {
+				var cpus []int
+				for _, part := range strings.Split(cpuStr, ",") {
+					if strings.Contains(part, "-") {
+						bounds := strings.Split(part, "-")
+						min, _ := strconv.Atoi(bounds[0])
+						max, _ := strconv.Atoi(bounds[1])
+						for i := min; i <= max; i++ {
+							cpus = append(cpus, i)
+						}
+					} else {
+						val, _ := strconv.Atoi(part)
+						cpus = append(cpus, val)
+					}
+				}
+				return cpus
+			}
+
+			guaranteedPodCpus := parseCPUs(zippedMatches[0]["cpus"])
+			runcCpus := parseCPUs(zippedMatches[1]["cpus"])
+			overlapFound := false
+			for _, guaranteedCpu := range guaranteedPodCpus {
+				for _, runcCpu := range runcCpus {
+					if guaranteedCpu == runcCpu {
+						overlapFound = true
+						break
+					}
+				}
+				if overlapFound {
+					break
+				}
+			}
+			Expect(overlapFound).ToNot(BeTrue(), "Overlap of cpus found, not expected behaviour")
+		})
+	})
+
 })
+
+func getGuaranteedPod(ctx context.Context, workerRTNode *corev1.Node) *corev1.Pod {
+	var err error
+	testpod1 := pods.GetTestPod()
+	testpod1.Namespace = testutils.NamespaceTesting
+	testpod1.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("2"),
+			corev1.ResourceMemory: resource.MustParse("200Mi"),
+		},
+	}
+	testpod1.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
+
+	profile, _ := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+	runtimeClass := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+	testpod1.Spec.RuntimeClassName = &runtimeClass
+
+	err = testclient.Client.Create(ctx, testpod1)
+	Expect(err).ToNot(HaveOccurred())
+	_, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testpod1), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(testpod1.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
+	return testpod1
+}
+
+func getNonGuaranteedPod(ctx context.Context, workerRTNode *corev1.Node) *corev1.Pod {
+	var err error
+	testpod2 := pods.GetTestPod()
+	testpod2.Namespace = testutils.NamespaceTesting
+	testpod2.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
+
+	profile, _ := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+	runtimeClass := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+	testpod2.Spec.RuntimeClassName = &runtimeClass
+
+	err = testclient.Client.Create(ctx, testpod2)
+	Expect(err).ToNot(HaveOccurred())
+	_, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testpod2), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
+	Expect(err).ToNot(HaveOccurred())
+	return testpod2
+}
+
+func deletePod(ctx context.Context, pod *corev1.Pod) {
+	err := testclient.Client.Delete(ctx, pod)
+	if err != nil {
+		testlog.Errorf("Failed to delete Pod %s/%s: %v", pod.Namespace, pod.Name, err)
+	}
+
+	err = pods.WaitForDeletion(ctx, pod, pods.DefaultDeletionTimeout*time.Second)
+	if err != nil {
+		testlog.Errorf("Timed out waiting for deletion of Pod %s/%s: %v", pod.Namespace, pod.Name, err)
+	}
+}
 
 func checkForWorkloadPartitioning(ctx context.Context) bool {
 	// Look for the correct Workload Partition annotation in
