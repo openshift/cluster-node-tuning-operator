@@ -242,7 +242,7 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitecture() field.Erro
 
 	// We need to use one of the nodes as a reference for comparing against the rest
 	// The first item in the list is simple and easy to use
-	expectedArchitecture := nodes[0].NodeSystemInfo.architecture
+	expectedArchitecture := getCpuArchitectureForNode(nodes[0])
 
 	if expectedArchitecture == "" {
 		allErrs = append(allErrs, 
@@ -261,7 +261,7 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitecture() field.Erro
 
 	// Make sure all other nodes have the same value
 	for i := 1; i < len(nodes); i++ {
-		if nodes[i].NodeSystemInfo.architecture != expectedArchitecture {
+		if getCpuArchitectureForNode(node[i]) != expectedArchitecture {
 			allErrs = append(allErrs,
 				field.Invalid(
 					field.NewPath("spec.nodeSelector"),
@@ -273,6 +273,10 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitecture() field.Erro
 	}
 
 	return allErrs
+}
+
+func getCpuArchitectureForNode(node client.Object) string {
+	return node.NodeSystemInfo.architecture
 }
 
 func (r *PerformanceProfile) validateAllNodesAreSameCpuCapacity() field.ErrorList {
@@ -310,7 +314,7 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuCapacity() field.ErrorLis
 				field.Invalid(
 					field.NewPath("spec.nodeSelector"),
 					r.Spec.NodeSelector,
-					fmt.Printf("Node %s is not the same CPU capacity as expected %s", nodes[i], expectedArchitecture),
+					fmt.Printf("Node %s is not the same CPU capacity as expected %s", nodes[i], expectedCpuCapacity),
 				),
 			)
 		}
@@ -413,7 +417,7 @@ func (r *PerformanceProfile) validateHugePages() field.ErrorList {
 	return allErrs
 }
 
-func (r *PerformanceProfile) getArchitecture() (string, err) {
+func (r *PerformanceProfile) getArchitectureForPerfProfile() (string, err) {
 	nodes, err := r.getNodesList()
 	if err != nil {
 		return "", err
@@ -426,12 +430,12 @@ func (r *PerformanceProfile) getArchitecture() (string, err) {
 }
 
 func (r *PerformanceProfile) isX86() (bool, err) {
-	arch, err := r.getArchitecture()
+	arch, err := r.getArchitectureForPerfProfile()
 	return arch == amd64, err
 }
 
 func (r *PerformanceProfile) isAarch64() (bool, err) {
-	arch, err := r.getArchitecture()
+	arch, err := r.getArchitectureForPerfProfile()
 	return arch == aarch64, err
 }
 
