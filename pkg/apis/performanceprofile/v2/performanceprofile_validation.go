@@ -32,6 +32,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"k8s.io/klog"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 )
@@ -43,7 +47,6 @@ const (
 	hugepagesSize1G = "1G"
 	amd64 = "amd64"
 	aarch64 = "aarch64"
-	cpuCapacityKey = "cpu"
 )
 
 var x86ValidHugepagesSizes = []string{
@@ -237,19 +240,26 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitecture() field.Erro
 	nodes, err := r.getNodesList()
 
 	if err != nil {
-		return err
+		allErrs = append(allErrs, 
+			field.Invalid(
+				field.NewPath("spec.nodeSelector"),
+				r.Spec.NodeSelector,
+				err.Error(),
+			),
+		)
+		return allErrs
 	}
 
 	// We need to use one of the nodes as a reference for comparing against the rest
 	// The first item in the list is simple and easy to use
-	expectedArchitecture := getCpuArchitectureForNode(nodes[0])
+	expectedArchitecture := getCpuArchitectureForNode(nodes.Items[0])
 
 	if expectedArchitecture == "" {
 		allErrs = append(allErrs, 
-			field.InternalError(
+			field.Invalid(
 				field.NewPath("spec.nodeSelector"),
 				r.Spec.NodeSelector,
-				fmt.Printf("Failed to detect architecture for node %s", nodes[0]),
+				fmt.Sprintf("Failed to detect architecture for node %s", nodes.Items[0].Status.NodeInfo.MachineID),
 			),
 		)
 
@@ -260,13 +270,13 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitecture() field.Erro
 
 
 	// Make sure all other nodes have the same value
-	for i := 1; i < len(nodes); i++ {
-		if getCpuArchitectureForNode(nodes[i]) != expectedArchitecture {
+	for i := 1; i < len(nodes.Items); i++ {
+		if getCpuArchitectureForNode(nodes.Items[i]) != expectedArchitecture {
 			allErrs = append(allErrs,
 				field.Invalid(
 					field.NewPath("spec.nodeSelector"),
 					r.Spec.NodeSelector,
-					fmt.Printf("Node %s is not the same architecture as expected %s", nodes[i], expectedArchitecture),
+					fmt.Sprintf("Node %s is not the same architecture as expected %s", nodes.Items[i].Status.NodeInfo.MachineID, expectedArchitecture),
 				),
 			)
 		}
@@ -275,8 +285,8 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitecture() field.Erro
 	return allErrs
 }
 
-func getCpuArchitectureForNode(node client.Object) string {
-	return node.NodeSystemInfo.architecture
+func getCpuArchitectureForNode(node corev1.Node) string {
+	return node.Status.NodeInfo.Architecture
 }
 
 func (r *PerformanceProfile) validateAllNodesAreSameCpuCapacity() field.ErrorList {
@@ -285,20 +295,26 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuCapacity() field.ErrorLis
 	nodes, err := r.getNodesList()
 
 	if err != nil {
-		allErrs = append(allErrs, err)
+		allErrs = append(allErrs, 
+			field.Invalid(
+				field.NewPath("spec.nodeSelector"),
+				r.Spec.NodeSelector,
+				err.Error(),
+			),
+		)
 		return allErrs
 	}
 
 	// We need to use one of the nodes as a reference for comparing against the rest
 	// The first item in the list is simple and easy to use
-	expectedCpuCapacity := getCpuCapacityForNode(nodes[0])
+	expectedCpuCapacity := getCpuCapacityForNode(nodes.Items[0])
 
 	if expectedCpuCapacity == "" {
 		allErrs = append(allErrs, 
-			field.InternalError(
+			field.Invalid(
 				field.NewPath("spec.nodeSelector"),
 				r.Spec.NodeSelector,
-				fmt.Printf("Failed to detect cpu capacity for node %s", nodes[0]),
+				fmt.Sprintf("Failed to detect cpu capacity for node %s", nodes.Items[0].Status.NodeInfo.MachineID),
 			),
 		)
 
@@ -308,13 +324,13 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuCapacity() field.ErrorLis
 	}
 
 	// Make sure all other nodes have the same value
-	for i := 1; i < len(nodes); i++ {
-		if getCpuCapacityForNode(nodes[i]) != expectedCpuCapacity {
+	for i := 1; i < len(nodes.Items); i++ {
+		if getCpuCapacityForNode(nodes.Items[i]) != expectedCpuCapacity {
 			allErrs = append(allErrs,
 				field.Invalid(
 					field.NewPath("spec.nodeSelector"),
 					r.Spec.NodeSelector,
-					fmt.Printf("Node %s is not the same CPU capacity as expected %s", nodes[i], expectedCpuCapacity),
+					fmt.Sprintf("Node %s is not the same CPU capacity as expected %s", nodes.Items[i].Status.NodeInfo.MachineID, expectedCpuCapacity),
 				),
 			)
 		}
@@ -323,8 +339,8 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuCapacity() field.ErrorLis
 	return allErrs
 }
 
-func getCpuCapacityForNode(node client.Object) string {
-	return node.status.capacity[cpuCapacityKey]
+func getCpuCapacityForNode(node corev1.Node) string {
+	return node.Status.Capacity.Cpu().String()
 }
 
 func (r *PerformanceProfile) validateHugePages() field.ErrorList {
@@ -336,12 +352,26 @@ func (r *PerformanceProfile) validateHugePages() field.ErrorList {
 
 	x86, err := r.isX86()
 	if err != nil {
-		allErrs = append(allErrs, err)
+		allErrs = append(allErrs, 
+			field.Invalid(
+				field.NewPath("spec.HugePages"),
+				r.Spec.HugePages,
+				err.Error(),
+			),
+		)
+		return allErrs
 	}
 
 	aarch64, err := r.isAarch64()
 	if err != nil {
-		allErrs = append(allErrs, err)
+		allErrs = append(allErrs, 
+			field.Invalid(
+				field.NewPath("spec.HugePages"),
+				r.Spec.HugePages,
+				err.Error(),
+			),
+		)
+		return allErrs
 	}
 
 	if r.Spec.HugePages.DefaultHugePagesSize != nil {
@@ -349,7 +379,7 @@ func (r *PerformanceProfile) validateHugePages() field.ErrorList {
 		errField := "spec.hugepages.defaultHugepagesSize"
 		errMsg := "hugepages default size should be equal to one of"
 
-		if x86 && !slices.Contains(x86ValidHugepagesSizes, defaultSize) {
+		if x86 && !slices.Contains(x86ValidHugepagesSizes, string(defaultSize)) {
 			allErrs = append(
 				allErrs,
 				field.Invalid(
@@ -358,7 +388,7 @@ func (r *PerformanceProfile) validateHugePages() field.ErrorList {
 					fmt.Sprintf("%s %v", errMsg, x86ValidHugepagesSizes),
 				),
 			)
-		} else if aarch64 && !slices.Contains(aarch64ValidHugepagesSizes, defaultSize) {
+		} else if aarch64 && !slices.Contains(aarch64ValidHugepagesSizes, string(defaultSize)) {
 			allErrs = append(
 				allErrs,
 				field.Invalid(
@@ -382,7 +412,7 @@ func (r *PerformanceProfile) validateHugePages() field.ErrorList {
 	for i, page := range r.Spec.HugePages.Pages {
 		errField := "spec.hugepages.pages"
 		errMsg := "the page size should be equal to one of"
-		if x86 && !slices.Contains(x86ValidHugepagesSizes, page.Size) {
+		if x86 && !slices.Contains(x86ValidHugepagesSizes, string(page.Size)) {
 			allErrs = append(
 				allErrs,
 				field.Invalid(
@@ -391,7 +421,7 @@ func (r *PerformanceProfile) validateHugePages() field.ErrorList {
 					fmt.Sprintf("%s %v", errMsg, x86ValidHugepagesSizes),
 				),
 			)
-		} else if aarch64 && !slices.Contains(aarch64ValidHugepagesSizes, page.Size) {
+		} else if aarch64 && !slices.Contains(aarch64ValidHugepagesSizes, string(page.Size)) {
 			allErrs = append(
 				allErrs,
 				field.Invalid(
@@ -417,7 +447,7 @@ func (r *PerformanceProfile) validateHugePages() field.ErrorList {
 	return allErrs
 }
 
-func (r *PerformanceProfile) getArchitectureForPerfProfile() (string, err) {
+func (r *PerformanceProfile) getArchitectureForPerfProfile() (string, error) {
 	nodes, err := r.getNodesList()
 	if err != nil {
 		return "", err
@@ -426,15 +456,15 @@ func (r *PerformanceProfile) getArchitectureForPerfProfile() (string, err) {
 	// This funtion implicitly relies on `validateAllNodesAreSameCpuArchitecture` to have already been run
 	// Under that assumption we can return any node from the list since they should all be the same architecture
 	// However it is simple and easy to just return the first node
-	return nodes[0].NodeSystemInfo.architecture, nil
+	return getCpuArchitectureForNode(nodes.Items[0]), nil
 }
 
-func (r *PerformanceProfile) isX86() (bool, err) {
+func (r *PerformanceProfile) isX86() (bool, error) {
 	arch, err := r.getArchitectureForPerfProfile()
 	return arch == amd64, err
 }
 
-func (r *PerformanceProfile) isAarch64() (bool, err) {
+func (r *PerformanceProfile) isAarch64() (bool, error) {
 	arch, err := r.getArchitectureForPerfProfile()
 	return arch == aarch64, err
 }
@@ -574,28 +604,25 @@ func (r *PerformanceProfile) validateCpuFrequency() field.ErrorList {
 	return allErrs
 }
 
-func (r *PerformanceProfile) getNodesList() (client.ObjectList, err) {
+func (r *PerformanceProfile) getNodesList() (corev1.NodeList, error) {
 	// Get the nodes from the client using the node selector in the profile
-	var nodes client.ObjectList
-	err := validatorClient.List(validatorContext, nodes, &client.ListOptions{
-		LabelSelect: r.spec.NodeSelector,
+	nodes := &corev1.NodeList{}
+
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: r.Spec.NodeSelector,
 	})
 
 	if err != nil {
-		return nil, field.Error(
-			field.NewPath("spec.nodeselector"),
-			r.spec.NodeSelector,
-			err,
-		)
+		return corev1.NodeList{}, err
 	}
 
-	if len(nodes) == 0 {
-		return nil, field.Error(
-			field.NewPath("spec.nodeselector"),
-			r.spec.NodeSelector,
-			fmt.Printf("Failed to find any nodes using node selector %s", r.spec.NodeSelector),
-		)
+	err = validatorClient.List(validatorContext, nodes, &client.ListOptions{
+		LabelSelector: selector,
+	})
+
+	if err != nil {
+		return corev1.NodeList{}, err
 	}
 
-	return nodes, err
+	return *nodes, nil
 }
