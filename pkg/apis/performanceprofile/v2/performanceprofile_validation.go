@@ -43,6 +43,7 @@ const (
 	hugepagesSize1G = "1G"
 	amd64 = "amd64"
 	aarch64 = "aarch64"
+	cpuCapacityKey = "cpu"
 )
 
 var x86ValidHugepagesSizes = []string{
@@ -292,13 +293,7 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitectureAndCapacity()
 }
 
 func getCpuCapacityForNode(node client.Object) string {
-	cpuKey := "cpu"
-	for key, value := range node.status.capacity {
-		if key == cpuKey {
-			return value
-		}
-	}
-	return ""
+	return node.status.capacity[cpuCapacityKey]
 }
 
 func (r *PerformanceProfile) validateHugePages() field.ErrorList {
