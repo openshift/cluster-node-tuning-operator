@@ -41,6 +41,8 @@ const (
 	hugepagesSize32M = "32M"
 	hugepagesSize512M = "512M"
 	hugepagesSize1G = "1G"
+	amd64 = "amd64"
+	aarch64 = "aarch64"
 )
 
 var x86ValidHugepagesSizes = []string{
@@ -401,15 +403,13 @@ func (r *PerformanceProfile) getArchitecture() (string, err) {
 }
 
 func (r *PerformanceProfile) isX86() (bool, err) {
-	x86Value := "amd64"
 	arch, err := r.getArchitecture()
-	return arch == x86Value, err
+	return arch == amd64, err
 }
 
 func (r *PerformanceProfile) isAarch64() (bool, err) {
-	aarch64Value := "aarch64"
 	arch, err := r.getArchitecture()
-	return arch == aarch64Value, err
+	return arch == aarch64, err
 }
 
 func (r *PerformanceProfile) validatePageDuplication(page *HugePage, pages []HugePage) field.ErrorList {
