@@ -144,7 +144,8 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 			if device.InterfaceName != nil {
 				deviceNameAmendedRegex := strings.Replace(*device.InterfaceName, "*", ".*", -1)
 				if strings.HasPrefix(*device.InterfaceName, "!") {
-					devices = append(devices, "^INTERFACE="+"(?!"+deviceNameAmendedRegex+")")
+					// Strip the exclamation sign from the regex to avoid duplicating it
+					devices = append(devices, "^INTERFACE="+"(?!"+deviceNameAmendedRegex[1:]+")")
 				} else {
 					devices = append(devices, "^INTERFACE="+deviceNameAmendedRegex)
 				}
