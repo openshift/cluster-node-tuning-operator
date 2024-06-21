@@ -58,6 +58,8 @@ var aarch64ValidHugepagesSizes = []string{
 	hugepagesSize512M, // With 64k kernel pages
 }
 
+var validatorContext = context.TODO()
+
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *PerformanceProfile) ValidateCreate() (admission.Warnings, error) {
 	klog.Infof("Create validation for the performance profile %q", r.Name)
@@ -77,7 +79,7 @@ func (r *PerformanceProfile) validateCreateOrUpdate() (admission.Warnings, error
 
 	// validate node selector duplication
 	ppList := &PerformanceProfileList{}
-	if err := validatorClient.List(context.TODO(), ppList); err != nil {
+	if err := validatorClient.List(validatorContext, ppList); err != nil {
 		return admission.Warnings{}, apierrors.NewInternalError(err)
 	}
 
@@ -570,7 +572,7 @@ func (r *PerformanceProfile) validateCpuFrequency() field.ErrorList {
 func (r *PerformanceProfile) getNodesList() (client.ObjectList, err) {
 	// Get the nodes from the client using the node selector in the profile
 	var nodes client.ObjectList
-	err := validatorClient.List(context.TODO(), nodes, &client.ListOptions{
+	err := validatorClient.List(validatorContext, nodes, &client.ListOptions{
 		LabelSelect: r.spec.NodeSelector,
 	})
 
