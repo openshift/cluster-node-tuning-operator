@@ -1001,7 +1001,7 @@ func (c *Controller) pruneMachineConfigs() error {
 // pruneMachineConfigs removes any MachineConfigs created by the operator that are not selected by any of the TuneD daemon profile.
 func (c *Controller) pruneMachineConfigsHyperShift() error {
 	cmListOptions := metav1.ListOptions{
-		LabelSelector: operatorGeneratedMachineConfig + "=true",
+		LabelSelector: OperatorGeneratedMachineConfig + "=true",
 	}
 	cmList, err := c.clients.ManagementKube.CoreV1().ConfigMaps(ntoconfig.OperatorNamespace()).List(context.TODO(), cmListOptions)
 	if err != nil {
@@ -1357,7 +1357,7 @@ func (c *Controller) run(ctx context.Context) error {
 			ntoconfig.ResyncPeriod(),
 			kubeinformers.WithNamespace(ntoconfig.OperatorNamespace()),
 			kubeinformers.WithTweakListOptions(func(opts *metav1.ListOptions) {
-				opts.LabelSelector = tunedConfigMapLabel + "=true"
+				opts.LabelSelector = TunedConfigMapLabel + "=true"
 			}))
 		tunedConfigMapInformer := tunedConfigMapInformerFactory.Core().V1().ConfigMaps()
 		c.listers.ConfigMaps = tunedConfigMapInformer.Lister().ConfigMaps(ntoconfig.OperatorNamespace())
@@ -1369,7 +1369,7 @@ func (c *Controller) run(ctx context.Context) error {
 			ntoconfig.ResyncPeriod(),
 			kubeinformers.WithNamespace(ntoconfig.OperatorNamespace()),
 			kubeinformers.WithTweakListOptions(func(opts *metav1.ListOptions) {
-				opts.LabelSelector = operatorGeneratedMachineConfig + "=true"
+				opts.LabelSelector = OperatorGeneratedMachineConfig + "=true"
 			}))
 		mcfgConfigMapInformer := mcfgConfigMapInformerFactory.Core().V1().ConfigMaps()
 		c.listers.ConfigMaps = mcfgConfigMapInformer.Lister().ConfigMaps(ntoconfig.OperatorNamespace())

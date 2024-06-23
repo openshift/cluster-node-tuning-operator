@@ -27,9 +27,6 @@ import (
 
 const (
 	hypershiftPerformanceProfileNameLabel = "hypershift.openshift.io/performanceProfileName"
-	hypershiftNodePoolLabel               = "hypershift.openshift.io/nodePool"
-	tunedConfigMapLabel                   = "hypershift.openshift.io/tuned-config"
-	ntoGeneratedMachineConfigLabel        = "hypershift.openshift.io/nto-generated-machine-config"
 )
 
 var _ components.Handler = &handler{}
@@ -147,7 +144,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if mcMutated != nil {
-		cm, err := h.encapsulateObjInConfigMap(instance, mfs.MachineConfig, profile.Name, hypershiftoperator.McConfigMapDataKey, ntoGeneratedMachineConfigLabel)
+		cm, err := h.encapsulateObjInConfigMap(instance, mfs.MachineConfig, profile.Name, hypershiftoperator.McConfigMapDataKey, hypershiftoperator.OperatorGeneratedMachineConfig)
 		if err != nil {
 			return err
 		}
@@ -158,7 +155,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if kcMutated != nil {
-		cm, err := h.encapsulateObjInConfigMap(instance, mfs.KubeletConfig, profile.Name, hypershiftoperator.McConfigMapDataKey, ntoGeneratedMachineConfigLabel)
+		cm, err := h.encapsulateObjInConfigMap(instance, mfs.KubeletConfig, profile.Name, hypershiftoperator.McConfigMapDataKey, hypershiftoperator.OperatorGeneratedMachineConfig)
 		if err != nil {
 			return err
 		}
@@ -169,7 +166,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if performanceTunedMutated != nil {
-		cm, err := h.encapsulateObjInConfigMap(instance, mfs.Tuned, profile.Name, hypershiftoperator.TuningConfigMapConfigKey, tunedConfigMapLabel)
+		cm, err := h.encapsulateObjInConfigMap(instance, mfs.Tuned, profile.Name, hypershiftoperator.TuningConfigMapConfigKey, hypershiftoperator.TunedConfigMapLabel)
 		if err != nil {
 			return err
 		}
@@ -201,9 +198,9 @@ func (h *handler) encapsulateObjInConfigMap(instance *corev1.ConfigMap, object c
 	if err != nil {
 		return nil, err
 	}
-	nodePoolNamespacedName, ok := instance.Annotations[hypershiftNodePoolLabel]
+	nodePoolNamespacedName, ok := instance.Annotations[hypershiftoperator.HypershiftNodePoolLabel]
 	if !ok {
-		return nil, fmt.Errorf("annotation %q not found in ConfigMap %q annotations", hypershiftNodePoolLabel, client.ObjectKeyFromObject(instance).String())
+		return nil, fmt.Errorf("annotation %q not found in ConfigMap %q annotations", hypershiftoperator.HypershiftNodePoolLabel, client.ObjectKeyFromObject(instance).String())
 	}
 
 	name := fmt.Sprintf("%s-%s", strings.ToLower(object.GetObjectKind().GroupVersionKind().Kind), instance.Name)
@@ -248,11 +245,11 @@ func configMapMeta(name, profileName, namespace, npNamespacedName string) *corev
 			Namespace: namespace,
 			Name:      name,
 			Labels: map[string]string{
-				hypershiftPerformanceProfileNameLabel: profileName,
-				hypershiftNodePoolLabel:               parseNamespacedName(npNamespacedName),
+				hypershiftPerformanceProfileNameLabel:      profileName,
+				hypershiftoperator.HypershiftNodePoolLabel: parseNamespacedName(npNamespacedName),
 			},
 			Annotations: map[string]string{
-				hypershiftNodePoolLabel: npNamespacedName,
+				hypershiftoperator.HypershiftNodePoolLabel: npNamespacedName,
 			},
 		},
 	}
