@@ -33,20 +33,20 @@ type ControlPlaneClientImpl struct {
 }
 
 func (ci *ControlPlaneClientImpl) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
-	if ObjIsEncapsulatedInConfigMap(obj) {
+	if EncapsulatedInConfigMap(obj) {
 		return ci.getFromConfigMap(ctx, key, obj, opts...)
 	}
 	return ci.Client.Get(ctx, key, obj, opts...)
 }
 
 func (ci *ControlPlaneClientImpl) Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
-	if ObjIsEncapsulatedInConfigMap(obj) {
+	if EncapsulatedInConfigMap(obj) {
 		return ci.createInConfigMap(ctx, obj, opts...)
 	}
 	return ci.Client.Create(ctx, obj, opts...)
 }
 
-func ObjIsEncapsulatedInConfigMap(obj runtime.Object) bool {
+func EncapsulatedInConfigMap(obj runtime.Object) bool {
 	switch obj.(type) {
 	case *performancev2.PerformanceProfile, *performancev2.PerformanceProfileList,
 		*machineconfigv1.KubeletConfig, *machineconfigv1.KubeletConfigList,
