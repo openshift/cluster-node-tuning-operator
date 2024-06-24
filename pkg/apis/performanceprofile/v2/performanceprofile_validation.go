@@ -397,7 +397,7 @@ func (r *PerformanceProfile) validateHugePages() field.ErrorList {
 					fmt.Sprintf("%s %v", errMsg, aarch64ValidHugepagesSizes),
 				),
 			)
-		} else {
+		} else if !x86 && !aarch64 {
 			allErrs = append(
 				allErrs,
 				field.Invalid(
@@ -430,7 +430,7 @@ func (r *PerformanceProfile) validateHugePages() field.ErrorList {
 					fmt.Sprintf("%s %v", errMsg, aarch64ValidHugepagesSizes),
 				),
 			)
-		} else {
+		} else if !x86 && !aarch64 {
 			allErrs = append(
 				allErrs,
 				field.Invalid(
@@ -622,6 +622,11 @@ func (r *PerformanceProfile) getNodesList() (corev1.NodeList, error) {
 
 	if err != nil {
 		return corev1.NodeList{}, err
+	}
+
+	// If we have no nodes then consider this an error
+	if len(nodes.Items) == 0 {
+		return corev1.NodeList{}, fmt.Errorf("no nodes found with selector %s", selector)
 	}
 
 	return *nodes, nil

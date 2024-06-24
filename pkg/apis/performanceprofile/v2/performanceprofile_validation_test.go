@@ -5,7 +5,11 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
 )
@@ -42,6 +46,36 @@ const (
 	//NetDeviceModelID defines a net device model ID for the test profile
 	NetDeviceModelID = "0x1000"
 )
+
+// Get a fake node object with a specified architecture and cpu capacity
+func GetFakeNode(architecture string, cpuCapacityMillicores int64) corev1.Node {
+	Expect(architecture).To(BeElementOf([2]string{amd64, aarch64}))
+	return corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node",
+			ResourceVersion: "1.0",
+			Labels: map[string]string{
+				"nodekey": "nodeValue",
+			},
+		},
+		Status: corev1.NodeStatus{
+			Capacity: corev1.ResourceList{
+				corev1.ResourceCPU: *resource.NewMilliQuantity(cpuCapacityMillicores, resource.DecimalSI),
+			},
+			NodeInfo: corev1.NodeSystemInfo{
+				Architecture: architecture,
+			},
+		},
+	}
+}
+
+// Get a fake validator client for use in the tests
+func GetFakeValidatorClient(node corev1.Node) client.Client {
+	client := fake.NewClientBuilder().WithObjects(
+		&node,
+	).Build()
+	return client
+}
 
 // NewPerformanceProfile returns new performance profile object that used for tests
 func NewPerformanceProfile(name string) *PerformanceProfile {
@@ -324,7 +358,9 @@ var _ = Describe("PerformanceProfile", func() {
 	})
 
 	Describe("Hugepages validation", func() {
-		It("should reject on incorrect default hugepages size", func() {
+		It("should reject on incorrect default hugepages size (x86)", func() {
+			validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+
 			incorrectDefaultSize := HugePageSize("!#@")
 			profile.Spec.HugePages.DefaultHugePagesSize = &incorrectDefaultSize
 
@@ -333,7 +369,9 @@ var _ = Describe("PerformanceProfile", func() {
 			Expect(errors[0].Error()).To(ContainSubstring("hugepages default size should be equal"))
 		})
 
-		It("should reject hugepages allocation with unexpected page size", func() {
+		It("should reject hugepages allocation with unexpected page size (x86)", func() {
+			validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+
 			profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 				Count: 128,
 				Node:  pointer.Int32(0),
@@ -341,12 +379,14 @@ var _ = Describe("PerformanceProfile", func() {
 			})
 			errors := profile.validateHugePages()
 			Expect(errors).NotTo(BeEmpty(), "should have validation error when page with invalid format presents")
-			Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page size should be equal to %q or %q", hugepagesSize1G, hugepagesSize2M)))
+			Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page size should be equal to one of %v", x86ValidHugepagesSizes)))
 		})
 
 		When("pages have duplication", func() {
 			Context("with specified NUMA node", func() {
-				It("should raise the validation error", func() {
+				It("should raise the validation error (x86)", func() {
+					validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+
 					profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 						Count: 128,
 						Size:  hugepagesSize1G,
@@ -364,7 +404,9 @@ var _ = Describe("PerformanceProfile", func() {
 			})
 
 			Context("without specified NUMA node", func() {
-				It("should raise the validation error", func() {
+				It("should raise the validation error (x86)", func() {
+					validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+
 					profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 						Count: 128,
 						Size:  hugepagesSize1G,
@@ -376,7 +418,9 @@ var _ = Describe("PerformanceProfile", func() {
 			})
 
 			Context("with not sequentially duplication blocks", func() {
-				It("should raise the validation error", func() {
+				It("should raise the validation error (x86)", func() {
+					validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+
 					profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 						Count: 128,
 						Size:  hugepagesSize2M,
@@ -463,7 +507,9 @@ var _ = Describe("PerformanceProfile", func() {
 	})
 
 	Describe("validation of validateFields function", func() {
-		It("should check all fields", func() {
+		It("should check all fields (x86)", func() {
+			validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+
 			// config all specs to rise an error in every func inside validateFields()
 			reservedCPUs := CPUSet("")
 			isolatedCPUs := CPUSet("0-6")
@@ -498,7 +544,7 @@ var _ = Describe("PerformanceProfile", func() {
 
 			errorMsgs["reserved CPUs can not be empty"] = member
 			errorMsgs["you should provide only 1 MachineConfigLabel"] = member
-			errorMsgs[`hugepages default size should be equal to "1G" or "2M"`] = member
+			errorMsgs[fmt.Sprintf("hugepages default size should be equal to one of %v", x86ValidHugepagesSizes)] = member
 			errorMsgs["device name cannot be empty"] = member
 			errorMsgs[fmt.Sprintf("device vendor ID %s has an invalid format. Vendor ID should be represented as 0x<4 hexadecimal digits> (16 bit representation)", invalidVendor)] = member
 			errorMsgs[fmt.Sprintf("device model ID %s has an invalid format. Model ID should be represented as 0x<4 hexadecimal digits> (16 bit representation)", invalidDevice)] = member
