@@ -225,8 +225,9 @@ func (h *handler) encapsulateObjInConfigMap(instance *corev1.ConfigMap, object c
 		return nil, fmt.Errorf("annotation %q not found in ConfigMap %q annotations", hypershiftNodePoolLabel, client.ObjectKeyFromObject(instance).String())
 	}
 
-	name := fmt.Sprintf("%s-%s", strings.ToLower(object.GetObjectKind().GroupVersionKind().Kind), instance.Name)
-	cm := configMapMeta(name, profileName, instance.GetNamespace(), nodePoolNamespacedName)
+	kind := object.GetObjectKind().GroupVersionKind().Kind
+	name := fmt.Sprintf("%s-%s", strings.ToLower(kind), instance.Name)
+	cm := configMapMeta(name, profileName, instance.GetNamespace(), nodePoolNamespacedName, kind)
 	err = controllerutil.SetControllerReference(instance, cm, h.scheme)
 	if err != nil {
 		return nil, err
@@ -261,14 +262,15 @@ func createOrUpdateKubeletConfigConfigMap(ctx context.Context, cli client.Client
 
 // configMapMeta return a ConfigMap that can be used to encapsulate
 // cluster scoped objects within the desired Namespace
-func configMapMeta(name, profileName, namespace, npNamespacedName string) *corev1.ConfigMap {
+func configMapMeta(name, profileName, namespace, npNamespacedName, ecapsulatedObjKind string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
 			Name:      name,
 			Labels: map[string]string{
-				hypershiftPerformanceProfileNameLabel: profileName,
-				hypershiftNodePoolLabel:               parseNamespacedName(npNamespacedName),
+				hypershiftPerformanceProfileNameLabel:   profileName,
+				hypershiftNodePoolLabel:                 parseNamespacedName(npNamespacedName),
+				hypershift.ConfigMapEncapsulatedKindKey: strings.ToLower(ecapsulatedObjKind),
 			},
 			Annotations: map[string]string{
 				hypershiftNodePoolLabel: npNamespacedName,

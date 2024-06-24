@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -21,6 +23,13 @@ const (
 	TuningKey                   = "tuning"
 	ConfigKey                   = "config"
 	HostedClustersNamespaceName = "clusters"
+
+	// ConfigMapEncapsulatedKindKey specifies the kind of the object encapsulated in a ConfigMap
+	ConfigMapEncapsulatedKindKey = "hypershift.openshift.io/encapsulated-kind"
+
+	// hypershiftControllerGeneratedPerformanceProfile is a label that is set by the hypershift operator
+	// when it mirrors the performanceProfile into the hosted control plane namespace
+	hypershiftControllerGeneratedPerformanceProfile = "hypershift.openshift.io/performanceprofile-config"
 )
 
 type ControlPlaneClientImpl struct {
@@ -33,8 +42,9 @@ type ControlPlaneClientImpl struct {
 }
 
 func (ci *ControlPlaneClientImpl) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
-	if EncapsulatedInConfigMap(obj) {
-		return ci.getFromConfigMap(ctx, key, obj, opts...)
+	encapsulatedObj, err := ci.getFromConfigMap(ctx, key, obj, opts...)
+	if encapsulatedObj {
+		return err
 	}
 	return ci.Client.Get(ctx, key, obj, opts...)
 }
@@ -65,36 +75,59 @@ func NewControlPlaneClient(c client.Client, ns string) *ControlPlaneClientImpl {
 	}
 }
 
-func (ci *ControlPlaneClientImpl) getFromConfigMap(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
-	cm := &corev1.ConfigMap{}
+func (ci *ControlPlaneClientImpl) getFromConfigMap(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) (bool, error) {
+	var labelSelector labels.Selector
+	switch obj.(type) {
+	case *performancev2.PerformanceProfile:
+		labelSelector = labels.SelectorFromSet(labels.Set{hypershiftControllerGeneratedPerformanceProfile: "true"})
+	case *machineconfigv1.KubeletConfig:
+		labelSelector = labels.SelectorFromSet(labels.Set{ConfigMapEncapsulatedKindKey: "kubeletconfig"})
+	case *machineconfigv1.MachineConfig:
+		labelSelector = labels.SelectorFromSet(labels.Set{ConfigMapEncapsulatedKindKey: "machineconfig"})
+	case *tunedv1.Tuned:
+		labelSelector = labels.SelectorFromSet(labels.Set{ConfigMapEncapsulatedKindKey: "tuned"})
+	default:
+		return false, nil
+	}
+	cmList := &corev1.ConfigMapList{}
+	listOpts := &client.ListOptions{}
 	if key.Namespace == metav1.NamespaceNone {
-		key.Namespace = ci.managementClusterNamespaceName
+		listOpts.Namespace = ci.managementClusterNamespaceName
+		listOpts.LabelSelector = labelSelector
 	}
-	err := ci.Client.Get(ctx, key, cm, opts...)
+	err := ci.List(ctx, cmList, listOpts)
 	if err != nil {
-		return err
+		return true, err
 	}
-
-	cmKey := client.ObjectKeyFromObject(cm)
-	var objAsYAML string
-	var tuningKeyFound, configKeyFound bool
-	if s, ok := cm.Data[TuningKey]; ok {
-		objAsYAML = s
-		tuningKeyFound = true
+	for _, cm := range cmList.Items {
+		var objAsYAML string
+		var tuningKeyFound, configKeyFound bool
+		if s, ok := cm.Data[TuningKey]; ok {
+			objAsYAML = s
+			tuningKeyFound = true
+		}
+		if s, ok2 := cm.Data[ConfigKey]; ok2 {
+			objAsYAML = s
+			configKeyFound = true
+		}
+		cmKey := client.ObjectKeyFromObject(&cm)
+		// can't have both
+		if tuningKeyFound && configKeyFound {
+			return true, fmt.Errorf("ConfigMap %s has both %s and %s keys", cmKey.String(), TuningKey, ConfigKey)
+		}
+		if !tuningKeyFound && !configKeyFound {
+			return true, fmt.Errorf("could not get %s from ConfigMap %s, keys %s and %s are missing",
+				obj.GetObjectKind().GroupVersionKind().Kind, cmKey.String(), TuningKey, ConfigKey)
+		}
+		err = DecodeManifest([]byte(objAsYAML), scheme.Scheme, obj)
+		if err != nil {
+			return true, err
+		}
+		if key.Name == obj.GetName() {
+			return true, nil
+		}
 	}
-	if s, ok2 := cm.Data[ConfigKey]; ok2 {
-		objAsYAML = s
-		configKeyFound = true
-	}
-	// can't have both
-	if tuningKeyFound && configKeyFound {
-		return fmt.Errorf("ConfigMap %s has both %s and %s keys", cmKey.String(), TuningKey, ConfigKey)
-	}
-	if !tuningKeyFound && !configKeyFound {
-		return fmt.Errorf("could not get %s from ConfigMap %s, keys %s and %s are missing",
-			obj.GetObjectKind().GroupVersionKind().Kind, cmKey.String(), TuningKey, ConfigKey)
-	}
-	return DecodeManifest([]byte(objAsYAML), scheme.Scheme, obj)
+	return false, nil
 }
 
 func (ci *ControlPlaneClientImpl) createInConfigMap(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
