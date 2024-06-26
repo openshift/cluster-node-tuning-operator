@@ -129,11 +129,22 @@ func (r *PerformanceProfile) validateNodeSelectorDuplication(ppList *Performance
 func (r *PerformanceProfile) ValidateBasicFields() field.ErrorList {
 	var allErrs field.ErrorList
 
+	nodes, err := r.getNodesList()
+	if err != nil {
+		allErrs = append(allErrs,
+			field.Invalid(
+				field.NewPath("spec.nodeSelector"),
+				r.Spec.NodeSelector,
+				err.Error(),
+			),
+		)
+	}
+
 	allErrs = append(allErrs, r.validateCPUs()...)
 	allErrs = append(allErrs, r.validateSelectors()...)
-	allErrs = append(allErrs, r.validateAllNodesAreSameCpuArchitecture()...)
-	allErrs = append(allErrs, r.validateAllNodesAreSameCpuCapacity()...)
-	allErrs = append(allErrs, r.validateHugePages()...)
+	allErrs = append(allErrs, r.validateAllNodesAreSameCpuArchitecture(nodes)...)
+	allErrs = append(allErrs, r.validateAllNodesAreSameCpuCapacity(nodes)...)
+	allErrs = append(allErrs, r.validateHugePages(nodes)...)
 	allErrs = append(allErrs, r.validateNUMA()...)
 	allErrs = append(allErrs, r.validateNet()...)
 	allErrs = append(allErrs, r.validateWorkloadHints()...)
@@ -234,21 +245,8 @@ func (r *PerformanceProfile) validateSelectors() field.ErrorList {
 	return allErrs
 }
 
-func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitecture() field.ErrorList {
+func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitecture(nodes corev1.NodeList) field.ErrorList {
 	var allErrs field.ErrorList
-
-	nodes, err := r.getNodesList()
-
-	if err != nil {
-		allErrs = append(allErrs, 
-			field.Invalid(
-				field.NewPath("spec.nodeSelector"),
-				r.Spec.NodeSelector,
-				err.Error(),
-			),
-		)
-		return allErrs
-	}
 
 	// We need to use one of the nodes as a reference for comparing against the rest
 	// The first item in the list is simple and easy to use
@@ -289,21 +287,8 @@ func getCpuArchitectureForNode(node corev1.Node) string {
 	return node.Status.NodeInfo.Architecture
 }
 
-func (r *PerformanceProfile) validateAllNodesAreSameCpuCapacity() field.ErrorList {
+func (r *PerformanceProfile) validateAllNodesAreSameCpuCapacity(nodes corev1.NodeList) field.ErrorList {
 	var allErrs field.ErrorList
-
-	nodes, err := r.getNodesList()
-
-	if err != nil {
-		allErrs = append(allErrs, 
-			field.Invalid(
-				field.NewPath("spec.nodeSelector"),
-				r.Spec.NodeSelector,
-				err.Error(),
-			),
-		)
-		return allErrs
-	}
 
 	// We need to use one of the nodes as a reference for comparing against the rest
 	// The first item in the list is simple and easy to use
@@ -343,36 +328,18 @@ func getCpuCapacityForNode(node corev1.Node) string {
 	return node.Status.Capacity.Cpu().String()
 }
 
-func (r *PerformanceProfile) validateHugePages() field.ErrorList {
+func (r *PerformanceProfile) validateHugePages(nodes corev1.NodeList) field.ErrorList {
 	var allErrs field.ErrorList
 
 	if r.Spec.HugePages == nil {
 		return allErrs
 	}
 
-	x86, err := r.isX86()
-	if err != nil {
-		allErrs = append(allErrs, 
-			field.Invalid(
-				field.NewPath("spec.HugePages"),
-				r.Spec.HugePages,
-				err.Error(),
-			),
-		)
-		return allErrs
-	}
-
-	aarch64, err := r.isAarch64()
-	if err != nil {
-		allErrs = append(allErrs, 
-			field.Invalid(
-				field.NewPath("spec.HugePages"),
-				r.Spec.HugePages,
-				err.Error(),
-			),
-		)
-		return allErrs
-	}
+    // This function implicitly relies on `validateAllNodesAreSameCpuArchitecture` to have already been run
+    // Under that assumption we can return any node from the list since they should all be the same architecture
+    // However it is simple and easy to just return the first node
+	x86 := isX86(nodes.Items[0])
+	aarch64 := isAarch64(nodes.Items[0])
 
 	if r.Spec.HugePages.DefaultHugePagesSize != nil {
 		defaultSize := *r.Spec.HugePages.DefaultHugePagesSize
@@ -447,26 +414,12 @@ func (r *PerformanceProfile) validateHugePages() field.ErrorList {
 	return allErrs
 }
 
-func (r *PerformanceProfile) getArchitectureForPerfProfile() (string, error) {
-	nodes, err := r.getNodesList()
-	if err != nil {
-		return "", err
-	}
-
-	// This funtion implicitly relies on `validateAllNodesAreSameCpuArchitecture` to have already been run
-	// Under that assumption we can return any node from the list since they should all be the same architecture
-	// However it is simple and easy to just return the first node
-	return getCpuArchitectureForNode(nodes.Items[0]), nil
+func isX86(node corev1.Node) (bool) {
+	return getCpuArchitectureForNode(node) == amd64
 }
 
-func (r *PerformanceProfile) isX86() (bool, error) {
-	arch, err := r.getArchitectureForPerfProfile()
-	return arch == amd64, err
-}
-
-func (r *PerformanceProfile) isAarch64() (bool, error) {
-	arch, err := r.getArchitectureForPerfProfile()
-	return arch == aarch64, err
+func isAarch64(node corev1.Node) (bool) {
+	return getCpuArchitectureForNode(node) == aarch64
 }
 
 func (r *PerformanceProfile) validatePageDuplication(page *HugePage, pages []HugePage) field.ErrorList {
