@@ -17,9 +17,7 @@ import (
 
 	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift"
@@ -73,26 +71,9 @@ func (h *handler) Delete(ctx context.Context, profileName string) error {
 }
 
 func (h *handler) Exists(ctx context.Context, profileName string) bool {
-	operatorNamespace := config.OperatorNamespace()
-	tunedName := components.GetComponentName(profileName, components.ProfileNamePerformance)
-	if _, err := resources.GetTuned(ctx, h.controlPlaneClient, tunedName, operatorNamespace); !k8serrors.IsNotFound(err) {
-		klog.Infof("Tuned %q is still exists in the namespace %q", tunedName, operatorNamespace)
-		return true
-	}
-
 	name := components.GetComponentName(profileName, components.ComponentNamePrefix)
-	if _, err := resources.GetKubeletConfig(ctx, h.controlPlaneClient, name); !k8serrors.IsNotFound(err) {
-		klog.Infof("Kubelet Config %q exists in the namespace %q", name, operatorNamespace)
-		return true
-	}
-
 	if _, err := resources.GetRuntimeClass(ctx, h.dataPlaneClient, name); !k8serrors.IsNotFound(err) {
 		klog.Infof("Runtime class %q exists in the hosted cluster", name)
-		return true
-	}
-
-	if _, err := resources.GetMachineConfig(ctx, h.controlPlaneClient, machineconfig.GetMachineConfigName(profileName)); !k8serrors.IsNotFound(err) {
-		klog.Infof("Machine Config %q exists in the namespace %q", name, operatorNamespace)
 		return true
 	}
 	return false
