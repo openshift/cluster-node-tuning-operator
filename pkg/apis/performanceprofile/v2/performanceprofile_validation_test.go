@@ -396,14 +396,44 @@ var _ = Describe("PerformanceProfile", func() {
 	})
 
 	Describe("Same CPU Architecture validation", func() {
-		It("should pass when both nodes are the same architecture (x86)", func () {
-			// TODO: Implement this
+		It("should pass when both nodes are the same architecture (x86)", func() {
+			// Get client with two x86 nodes
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node1"})
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node2"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+
+			errors := profile.validateAllNodesAreSameCpuArchitecture(nodes)
+			Expect(errors).To(BeEmpty())
 		})
-		It("should pass when both nodes are the same architecture (aarch64)", func () {
-			// TODO: Implement this
+		It("should pass when both nodes are the same architecture (aarch64)", func() {
+			// Get client with two aarch64 nodes
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: aarch64, cpuCapacity: 1000, name: "node1"})
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: aarch64, cpuCapacity: 1000, name: "node2"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+
+			errors := profile.validateAllNodesAreSameCpuArchitecture(nodes)
+			Expect(errors).To(BeEmpty())
 		})
-		It("should fail when nodes are the different architecture", func () {
-			// TODO: Implement this
+		It("should fail when nodes are the different architecture", func() {
+			// Get client with two different nodes: one x86 and one aarch64
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node1"})
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: aarch64, cpuCapacity: 1000, name: "node2"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+
+			errors := profile.validateAllNodesAreSameCpuArchitecture(nodes)
+			Expect(errors).ToNot(BeEmpty())
 		})
 	})
 
