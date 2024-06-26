@@ -73,7 +73,8 @@ main() {
     which ginkgo
     if [ $? -ne 0 ]; then
         echo "Downloading ginkgo tool"
-        go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo@v2.6.1
+        GINKGO_VERSION=$(go list -m -f '{{.Version}}' github.com/onsi/ginkgo/v2)
+        go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo@"${GINKGO_VERSION}"
         ginkgo version
     fi
 
