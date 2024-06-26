@@ -72,6 +72,7 @@ func checkIsVerifiable(pod *corev1.Pod, verifications map[string]verification) {
 
 	for _, verif := range verifications {
 		_, err := util.ExecCmdInPod(pod, verif.command...)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		if err != nil {
 			ginkgo.Skip(fmt.Sprintf("cannot verify on %s/%s: %v", pod.Namespace, pod.Name, err))
 		}

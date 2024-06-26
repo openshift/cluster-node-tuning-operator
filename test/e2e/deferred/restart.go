@@ -83,6 +83,7 @@ var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
 
 				// gather the output now before the profile is applied so we can check nothing changed
 				verificationOutput, err := util.ExecCmdInPod(targetTunedPod, verificationCommandArgs...)
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				if err != nil {
 					ginkgo.Skip(fmt.Sprintf("cannot get reference value for output: %v", err))
 				}
