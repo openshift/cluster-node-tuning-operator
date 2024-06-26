@@ -96,7 +96,7 @@ spec:
 		name                  string
 		encapsulatedObjsToGet []client.Object
 		configMaps            []runtime.Object
-		expectedIsNotFoundErr bool
+		expectedInNotFoundErr bool
 	}{
 		{
 			name: "encapsulated object name equal to configmap name",
@@ -230,7 +230,7 @@ spec:
 					BinaryData: nil,
 				},
 			},
-			expectedIsNotFoundErr: true,
+			expectedInNotFoundErr: true,
 		},
 	}
 	for _, tc := range testsCases {
@@ -239,11 +239,11 @@ spec:
 			c := NewControlPlaneClient(fakeClient, namespace)
 			for _, objectToGet := range tc.encapsulatedObjsToGet {
 				err := c.Get(context.TODO(), client.ObjectKeyFromObject(objectToGet), objectToGet)
-				if !tc.expectedIsNotFoundErr && err != nil {
+				if !tc.expectedInNotFoundErr && err != nil {
 					t.Errorf("failed to get object %v; err: %v", objectToGet, err)
 				}
-				if tc.expectedIsNotFoundErr && !apierrors.IsNotFound(err) {
-					t.Errorf("expected IsNotFound error, got %v", err)
+				if tc.expectedInNotFoundErr && !apierrors.IsNotFound(err) {
+					t.Errorf("expected IsNotFound error, actual error %v ", err)
 				}
 			}
 		})
