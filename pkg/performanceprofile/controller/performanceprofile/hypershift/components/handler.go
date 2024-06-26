@@ -113,6 +113,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	if err := hypershift.DecodeManifest([]byte(s), h.scheme, profile); err != nil {
 		return err
 	}
+	klog.V(4).InfoS("PerformanceProfile decoded successfully from ConfigMap data", "PerformanceProfileName", profile.Name, "ConfigMapName", instance.GetName())
 
 	if profileutil.IsPaused(profile) {
 		klog.Infof("ignoring reconcile loop for pause performance profile %s", profile.Name)
