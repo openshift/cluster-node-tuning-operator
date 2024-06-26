@@ -14,8 +14,9 @@ spec:
       include=openshift-node
       [sysctl]
       kernel.shmmni=8192
+      [bootloader]
+      cmdline_pstate=+intel_pstate=active
       [cpu]
-      governor=performance
       energy_perf_bias=power
     name: test-cpu-energy
   recommend:

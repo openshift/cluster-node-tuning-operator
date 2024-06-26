@@ -71,6 +71,9 @@ func checkIsVerifiable(pod *corev1.Pod, verifications map[string]verification) {
 	ginkgo.GinkgoHelper()
 
 	for _, verif := range verifications {
+		out, err2 := util.ExecCmdInPod(pod, "/bin/ls", "-lh", "/sys/devices/system/cpu/cpu0/power/")
+		util.Logf("POWER SETTINGS: err=%v out=%q", err2, out)
+
 		_, err := util.ExecCmdInPod(pod, verif.command...)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		if err != nil {
