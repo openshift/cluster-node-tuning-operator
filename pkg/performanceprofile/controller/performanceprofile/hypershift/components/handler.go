@@ -181,7 +181,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if runtimeClassMutated != nil {
-		err = resources.CreateOrUpdateRuntimeClass(ctx, h.dataPlaneClient, mfs.RuntimeClass)
+		err = resources.CreateOrUpdateRuntimeClass(ctx, h.dataPlaneClient, runtimeClassMutated)
 		if err != nil {
 			return err
 		}
