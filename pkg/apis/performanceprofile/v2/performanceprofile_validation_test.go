@@ -438,11 +438,31 @@ var _ = Describe("PerformanceProfile", func() {
 	})
 
 	Describe("Same CPU Capacity validation", func() {
-		It("should pass when both nodes are the same capacity", func () {
-			// TODO: Implement this
+		It("should pass when both nodes are the same capacity", func() {
+			// Get client with two nodes with the same cpu capacity
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node1"})
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node2"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+
+			errors := profile.validateAllNodesAreSameCpuCapacity(nodes)
+			Expect(errors).To(BeEmpty())
 		})
-		It("should fail when nodes are the different capacity", func () {
-			// TODO: Implement this
+		It("should fail when nodes are the different capacity", func() {
+			// Get client with two nodes with different cpu capacity
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node1"})
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 2000, name: "node2"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+
+			errors := profile.validateAllNodesAreSameCpuCapacity(nodes)
+			Expect(errors).ToNot(BeEmpty())
 		})
 	})
 
