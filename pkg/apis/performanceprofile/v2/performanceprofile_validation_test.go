@@ -357,6 +357,36 @@ var _ = Describe("PerformanceProfile", func() {
 		})
 	})
 
+	Describe("The getNodesList helper function", func () {
+		It("should not return any errors when at least one node is detected", func (){
+			// TODO: Implement this
+		})
+		It("should return an error when nothing is detected", func() {
+			// TODO: Implement this
+		})
+	})
+
+	Describe("Same CPU Architecture validation", func() {
+		It("should pass when both nodes are the same architecture (x86)", func () {
+			// TODO: Implement this
+		})
+		It("should pass when both nodes are the same architecture (aarch64)", func () {
+			// TODO: Implement this
+		})
+		It("should fail when nodes are the different architecture", func () {
+			// TODO: Implement this
+		})
+	})
+
+	Describe("Same CPU Capacity validation", func() {
+		It("should pass when both nodes are the same capacity", func () {
+			// TODO: Implement this
+		})
+		It("should fail when nodes are the different capacity", func () {
+			// TODO: Implement this
+		})
+	})
+
 	Describe("Hugepages validation", func() {
 		It("should reject on incorrect default hugepages size (x86)", func() {
 			validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
