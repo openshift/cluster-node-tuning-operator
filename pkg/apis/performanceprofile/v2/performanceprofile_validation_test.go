@@ -359,10 +359,22 @@ var _ = Describe("PerformanceProfile", func() {
 
 	Describe("The getNodesList helper function", func () {
 		It("should not return any errors when at least one node is detected", func (){
-			// TODO: Implement this
+			// Get client with one node to test this case
+			validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+
+			// There should be a non-empty node list and no error present
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+			Expect(nodes.Items).ToNot(BeEmpty())
 		})
 		It("should return an error when nothing is detected", func() {
-			// TODO: Implement this
+			// Get client with no nodes to test this case
+			validatorClient = GetFakeValidatorClient(corev1.Node{})
+
+			// There should be an empty node list and error present
+			nodes, err := profile.getNodesList()
+			Expect(err).ToNot(BeNil())
+			Expect(nodes.Items).To(BeEmpty())
 		})
 	})
 
