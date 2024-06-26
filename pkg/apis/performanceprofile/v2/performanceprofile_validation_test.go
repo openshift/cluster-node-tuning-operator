@@ -47,12 +47,19 @@ const (
 	NetDeviceModelID = "0x1000"
 )
 
+// This type is used to define the inputs for the validator client
+type NodeSpecifications struct {
+	architecture string
+	cpuCapacity  int64
+	name         string
+}
+
 // Get a fake node object with a specified architecture and cpu capacity
-func GetFakeNode(architecture string, cpuCapacityMillicores int64) corev1.Node {
-	Expect(architecture).To(BeElementOf([2]string{amd64, aarch64}))
+func GetFakeNode(specs NodeSpecifications) corev1.Node {
+	Expect(specs.architecture).To(BeElementOf([2]string{amd64, aarch64}))
 	return corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "node",
+			Name:            specs.name,
 			ResourceVersion: "1.0",
 			Labels: map[string]string{
 				"nodekey": "nodeValue",
@@ -60,21 +67,28 @@ func GetFakeNode(architecture string, cpuCapacityMillicores int64) corev1.Node {
 		},
 		Status: corev1.NodeStatus{
 			Capacity: corev1.ResourceList{
-				corev1.ResourceCPU: *resource.NewMilliQuantity(cpuCapacityMillicores, resource.DecimalSI),
+				corev1.ResourceCPU: *resource.NewMilliQuantity(specs.cpuCapacity, resource.DecimalSI),
 			},
 			NodeInfo: corev1.NodeSystemInfo{
-				Architecture: architecture,
+				Architecture: specs.architecture,
 			},
 		},
 	}
 }
 
-// Get a fake validator client for use in the tests
-func GetFakeValidatorClient(node corev1.Node) client.Client {
-	client := fake.NewClientBuilder().WithObjects(
-		&node,
-	).Build()
-	return client
+func GetFakeValidatorClient(nodeSpecs []NodeSpecifications) client.Client {
+	// Create all the nodes first from the provided specifications
+	nodes := []corev1.Node{}
+	for _, node := range nodeSpecs {
+		nodes = append(nodes, GetFakeNode(node))
+	}
+
+	// Convert the slice of nodes into a NodeList object
+	nodeList := corev1.NodeList{}
+	nodeList.Items = nodes
+
+	// Build the client with the new NodeList included
+	return fake.NewClientBuilder().WithLists(&nodeList).Build()
 }
 
 // NewPerformanceProfile returns new performance profile object that used for tests
@@ -357,10 +371,12 @@ var _ = Describe("PerformanceProfile", func() {
 		})
 	})
 
-	Describe("The getNodesList helper function", func () {
-		It("should not return any errors when at least one node is detected", func (){
+	Describe("The getNodesList helper function", func() {
+		It("should not return any errors when at least one node is detected", func() {
 			// Get client with one node to test this case
-			validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
 
 			// There should be a non-empty node list and no error present
 			nodes, err := profile.getNodesList()
@@ -369,7 +385,8 @@ var _ = Describe("PerformanceProfile", func() {
 		})
 		It("should return an error when nothing is detected", func() {
 			// Get client with no nodes to test this case
-			validatorClient = GetFakeValidatorClient(corev1.Node{})
+			nodeSpecs := []NodeSpecifications{}
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
 
 			// There should be an empty node list and error present
 			nodes, err := profile.getNodesList()
@@ -401,7 +418,10 @@ var _ = Describe("PerformanceProfile", func() {
 
 	Describe("Hugepages validation", func() {
 		It("should reject on incorrect default hugepages size (x86)", func() {
-			validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
 			nodes, err := profile.getNodesList()
 			Expect(err).To(BeNil())
 
@@ -414,7 +434,10 @@ var _ = Describe("PerformanceProfile", func() {
 		})
 
 		It("should reject on incorrect default hugepages size (aarch64)", func() {
-			validatorClient = GetFakeValidatorClient(GetFakeNode(aarch64, 1000))
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: aarch64, cpuCapacity: 1000, name: "node"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
 			nodes, err := profile.getNodesList()
 			Expect(err).To(BeNil())
 
@@ -427,7 +450,10 @@ var _ = Describe("PerformanceProfile", func() {
 		})
 
 		It("should reject hugepages allocation with unexpected page size (x86)", func() {
-			validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
 			nodes, err := profile.getNodesList()
 			Expect(err).To(BeNil())
 
@@ -442,7 +468,10 @@ var _ = Describe("PerformanceProfile", func() {
 		})
 
 		It("should reject hugepages allocation with unexpected page size (aarch64)", func() {
-			validatorClient = GetFakeValidatorClient(GetFakeNode(aarch64, 1000))
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: aarch64, cpuCapacity: 1000, name: "node"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
 			nodes, err := profile.getNodesList()
 			Expect(err).To(BeNil())
 
@@ -462,7 +491,10 @@ var _ = Describe("PerformanceProfile", func() {
 		When("pages have duplication", func() {
 			Context("with specified NUMA node", func() {
 				It("should raise the validation error (x86)", func() {
-					validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+					nodeSpecs := []NodeSpecifications{}
+					nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node"})
+					validatorClient = GetFakeValidatorClient(nodeSpecs)
+
 					nodes, err := profile.getNodesList()
 					Expect(err).To(BeNil())
 
@@ -484,7 +516,10 @@ var _ = Describe("PerformanceProfile", func() {
 
 			Context("without specified NUMA node", func() {
 				It("should raise the validation error (x86)", func() {
-					validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+					nodeSpecs := []NodeSpecifications{}
+					nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node"})
+					validatorClient = GetFakeValidatorClient(nodeSpecs)
+
 					nodes, err := profile.getNodesList()
 					Expect(err).To(BeNil())
 
@@ -500,7 +535,10 @@ var _ = Describe("PerformanceProfile", func() {
 
 			Context("with not sequentially duplication blocks", func() {
 				It("should raise the validation error (x86)", func() {
-					validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+					nodeSpecs := []NodeSpecifications{}
+					nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node"})
+					validatorClient = GetFakeValidatorClient(nodeSpecs)
+
 					nodes, err := profile.getNodesList()
 					Expect(err).To(BeNil())
 
@@ -591,7 +629,9 @@ var _ = Describe("PerformanceProfile", func() {
 
 	Describe("validation of validateFields function", func() {
 		It("should check all fields (x86)", func() {
-			validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
 
 			// config all specs to rise an error in every func inside validateFields()
 			reservedCPUs := CPUSet("")
