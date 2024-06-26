@@ -360,53 +360,59 @@ var _ = Describe("PerformanceProfile", func() {
 	Describe("Hugepages validation", func() {
 		It("should reject on incorrect default hugepages size (x86)", func() {
 			validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
 
 			incorrectDefaultSize := HugePageSize("!#@")
 			profile.Spec.HugePages.DefaultHugePagesSize = &incorrectDefaultSize
 
-			errors := profile.validateHugePages()
+			errors := profile.validateHugePages(nodes)
 			Expect(errors).NotTo(BeEmpty(), "should have validation error when default huge pages size has invalid value")
 			Expect(errors[0].Error()).To(ContainSubstring("hugepages default size should be equal"))
 		})
 
 		It("should reject on incorrect default hugepages size (aarch64)", func() {
 			validatorClient = GetFakeValidatorClient(GetFakeNode(aarch64, 1000))
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
 
 			incorrectDefaultSize := HugePageSize("!#@")
 			profile.Spec.HugePages.DefaultHugePagesSize = &incorrectDefaultSize
 
-			errors := profile.validateHugePages()
+			errors := profile.validateHugePages(nodes)
 			Expect(errors).NotTo(BeEmpty(), "should have validation error when default huge pages size has invalid value")
 			Expect(errors[0].Error()).To(ContainSubstring("hugepages default size should be equal"))
 		})
 
 		It("should reject hugepages allocation with unexpected page size (x86)", func() {
 			validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
 
 			profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 				Count: 128,
 				Node:  pointer.Int32(0),
 				Size:  "14M",
 			})
-			errors := profile.validateHugePages()
+			errors := profile.validateHugePages(nodes)
 			Expect(errors).NotTo(BeEmpty(), "should have validation error when page with invalid format presents")
 			Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page size should be equal to one of %v", x86ValidHugepagesSizes)))
 		})
 
 		It("should reject hugepages allocation with unexpected page size (aarch64)", func() {
 			validatorClient = GetFakeValidatorClient(GetFakeNode(aarch64, 1000))
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
 
-			// The default is set to 1G overall but for this test specifically we want to override it
-			// If we don't then we won't get the error we want since the default is validated first
-			overrideDefault := HugePageSize(hugepagesSize2M)
-			profile.Spec.HugePages.DefaultHugePagesSize = &overrideDefault
+			defaultSize := HugePageSize(hugepagesSize2M)
+			profile.Spec.HugePages.DefaultHugePagesSize = &defaultSize
 
 			profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 				Count: 128,
 				Node:  pointer.Int32(0),
 				Size:  "14M",
 			})
-			errors := profile.validateHugePages()
+			errors := profile.validateHugePages(nodes)
 			Expect(errors).NotTo(BeEmpty(), "should have validation error when page with invalid format presents")
 			Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page size should be equal to one of %v", aarch64ValidHugepagesSizes)))
 		})
@@ -415,6 +421,8 @@ var _ = Describe("PerformanceProfile", func() {
 			Context("with specified NUMA node", func() {
 				It("should raise the validation error (x86)", func() {
 					validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+					nodes, err := profile.getNodesList()
+					Expect(err).To(BeNil())
 
 					profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 						Count: 128,
@@ -426,7 +434,7 @@ var _ = Describe("PerformanceProfile", func() {
 						Size:  hugepagesSize1G,
 						Node:  pointer.Int32(0),
 					})
-					errors := profile.validateHugePages()
+					errors := profile.validateHugePages(nodes)
 					Expect(errors).NotTo(BeEmpty())
 					Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page with the size %q and with specified NUMA node 0, has duplication", hugepagesSize1G)))
 				})
@@ -435,12 +443,14 @@ var _ = Describe("PerformanceProfile", func() {
 			Context("without specified NUMA node", func() {
 				It("should raise the validation error (x86)", func() {
 					validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+					nodes, err := profile.getNodesList()
+					Expect(err).To(BeNil())
 
 					profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 						Count: 128,
 						Size:  hugepagesSize1G,
 					})
-					errors := profile.validateHugePages()
+					errors := profile.validateHugePages(nodes)
 					Expect(errors).NotTo(BeEmpty())
 					Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page with the size %q and without the specified NUMA node, has duplication", hugepagesSize1G)))
 				})
@@ -449,6 +459,8 @@ var _ = Describe("PerformanceProfile", func() {
 			Context("with not sequentially duplication blocks", func() {
 				It("should raise the validation error (x86)", func() {
 					validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
+					nodes, err := profile.getNodesList()
+					Expect(err).To(BeNil())
 
 					profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 						Count: 128,
@@ -458,7 +470,7 @@ var _ = Describe("PerformanceProfile", func() {
 						Count: 128,
 						Size:  hugepagesSize1G,
 					})
-					errors := profile.validateHugePages()
+					errors := profile.validateHugePages(nodes)
 					Expect(errors).NotTo(BeEmpty())
 					Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page with the size %q and without the specified NUMA node, has duplication", hugepagesSize1G)))
 				})
