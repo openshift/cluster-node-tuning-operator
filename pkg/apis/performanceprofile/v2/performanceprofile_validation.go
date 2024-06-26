@@ -266,15 +266,15 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitecture(nodes corev1
 		return allErrs
 	}
 
-
 	// Make sure all other nodes have the same value
 	for i := 1; i < len(nodes.Items); i++ {
-		if getCpuArchitectureForNode(nodes.Items[i]) != expectedArchitecture {
+		actualArchitecture := getCpuArchitectureForNode(nodes.Items[i])
+		if actualArchitecture != expectedArchitecture {
 			allErrs = append(allErrs,
 				field.Invalid(
 					field.NewPath("spec.nodeSelector"),
 					r.Spec.NodeSelector,
-					fmt.Sprintf("Node %s is not the same architecture as expected %s", nodes.Items[i].Status.NodeInfo.MachineID, expectedArchitecture),
+					fmt.Sprintf("Node %s has architecture %s but was expecting %s", nodes.Items[i].Status.NodeInfo.MachineID, actualArchitecture, expectedArchitecture),
 				),
 			)
 		}
@@ -310,12 +310,13 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuCapacity(nodes corev1.Nod
 
 	// Make sure all other nodes have the same value
 	for i := 1; i < len(nodes.Items); i++ {
-		if getCpuCapacityForNode(nodes.Items[i]) != expectedCpuCapacity {
+		actualCpuCapacity := getCpuCapacityForNode(nodes.Items[i])
+		if actualCpuCapacity != expectedCpuCapacity {
 			allErrs = append(allErrs,
 				field.Invalid(
 					field.NewPath("spec.nodeSelector"),
 					r.Spec.NodeSelector,
-					fmt.Sprintf("Node %s is not the same CPU capacity as expected %s", nodes.Items[i].Status.NodeInfo.MachineID, expectedCpuCapacity),
+					fmt.Sprintf("Node %s has CPU capacity %s but was expecting %s", nodes.Items[i].Status.NodeInfo.MachineID, actualCpuCapacity, expectedCpuCapacity),
 				),
 			)
 		}
@@ -335,7 +336,7 @@ func (r *PerformanceProfile) validateHugePages(nodes corev1.NodeList) field.Erro
 		return allErrs
 	}
 
-    // This function implicitly relies on `validateAllNodesAreSameCpuArchitecture` to have already been run
+    // `validateHugePages` implicitly relies on `validateAllNodesAreSameCpuArchitecture` to have already been run
     // Under that assumption we can return any node from the list since they should all be the same architecture
     // However it is simple and easy to just return the first node
 	x86 := isX86(nodes.Items[0])
