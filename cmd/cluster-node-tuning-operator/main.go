@@ -69,9 +69,7 @@ var (
 func init() {
 	ctrl.SetLogger(zap.New())
 
-	if !config.InHyperShift() {
-		utilruntime.Must(mcov1.AddToScheme(scheme))
-	}
+	utilruntime.Must(mcov1.AddToScheme(scheme))
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(tunedv1.AddToScheme(scheme))
 	utilruntime.Must(apiconfigv1.Install(scheme))
