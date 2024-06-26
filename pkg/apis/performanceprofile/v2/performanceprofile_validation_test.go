@@ -369,6 +369,17 @@ var _ = Describe("PerformanceProfile", func() {
 			Expect(errors[0].Error()).To(ContainSubstring("hugepages default size should be equal"))
 		})
 
+		It("should reject on incorrect default hugepages size (aarch64)", func() {
+			validatorClient = GetFakeValidatorClient(GetFakeNode(aarch64, 1000))
+
+			incorrectDefaultSize := HugePageSize("!#@")
+			profile.Spec.HugePages.DefaultHugePagesSize = &incorrectDefaultSize
+
+			errors := profile.validateHugePages()
+			Expect(errors).NotTo(BeEmpty(), "should have validation error when default huge pages size has invalid value")
+			Expect(errors[0].Error()).To(ContainSubstring("hugepages default size should be equal"))
+		})
+
 		It("should reject hugepages allocation with unexpected page size (x86)", func() {
 			validatorClient = GetFakeValidatorClient(GetFakeNode(amd64, 1000))
 
@@ -380,6 +391,24 @@ var _ = Describe("PerformanceProfile", func() {
 			errors := profile.validateHugePages()
 			Expect(errors).NotTo(BeEmpty(), "should have validation error when page with invalid format presents")
 			Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page size should be equal to one of %v", x86ValidHugepagesSizes)))
+		})
+
+		It("should reject hugepages allocation with unexpected page size (aarch64)", func() {
+			validatorClient = GetFakeValidatorClient(GetFakeNode(aarch64, 1000))
+
+			// The default is set to 1G overall but for this test specifically we want to override it
+			// If we don't then we won't get the error we want since the default is validated first
+			overrideDefault := HugePageSize(hugepagesSize2M)
+			profile.Spec.HugePages.DefaultHugePagesSize = &overrideDefault
+
+			profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
+				Count: 128,
+				Node:  pointer.Int32(0),
+				Size:  "14M",
+			})
+			errors := profile.validateHugePages()
+			Expect(errors).NotTo(BeEmpty(), "should have validation error when page with invalid format presents")
+			Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page size should be equal to one of %v", aarch64ValidHugepagesSizes)))
 		})
 
 		When("pages have duplication", func() {
