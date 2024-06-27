@@ -1,0 +1,23 @@
+[main]
+summary=Platform specific tuning for Intel x86
+
+[variables]
+
+# Intel specific tuning options
+iommu=+intel_iommu=on iommu=pt
+hpc_cstate=+processor.max_cstate=1 intel_idle.max_cstate=0
+pppm_pstate=+intel_pstate=active
+hwt_pstate=+intel_pstate=passive
+default_pstate=+intel_pstate=${f:intel_recommended_pstate}
+
+# x86 specific tuning options
+
+{{if .PerPodPowerManagement}}
+cmdline_pstate=${pppm_pstate}
+{{else if .HardwareTuning}}
+cmdline_pstate=${hwt_pstate}
+{{else}}
+cmdline_pstate=${default_pstate}
+{{end}}
+
+realtime_args=+tsc=reliable nmi_watchdog=0 mce=off

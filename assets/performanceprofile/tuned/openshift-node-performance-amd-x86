@@ -1,0 +1,23 @@
+[main]
+summary=Platform specific tuning for AMD x86
+
+[variables]
+
+# AMD specific tuning options
+iommu=+amd_iommu=on iommu=pt
+hpc_cstate=+processor.max_cstate=1
+pppm_pstate=+amd_pstate=active
+hwt_pstate=+amd_pstate=passive
+default_pstate=+amd_pstate=guided
+
+# x86 specific tuning options
+
+{{if .PerPodPowerManagement}}
+cmdline_pstate=${pppm_pstate}
+{{else if .HardwareTuning}}
+cmdline_pstate=${hwt_pstate}
+{{else}}
+cmdline_pstate=${default_pstate}
+{{end}}
+
+realtime_args=+tsc=reliable nmi_watchdog=0 mce=off
