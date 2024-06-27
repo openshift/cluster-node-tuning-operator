@@ -43,18 +43,12 @@ var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
 
 			createdTuneds = []string{}
 
-			targetTunedPod, err := util.GetTunedForNode(cs, targetNode)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
 			dirPath, err = getCurrentDirPath()
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 			tunedPathCPUEnergy = filepath.Join(dirPath, tunedCPUEnergy)
 			tunedObjCPUEnergy, err = loadTuned(tunedPathCPUEnergy)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
-			verifications := extractVerifications(tunedObjCPUEnergy)
-			checkIsVerifiable(targetTunedPod, verifications)
 		})
 
 		ginkgo.AfterEach(func() {
@@ -83,11 +77,12 @@ var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
 
 				// gather the output now before the profile is applied so we can check nothing changed
 				verificationOutput, err := util.ExecCmdInPod(targetTunedPod, verificationCommandArgs...)
-				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				if err != nil {
-					ginkgo.Skip(fmt.Sprintf("cannot get reference value for output: %v", err))
+					// not available, which is actually a valid state. Let's record it.
+					verificationOutput = err.Error()
+				} else {
+					verificationOutput = strings.TrimSpace(verificationOutput)
 				}
-				verificationOutput = strings.TrimSpace(verificationOutput)
 				ginkgo.By(fmt.Sprintf("verification expected output: %q", verificationOutput))
 
 				tunedMutated := setDeferred(tunedImmediate.DeepCopy())
@@ -210,8 +205,6 @@ var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
 				targetTunedPod, err := util.GetTunedForNode(cs, targetNode)
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				ginkgo.By(fmt.Sprintf("got the tuned pod running on %q: %s/%s %s", targetNode.Name, targetTunedPod.Namespace, targetTunedPod.Name, targetTunedPod.UID))
-
-				checkIsVerifiable(targetTunedPod, verifications)
 
 				tunedMutated := setDeferred(tunedImmediate.DeepCopy())
 				ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.HasDeferredUpdateAnnotation(tunedMutated.Annotations)))

@@ -67,28 +67,15 @@ func extractVerifications(tuneds ...*tunedv1.Tuned) map[string]verification {
 	return ret
 }
 
-func checkIsVerifiable(pod *corev1.Pod, verifications map[string]verification) {
-	ginkgo.GinkgoHelper()
-
-	for _, verif := range verifications {
-		out, err2 := util.ExecCmdInPod(pod, "/bin/ls", "-lh", "/sys/devices/system/cpu/cpu0/power/")
-		util.Logf("POWER SETTINGS: err=%v out=%q", err2, out)
-
-		_, err := util.ExecCmdInPod(pod, verif.command...)
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		if err != nil {
-			ginkgo.Skip(fmt.Sprintf("cannot verify on %s/%s: %v", pod.Namespace, pod.Name, err))
-		}
-	}
-}
-
 func verify(pod *corev1.Pod, verifications map[string]verification) error {
 	for _, verif := range verifications {
 		out, err := util.ExecCmdInPod(pod, verif.command...)
 		if err != nil {
-			return err
+			// not available, which is actually a valid state. Let's record it.
+			out = err.Error()
+		} else {
+			out = strings.TrimSpace(out)
 		}
-		out = strings.TrimSpace(out)
 		if out != verif.output {
 			return fmt.Errorf("got: %s; expected: %s", out, verif.output)
 		}

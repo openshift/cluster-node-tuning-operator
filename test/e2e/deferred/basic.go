@@ -56,18 +56,12 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 
 			createdTuneds = []string{}
 
-			targetTunedPod, err := util.GetTunedForNode(cs, targetNode)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
 			dirPath, err = getCurrentDirPath()
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 			tunedPathCPUEnergy = filepath.Join(dirPath, tunedCPUEnergy)
 			tunedObjCPUEnergy, err = loadTuned(tunedPathCPUEnergy)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
-			verifications := extractVerifications(tunedObjCPUEnergy)
-			checkIsVerifiable(targetTunedPod, verifications)
 		})
 
 		ginkgo.AfterEach(func() {
@@ -98,11 +92,12 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 
 			// gather the output now before the profile is applied so we can check nothing changed
 			verificationOutput, err := util.ExecCmdInPod(targetTunedPod, verificationCommandArgs...)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			if err != nil {
-				ginkgo.Skip(fmt.Sprintf("cannot get reference value for output: %v", err))
+				// not available, which is actually a valid state. Let's record it.
+				verificationOutput = err.Error()
+			} else {
+				verificationOutput = strings.TrimSpace(verificationOutput)
 			}
-			verificationOutput = strings.TrimSpace(verificationOutput)
 			ginkgo.By(fmt.Sprintf("verification expected output: %q", verificationOutput))
 
 			tunedMutated := setDeferred(tuned.DeepCopy())

@@ -4,8 +4,8 @@ metadata:
   name: ocp-prof-deferred-basic-10
   namespace: openshift-cluster-node-tuning-operator
   annotations:
-    verificationCommand: "[\"/bin/cat\", \"/sys/devices/system/cpu/cpu0/power/energy_perf_bias\"]"
-    verificationOutput: "15"
+    verificationCommand: "[\"/bin/cat\", \"/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor\"]"
+    verificationOutput: "performance"
 spec:
   profile:
   - data: |
@@ -14,10 +14,8 @@ spec:
       include=openshift-node
       [sysctl]
       kernel.shmmni=8192
-      [bootloader]
-      cmdline_pstate=+intel_pstate=active
       [cpu]
-      energy_perf_bias=power
+      governor=performance
     name: test-cpu-energy
   recommend:
   - match:

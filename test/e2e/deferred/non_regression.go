@@ -26,7 +26,6 @@ var _ = ginkgo.Describe("[deferred][non_regression] Profile non-deferred", func(
 
 			dirPath            string
 			tunedPathCPUEnergy string
-			tunedObjCPUEnergy  *tunedv1.Tuned
 		)
 
 		ginkgo.BeforeEach(func() {
@@ -40,18 +39,11 @@ var _ = ginkgo.Describe("[deferred][non_regression] Profile non-deferred", func(
 
 			createdTuneds = []string{}
 
-			targetTunedPod, err := util.GetTunedForNode(cs, targetNode)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
 			dirPath, err = getCurrentDirPath()
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 			tunedPathCPUEnergy = filepath.Join(dirPath, tunedCPUEnergy)
-			tunedObjCPUEnergy, err = loadTuned(tunedPathCPUEnergy)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
-			verifications := extractVerifications(tunedObjCPUEnergy)
-			checkIsVerifiable(targetTunedPod, verifications)
 		})
 
 		ginkgo.AfterEach(func() {
