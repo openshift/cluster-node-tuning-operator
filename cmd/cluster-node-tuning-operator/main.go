@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"runtime"
 	"time"
 
@@ -47,8 +46,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/metrics"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/operator"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/cmd/render"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/signals"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/tuned"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/tuned/cmd/operand"
 	tunedrender "github.com/openshift/cluster-node-tuning-operator/pkg/tuned/cmd/render"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/openshift/cluster-node-tuning-operator/version"
@@ -93,13 +91,15 @@ var rootCmd = &cobra.Command{
 	},
 }
 
-var enableLeaderElection bool
-var showVersionAndExit bool
+var (
+	enableLeaderElection bool
+	showVersionAndExit   bool
+)
 
 func prepareCommands() {
-	rootCmd.PersistentFlags().BoolVar(&enableLeaderElection, "enable-leader-election", true,
+	rootCmd.Flags().BoolVar(&enableLeaderElection, "enable-leader-election", true,
 		"Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
-	rootCmd.PersistentFlags().BoolVar(&showVersionAndExit, "version", false,
+	rootCmd.Flags().BoolVar(&showVersionAndExit, "version", false,
 		"Show program version and exit.")
 
 	// Include the klog command line arguments
@@ -110,6 +110,7 @@ func prepareCommands() {
 		rootCmd.AddCommand(render.NewRenderCommand())
 		rootCmd.AddCommand(tunedrender.NewRenderBootCmdMCCommand())
 	}
+	rootCmd.AddCommand(operand.NewTunedCommand())
 }
 
 func operatorRun() {
@@ -203,17 +204,6 @@ func operatorRun() {
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		klog.Exitf("manager exited with non-zero code: %v", err)
 	}
-}
-
-func tunedOperandRun() {
-	var boolVersion bool
-	flag.BoolVar(&boolVersion, "version", false, "show program version and exit")
-
-	// flag.Parse is called from within tuned.Run -> parseCmdOpts
-	// but the version flag variable is inherited from here..
-
-	stopCh := signals.SetupSignalHandler()
-	tuned.Run(stopCh, &boolVersion, version.Version)
 }
 
 // Uninstall PAO OLM operator since PAO is shipped
@@ -376,15 +366,8 @@ func setupFeatureGates(ctx context.Context, config *rest.Config, operatorNamespa
 }
 
 func main() {
-	runAs := filepath.Base(os.Args[0])
-
-	switch runAs {
-	case version.OperatorFilename:
-		prepareCommands()
-		_ = rootCmd.Execute()
-	case version.OperandFilename:
-		tunedOperandRun()
-	default:
-		klog.Fatalf("application should be run as \"%s\" or \"%s\"", version.OperatorFilename, version.OperandFilename)
+	prepareCommands()
+	if err := rootCmd.Execute(); err != nil {
+		klog.Fatal(err)
 	}
 }
