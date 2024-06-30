@@ -4,7 +4,6 @@
 package __performance_config_test
 
 import (
-	"context"
 	"flag"
 	"log"
 	"os"
@@ -15,7 +14,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	"github.com/onsi/ginkgo/v2/reporters"
 	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/api/errors"
 
 	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -24,10 +22,7 @@ import (
 
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/k8sreporter"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/namespaces"
-	nodeInspector "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/node_inspector"
 )
 
 var (
@@ -64,13 +59,6 @@ func TestPerformanceConfig(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	Expect(testclient.ClientsEnabled).To(BeTrue())
-	// create test namespace
-	if err := testclient.DataPlaneClient.Create(context.TODO(), namespaces.NodeInspectorNamespace); !errors.IsAlreadyExists(err) {
-		Expect(err).ToNot(HaveOccurred())
-	}
-
-	err := nodeInspector.Create(testclient.DataPlaneClient, testutils.NodeInspectorNamespace, testutils.NodeInspectorName, images.Test())
-	Expect(err).ToNot(HaveOccurred())
 
 })
 
