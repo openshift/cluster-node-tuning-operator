@@ -23,6 +23,7 @@ const (
 	TuningKey                   = "tuning"
 	ConfigKey                   = "config"
 	HostedClustersNamespaceName = "clusters"
+	PerformanceProfileNameLabel = "hypershift.openshift.io/performanceProfileName"
 )
 
 type ControlPlaneClientImpl struct {

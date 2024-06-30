@@ -25,12 +25,11 @@ import (
 )
 
 const (
-	hypershiftPerformanceProfileNameLabel = "hypershift.openshift.io/performanceProfileName"
-	hypershiftNodePoolLabel               = "hypershift.openshift.io/nodePool"
-	tunedConfigMapLabel                   = "hypershift.openshift.io/tuned-config"
-	tunedConfigMapConfigKey               = "tuning"
-	mcoConfigMapConfigKey                 = "config"
-	ntoGeneratedMachineConfigLabel        = "hypershift.openshift.io/nto-generated-machine-config"
+	hypershiftNodePoolLabel        = "hypershift.openshift.io/nodePool"
+	tunedConfigMapLabel            = "hypershift.openshift.io/tuned-config"
+	tunedConfigMapConfigKey        = "tuning"
+	mcoConfigMapConfigKey          = "config"
+	ntoGeneratedMachineConfigLabel = "hypershift.openshift.io/nto-generated-machine-config"
 )
 
 var _ components.Handler = &handler{}
@@ -249,8 +248,8 @@ func configMapMeta(name, profileName, namespace, npNamespacedName string) *corev
 			Namespace: namespace,
 			Name:      name,
 			Labels: map[string]string{
-				hypershiftPerformanceProfileNameLabel: profileName,
-				hypershiftNodePoolLabel:               parseNamespacedName(npNamespacedName),
+				hypershift.PerformanceProfileNameLabel: profileName,
+				hypershiftNodePoolLabel:                parseNamespacedName(npNamespacedName),
 			},
 			Annotations: map[string]string{
 				hypershiftNodePoolLabel: npNamespacedName,
