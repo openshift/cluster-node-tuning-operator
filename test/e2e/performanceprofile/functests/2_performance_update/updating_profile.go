@@ -29,6 +29,7 @@ import (
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
@@ -101,7 +102,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		}
 	})
 
-	Context("Verify hugepages count split on two NUMA nodes", Ordered, func() {
+	Context("Verify hugepages count split on two NUMA nodes", Ordered, Label(string(label.Tier2)), func() {
 		hpSize2M := performancev2.HugePageSize("2M")
 		skipTests := false
 
@@ -213,7 +214,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 	})
 
-	Context("Verify that all performance profile parameters can be updated", Ordered, func() {
+	Context("Verify that all performance profile parameters can be updated", Ordered, Label(string(label.Tier2)), func() {
 		var removedKernelArgs string
 
 		hpSize2M := performancev2.HugePageSize("2M")
@@ -379,7 +380,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 	})
 
-	Context("Updating of nodeSelector parameter and node labels", func() {
+	Context("Updating of nodeSelector parameter and node labels", Label(string(label.Tier2)), func() {
 		var mcp *machineconfigv1.MachineConfigPool
 		var newCnfNode *corev1.Node
 		newRole := "worker-test"
@@ -566,7 +567,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 	})
 
-	Context("Offlined CPU API", Ordered, func() {
+	Context("Offlined CPU API", Ordered, Label(string(label.OfflineCPUs), string(label.Tier2)), func() {
 		var numaCoreSiblings map[int]map[int][]int
 		BeforeAll(func() {
 			//Saving the old performance profile
@@ -992,7 +993,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 	})
 
-	Context("[rfe_id:54374][rps_mask] Network Stack Pinning", func() {
+	Context("[rfe_id:54374][rps_mask] Network Stack Pinning", Label(string(label.RPSMask), string(label.Tier1)), func() {
 
 		BeforeEach(func() {
 			//Get Latest profile
@@ -1145,7 +1146,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 	})
 
-	Context("ContainerRuntimeConfig", Ordered, func() {
+	Context("ContainerRuntimeConfig", Ordered, Label(string(label.Tier2)), func() {
 		var ctrcfg *machineconfigv1.ContainerRuntimeConfig
 		const ContainerRuntimeConfigName = "ctrcfg-test"
 		mcp := &machineconfigv1.MachineConfigPool{}

@@ -16,6 +16,7 @@ import (
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
@@ -54,7 +55,7 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 
 	})
 
-	Context("[rfe_id:28881][performance] Performance Addons detailed status", func() {
+	Context("[rfe_id:28881][performance] Performance Addons detailed status", Label(string(label.Tier1)), func() {
 
 		It("[test_id:30894] Tuned status name tied to Performance Profile", func() {
 			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
