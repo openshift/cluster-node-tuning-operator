@@ -25,7 +25,7 @@ import (
 const (
 	hypershiftNodeOwnerNameLabel = "cluster.x-k8s.io/owner-name"
 	hypershiftNodeOwnerKindLabel = "cluster.x-k8s.io/owner-kind"
-	hypershiftNodePoolLabel      = "hypershift.openshift.io/nodePool"
+	HypershiftNodePoolLabel      = "hypershift.openshift.io/nodePool"
 	hypershiftNodePoolNameLabel  = "hypershift.openshift.io/nodePoolName"
 
 	tunedConfigMapLabel      = "hypershift.openshift.io/tuned-config"
@@ -33,9 +33,11 @@ const (
 	// TODO remove once HyperShift has switched to using new key.
 	tunedConfigMapConfigKeyDeprecated = "tuned"
 
-	operatorGeneratedMachineConfig = "hypershift.openshift.io/nto-generated-machine-config"
-	mcConfigMapDataKey             = "config"
-	generatedConfigMapPrefix       = "nto-mc-"
+	operatorGeneratedMachineConfig            = "hypershift.openshift.io/nto-generated-machine-config"
+	NtoGeneratedPerformanceProfileStatusLabel = "hypershift.openshift.io/nto-generated-performance-profile-status"
+	mcConfigMapDataKey                        = "config"
+	PPStatusConfigMapConfigKey                = "status"
+	generatedConfigMapPrefix                  = "nto-mc-"
 )
 
 // syncHostedClusterTuneds synchronizes Tuned objects embedded in ConfigMaps
@@ -142,9 +144,9 @@ func (c *Controller) getObjFromTunedConfigMap() ([]tunedv1.Tuned, error) {
 			}
 		}
 
-		cmNodePoolNamespacedName, ok := cm.Annotations[hypershiftNodePoolLabel]
+		cmNodePoolNamespacedName, ok := cm.Annotations[HypershiftNodePoolLabel]
 		if !ok {
-			klog.Warningf("failed to parseTunedManifests in ConfigMap %s, no label %s", cm.ObjectMeta.Name, hypershiftNodePoolLabel)
+			klog.Warningf("failed to parseTunedManifests in ConfigMap %s, no label %s", cm.ObjectMeta.Name, HypershiftNodePoolLabel)
 			continue
 		}
 		nodePoolName := parseNamespacedName(cmNodePoolNamespacedName)
@@ -177,7 +179,7 @@ func (c *Controller) getObjFromTunedConfigMap() ([]tunedv1.Tuned, error) {
 func (c *Controller) getNodesForNodePool(nodePoolName string) ([]*corev1.Node, error) {
 	selector := labels.SelectorFromValidatedSet(
 		map[string]string{
-			hypershiftNodePoolLabel: nodePoolName,
+			HypershiftNodePoolLabel: nodePoolName,
 		})
 	nodes, err := c.pc.listers.Nodes.List(selector)
 	if err != nil {
@@ -298,12 +300,12 @@ func (c *Controller) serializeMachineConfig(mc *mcfgv1.MachineConfig) ([]byte, e
 func generatedConfigMapLabels(nodePoolName string) map[string]string {
 	return map[string]string{
 		operatorGeneratedMachineConfig: "true",
-		hypershiftNodePoolLabel:        nodePoolName,
+		HypershiftNodePoolLabel:        nodePoolName,
 	}
 }
 
 func generatedConfigMapAnnotations(nodePoolName string) map[string]string {
 	return map[string]string{
-		hypershiftNodePoolLabel: nodePoolName,
+		HypershiftNodePoolLabel: nodePoolName,
 	}
 }

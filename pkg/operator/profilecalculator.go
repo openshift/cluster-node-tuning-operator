@@ -651,7 +651,7 @@ func (pc *ProfileCalculator) tunedsUsePodLabels(tunedSlice []*tunedv1.Tuned) boo
 
 // getNodePoolNameForNode returns the NodePool name from a label on the hosted cluster Node
 func (pc *ProfileCalculator) getNodePoolNameForNode(node *corev1.Node) (string, error) {
-	nodePoolName := node.GetLabels()[hypershiftNodePoolLabel]
+	nodePoolName := node.GetLabels()[HypershiftNodePoolLabel]
 	klog.V(3).Infof("calculated nodePoolName: %s for node %s", nodePoolName, node.Name)
 	return nodePoolName, nil
 }
