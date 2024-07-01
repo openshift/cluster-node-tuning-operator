@@ -25,12 +25,11 @@ func WaitForUpdatingConfig(ctx context.Context, c client.Client, NpName, namespa
 func WaitForConfigToBeReady(ctx context.Context, c client.Client, NpName, namespace string) error {
 	return waitForCondition(ctx, c, NpName, namespace, func(conds []hypershiftv1beta1.NodePoolCondition) bool {
 		for _, cond := range conds {
-			// the config is ready when this condition is gone
 			if cond.Type == hypershiftv1beta1.NodePoolUpdatingConfigConditionType {
-				return false
+				return cond.Status == corev1.ConditionFalse
 			}
 		}
-		return true
+		return false
 	})
 }
 
