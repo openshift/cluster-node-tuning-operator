@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
-
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,11 +18,14 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/events"
+	hypershiftutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
 )
 
@@ -152,7 +153,17 @@ func ExecCommandOnPod(c *kubernetes.Clientset, pod *corev1.Pod, containerName st
 			TTY:       true,
 		}, scheme.ParameterCodec)
 
-	cfg, err := config.GetConfig()
+	var cfg *rest.Config
+	var err error
+
+	if hypershiftutils.IsHypershiftCluster() {
+		cfg, err = hypershiftutils.BuildRestConfig()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		cfg, err = config.GetConfig()
+	}
 	if err != nil {
 		return nil, err
 	}
