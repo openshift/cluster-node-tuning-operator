@@ -29,6 +29,7 @@ import (
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
@@ -39,7 +40,7 @@ import (
 
 const minRequiredCPUs = 8
 
-var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
+var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(label.OVSPinning)), func() {
 	const (
 		activation_file string = "/rootfs/var/lib/ovn-ic/etc/enable_dynamic_cpu_affinity"
 		cgroupRoot      string = "/rootfs/sys/fs/cgroup"
@@ -91,7 +92,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	Describe("[rfe_id: 64006][Dynamic OVS Pinning]", Ordered, func() {
+	Describe("[rfe_id: 64006][Dynamic OVS Pinning]", Ordered, Label(string(label.Tier0)), func() {
 		Context("[Performance Profile applied]", func() {
 			It("[test_id:64097] Activation file is created", func() {
 				cmd := []string{"ls", activation_file}
@@ -132,7 +133,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 
 		})
 
-		Context("[Performance Profile Modified]", func() {
+		Context("[Performance Profile Modified]", Label(string(label.Tier1)), func() {
 			BeforeEach(func() {
 				initialProfile = profile.DeepCopy()
 			})
@@ -193,7 +194,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 		})
 	})
 
-	Context("Verification of cgroup layout on the worker node", func() {
+	Context("Verification of cgroup layout on the worker node", Label(string(label.Tier0)), func() {
 		var ctx context.Context = context.TODO()
 		var cgroupProcs, cgroupCpusetCpus, cgroupLoadBalance string
 		BeforeAll(func() {
@@ -267,7 +268,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, func() {
 
 	Describe("Affinity", func() {
 		var ctx context.Context = context.TODO()
-		Context("ovn-kubenode Pods affinity ", func() {
+		Context("ovn-kubenode Pods affinity ", Label(string(label.Tier2)), func() {
 			testutils.CustomBeforeAll(func() {
 				profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 				Expect(err).ToNot(HaveOccurred())

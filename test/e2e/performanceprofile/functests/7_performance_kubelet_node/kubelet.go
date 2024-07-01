@@ -24,12 +24,13 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 )
 
-var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ordered, func() {
+var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ordered, Label(string(label.ExperimentalAnnotations)), func() {
 	var initialProfile, profile *performancev2.PerformanceProfile
 	var workerRTNodes []corev1.Node
 	var performanceMCP string
@@ -54,7 +55,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 		}
 
 	})
-	Context("Additional kubelet arguments", func() {
+	Context("Additional kubelet arguments", Label(string(label.Tier2)), func() {
 		It("[test_id:45488]Test performance profile annotation for changing multiple kubelet settings", func() {
 			sysctls := "{\"allowedUnsafeSysctls\":[\"net.core.somaxconn\",\"kernel.msg*\"],\"systemReserved\":{\"memory\":\"300Mi\"},\"kubeReserved\":{\"memory\":\"768Mi\"},\"imageMinimumGCAge\":\"3m\"}"
 			profile.Annotations = updateKubeletConfigOverrideAnnotations(profile.Annotations, sysctls)

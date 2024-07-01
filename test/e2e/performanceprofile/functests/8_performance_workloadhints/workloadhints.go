@@ -32,6 +32,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
@@ -45,7 +46,7 @@ const (
 	cgroupRoot = "/rootfs/sys/fs/cgroup"
 )
 
-var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific PerformanceProfile API", func() {
+var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific PerformanceProfile API", Label(string(label.WorkloadHints)), func() {
 	var workerRTNodes []corev1.Node
 	var profile, initialProfile *performancev2.PerformanceProfile
 	var performanceMCP string
@@ -72,7 +73,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		}
 	})
 
-	Context("WorkloadHints", func() {
+	Context("WorkloadHints", Label(string(label.Tier3)), func() {
 		var testpod *corev1.Pod
 		BeforeEach(func() {
 			By("Saving the old performance profile")

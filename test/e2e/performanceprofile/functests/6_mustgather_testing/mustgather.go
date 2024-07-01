@@ -12,6 +12,7 @@ import (
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	corev1 "k8s.io/api/core/v1"
@@ -24,7 +25,7 @@ import (
 
 const destDir = "must-gather"
 
-var _ = Describe("[rfe_id: 50649] Performance Addon Operator Must Gather", func() {
+var _ = Describe("[rfe_id: 50649] Performance Addon Operator Must Gather", Label(string(label.MustGather)), func() {
 	mgContentFolder := ""
 
 	testutils.CustomBeforeAll(func() {
@@ -39,7 +40,7 @@ var _ = Describe("[rfe_id: 50649] Performance Addon Operator Must Gather", func(
 		}
 	})
 
-	Context("with a freshly executed must-gather command", func() {
+	Context("with a freshly executed must-gather command", Label(string(label.Tier1)), func() {
 		It("Verify Generic cluster resource definitions are captured", func() {
 
 			var genericFiles = []string{
