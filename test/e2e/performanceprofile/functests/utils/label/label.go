@@ -39,6 +39,22 @@ const (
 	// PerformanceProfileCreator should be added in tests that are validating/verifying performance-profile-creator tool
 	// functionally.
 	PerformanceProfileCreator Feature = "performance-profile-creator"
+
+	// MemoryManager should be added in tests that are meant to test memory manager tests
+	MemoryManager Feature = "memorymanager"
+
+	// Offline should be added in tests that are meant to test offline cpus tests
+	Offline Feature = "offlinecpus"
+
+	// RPSMask should be added in tests that are meant to test RPS Masks
+	RPSMask Feature = "rpsmask"
+
+	// OVSPinning should be added in tests that test Dynamic OVS Pinning
+	OVSPinning Feature = "ovspinning"
+
+	// ExperimentalAnnotation should be added in tests that test Kubelet changes using
+	// experimental annotation
+	ExperimentalAnnotations = "experimentalannotaions"
 )
 
 // Tier is a label to classify tests under specific grade/level
