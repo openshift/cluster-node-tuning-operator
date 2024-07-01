@@ -21,11 +21,11 @@ COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_o
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/performance-profile-creator /usr/bin/
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/gather-sysinfo /usr/bin/
 COPY manifests/*.yaml manifests/image-references /manifests/
-ENV APP_ROOT=/var/lib/tuned
+ENV APP_ROOT=/var/lib/ocp-tuned
 ENV PATH=${APP_ROOT}/bin:${PATH}
 ENV HOME=${APP_ROOT}
+ENV SYSTEMD_IGNORE_CHROOT=1
 WORKDIR ${APP_ROOT}
-COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/openshift-tuned /usr/bin/
 COPY --from=tuned   /root/assets ${APP_ROOT}
 COPY --from=tuned   /root/rpmbuild/RPMS/noarch /root/rpms
 RUN INSTALL_PKGS=" \
@@ -36,7 +36,8 @@ RUN INSTALL_PKGS=" \
     rpm -V $INSTALL_PKGS && \
     dnf --setopt=tsflags=nodocs -y install /root/rpms/*.rpm && \
     find /root/rpms -name \*.rpm -exec basename {} .rpm \; | xargs rpm -e --justdb && \
-    rm -rf /var/lib/tuned/tuned && \
+    rm -rf /var/lib/ocp-tuned/{tuned,performanceprofile} && \
+    sed -Ei 's|^#?\s*enable_unix_socket\s*=.*$|enable_unix_socket = 1|;s|^#?\s*rollback\s*=.*$|rollback = not_on_exit|' /etc/tuned/tuned-main.conf && \
     touch /etc/sysctl.conf $APP_ROOT/provider && \
     dnf clean all && \
     rm -rf /var/cache/yum ~/patches /root/rpms && \
