@@ -17,6 +17,7 @@ limitations under the License.
 package v2
 
 import (
+	apiconfigv1 "github.com/openshift/api/config/v1"
 	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -222,6 +223,12 @@ type PerformanceProfileStatus struct {
 	Tuned *string `json:"tuned,omitempty"`
 	// RuntimeClass contains the name of the RuntimeClass resource created by the operator.
 	RuntimeClass *string `json:"runtimeClass,omitempty"`
+	// relatedObjects is a list of objects that are "interesting" or related to this operator.  Common uses are:
+	// 1. the detailed resource driving the operator
+	// 2. operator namespaces
+	// 3. operand namespaces
+	// +optional
+	RelatedObjects []apiconfigv1.ObjectReference `json:"relatedObjects,omitempty"`
 }
 
 // +kubebuilder:object:root=true

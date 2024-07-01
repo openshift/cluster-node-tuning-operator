@@ -5,13 +5,16 @@ import (
 	"context"
 	"time"
 
+	apiconfigv1 "github.com/openshift/api/config/v1"
 	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
 	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 	corev1 "k8s.io/api/core/v1"
+	nodev1 "k8s.io/api/node/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -260,4 +263,34 @@ func removeUnMatchedTunedProfiles(nodes []corev1.Node, profiles []tunedv1.Profil
 		}
 	}
 	return filteredProfiles
+}
+
+func getRelatedObjects(profile *performancev2.PerformanceProfile) []apiconfigv1.ObjectReference {
+	// 'Resource' should be in lowercase and plural
+	// See BZ1851214
+	// See https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#dns-subdomain-names
+	ret := []apiconfigv1.ObjectReference{
+		{
+			Group:    mcov1.GroupName,
+			Resource: "kubeletconfigs",
+			Name:     components.GetComponentName(profile.Name, components.ComponentNamePrefix),
+		},
+		{
+			Group:    mcov1.GroupName,
+			Resource: "machineconfigs",
+			Name:     machineconfig.GetMachineConfigName(profile.Name),
+		},
+		{
+			Group:     tunedv1.SchemeGroupVersion.Group,
+			Resource:  "tuneds",
+			Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
+			Namespace: components.NamespaceNodeTuningOperator,
+		},
+		{
+			Group:    nodev1.SchemeGroupVersion.Group,
+			Resource: "runtimeclasses",
+			Name:     components.GetComponentName(profile.Name, components.ComponentNamePrefix),
+		},
+	}
+	return ret
 }
