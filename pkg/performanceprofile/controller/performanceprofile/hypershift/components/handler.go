@@ -17,9 +17,7 @@ import (
 
 	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift"
@@ -27,12 +25,11 @@ import (
 )
 
 const (
-	hypershiftPerformanceProfileNameLabel = "hypershift.openshift.io/performanceProfileName"
-	hypershiftNodePoolLabel               = "hypershift.openshift.io/nodePool"
-	tunedConfigMapLabel                   = "hypershift.openshift.io/tuned-config"
-	tunedConfigMapConfigKey               = "tuning"
-	mcoConfigMapConfigKey                 = "config"
-	ntoGeneratedMachineConfigLabel        = "hypershift.openshift.io/nto-generated-machine-config"
+	hypershiftNodePoolLabel        = "hypershift.openshift.io/nodePool"
+	tunedConfigMapLabel            = "hypershift.openshift.io/tuned-config"
+	tunedConfigMapConfigKey        = "tuning"
+	mcoConfigMapConfigKey          = "config"
+	ntoGeneratedMachineConfigLabel = "hypershift.openshift.io/nto-generated-machine-config"
 )
 
 var _ components.Handler = &handler{}
@@ -73,26 +70,9 @@ func (h *handler) Delete(ctx context.Context, profileName string) error {
 }
 
 func (h *handler) Exists(ctx context.Context, profileName string) bool {
-	operatorNamespace := config.OperatorNamespace()
-	tunedName := components.GetComponentName(profileName, components.ProfileNamePerformance)
-	if _, err := resources.GetTuned(ctx, h.controlPlaneClient, tunedName, operatorNamespace); !k8serrors.IsNotFound(err) {
-		klog.Infof("Tuned %q is still exists in the namespace %q", tunedName, operatorNamespace)
-		return true
-	}
-
 	name := components.GetComponentName(profileName, components.ComponentNamePrefix)
-	if _, err := resources.GetKubeletConfig(ctx, h.controlPlaneClient, name); !k8serrors.IsNotFound(err) {
-		klog.Infof("Kubelet Config %q exists in the namespace %q", name, operatorNamespace)
-		return true
-	}
-
 	if _, err := resources.GetRuntimeClass(ctx, h.dataPlaneClient, name); !k8serrors.IsNotFound(err) {
 		klog.Infof("Runtime class %q exists in the hosted cluster", name)
-		return true
-	}
-
-	if _, err := resources.GetMachineConfig(ctx, h.controlPlaneClient, machineconfig.GetMachineConfigName(profileName)); !k8serrors.IsNotFound(err) {
-		klog.Infof("Machine Config %q exists in the namespace %q", name, operatorNamespace)
 		return true
 	}
 	return false
@@ -113,6 +93,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	if err := hypershift.DecodeManifest([]byte(s), h.scheme, profile); err != nil {
 		return err
 	}
+	klog.V(4).InfoS("PerformanceProfile decoded successfully from ConfigMap data", "PerformanceProfileName", profile.Name, "ConfigMapName", instance.GetName())
 
 	if profileutil.IsPaused(profile) {
 		klog.Infof("ignoring reconcile loop for pause performance profile %s", profile.Name)
@@ -199,7 +180,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if runtimeClassMutated != nil {
-		err = resources.CreateOrUpdateRuntimeClass(ctx, h.dataPlaneClient, mfs.RuntimeClass)
+		err = resources.CreateOrUpdateRuntimeClass(ctx, h.dataPlaneClient, runtimeClassMutated)
 		if err != nil {
 			return err
 		}
@@ -267,8 +248,8 @@ func configMapMeta(name, profileName, namespace, npNamespacedName string) *corev
 			Namespace: namespace,
 			Name:      name,
 			Labels: map[string]string{
-				hypershiftPerformanceProfileNameLabel: profileName,
-				hypershiftNodePoolLabel:               parseNamespacedName(npNamespacedName),
+				hypershift.PerformanceProfileNameLabel: profileName,
+				hypershiftNodePoolLabel:                parseNamespacedName(npNamespacedName),
 			},
 			Annotations: map[string]string{
 				hypershiftNodePoolLabel: npNamespacedName,

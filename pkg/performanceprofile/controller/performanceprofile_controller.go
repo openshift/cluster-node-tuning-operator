@@ -33,6 +33,7 @@ import (
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/status"
 
@@ -174,43 +175,89 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Manager, managementCluster cluster.Cluster) error {
 	// Running on HyperShift controller should watch for the ConfigMaps created by HyperShift Operator in the
 	// controller namespace with the right label.
-	p := predicate.Funcs{
+	performanceProfileConfigMapPredicate := predicate.Funcs{
 		UpdateFunc: func(ue event.UpdateEvent) bool {
 			if !validateUpdateEvent(&ue) {
 				klog.V(4).InfoS("UpdateEvent not valid", "objectName", ue.ObjectOld.GetName())
 				return false
 			}
-			return validateLabels(ue.ObjectNew, "UpdateEvent")
+			return validateLabels(ue.ObjectNew, controllerGeneratedMachineConfig, "UpdateEvent")
 		},
 		CreateFunc: func(ce event.CreateEvent) bool {
 			if ce.Object == nil {
 				klog.Error("Create event has no runtime object")
 				return false
 			}
-			return validateLabels(ce.Object, "CreateEvent")
+			return validateLabels(ce.Object, controllerGeneratedMachineConfig, "CreateEvent")
 		},
 		DeleteFunc: func(de event.DeleteEvent) bool {
 			if de.Object == nil {
 				klog.Error("Delete event has no runtime object")
 				return false
 			}
-			return validateLabels(de.Object, "DeleteEvent")
+			return validateLabels(de.Object, controllerGeneratedMachineConfig, "DeleteEvent")
+		},
+	}
+	OwnedObjectsConfigMapsPredicates := predicate.Funcs{
+		UpdateFunc: func(ue event.UpdateEvent) bool {
+			if !validateUpdateEvent(&ue) {
+				klog.V(4).InfoS("UpdateEvent not valid", "objectName", ue.ObjectOld.GetName())
+				return false
+			}
+			return validateLabels(ue.ObjectNew, hypershift.PerformanceProfileNameLabel, "UpdateEvent")
+		},
+		CreateFunc: func(ce event.CreateEvent) bool {
+			if ce.Object == nil {
+				klog.Error("Create event has no runtime object")
+				return false
+			}
+			return validateLabels(ce.Object, hypershift.PerformanceProfileNameLabel, "CreateEvent")
+		},
+		DeleteFunc: func(de event.DeleteEvent) bool {
+			if de.Object == nil {
+				klog.Error("Delete event has no runtime object")
+				return false
+			}
+			return validateLabels(de.Object, hypershift.PerformanceProfileNameLabel, "DeleteEvent")
+		},
+	}
+
+	rtClassPredicate := predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if !validateUpdateEvent(&e) {
+				return false
+			}
+			return e.ObjectNew.GetGeneration() != e.ObjectOld.GetGeneration() ||
+				!apiequality.Semantic.DeepEqual(e.ObjectNew.GetLabels(), e.ObjectOld.GetLabels())
 		},
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("performanceprofile_controller").
-		WatchesRawSource(source.Kind(managementCluster.GetCache(), &corev1.ConfigMap{}),
+		// we can't use For() and Owns(), because this calls are using the cache of the hosted cluster's client.
+		// instead, we explicitly set a watch using the cache of the management cluster.
+		WatchesRawSource(source.Kind(managementCluster.GetCache(),
+			&corev1.ConfigMap{}),
 			&handler.EnqueueRequestForObject{},
-			builder.WithPredicates(p)).Complete(r)
+			builder.WithPredicates(performanceProfileConfigMapPredicate)).
+		WatchesRawSource(source.Kind(managementCluster.GetCache(),
+			&corev1.ConfigMap{}),
+			handler.EnqueueRequestForOwner(r.ManagementClient.Scheme(), r.ManagementClient.RESTMapper(), &corev1.ConfigMap{}, handler.OnlyControllerOwner()),
+			builder.WithPredicates(OwnedObjectsConfigMapsPredicates)).
+		// the controller watches over the RuntimeClass in the hosted cluster
+		WatchesRawSource(source.Kind(mgr.GetCache(),
+			&nodev1.RuntimeClass{}),
+			handler.EnqueueRequestForOwner(mgr.GetScheme(), mgr.GetRESTMapper(), &corev1.ConfigMap{}, handler.OnlyControllerOwner()),
+			builder.WithPredicates(rtClassPredicate)).
+		Complete(r)
 }
 
-func validateLabels(obj client.Object, eventType string) bool {
-	_, hasLabel := obj.GetLabels()[controllerGeneratedMachineConfig]
-	if hasLabel {
-		klog.V(4).InfoS("Label found", "label", controllerGeneratedMachineConfig, "eventType", eventType, "objectName", obj.GetName())
+func validateLabels(obj client.Object, label, eventType string) bool {
+	if _, ok := obj.GetLabels()[label]; ok {
+		klog.V(4).InfoS("Label found", "label", label, "eventType", eventType, "objectName", obj.GetName())
+		return true
 	}
-	return hasLabel
+	return false
 }
 
 func (r *PerformanceProfileReconciler) mcpToPerformanceProfile(ctx context.Context, mcpObj client.Object) []reconcile.Request {
@@ -483,7 +530,6 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return reconcile.Result{}, err
 	}
 	err = r.StatusWriter.UpdateOwnedConditions(ctx, instance)
-
 	if err != nil {
 		klog.Errorf("failed to update performance profile %q status: %v", instance.GetName(), err)
 	}
