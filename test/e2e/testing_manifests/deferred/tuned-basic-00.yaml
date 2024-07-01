@@ -1,0 +1,22 @@
+apiVersion: tuned.openshift.io/v1
+kind: Tuned
+metadata:
+  name: ocp-prof-deferred-basic-00
+  namespace: openshift-cluster-node-tuning-operator
+  annotations:
+    verificationCommand: "[\"/usr/sbin/sysctl\", \"-n\", \"kernel.shmmni\"]"
+    verificationOutput: "8192"
+spec:
+  profile:
+  - data: |
+      [main]
+      summary=Custom OpenShift profile
+      include=openshift-node
+      [sysctl]
+      kernel.shmmni=8192
+    name: test-shmmni
+  recommend:
+  - match:
+    - label: node-role.kubernetes.io/worker
+    priority: 20
+    profile: test-shmmni
