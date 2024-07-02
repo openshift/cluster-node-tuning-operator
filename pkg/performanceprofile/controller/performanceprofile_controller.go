@@ -61,9 +61,9 @@ import (
 )
 
 const (
-	openshiftFinalizer               = "foreground-deletion"
-	hypershiftFinalizer              = "hypershift.openshift.io/foreground-deletion"
-	controllerGeneratedMachineConfig = "hypershift.openshift.io/performanceprofile-config"
+	openshiftFinalizer                    = "foreground-deletion"
+	hypershiftFinalizer                   = "hypershift.openshift.io/foreground-deletion"
+	ControllerGeneratedPerformanceProfile = "hypershift.openshift.io/performanceprofile-config"
 )
 
 // PerformanceProfileReconciler reconciles a PerformanceProfile object
@@ -181,21 +181,21 @@ func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Ma
 				klog.V(4).InfoS("UpdateEvent not valid", "objectName", ue.ObjectOld.GetName())
 				return false
 			}
-			return validateLabels(ue.ObjectNew, controllerGeneratedMachineConfig, "UpdateEvent")
+			return validateLabels(ue.ObjectNew, ControllerGeneratedPerformanceProfile, "UpdateEvent")
 		},
 		CreateFunc: func(ce event.CreateEvent) bool {
 			if ce.Object == nil {
 				klog.Error("Create event has no runtime object")
 				return false
 			}
-			return validateLabels(ce.Object, controllerGeneratedMachineConfig, "CreateEvent")
+			return validateLabels(ce.Object, ControllerGeneratedPerformanceProfile, "CreateEvent")
 		},
 		DeleteFunc: func(de event.DeleteEvent) bool {
 			if de.Object == nil {
 				klog.Error("Delete event has no runtime object")
 				return false
 			}
-			return validateLabels(de.Object, controllerGeneratedMachineConfig, "DeleteEvent")
+			return validateLabels(de.Object, ControllerGeneratedPerformanceProfile, "DeleteEvent")
 		},
 	}
 	OwnedObjectsConfigMapsPredicates := predicate.Funcs{

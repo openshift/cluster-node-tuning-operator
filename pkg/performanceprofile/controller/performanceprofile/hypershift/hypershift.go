@@ -16,12 +16,10 @@ import (
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	hypershift "github.com/openshift/cluster-node-tuning-operator/pkg/operator"
 )
 
-// a set of keys which used to classify the encapsulated objects in the ConfigMap
 const (
-	TuningKey                   = "tuning"
-	ConfigKey                   = "config"
 	HostedClustersNamespaceName = "clusters"
 	PerformanceProfileNameLabel = "hypershift.openshift.io/performanceProfileName"
 )
@@ -97,9 +95,9 @@ func validateAndExtractObjectFromConfigMap(cm *corev1.ConfigMap, scheme *runtime
 	var manifest string
 	switch obj.(type) {
 	case *performancev2.PerformanceProfile, *tunedv1.Tuned:
-		manifest = cm.Data[TuningKey]
+		manifest = cm.Data[hypershift.TuningConfigMapConfigKey]
 	case *machineconfigv1.KubeletConfig, *machineconfigv1.MachineConfig:
-		manifest = cm.Data[ConfigKey]
+		manifest = cm.Data[hypershift.McConfigMapDataKey]
 	default:
 		return fmt.Errorf("unsupported config type: %T", obj)
 	}
@@ -115,7 +113,7 @@ func (ci *ControlPlaneClientImpl) createInConfigMap(ctx context.Context, obj cli
 	if err != nil {
 		return err
 	}
-	cm.Data = map[string]string{TuningKey: string(b)}
+	cm.Data = map[string]string{hypershift.TuningConfigMapConfigKey: string(b)}
 	return ci.Client.Create(ctx, cm, opts...)
 }
 

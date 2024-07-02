@@ -17,6 +17,7 @@ import (
 
 	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	hypershiftoperator "github.com/openshift/cluster-node-tuning-operator/pkg/operator"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
@@ -25,11 +26,7 @@ import (
 )
 
 const (
-	hypershiftNodePoolLabel        = "hypershift.openshift.io/nodePool"
-	tunedConfigMapLabel            = "hypershift.openshift.io/tuned-config"
-	tunedConfigMapConfigKey        = "tuning"
-	mcoConfigMapConfigKey          = "config"
-	ntoGeneratedMachineConfigLabel = "hypershift.openshift.io/nto-generated-machine-config"
+	hypershiftPerformanceProfileNameLabel = "hypershift.openshift.io/performanceProfileName"
 )
 
 var _ components.Handler = &handler{}
@@ -84,9 +81,9 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 		return fmt.Errorf("wrong type conversion; want=ConfigMap got=%T", obj)
 	}
 
-	s, ok := instance.Data[hypershift.TuningKey]
+	s, ok := instance.Data[hypershiftoperator.TuningConfigMapConfigKey]
 	if !ok {
-		return fmt.Errorf("key named %q not found in ConfigMap %q", hypershift.TuningKey, client.ObjectKeyFromObject(obj).String())
+		return fmt.Errorf("key named %q not found in ConfigMap %q", hypershiftoperator.TuningConfigMapConfigKey, client.ObjectKeyFromObject(obj).String())
 	}
 
 	profile := &performancev2.PerformanceProfile{}
@@ -147,7 +144,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if mcMutated != nil {
-		cm, err := h.encapsulateObjInConfigMap(instance, mfs.MachineConfig, profile.Name, mcoConfigMapConfigKey, ntoGeneratedMachineConfigLabel)
+		cm, err := h.encapsulateObjInConfigMap(instance, mfs.MachineConfig, profile.Name, hypershiftoperator.McConfigMapDataKey, hypershiftoperator.OperatorGeneratedMachineConfig)
 		if err != nil {
 			return err
 		}
@@ -158,7 +155,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if kcMutated != nil {
-		cm, err := h.encapsulateObjInConfigMap(instance, mfs.KubeletConfig, profile.Name, mcoConfigMapConfigKey, ntoGeneratedMachineConfigLabel)
+		cm, err := h.encapsulateObjInConfigMap(instance, mfs.KubeletConfig, profile.Name, hypershiftoperator.McConfigMapDataKey, hypershiftoperator.OperatorGeneratedMachineConfig)
 		if err != nil {
 			return err
 		}
@@ -169,7 +166,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if performanceTunedMutated != nil {
-		cm, err := h.encapsulateObjInConfigMap(instance, mfs.Tuned, profile.Name, tunedConfigMapConfigKey, tunedConfigMapLabel)
+		cm, err := h.encapsulateObjInConfigMap(instance, mfs.Tuned, profile.Name, hypershiftoperator.TuningConfigMapConfigKey, hypershiftoperator.TunedConfigMapLabel)
 		if err != nil {
 			return err
 		}
@@ -180,7 +177,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if runtimeClassMutated != nil {
-		err = resources.CreateOrUpdateRuntimeClass(ctx, h.dataPlaneClient, runtimeClassMutated)
+		err = resources.CreateOrUpdateRuntimeClass(ctx, h.dataPlaneClient, mfs.RuntimeClass)
 		if err != nil {
 			return err
 		}
@@ -201,9 +198,9 @@ func (h *handler) encapsulateObjInConfigMap(instance *corev1.ConfigMap, object c
 	if err != nil {
 		return nil, err
 	}
-	nodePoolNamespacedName, ok := instance.Annotations[hypershiftNodePoolLabel]
+	nodePoolNamespacedName, ok := instance.Annotations[hypershiftoperator.HypershiftNodePoolLabel]
 	if !ok {
-		return nil, fmt.Errorf("annotation %q not found in ConfigMap %q annotations", hypershiftNodePoolLabel, client.ObjectKeyFromObject(instance).String())
+		return nil, fmt.Errorf("annotation %q not found in ConfigMap %q annotations", hypershiftoperator.HypershiftNodePoolLabel, client.ObjectKeyFromObject(instance).String())
 	}
 
 	name := fmt.Sprintf("%s-%s", strings.ToLower(object.GetObjectKind().GroupVersionKind().Kind), instance.Name)
@@ -221,21 +218,21 @@ func (h *handler) encapsulateObjInConfigMap(instance *corev1.ConfigMap, object c
 
 func createOrUpdateTunedConfigMap(ctx context.Context, cli client.Client, cm *corev1.ConfigMap) error {
 	updateFunc := func(orig, dst *corev1.ConfigMap) {
-		dst.Data[tunedConfigMapConfigKey] = orig.Data[tunedConfigMapConfigKey]
+		dst.Data[hypershiftoperator.TuningConfigMapConfigKey] = orig.Data[hypershiftoperator.TuningConfigMapConfigKey]
 	}
 	return createOrUpdateConfigMap(ctx, cli, cm, updateFunc)
 }
 
 func createOrUpdateMachineConfigConfigMap(ctx context.Context, cli client.Client, cm *corev1.ConfigMap) error {
 	machineconfigConfigMapUpdateFunc := func(orig, dst *corev1.ConfigMap) {
-		dst.Data[mcoConfigMapConfigKey] = orig.Data[mcoConfigMapConfigKey]
+		dst.Data[hypershiftoperator.McConfigMapDataKey] = orig.Data[hypershiftoperator.McConfigMapDataKey]
 	}
 	return createOrUpdateConfigMap(ctx, cli, cm, machineconfigConfigMapUpdateFunc)
 }
 
 func createOrUpdateKubeletConfigConfigMap(ctx context.Context, cli client.Client, cm *corev1.ConfigMap) error {
 	kubeletConfigConfigMapUpdateFunc := func(orig, dst *corev1.ConfigMap) {
-		dst.Data[mcoConfigMapConfigKey] = orig.Data[mcoConfigMapConfigKey]
+		dst.Data[hypershiftoperator.McConfigMapDataKey] = orig.Data[hypershiftoperator.McConfigMapDataKey]
 	}
 	return createOrUpdateConfigMap(ctx, cli, cm, kubeletConfigConfigMapUpdateFunc)
 }
@@ -248,11 +245,11 @@ func configMapMeta(name, profileName, namespace, npNamespacedName string) *corev
 			Namespace: namespace,
 			Name:      name,
 			Labels: map[string]string{
-				hypershift.PerformanceProfileNameLabel: profileName,
-				hypershiftNodePoolLabel:                parseNamespacedName(npNamespacedName),
+				hypershiftPerformanceProfileNameLabel:      profileName,
+				hypershiftoperator.HypershiftNodePoolLabel: parseNamespacedName(npNamespacedName),
 			},
 			Annotations: map[string]string{
-				hypershiftNodePoolLabel: npNamespacedName,
+				hypershiftoperator.HypershiftNodePoolLabel: npNamespacedName,
 			},
 		},
 	}

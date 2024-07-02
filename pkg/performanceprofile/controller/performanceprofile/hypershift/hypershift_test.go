@@ -14,6 +14,7 @@ import (
 
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	hypershift "github.com/openshift/cluster-node-tuning-operator/pkg/operator"
 )
 
 func TestControlPlaneClientImpl_Get(t *testing.T) {
@@ -120,7 +121,7 @@ spec:
 						Namespace: namespace,
 					},
 					Data: map[string]string{
-						ConfigKey: machineConfig1,
+						hypershift.McConfigMapDataKey: machineConfig1,
 					},
 					BinaryData: nil,
 				},
@@ -130,7 +131,7 @@ spec:
 						Namespace: namespace,
 					},
 					Data: map[string]string{
-						ConfigKey: coreMachineConfig1,
+						hypershift.McConfigMapDataKey: coreMachineConfig1,
 					},
 				},
 			},
@@ -151,7 +152,7 @@ spec:
 						Namespace: namespace,
 					},
 					Data: map[string]string{
-						TuningKey: perfprofOne,
+						hypershift.TuningConfigMapConfigKey: perfprofOne,
 					},
 				},
 			},
@@ -185,7 +186,7 @@ spec:
 						Namespace: namespace,
 					},
 					Data: map[string]string{
-						ConfigKey: machineConfig1,
+						hypershift.McConfigMapDataKey: machineConfig1,
 					},
 					BinaryData: nil,
 				},
@@ -195,7 +196,7 @@ spec:
 						Namespace: namespace,
 					},
 					Data: map[string]string{
-						ConfigKey: coreMachineConfig1,
+						hypershift.McConfigMapDataKey: coreMachineConfig1,
 					},
 				},
 				&corev1.ConfigMap{
@@ -204,7 +205,7 @@ spec:
 						Namespace: namespace,
 					},
 					Data: map[string]string{
-						ConfigKey: kubeletConfig1,
+						hypershift.McConfigMapDataKey: kubeletConfig1,
 					},
 				},
 			},
@@ -225,7 +226,7 @@ spec:
 						Namespace: "wrong-namespace",
 					},
 					Data: map[string]string{
-						ConfigKey: machineConfig1,
+						hypershift.McConfigMapDataKey: machineConfig1,
 					},
 					BinaryData: nil,
 				},
