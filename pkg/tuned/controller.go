@@ -76,6 +76,7 @@ const (
 	tunedGracefulExitWait = time.Second * time.Duration(10)
 	ocpTunedHome          = "/var/lib/ocp-tuned"
 	ocpTunedRunDir        = "/run/" + programName
+	ocpTunedPersist       = ocpTunedRunDir + "/persist"
 	ocpTunedProvider      = ocpTunedHome + "/provider"
 	// With the less aggressive rate limiter, retries will happen at 100ms*2^(retry_n-1):
 	// 100ms, 200ms, 400ms, 800ms, 1.6s, 3.2s, 6.4s, 12.8s, 25.6s, 51.2s, 102.4s, 3.4m, 6.8m, 13.7m, 27.3m
@@ -473,36 +474,11 @@ func providerSync(provider string) (bool, error) {
 	return true, providerExtract(provider)
 }
 
-// switchTunedHome changes "native" container's home directory as defined by the
-// Containerfile to the container's home directory on the host itself.
-func switchTunedHome() error {
-	const (
-		ocpTunedHomeHost = "/host" + ocpTunedHome
-	)
-
-	// Create the container's home directory on the host.
-	if err := os.MkdirAll(ocpTunedHomeHost, os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create directory %q: %v", ocpTunedHomeHost, err)
-	}
-
-	// Delete the container's home directory.
-	if err := util.Delete(ocpTunedHome); err != nil {
-		return fmt.Errorf("failed to delete: %q: %v", ocpTunedHome, err)
-	}
-
-	if err := util.Symlink(ocpTunedHomeHost, ocpTunedHome); err != nil {
-		return fmt.Errorf("failed to link %q -> %q: %v", ocpTunedHome, ocpTunedHomeHost, err)
-	}
-
-	err := os.Chdir(ocpTunedHome)
-	if err != nil {
+func prepareOpenShiftTunedDir() error {
+	if err := TunedRsyncEtcToHost(); err != nil {
 		return err
 	}
 
-	return nil
-}
-
-func prepareOpenShiftTunedDir() error {
 	// Create the following directories unless they exist.
 	dirs := []string{
 		tunedRecommendDirHost,
@@ -1279,10 +1255,20 @@ func retryLoop(c *Controller) (err error) {
 }
 
 func RunInCluster(stopCh <-chan struct{}, version string) error {
+	const (
+		// The persistent ocp-tuned TuneD artifacts directory.
+		ocpTunedHomeHost = "/host/var/lib/ocp-tuned"
+	)
+
 	klog.Infof("starting in-cluster %s %s", programName, version)
 
-	if err := switchTunedHome(); err != nil {
-		return err
+	if err := os.MkdirAll(ocpTunedHomeHost, os.ModePerm); err != nil {
+		return fmt.Errorf("failed to create %q: %v", ocpTunedHomeHost, err)
+	}
+
+	// Symlink to the persistent ocp-tuned and TuneD artifacts directory on the host.
+	if err := util.Symlink(ocpTunedHomeHost, ocpTunedPersist); err != nil {
+		return fmt.Errorf("failed to link %q -> %q: %v", ocpTunedPersist, ocpTunedHomeHost, err)
 	}
 
 	if err := prepareOpenShiftTunedDir(); err != nil {
