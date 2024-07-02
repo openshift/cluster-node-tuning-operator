@@ -475,16 +475,15 @@ func providerSync(provider string) (bool, error) {
 }
 
 func prepareOpenShiftTunedDir() error {
+	if err := TunedRsyncEtcToHost(); err != nil {
+		return err
+	}
+
 	// Create the following directories unless they exist.
 	dirs := []string{
 		tunedRecommendDirHost,
 		tunedProfilesDirCustomHost,
 	}
-
-	if err := TunedRsyncEtcToHost(); err != nil {
-		return err
-	}
-
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, os.ModePerm); err != nil {
 			return fmt.Errorf("failed to create directory %q: %v", d, err)
@@ -1257,10 +1256,15 @@ func retryLoop(c *Controller) (err error) {
 
 func RunInCluster(stopCh <-chan struct{}, version string) error {
 	const (
+		// The persistent ocp-tuned TuneD artifacts directory.
 		ocpTunedHomeHost = "/host/var/lib/ocp-tuned"
 	)
 
 	klog.Infof("starting in-cluster %s %s", programName, version)
+
+	if err := os.MkdirAll(ocpTunedHomeHost, os.ModePerm); err != nil {
+		return fmt.Errorf("failed to create %q: %v", ocpTunedHomeHost, err)
+	}
 
 	// Symlink to the persistent ocp-tuned and TuneD artifacts directory on the host.
 	if err := util.Symlink(ocpTunedHomeHost, ocpTunedPersist); err != nil {
