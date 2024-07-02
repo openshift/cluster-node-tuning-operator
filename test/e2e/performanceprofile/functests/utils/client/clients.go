@@ -8,6 +8,7 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog"
 
 	apiv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -137,7 +138,12 @@ func NewDataPlane() (client.Client, error) {
 
 // NewK8s returns a kubernetes clientset
 func NewK8s() (*kubernetes.Clientset, error) {
-	cfg, err := config.GetConfig()
+	cfg, err := func() (*rest.Config, error) {
+		if hypershiftutils.IsHypershiftCluster() {
+			return hypershiftutils.BuildRestConfig()
+		}
+		return config.GetConfig()
+	}()
 	if err != nil {
 		return nil, err
 	}
@@ -149,10 +155,10 @@ func NewK8s() (*kubernetes.Clientset, error) {
 	return clientset, nil
 }
 
-func GetWithRetry(ctx context.Context, key client.ObjectKey, obj client.Object) error {
+func GetWithRetry(ctx context.Context, cli client.Client, key client.ObjectKey, obj client.Object) error {
 	var err error
 	EventuallyWithOffset(1, func() error {
-		err = Client.Get(ctx, key, obj)
+		err = cli.Get(ctx, key, obj)
 		if err != nil {
 			testlog.Infof("Getting %s failed, retrying: %v", key.Name, err)
 		}
