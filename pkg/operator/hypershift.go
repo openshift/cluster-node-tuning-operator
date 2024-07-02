@@ -29,12 +29,12 @@ const (
 	hypershiftNodePoolNameLabel  = "hypershift.openshift.io/nodePoolName"
 
 	tunedConfigMapLabel      = "hypershift.openshift.io/tuned-config"
-	tuningConfigMapConfigKey = "tuning"
+	TuningConfigMapConfigKey = "tuning"
 	// TODO remove once HyperShift has switched to using new key.
 	tunedConfigMapConfigKeyDeprecated = "tuned"
 
 	operatorGeneratedMachineConfig = "hypershift.openshift.io/nto-generated-machine-config"
-	mcConfigMapDataKey             = "config"
+	McConfigMapDataKey             = "config"
 	generatedConfigMapPrefix       = "nto-mc-"
 )
 
@@ -131,11 +131,11 @@ func (c *Controller) getObjFromTunedConfigMap() ([]tunedv1.Tuned, error) {
 
 	seenTunedObject := map[string]bool{}
 	for _, cm := range cmList.Items {
-		tunedConfig, ok := cm.Data[tuningConfigMapConfigKey]
+		tunedConfig, ok := cm.Data[TuningConfigMapConfigKey]
 		if !ok {
 			tunedConfig, ok = cm.Data[tunedConfigMapConfigKeyDeprecated]
 			if !ok {
-				klog.Warningf("ConfigMap %s has no data in field %s or %s (deprecated). Expected Tuned manifests.", cm.ObjectMeta.Name, tuningConfigMapConfigKey, tunedConfigMapConfigKeyDeprecated)
+				klog.Warningf("ConfigMap %s has no data in field %s or %s (deprecated). Expected Tuned manifests.", cm.ObjectMeta.Name, TuningConfigMapConfigKey, tunedConfigMapConfigKeyDeprecated)
 				continue
 			} else {
 				klog.Infof("Deprecated key %s used in ConfigMap %s", tunedConfigMapConfigKeyDeprecated, cm.ObjectMeta.Name)
@@ -243,7 +243,7 @@ func (c *Controller) getMachineConfigFromConfigMap(config *corev1.ConfigMap) (*m
 		serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true},
 	)
 
-	manifest := []byte(config.Data[mcConfigMapDataKey])
+	manifest := []byte(config.Data[McConfigMapDataKey])
 	cr, _, err := YamlSerializer.Decode(manifest, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding MachineConfig from ConfigMap: %s, %v", config.Name, err)
@@ -276,7 +276,7 @@ func (c *Controller) newConfigMapForMachineConfig(configMapName string, nodePool
 			},
 		},
 		Data: map[string]string{
-			mcConfigMapDataKey: string(mcManifest),
+			McConfigMapDataKey: string(mcManifest),
 		},
 	}
 

@@ -942,7 +942,7 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 		klog.Errorf("failed to serialize ConfigMap for MachineConfig %s: %v", mc.Name, err)
 		return nil
 	}
-	mcConfigMap.Data[mcConfigMapDataKey] = string(newData)
+	mcConfigMap.Data[McConfigMapDataKey] = string(newData)
 	for k, v := range neededLabels {
 		mcConfigMap.Labels[k] = v
 	}
