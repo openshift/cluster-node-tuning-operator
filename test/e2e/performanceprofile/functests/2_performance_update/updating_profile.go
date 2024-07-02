@@ -567,7 +567,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 	})
 
-	Context("Offlined CPU API", Ordered, Label(string(label.Offline), string(label.Tier2)), func() {
+	Context("Offlined CPU API", Ordered, Label(string(label.OfflineCPUs), string(label.Tier2)), func() {
 		var numaCoreSiblings map[int]map[int][]int
 		BeforeAll(func() {
 			//Saving the old performance profile
