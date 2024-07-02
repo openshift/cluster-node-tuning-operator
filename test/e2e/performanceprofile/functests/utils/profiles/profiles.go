@@ -49,7 +49,7 @@ func GetByNodeLabels(nodeLabels map[string]string) (*performancev2.PerformancePr
 func WaitForDeletion(profileKey types.NamespacedName, timeout time.Duration) error {
 	return wait.PollUntilContextTimeout(context.TODO(), time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		prof := &performancev2.PerformanceProfile{}
-		if err := testclient.Client.Get(ctx, profileKey, prof); errors.IsNotFound(err) {
+		if err := testclient.ControlPlaneClient.Get(ctx, profileKey, prof); errors.IsNotFound(err) {
 			return true, nil
 		}
 		return false, nil
@@ -92,7 +92,7 @@ func GetConditionWithStatus(nodeLabels map[string]string, conditionType v1.Condi
 // All gets all the exiting profiles in the cluster
 func All() (*performancev2.PerformanceProfileList, error) {
 	profiles := &performancev2.PerformanceProfileList{}
-	if err := testclient.Client.List(context.TODO(), profiles); err != nil {
+	if err := testclient.ControlPlaneClient.List(context.TODO(), profiles); err != nil {
 		return nil, err
 	}
 	return profiles, nil
@@ -102,11 +102,11 @@ func UpdateWithRetry(profile *performancev2.PerformanceProfile) {
 	EventuallyWithOffset(1, func() error {
 		profileFromAPIServer := &performancev2.PerformanceProfile{}
 		// get the current resourceVersion
-		if err := testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(profile), profileFromAPIServer); err != nil {
+		if err := testclient.ControlPlaneClient.Get(context.TODO(), client.ObjectKeyFromObject(profile), profileFromAPIServer); err != nil {
 			return err
 		}
 		prepared := prepareForUpdate(profile, profileFromAPIServer)
-		if err := testclient.Client.Update(context.TODO(), prepared); err != nil {
+		if err := testclient.ControlPlaneClient.Update(context.TODO(), prepared); err != nil {
 			if !errors.IsConflict(err) {
 				testlog.Errorf("failed to update the profile %q: %v", profile.Name, err)
 			}
@@ -125,14 +125,14 @@ func WaitForCondition(nodeLabels map[string]string, conditionType v1.ConditionTy
 // Delete delete the existing profile by name
 func Delete(name string) error {
 	profile := &performancev2.PerformanceProfile{}
-	if err := testclient.Client.Get(context.TODO(), types.NamespacedName{Name: name}, profile); err != nil {
+	if err := testclient.ControlPlaneClient.Get(context.TODO(), types.NamespacedName{Name: name}, profile); err != nil {
 		if errors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
 
-	if err := testclient.Client.Delete(context.TODO(), profile); err != nil {
+	if err := testclient.ControlPlaneClient.Delete(context.TODO(), profile); err != nil {
 		return err
 	}
 	key := client.ObjectKey{

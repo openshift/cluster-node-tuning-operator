@@ -64,7 +64,7 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 				Namespace: components.NamespaceNodeTuningOperator,
 			}
 			tuned := &tunedv1.Tuned{}
-			err = testclient.GetWithRetry(context.TODO(), key, tuned)
+			err = testclient.GetWithRetry(context.TODO(), testclient.Client, key, tuned)
 			Expect(err).ToNot(HaveOccurred(), "cannot find the Cluster Node Tuning Operator Tuned object "+key.String())
 			tunedNamespacedname := types.NamespacedName{
 				Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
@@ -84,7 +84,7 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 				Namespace: metav1.NamespaceAll,
 			}
 			runtimeClass := &nodev1.RuntimeClass{}
-			err = testclient.GetWithRetry(context.TODO(), key, runtimeClass)
+			err = testclient.GetWithRetry(context.TODO(), testclient.Client, key, runtimeClass)
 			Expect(err).ToNot(HaveOccurred(), "cannot find the RuntimeClass object "+key.String())
 
 			Expect(profile.Status.RuntimeClass).NotTo(BeNil())

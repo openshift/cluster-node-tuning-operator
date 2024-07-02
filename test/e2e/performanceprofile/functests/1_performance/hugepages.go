@@ -44,7 +44,7 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 		isSNO, err := cluster.IsSingleNode()
 		Expect(err).ToNot(HaveOccurred())
 		RunningOnSingleNode = isSNO
-		cgroupV2, err = cgroup.IsVersion2(ctx, testclient.Client)
+		cgroupV2, err = cgroup.IsVersion2(ctx, testclient.DataPlaneClient)
 		Expect(err).ToNot(HaveOccurred())
 
 	})
@@ -126,7 +126,7 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 		var testpod *corev1.Pod
 
 		AfterEach(func() {
-			err := testclient.Client.Delete(context.TODO(), testpod)
+			err := testclient.DataPlaneClient.Delete(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
 
 			err = pods.WaitForDeletion(context.TODO(), testpod, pods.DefaultDeletionTimeout*time.Second)
@@ -162,7 +162,7 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 				corev1.ResourceName(fmt.Sprintf("hugepages-%si", hpSize)): resource.MustParse(fmt.Sprintf("%si", hpSize)),
 				corev1.ResourceMemory: resource.MustParse("1Gi"),
 			}
-			err = testclient.Client.Create(context.TODO(), testpod)
+			err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
 			testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 			Expect(err).ToNot(HaveOccurred())

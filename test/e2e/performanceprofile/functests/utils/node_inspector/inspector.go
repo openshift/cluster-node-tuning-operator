@@ -19,7 +19,9 @@ import (
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/daemonset"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/namespaces"
 	testpods "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 )
 
@@ -27,50 +29,81 @@ const serviceAccountSuffix = "sa"
 const clusterRoleSuffix = "cr"
 const clusterRoleBindingSuffix = "crb"
 
-func Create(cli client.Client, namespace, name, image string) error {
-	serviceAccountName := fmt.Sprintf("%s-%s", name, serviceAccountSuffix)
-	sa := createServiceAccount(serviceAccountName, namespace)
-	if err := cli.Create(context.Background(), sa); err != nil && !errors.IsAlreadyExists(err) {
+var initialized bool
+var namespace *corev1.Namespace = namespaces.NodeInspectorNamespace
+var nodeInspectorName = testutils.NodeInspectorName
+
+// initialize would be used to lazy initialize the node inspector
+func initialize() error {
+	if initialized {
+		return nil
+	}
+	// Create the test namespace
+	err := testclient.DataPlaneClient.Create(context.TODO(), namespace)
+	if err != nil && !errors.IsAlreadyExists(err) {
+		return fmt.Errorf("Failed to create namespace: %v", err)
+	}
+
+	// Create Node Inspector resources
+	err = create()
+	if err != nil {
+		return fmt.Errorf("Failed to create Node Inspector resources: %v", err)
+	}
+
+	return nil
+}
+
+func create() error {
+	serviceAccountName := fmt.Sprintf("%s-%s", nodeInspectorName, serviceAccountSuffix)
+	sa := createServiceAccount(serviceAccountName, namespace.Name)
+	if err := testclient.DataPlaneClient.Create(context.Background(), sa); err != nil && !errors.IsAlreadyExists(err) {
 		return err
 	}
-	clusterRoleName := fmt.Sprintf("%s-%s", name, clusterRoleSuffix)
+	clusterRoleName := fmt.Sprintf("%s-%s", nodeInspectorName, clusterRoleSuffix)
 	cr := createClusterRole(clusterRoleName)
-	if err := cli.Create(context.Background(), cr); err != nil && !errors.IsAlreadyExists(err) {
+	if err := testclient.DataPlaneClient.Create(context.Background(), cr); err != nil && !errors.IsAlreadyExists(err) {
 		return err
 	}
-	clusterRoleBindingName := fmt.Sprintf("%s-%s", name, clusterRoleBindingSuffix)
-	rb := createClusterRoleBinding(clusterRoleBindingName, namespace, serviceAccountName, clusterRoleName)
-	if err := cli.Create(context.Background(), rb); err != nil && !errors.IsAlreadyExists(err) {
+	clusterRoleBindingName := fmt.Sprintf("%s-%s", nodeInspectorName, clusterRoleBindingSuffix)
+	rb := createClusterRoleBinding(clusterRoleBindingName, namespace.Name, serviceAccountName, clusterRoleName)
+	if err := testclient.DataPlaneClient.Create(context.Background(), rb); err != nil && !errors.IsAlreadyExists(err) {
 		return err
 	}
-	ds := createDaemonSet(name, namespace, serviceAccountName, image)
-	if err := cli.Create(context.Background(), ds); err != nil {
+	ds := createDaemonSet(nodeInspectorName, namespace.Name, serviceAccountName, images.Test())
+	if err := testclient.DataPlaneClient.Create(context.Background(), ds); err != nil {
 		if !errors.IsAlreadyExists(err) {
 			return err
 		}
 		klog.Infof("The node inspector daemonset was not expected to be running")
 	}
-	if err := daemonset.WaitToBeRunning(cli, namespace, name); err != nil {
+	if err := daemonset.WaitToBeRunning(testclient.DataPlaneClient, namespace.Name, nodeInspectorName); err != nil {
 		return err
 	}
+	initialized = true
 
 	return nil
 }
 
-func Delete(cli client.Client, namespace, name string) error {
-	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}
-	if err := cli.Delete(context.Background(), ns); err != nil && !errors.IsNotFound(err) {
+func Delete() error {
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace.Name}}
+	if err := testclient.DataPlaneClient.Delete(context.Background(), ns); err != nil && !errors.IsNotFound(err) {
 		return err
 	}
-	cr := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s", name, clusterRoleSuffix)}}
-	if err := cli.Delete(context.Background(), cr); err != nil && !errors.IsNotFound(err) {
+	cr := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s", namespace.Name, clusterRoleSuffix)}}
+	if err := testclient.DataPlaneClient.Delete(context.Background(), cr); err != nil && !errors.IsNotFound(err) {
 		return err
 	}
 	return nil
 }
 
-func isRunning(cli client.Client, namespace, name string) (bool, error) {
-	return daemonset.IsRunning(cli, namespace, name)
+func isRunning() (bool, error) {
+	if !initialized {
+		if err := initialize(); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return daemonset.IsRunning(testclient.DataPlaneClient, namespace.Name, nodeInspectorName)
 }
 
 // getDaemonPodByNode returns the daemon pod that runs on the specified node
@@ -94,7 +127,7 @@ func getDaemonPodByNode(node *corev1.Node) (*corev1.Pod, error) {
 // ExecCommand executing the command on a daemon pod of the given node
 func ExecCommand(ctx context.Context, node *corev1.Node, command []string) ([]byte, error) {
 	// Ensure the node inspector is running
-	ok, err := isRunning(testclient.DataPlaneClient, testutils.NodeInspectorNamespace, testutils.NodeInspectorName)
+	ok, err := isRunning()
 	if err != nil || !ok {
 		return nil, err
 	}
