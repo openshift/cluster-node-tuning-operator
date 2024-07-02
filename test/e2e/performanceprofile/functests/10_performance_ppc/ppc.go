@@ -11,6 +11,7 @@ import (
 	"github.com/onsi/gomega/gexec"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"k8s.io/utils/cpuset"
 	"sigs.k8s.io/yaml"
@@ -60,10 +61,10 @@ func PPCTestCreateUtil() *PPCTestIntegration {
 	return p
 }
 
-var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform awareness", func() {
+var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform awareness", Label(string(label.PerformanceProfileCreator)), func() {
 	mustgatherDir := testutils.MustGatherDir
 	ntoImage := testutils.NTOImage
-	Context("PPC Sanity Tests", func() {
+	Context("PPC Sanity Tests", Label(string(label.Tier0)), func() {
 		ppcIntgTest := PPCTestCreateUtil()
 		It("[test_id:40940] Performance Profile regression tests", func() {
 			pp := &performancev2.PerformanceProfile{}

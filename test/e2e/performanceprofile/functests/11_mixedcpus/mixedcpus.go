@@ -33,6 +33,7 @@ import (
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/deployments"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/namespaces"
@@ -56,7 +57,7 @@ const (
 	DeploymentName = "test-deployment"
 )
 
-var _ = Describe("Mixedcpus", Ordered, func() {
+var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 	ctx := context.Background()
 	BeforeAll(func() {
 		if discovery.Enabled() && testutils.ProfileNotFound {
@@ -66,7 +67,7 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 		DeferCleanup(teardown, ctx)
 	})
 
-	Context("configuration files integrity", func() {
+	Context("configuration files integrity", Label(string(label.Tier3)), func() {
 		var profile *performancev2.PerformanceProfile
 		BeforeEach(func() {
 			var err error
@@ -125,7 +126,7 @@ var _ = Describe("Mixedcpus", Ordered, func() {
 		})
 	})
 
-	Context("single workload - request validation", func() {
+	Context("single workload - request validation", Label(string(label.Tier3)), func() {
 		var profile *performancev2.PerformanceProfile
 		var getter cgroup.ControllersGetter
 		BeforeEach(func() {
