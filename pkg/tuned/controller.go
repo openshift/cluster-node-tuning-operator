@@ -466,7 +466,7 @@ func profilesRepackPath(recommendFilePath, profilesRootDir string) ([]tunedv1.Tu
 	if err != nil {
 		return nil, "", err
 	}
-	klog.Infof("profilesRepack(): recovered recommended profile: %q", recommendedProfile)
+	klog.V(1).Infof("profilesRepack(): recovered recommended profile: %q", recommendedProfile)
 
 	dents, err := os.ReadDir(profilesRootDir)
 	if err != nil {
@@ -990,15 +990,15 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 			if err = TunedRecommendFileWrite(change.recommendedProfile); err != nil {
 				return false, err
 			}
-			klog.Infof("recommended TuneD profile changed from %q to %q [deferred=%v nodeRestart=%v]", c.daemon.recommendedProfile, change.recommendedProfile, change.deferred, change.nodeRestart)
+			klog.V(1).Infof("recommended TuneD profile changed from %q to %q [deferred=%v nodeRestart=%v]", c.daemon.recommendedProfile, change.recommendedProfile, change.deferred, change.nodeRestart)
 			// Cache the value written to tunedRecommendFile.
 			c.daemon.recommendedProfile = change.recommendedProfile
 			reload = true
 		} else if !change.deferred && (c.daemon.status&scDeferred != 0) {
-			klog.Infof("detected deferred update changed to immediate after object update")
+			klog.V(1).Infof("detected deferred update changed to immediate after object update")
 			reload = true
 		} else {
-			klog.Infof("recommended profile (%s) matches current configuration", c.daemon.recommendedProfile)
+			klog.V(1).Infof("recommended profile (%s) matches current configuration", c.daemon.recommendedProfile)
 			// We do not need to reload the TuneD daemon, however, someone may have tampered with the k8s Profile status for this node.
 			// Make sure its status is up-to-date.
 			if err = c.updateTunedProfile(change); err != nil {
@@ -1018,7 +1018,7 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 		}
 		if changeProfiles || changeRecommend {
 			if c.daemon.profileFingerprintUnpacked != profilesFP {
-				klog.Infof("current unpacked profile fingerprint %q -> %q", c.daemon.profileFingerprintUnpacked, profilesFP)
+				klog.V(2).Infof("current unpacked profile fingerprint %q -> %q", c.daemon.profileFingerprintUnpacked, profilesFP)
 				c.daemon.profileFingerprintUnpacked = profilesFP
 			}
 			reload = true
@@ -1290,7 +1290,7 @@ func (c *Controller) updateTunedProfileStatus(ctx context.Context, change Change
 	isApplied := (c.daemon.profileFingerprintUnpacked == c.daemon.profileFingerprintEffective)
 	daemonStatus := c.daemon.status
 
-	klog.Infof("daemonStatus(): change: deferred=%v applied=%v nodeRestart=%v", wantsDeferred, isApplied, change.nodeRestart)
+	klog.V(4).Infof("daemonStatus(): change: deferred=%v applied=%v nodeRestart=%v", wantsDeferred, isApplied, change.nodeRestart)
 	if (wantsDeferred && !isApplied) && !change.nodeRestart { // avoid setting the flag on updates deferred -> immediate
 		daemonStatus |= scDeferred
 		recommendProfile, err := TunedRecommendFileRead()
@@ -1304,7 +1304,7 @@ func (c *Controller) updateTunedProfileStatus(ctx context.Context, change Change
 	}
 
 	statusConditions := computeStatusConditions(daemonStatus, message, profile.Status.Conditions)
-	klog.Infof("computed status conditions: %#v", statusConditions) // TODO v=4
+	klog.V(4).Infof("computed status conditions: %#v", statusConditions)
 	c.daemon.status = daemonStatus
 
 	if profile.Status.TunedProfile == activeProfile &&
