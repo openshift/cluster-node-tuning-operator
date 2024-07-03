@@ -30,9 +30,9 @@ type ControlPlaneClientImpl struct {
 	// A client with access to the management cluster
 	client.Client
 
-	// managementClusterNamespaceName is the namespace name on the management cluster
+	// hostedControlPlaneNamespaceName is the namespace name on the management cluster
 	// on which the control-plane objects reside
-	managementClusterNamespaceName string
+	hostedControlPlaneNamespaceName string
 }
 
 func (ci *ControlPlaneClientImpl) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
@@ -82,8 +82,8 @@ func GetObjectConfigMapDataKey(obj runtime.Object) string {
 
 func NewControlPlaneClient(c client.Client, ns string) *ControlPlaneClientImpl {
 	return &ControlPlaneClientImpl{
-		Client:                         c,
-		managementClusterNamespaceName: ns,
+		Client:                          c,
+		hostedControlPlaneNamespaceName: ns,
 	}
 }
 
@@ -123,7 +123,7 @@ func (ci *ControlPlaneClientImpl) listFromConfigMaps(ctx context.Context, listOb
 func (ci *ControlPlaneClientImpl) getFromConfigMap(ctx context.Context, key client.ObjectKey, obj client.Object, dataKey string, opts ...client.GetOption) error {
 	cmList := &corev1.ConfigMapList{}
 	err := ci.Client.List(ctx, cmList, &client.ListOptions{
-		Namespace: ci.managementClusterNamespaceName,
+		Namespace: ci.hostedControlPlaneNamespaceName,
 	})
 	if err != nil {
 		return err
