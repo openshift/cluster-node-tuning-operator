@@ -1,6 +1,7 @@
 package Z_deconfig
 
 import (
+	"context"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -15,7 +16,7 @@ import (
 
 var _ = Describe("Deconfig", func() {
 	It("should delete the node inspector and its namespace", func() {
-		err := nodeInspector.Delete()
+		err := nodeInspector.Delete(context.TODO())
 		Expect(err).ToNot(HaveOccurred())
 		err = namespaces.WaitForDeletion(testutils.NodeInspectorNamespace, 5*time.Minute)
 		Expect(err).ToNot(HaveOccurred())
