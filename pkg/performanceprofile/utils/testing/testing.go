@@ -51,7 +51,10 @@ func NewPerformanceProfile(name string) *performancev2.PerformanceProfile {
 	additionalKernelArgs := AdditionalKernelArgs
 
 	return &performancev2.PerformanceProfile{
-		TypeMeta: metav1.TypeMeta{Kind: "PerformanceProfile"},
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "performance.openshift.io/v2",
+			Kind:       "PerformanceProfile",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 			UID:  types.UID("11111111-1111-1111-1111-1111111111111"),
@@ -179,6 +182,10 @@ func NewClusterOperator() *apiconfigv1.ClusterOperator {
 
 func NewContainerRuntimeConfig(runtime mcov1.ContainerRuntimeDefaultRuntime, mcpSelector map[string]string) *mcov1.ContainerRuntimeConfig {
 	return &mcov1.ContainerRuntimeConfig{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "machineconfiguration.openshift.io/v1",
+			Kind:       "ContainerRuntimeConfig",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "enable-crun",
 		},
