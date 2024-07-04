@@ -103,7 +103,7 @@ func validateAndExtractObjectFromConfigMap(cm *corev1.ConfigMap, scheme *runtime
 	default:
 		return fmt.Errorf("unsupported config type: %T", obj)
 	}
-	if err := DecodeManifest([]byte(manifest), scheme, obj); err != nil {
+	if _, err := DecodeManifest([]byte(manifest), scheme, obj); err != nil {
 		return fmt.Errorf("error decoding config: %w", err)
 	}
 	return nil
@@ -129,13 +129,27 @@ func EncodeManifest(obj runtime.Object, scheme *runtime.Scheme) ([]byte, error) 
 	return buff.Bytes(), err
 }
 
-func DecodeManifest(b []byte, scheme *runtime.Scheme, obj runtime.Object) error {
+// DecodeManifest tries to decode b into obj.
+// if fails to decode b, it returns an error
+// if decoded data returned from b, has different GVK than what stored in obj
+// it returns false
+func DecodeManifest(b []byte, scheme *runtime.Scheme, obj runtime.Object) (bool, error) {
 	yamlSerializer := serializer.NewSerializerWithOptions(
 		serializer.DefaultMetaFactory, scheme, scheme,
 		serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true},
 	)
-	// Get the GroupVersionKind of the object
-	gvk := obj.GetObjectKind().GroupVersionKind()
-	_, _, err := yamlSerializer.Decode(b, &gvk, obj)
-	return err
+	gvks, _, err := scheme.ObjectKinds(obj)
+	if err != nil || len(gvks) == 0 {
+		return false, fmt.Errorf("cannot determine GVK of resource of type %T: %w", obj, err)
+	}
+	newObj, _, err := yamlSerializer.Decode(b, nil, obj)
+	if err != nil {
+		return false, err
+	}
+	for _, gvk := range gvks {
+		if newObj.GetObjectKind().GroupVersionKind() == gvk {
+			return true, err
+		}
+	}
+	return false, err
 }
