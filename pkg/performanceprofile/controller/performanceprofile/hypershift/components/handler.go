@@ -90,7 +90,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	profile := &performancev2.PerformanceProfile{}
-	if err := hypershift.DecodeManifest([]byte(s), h.scheme, profile); err != nil {
+	if _, err := hypershift.DecodeManifest([]byte(s), h.scheme, profile); err != nil {
 		return err
 	}
 	klog.V(4).InfoS("PerformanceProfile decoded successfully from ConfigMap data", "PerformanceProfileName", profile.Name, "ConfigMapName", instance.GetName())
