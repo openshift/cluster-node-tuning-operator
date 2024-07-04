@@ -85,6 +85,12 @@ var _ = Describe("[performance][config] Performance configuration", Ordered, fun
 		Expect(testclient.ControlPlaneClient.Get(context.TODO(), client.ObjectKeyFromObject(performanceProfile), performanceProfile))
 		By("Printing the updated profile")
 		testlog.Info(format.Object(performanceProfile, 2))
+		nodeList := &corev1.NodeList{}
+		Expect(testclient.DataPlaneClient.List(context.TODO(), nodeList)).To(Succeed())
+		By("Print nodes AFTER applying performanceProfile")
+		for _, node := range nodeList.Items {
+			testlog.Infof("node: name=%s\n, labels=%v\n", node.Name, node.Labels)
+		}
 	})
 })
 
@@ -248,6 +254,12 @@ func attachProfileToNodePool(ctx context.Context, performanceProfile *performanc
 	}
 	// for debugging purposes
 	printEnvs()
+	nodeList := &corev1.NodeList{}
+	Expect(testclient.DataPlaneClient.List(ctx, nodeList)).To(Succeed())
+	By("Print nodes BEFORE applying performanceProfile")
+	for _, node := range nodeList.Items {
+		testlog.Infof("node: name=%s\n, labels=%v\n", node.Name, node.Labels)
+	}
 	hostedClusterName, err := hypershift.GetHostedClusterName()
 	Expect(err).ToNot(HaveOccurred())
 	np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)

@@ -600,7 +600,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				}
 			},
 
-			Entry("[test_id:46959] Number of CPU requests as multiple of SMT count allowed when HT enabled", context.TODO(), false, false, false),
+			FEntry("[test_id:46959] Number of CPU requests as multiple of SMT count allowed when HT enabled", context.TODO(), false, false, false),
 			Entry("[test_id:46544] Odd number of CPU requests allowed when HT disabled", context.TODO(), true, false, false),
 			Entry("[test_id:46538] HT aware scheduling on SNO cluster", context.TODO(), false, true, false),
 			Entry("[test_id:46539] HT aware scheduling on SNO cluster and Workload Partitioning enabled", context.TODO(), false, true, true),
@@ -841,11 +841,17 @@ func startHTtestPod(ctx context.Context, cpuCount int) *corev1.Pod {
 	annotations := map[string]string{}
 	testpod = getTestPodWithAnnotations(annotations, cpuCount)
 	testpod.Namespace = testutils.NamespaceTesting
-
+	testlog.Infof("Before create TESTPOD=%s", testpod.Spec.NodeSelector)
 	By(fmt.Sprintf("Creating test pod with %d cpus", cpuCount))
 	testlog.Info(pods.DumpResourceRequirements(testpod))
 	err := testclient.DataPlaneClient.Create(ctx, testpod)
 	Expect(err).ToNot(HaveOccurred())
+	By("Printing pod info")
+	testlog.Infof("After create TESTPOD=%s", testpod.Spec.NodeSelector)
+	By("Printing node info")
+	Expect(testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(workerRTNode), workerRTNode)).To(Succeed())
+	testlog.Infof("workerRTNode.Labels=%+v\n", workerRTNode.Labels)
+
 	testpod, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 	logEventsForPod(testpod)
 	Expect(err).ToNot(HaveOccurred(), "Start pod failed")
@@ -906,6 +912,7 @@ func promotePodToGuaranteed(pod *corev1.Pod) *corev1.Pod {
 
 func getTestPodWithProfileAndAnnotations(perfProf *performancev2.PerformanceProfile, annotations map[string]string, cpus int) *corev1.Pod {
 	testpod := pods.GetTestPod()
+	testlog.Infof("in getTestPodWithProfileAndAnnotations testpod.Spec.NodeSelector=%+v", testpod.Spec.NodeSelector)
 	if len(annotations) > 0 {
 		testpod.Annotations = annotations
 	}
@@ -936,7 +943,7 @@ func getTestPodWithAnnotations(annotations map[string]string, cpus int) *corev1.
 	testpod := getTestPodWithProfileAndAnnotations(profile, annotations, cpus)
 
 	testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
-
+	testlog.Infof("in getTestPodWithAnnotations testpod.Spec.NodeSelector=%+v", testpod.Spec.NodeSelector)
 	return testpod
 }
 
