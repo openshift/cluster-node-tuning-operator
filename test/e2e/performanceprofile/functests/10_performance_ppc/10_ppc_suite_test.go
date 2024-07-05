@@ -1,6 +1,7 @@
 package __performance_ppc
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
+	nodeinspector "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/node_inspector"
 )
 
 const (
@@ -31,6 +33,10 @@ var _ = BeforeSuite(func() {
 	}
 	testlog.Infof("Mustgather Directory used: %s", testutils.MustGatherDir)
 
+})
+
+var _ = AfterSuite(func() {
+	nodeinspector.Delete(context.TODO())
 })
 
 func TestPPC(t *testing.T) {

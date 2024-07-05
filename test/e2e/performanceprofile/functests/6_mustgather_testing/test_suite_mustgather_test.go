@@ -1,6 +1,7 @@
 package pao_mustgather
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/onsi/ginkgo/v2/reporters"
 	. "github.com/onsi/gomega"
 
+	nodeinspector "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/node_inspector"
 	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 
 	qe_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
@@ -44,6 +46,7 @@ var _ = BeforeSuite(func() {
 
 var _ = AfterSuite(func() {
 	os.RemoveAll(destDir)
+	nodeinspector.Delete(context.TODO())
 })
 
 func TestPaoMustgatherTests(t *testing.T) {
