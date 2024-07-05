@@ -839,7 +839,8 @@ func startHTtestPod(ctx context.Context, cpuCount int) *corev1.Pod {
 	var testpod *corev1.Pod
 
 	annotations := map[string]string{}
-	testpod = getTestPodWithAnnotations(annotations, cpuCount)
+	testpod = getTestPodWithProfileAndAnnotations(profile, annotations, cpuCount)
+	testpod.Spec.NodeName = workerRTNode.Name
 	testpod.Namespace = testutils.NamespaceTesting
 	testlog.Infof("Before create TESTPOD=%s", testpod.Spec.NodeSelector)
 	By(fmt.Sprintf("Creating test pod with %d cpus", cpuCount))
