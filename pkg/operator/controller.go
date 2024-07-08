@@ -645,7 +645,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 			}
 
 			klog.V(2).Infof("syncProfile(): Profile %s not found, creating one [%s]", profileMf.Name, computed.TunedProfileName)
-			profileMf.Annotations = util.ToggleDeferredUpdateAnnotation(profileMf.Annotations, computed.AnyDeferred)
+			profileMf.Annotations = util.ToggleDeferredUpdateAnnotation(profileMf.Annotations, computed.Deferred)
 			profileMf.Spec.Config.TunedProfile = computed.TunedProfileName
 			profileMf.Spec.Config.Debug = computed.Operand.Debug
 			profileMf.Spec.Config.TuneDConfig = computed.Operand.TuneDConfig
@@ -706,7 +706,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		}
 	}
 
-	anns := util.ToggleDeferredUpdateAnnotation(profile.Annotations, computed.AnyDeferred)
+	anns := util.ToggleDeferredUpdateAnnotation(profile.Annotations, computed.Deferred)
 
 	// Minimize updates
 	if profile.Spec.Config.TunedProfile == computed.TunedProfileName &&
