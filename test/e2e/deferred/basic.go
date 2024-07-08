@@ -23,9 +23,12 @@ import (
 var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 	ginkgo.Context("when applied", func() {
 		var (
-			createdTuneds  []string
-			targetNode     *corev1.Node
-			targetTunedPod *corev1.Pod
+			createdTuneds     []string
+			referenceNode     *corev1.Node // control plane
+			targetNode        *corev1.Node
+			referenceTunedPod *corev1.Pod // control plane
+			targetTunedPod    *corev1.Pod
+			referenceProfile  string
 
 			dirPath            string
 			tunedPathVMLatency string
@@ -34,12 +37,28 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 
 		ginkgo.BeforeEach(func() {
 			ginkgo.By("getting a list of worker nodes")
-			nodes, err := util.GetNodesByRole(cs, "worker")
+			workerNodes, err := util.GetNodesByRole(cs, "worker")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			gomega.Expect(len(nodes)).NotTo(gomega.BeZero(), "number of worker nodes is 0")
+			gomega.Expect(len(workerNodes)).NotTo(gomega.BeZero(), "number of worker nodes is 0")
 
-			targetNode = &nodes[0]
-			ginkgo.By(fmt.Sprintf("using node %q as reference", targetNode.Name))
+			targetNode = &workerNodes[0]
+			ginkgo.By(fmt.Sprintf("using node %q as target for workers", targetNode.Name))
+
+			ginkgo.By("getting a list of control-plane nodes")
+			controlPlaneNodes, err := util.GetNodesByRole(cs, "control-plane")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(len(controlPlaneNodes)).NotTo(gomega.BeZero(), "number of control plane nodes is 0")
+
+			referenceNode = &controlPlaneNodes[0]
+			ginkgo.By(fmt.Sprintf("using node %q as reference control plane", referenceNode.Name))
+
+			referenceTunedPod, err = util.GetTunedForNode(cs, referenceNode)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(referenceTunedPod.Status.Phase).To(gomega.Equal(corev1.PodRunning))
+
+			referenceProfile, err = getRecommendedProfile(referenceTunedPod)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			ginkgo.By(fmt.Sprintf("using profile %q as reference control plane", referenceProfile))
 
 			createdTuneds = []string{}
 
@@ -75,7 +94,7 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 
 			targetTunedPod, err = util.GetTunedForNode(cs, targetNode)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			gomega.Expect(targetTunedPod.Status.Phase).To(gomega.Equal(corev1.PodRunning), targetTunedPod.Namespace, targetTunedPod.Name, targetTunedPod.UID, targetTunedPod.Status.Phase)
+			gomega.Expect(targetTunedPod.Status.Phase).To(gomega.Equal(corev1.PodRunning))
 
 			// gather the output now before the profile is applied so we can check nothing changed
 			verificationOutput, err := util.ExecCmdInPod(targetTunedPod, verificationCommandArgs...)
@@ -157,6 +176,9 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 				}
 				return nil
 			}).WithPolling(10 * time.Second).WithTimeout(2 * time.Minute).Should(gomega.Succeed())
+
+			// on non-targeted nodes, like control plane, nothing should have changed
+			checkAppliedConditionStaysOKForNode(ctx, referenceNode.Name, referenceProfile)
 		})
 
 		ginkgo.It("should revert the profile status on removal", func(ctx context.Context) {
@@ -215,6 +237,9 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 				return err
 			}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
 
+			// on non-targeted nodes, like control plane, nothing should have changed
+			checkAppliedConditionStaysOKForNode(ctx, referenceNode.Name, referenceProfile)
+
 			ginkgo.By(fmt.Sprintf("cluster changes rollback: %q", tunedPath))
 			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", tunedPath)
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
@@ -267,6 +292,9 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 			targetTunedPod, err = util.GetTunedForNode(cs, targetNode)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(targetTunedPod.Status.Phase).To(gomega.Equal(corev1.PodRunning), targetTunedPod.Namespace, targetTunedPod.Name, targetTunedPod.UID, targetTunedPod.Status.Phase)
+
+			// on non-targeted nodes, like control plane, nothing should have changed
+			checkAppliedConditionStaysOKForNode(ctx, referenceNode.Name, referenceProfile)
 
 			gomega.Eventually(func() error {
 				curProf, err := cs.Profiles(ntoconfig.WatchNamespace()).Get(ctx, targetNode.Name, metav1.GetOptions{})

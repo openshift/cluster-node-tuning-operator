@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -14,9 +15,11 @@ import (
 	"github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 	ntoutil "github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
@@ -178,4 +181,30 @@ func checkAppliedConditionOK(cond *tunedv1.ProfileStatusCondition) error {
 		return fmt.Errorf("unexpected message %q", cond.Message)
 	}
 	return nil
+}
+
+func checkAppliedConditionStaysOKForNode(ctx context.Context, nodeName, expectedProfile string) {
+	ginkgo.GinkgoHelper()
+
+	gomega.Consistently(func() error {
+		curProf, err := cs.Profiles(ntoconfig.WatchNamespace()).Get(ctx, nodeName, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+
+		ginkgo.By(fmt.Sprintf("checking conditions for reference profile %q: %#v", curProf.Name, curProf.Status.Conditions))
+		if len(curProf.Status.Conditions) == 0 {
+			return fmt.Errorf("missing status conditions")
+		}
+
+		cond := findCondition(curProf.Status.Conditions, tunedv1.TunedProfileApplied)
+		if cond == nil {
+			return fmt.Errorf("missing status applied condition")
+		}
+		err = checkAppliedConditionOK(cond)
+		if err != nil {
+			util.Logf("profile for target node %q does not match expectations about %q: %v", curProf.Name, expectedProfile, err)
+		}
+		return err
+	}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
 }
