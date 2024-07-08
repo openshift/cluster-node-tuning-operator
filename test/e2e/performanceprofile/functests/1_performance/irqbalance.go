@@ -58,7 +58,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 
 		initialProfile = profile.DeepCopy()
 
-		profilesupdate.WaitForTuningUpdated(context.TODO(), profile)
+		profilesupdate.PostUpdateSync(context.TODO(), profile)
 
 		nodeIdx := pickNodeIdx(workerRTNodes)
 		targetNode = &workerRTNodes[nodeIdx]

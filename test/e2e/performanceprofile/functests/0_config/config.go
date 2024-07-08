@@ -262,7 +262,7 @@ func attachProfileToNodePool(ctx context.Context, performanceProfile *performanc
 		profilesupdate.WaitForTuningUpdating(ctx, performanceProfile)
 	}
 	testlog.Infof("wait for node pool %q transition into config ready state", key.String())
-	profilesupdate.WaitForTuningUpdated(ctx, performanceProfile)
+	profilesupdate.PostUpdateSync(ctx, performanceProfile)
 }
 
 func printEnvs() {
