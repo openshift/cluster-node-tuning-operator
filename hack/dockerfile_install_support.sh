@@ -25,7 +25,7 @@ if [[ "${ID}" == "centos" ]]; then
   dnf --setopt=tsflags=nodocs -y install /root/rpms/*.rpm
   rm -rf /etc/tuned/recommend.d
   echo auto > /etc/tuned/profile_mode
-  sed -Ei 's|^#?\s*enable_unix_socket\s*=.*$|enable_unix_socket = 1|;s|^#?\s*rollback\s*=.*$|rollback = not_on_exit|;s|^#?\s*profile_dirs\s*=.*$|profile_dirs = /usr/lib/tuned,/var/lib/ocp-tuned/profiles|' /etc/tuned/tuned-main.conf;
+  sed -Ei 's|^#?\s*enable_unix_socket\s*=.*$|enable_unix_socket = 1|;s|^#?\s*rollback\s*=.*$|rollback = not_on_exit|;s|^#?\s*profile_dirs\s*=.*$|profile_dirs = /usr/lib/tuned/profiles,/usr/lib/tuned,/var/lib/ocp-tuned/profiles|' /etc/tuned/tuned-main.conf;
 
   # Clean up build tools to remove image footprint
   dnf remove --setopt=protected_packages= -y ${BUILD_INSTALL_PKGS}
@@ -44,7 +44,7 @@ else
   dnf install --setopt=tsflags=nodocs -y ${INSTALL_PKGS}
   rm -rf /etc/tuned/recommend.d
   echo auto > /etc/tuned/profile_mode
-  sed -Ei 's|^#?\s*enable_unix_socket\s*=.*$|enable_unix_socket = 1|;s|^#?\s*rollback\s*=.*$|rollback = not_on_exit|;s|^#?\s*profile_dirs\s*=.*$|profile_dirs = /usr/lib/tuned,/var/lib/ocp-tuned/profiles|' /etc/tuned/tuned-main.conf;
+  sed -Ei 's|^#?\s*enable_unix_socket\s*=.*$|enable_unix_socket = 1|;s|^#?\s*rollback\s*=.*$|rollback = not_on_exit|;s|^#?\s*profile_dirs\s*=.*$|profile_dirs = /usr/lib/tuned/profiles,/usr/lib/tuned,/var/lib/ocp-tuned/profiles|' /etc/tuned/tuned-main.conf;
 
 fi
 
