@@ -21,6 +21,7 @@ import (
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 )
 
@@ -118,4 +119,20 @@ func WaitForTuningUpdated(ctx context.Context, profile *performancev2.Performanc
 	Expect(err).ToNot(HaveOccurred())
 	err = nodepools.WaitForConfigToBeReady(ctx, testclient.ControlPlaneClient, np.Name, np.Namespace)
 	Expect(err).ToNot(HaveOccurred())
+
+	workerRTNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
+	if len(workerRTNodes) == 0 {
+		// Label the first node with worker-cnf label
+		nodesList := &corev1.NodeList{}
+		Expect(testclient.DataPlaneClient.List(context.TODO(), nodesList)).ToNot(HaveOccurred())
+		workerRTNode := nodesList.Items[0]
+		workerCNFLabel := fmt.Sprintf("%s/%s", testutils.LabelRole, testutils.RoleWorkerCNF)
+		testlog.Infof("labeling node %s with label %s\n", workerRTNode.Name, workerCNFLabel)
+		labels := workerRTNode.GetLabels()
+		labels[workerCNFLabel] = ""
+		workerRTNode.SetLabels(labels)
+		Expect(testclient.DataPlaneClient.Update(context.TODO(), &workerRTNode))
+
+		testlog.Infof("worker %s labels are: %v\n", workerRTNode.Name, workerRTNode.Labels)
+	}
 }
