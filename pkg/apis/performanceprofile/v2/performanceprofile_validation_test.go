@@ -391,6 +391,7 @@ var _ = Describe("PerformanceProfile", func() {
 			// There should be an empty node list and error present
 			nodes, err := profile.getNodesList()
 			Expect(err).ToNot(BeNil())
+			Expect(err.Error()).To(ContainSubstring("no nodes found with selector"))
 			Expect(nodes.Items).To(BeEmpty())
 		})
 	})
