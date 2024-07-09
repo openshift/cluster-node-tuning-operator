@@ -147,7 +147,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if mcMutated != nil {
-		cm, err := h.encapsulateObjInConfigMap(instance, mfs.MachineConfig, profile.Name, mcoConfigMapConfigKey, ntoGeneratedMachineConfigLabel)
+		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.MachineConfig, profile.Name, mcoConfigMapConfigKey, ntoGeneratedMachineConfigLabel)
 		if err != nil {
 			return err
 		}
@@ -158,7 +158,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if kcMutated != nil {
-		cm, err := h.encapsulateObjInConfigMap(instance, mfs.KubeletConfig, profile.Name, mcoConfigMapConfigKey, ntoGeneratedMachineConfigLabel)
+		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.KubeletConfig, profile.Name, mcoConfigMapConfigKey, ntoGeneratedMachineConfigLabel)
 		if err != nil {
 			return err
 		}
@@ -169,7 +169,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if performanceTunedMutated != nil {
-		cm, err := h.encapsulateObjInConfigMap(instance, mfs.Tuned, profile.Name, tunedConfigMapConfigKey, tunedConfigMapLabel)
+		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.Tuned, profile.Name, tunedConfigMapConfigKey, tunedConfigMapLabel)
 		if err != nil {
 			return err
 		}
@@ -196,8 +196,8 @@ func (h *handler) getContainerRuntimeName(ctx context.Context, profile *performa
 	return mcov1.ContainerRuntimeDefaultRuntimeRunc, nil
 }
 
-func (h *handler) encapsulateObjInConfigMap(instance *corev1.ConfigMap, object client.Object, profileName, dataKey, objectLabel string) (*corev1.ConfigMap, error) {
-	encodedObj, err := hypershift.EncodeManifest(object, h.scheme)
+func EncapsulateObjInConfigMap(scheme *runtime.Scheme, instance *corev1.ConfigMap, object client.Object, profileName, dataKey, objectLabel string) (*corev1.ConfigMap, error) {
+	encodedObj, err := hypershift.EncodeManifest(object, scheme)
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +208,7 @@ func (h *handler) encapsulateObjInConfigMap(instance *corev1.ConfigMap, object c
 
 	name := fmt.Sprintf("%s-%s", strings.ToLower(object.GetObjectKind().GroupVersionKind().Kind), instance.Name)
 	cm := configMapMeta(name, profileName, instance.GetNamespace(), nodePoolNamespacedName)
-	err = controllerutil.SetControllerReference(instance, cm, h.scheme)
+	err = controllerutil.SetControllerReference(instance, cm, scheme)
 	if err != nil {
 		return nil, err
 	}
