@@ -38,7 +38,7 @@ func NewHandler(cli client.Client, scheme *runtime.Scheme) components.Handler {
 func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.EventRecorder, opts *components.Options) error {
 	profile, ok := obj.(*performancev2.PerformanceProfile)
 	if !ok {
-		return fmt.Errorf("wrong type conversion; want=PerformanceProfile got=%T", obj)
+		return fmt.Errorf("wrong type conversion; want=*PerformanceProfile got=%T", obj)
 	}
 
 	if profileutil.IsPaused(profile) {

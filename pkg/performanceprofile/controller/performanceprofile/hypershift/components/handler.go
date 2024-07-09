@@ -81,7 +81,7 @@ func (h *handler) Exists(ctx context.Context, profileName string) bool {
 func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.EventRecorder, options *components.Options) error {
 	instance, ok := obj.(*corev1.ConfigMap)
 	if !ok {
-		return fmt.Errorf("wrong type conversion; want=ConfigMap got=%T", obj)
+		return fmt.Errorf("wrong type conversion; want=*ConfigMap got=%T", obj)
 	}
 
 	s, ok := instance.Data[hypershift.TuningKey]
