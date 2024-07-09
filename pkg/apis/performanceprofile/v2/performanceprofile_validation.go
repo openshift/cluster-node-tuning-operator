@@ -336,9 +336,9 @@ func (r *PerformanceProfile) validateHugePages(nodes corev1.NodeList) field.Erro
 		return allErrs
 	}
 
-    // `validateHugePages` implicitly relies on `validateAllNodesAreSameCpuArchitecture` to have already been run
-    // Under that assumption we can return any node from the list since they should all be the same architecture
-    // However it is simple and easy to just return the first node
+	// `validateHugePages` implicitly relies on `validateAllNodesAreSameCpuArchitecture` to have already been run
+	// Under that assumption we can return any node from the list since they should all be the same architecture
+	// However it is simple and easy to just return the first node
 	x86 := isX86(nodes.Items[0])
 	aarch64 := isAarch64(nodes.Items[0])
 
