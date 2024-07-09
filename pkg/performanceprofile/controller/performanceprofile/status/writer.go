@@ -28,7 +28,7 @@ func NewWriter(c client.Client) Writer {
 func (w *writer) Update(ctx context.Context, object client.Object, conditions []conditionsv1.Condition) error {
 	profile, ok := object.(*performancev2.PerformanceProfile)
 	if !ok {
-		return fmt.Errorf("wrong type conversion; want=PerformanceProfile got=%T", object)
+		return fmt.Errorf("wrong type conversion; want=*PerformanceProfile got=%T", object)
 	}
 	return w.update(ctx, profile, conditions)
 }
@@ -36,7 +36,7 @@ func (w *writer) Update(ctx context.Context, object client.Object, conditions []
 func (w *writer) UpdateOwnedConditions(ctx context.Context, object client.Object) error {
 	profile, ok := object.(*performancev2.PerformanceProfile)
 	if !ok {
-		return fmt.Errorf("wrong type conversion; want=PerformanceProfile got=%T", object)
+		return fmt.Errorf("wrong type conversion; want=*PerformanceProfile got=%T", object)
 	}
 
 	// get kubelet false condition
