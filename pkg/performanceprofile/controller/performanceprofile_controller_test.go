@@ -76,6 +76,7 @@ var _ = Describe("Controller", func() {
 			clusterOperator = testutils.NewClusterOperator()
 			if isHypershift {
 				Expect(os.Setenv("HYPERSHIFT", "true")).To(Succeed())
+				Expect(os.Setenv("MY_NAMESPACE", hostedControlPlaneNamespace)).To(Succeed())
 				instance = encapsulateProfileInConfigMap(profile)
 			}
 			request = reconcile.Request{
@@ -1064,13 +1065,11 @@ var _ = Describe("Controller", func() {
 		})
 
 		Context("with ContainerRuntimeConfig enabling crun", func() {
-			skipForHypershift()
 			BeforeEach(func() {
 				ctrcfg = testutils.NewContainerRuntimeConfig(mcov1.ContainerRuntimeDefaultRuntimeCrun, profile.Spec.MachineConfigPoolSelector)
 			})
 
 			It("should run high-performance runtimes class with crun as container-runtime", func() {
-				skipForHypershift()
 				mc, err := machineconfig.New(profile, &components.MachineConfigOptions{PinningMode: &infra.Status.CPUPartitioning})
 				Expect(err).ToNot(HaveOccurred())
 
@@ -1218,11 +1217,14 @@ func adaptObjectsForHypershift(instance client.Object, initObjects ...runtime.Ob
 				klog.Fatal(err)
 			}
 			mngClusterObjects = append(mngClusterObjects, cm)
-		case *mcov1.MachineConfig, *mcov1.KubeletConfig, *mcov1.ContainerRuntimeConfig:
+		case *mcov1.MachineConfig, *mcov1.KubeletConfig:
 			cm, err := hcpcomponents.EncapsulateObjInConfigMap(scheme.Scheme, profileCM, obj.(client.Object), performanceProfileName, "config", "hypershift.openshift.io/nto-generated-machine-config")
 			if err != nil {
 				klog.Fatal(err)
 			}
+			mngClusterObjects = append(mngClusterObjects, cm)
+		case *mcov1.ContainerRuntimeConfig:
+			cm := encapsulateContainerRuntimeConfigInConfigMap(obj.(*mcov1.ContainerRuntimeConfig))
 			mngClusterObjects = append(mngClusterObjects, cm)
 		case *apiconfigv1.Infrastructure, *apiconfigv1.ClusterOperator:
 			hostedClusterObjects = append(hostedClusterObjects, obj)
@@ -1251,6 +1253,26 @@ func encapsulateProfileInConfigMap(profile *performancev2.PerformanceProfile) *c
 		},
 		Data: map[string]string{
 			"tuning": string(encodedObj),
+		},
+	}
+}
+
+func encapsulateContainerRuntimeConfigInConfigMap(ctrcfg *mcov1.ContainerRuntimeConfig) *corev1.ConfigMap {
+	GinkgoHelper()
+	encodedObj, err := hypershift.EncodeManifest(ctrcfg, scheme.Scheme)
+	if err != nil {
+		Fail(fmt.Sprintf("failed to encode manifest %v", err))
+	}
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ctrcfg-test-config",
+			Namespace: hostedControlPlaneNamespace,
+			Annotations: map[string]string{
+				"hypershift.openshift.io/nodePool": "nodepool-test",
+			},
+		},
+		Data: map[string]string{
+			"config": string(encodedObj),
 		},
 	}
 }

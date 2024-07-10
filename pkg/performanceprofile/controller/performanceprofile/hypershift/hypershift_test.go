@@ -14,10 +14,10 @@ import (
 
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 )
 
-func TestControlPlaneClientImpl_Get(t *testing.T) {
-	machineConfig1 := `
+const machineConfig1 = `
 apiVersion: machineconfiguration.openshift.io/v1
 kind: MachineConfig
 metadata:
@@ -36,7 +36,7 @@ spec:
         mode: 493
         path: /usr/local/bin/file1.sh
 `
-	coreMachineConfig1 := `
+const coreMachineConfig1 = `
 apiVersion: machineconfiguration.openshift.io/v1
 kind: MachineConfig
 metadata:
@@ -56,7 +56,7 @@ spec:
         path: /usr/local/bin/core.sh
 `
 
-	kubeletConfig1 := `
+const kubeletConfig1 = `
 apiVersion: machineconfiguration.openshift.io/v1
 kind: KubeletConfig
 metadata:
@@ -65,7 +65,7 @@ spec:
   kubeletConfig:
     maxPods: 100
 `
-	perfprofOne := `apiVersion: performance.openshift.io/v2
+const perfprofOne = `apiVersion: performance.openshift.io/v2
 kind: PerformanceProfile
 metadata:
     name: perfprofOne
@@ -85,6 +85,9 @@ spec:
         highPowerConsumption: false
         realTime: true
 `
+
+func TestControlPlaneClientImpl_Get(t *testing.T) {
+
 	if err := performancev2.AddToScheme(scheme.Scheme); err != nil {
 		t.Fatal(err)
 	}
@@ -245,6 +248,62 @@ spec:
 				if tc.expectedInNotFoundErr && !apierrors.IsNotFound(err) {
 					t.Errorf("expected IsNotFound error, actual error %v ", err)
 				}
+			}
+		})
+	}
+}
+
+func TestDecodeManifest(t *testing.T) {
+	testCases := []struct {
+		name     string
+		manifest []byte
+		into     runtime.Object
+		isLoaded bool
+	}{
+		{
+			name:     "decode kubelet config into machine config",
+			manifest: []byte(kubeletConfig1),
+			into:     &machineconfigv1.MachineConfig{},
+			isLoaded: false,
+		},
+		{
+			name:     "decode machine config into tuned config",
+			manifest: []byte(machineConfig1),
+			into:     &machineconfigv1.MachineConfig{},
+			isLoaded: true,
+		},
+		{
+			name:     "decode performance profile into performance profile",
+			manifest: []byte(perfprofOne),
+			into:     &performancev2.PerformanceProfile{},
+			isLoaded: true,
+		},
+		{
+			name:     "decode performance profile into tuned",
+			manifest: []byte(perfprofOne),
+			into:     &tunedv1.Tuned{},
+			isLoaded: false,
+		},
+	}
+
+	if err := performancev2.AddToScheme(scheme.Scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := machineconfigv1.AddToScheme(scheme.Scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := tunedv1.AddToScheme(scheme.Scheme); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ok, err := DecodeManifest(tc.manifest, scheme.Scheme, tc.into)
+			if err != nil {
+				t.Errorf("failed to decode manifest into %T: %v", tc.into, err)
+			}
+			if !ok && tc.isLoaded {
+				t.Errorf("expected into of type %T to be loaded", tc.into)
 			}
 		})
 	}

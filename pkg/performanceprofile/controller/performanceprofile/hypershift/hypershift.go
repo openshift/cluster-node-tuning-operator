@@ -30,9 +30,9 @@ type ControlPlaneClientImpl struct {
 	// A client with access to the management cluster
 	client.Client
 
-	// managementClusterNamespaceName is the namespace name on the management cluster
+	// hostedControlPlaneNamespaceName is the namespace name on the management cluster
 	// on which the control-plane objects reside
-	managementClusterNamespaceName string
+	hostedControlPlaneNamespaceName string
 }
 
 func (ci *ControlPlaneClientImpl) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
@@ -63,15 +63,15 @@ func IsEncapsulatedInConfigMap(obj runtime.Object) bool {
 
 func NewControlPlaneClient(c client.Client, ns string) *ControlPlaneClientImpl {
 	return &ControlPlaneClientImpl{
-		Client:                         c,
-		managementClusterNamespaceName: ns,
+		Client:                          c,
+		hostedControlPlaneNamespaceName: ns,
 	}
 }
 
 func (ci *ControlPlaneClientImpl) getFromConfigMap(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 	cmList := &corev1.ConfigMapList{}
 	err := ci.Client.List(ctx, cmList, &client.ListOptions{
-		Namespace: ci.managementClusterNamespaceName,
+		Namespace: ci.hostedControlPlaneNamespaceName,
 	})
 	if err != nil {
 		return err
@@ -103,7 +103,7 @@ func validateAndExtractObjectFromConfigMap(cm *corev1.ConfigMap, scheme *runtime
 	default:
 		return fmt.Errorf("unsupported config type: %T", obj)
 	}
-	if err := DecodeManifest([]byte(manifest), scheme, obj); err != nil {
+	if _, err := DecodeManifest([]byte(manifest), scheme, obj); err != nil {
 		return fmt.Errorf("error decoding config: %w", err)
 	}
 	return nil
@@ -129,13 +129,27 @@ func EncodeManifest(obj runtime.Object, scheme *runtime.Scheme) ([]byte, error) 
 	return buff.Bytes(), err
 }
 
-func DecodeManifest(b []byte, scheme *runtime.Scheme, obj runtime.Object) error {
+// DecodeManifest tries to decode b into obj.
+// if fails to decode b, it returns an error
+// if decoded data returned from b, has different GVK than what stored in obj
+// it returns false
+func DecodeManifest(b []byte, scheme *runtime.Scheme, obj runtime.Object) (bool, error) {
 	yamlSerializer := serializer.NewSerializerWithOptions(
 		serializer.DefaultMetaFactory, scheme, scheme,
 		serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true},
 	)
-	// Get the GroupVersionKind of the object
-	gvk := obj.GetObjectKind().GroupVersionKind()
-	_, _, err := yamlSerializer.Decode(b, &gvk, obj)
-	return err
+	gvks, _, err := scheme.ObjectKinds(obj)
+	if err != nil || len(gvks) == 0 {
+		return false, fmt.Errorf("cannot determine GVK of resource of type %T: %w", obj, err)
+	}
+	newObj, _, err := yamlSerializer.Decode(b, nil, obj)
+	if err != nil {
+		return false, err
+	}
+	for _, gvk := range gvks {
+		if newObj.GetObjectKind().GroupVersionKind() == gvk {
+			return true, err
+		}
+	}
+	return false, err
 }
