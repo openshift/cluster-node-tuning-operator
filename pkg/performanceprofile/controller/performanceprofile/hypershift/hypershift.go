@@ -49,6 +49,14 @@ func (ci *ControlPlaneClientImpl) Create(ctx context.Context, obj client.Object,
 	return ci.Client.Create(ctx, obj, opts...)
 }
 
+func (ci *ControlPlaneClientImpl) Update(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+	dataKey := GetObjectConfigMapDataKey(obj)
+	if dataKey != "" {
+		return ci.updateConfigMap(ctx, obj, dataKey, opts...)
+	}
+	return ci.Client.Update(ctx, obj, opts...)
+}
+
 func IsEncapsulatedInConfigMap(obj runtime.Object) bool {
 	switch obj.(type) {
 	case *performancev2.PerformanceProfile, *performancev2.PerformanceProfileList,
@@ -58,6 +66,19 @@ func IsEncapsulatedInConfigMap(obj runtime.Object) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func GetObjectConfigMapDataKey(obj runtime.Object) string {
+	switch obj.(type) {
+	case *performancev2.PerformanceProfile, *performancev2.PerformanceProfileList, *tunedv1.Tuned, *tunedv1.TunedList:
+		return TuningKey
+	case *machineconfigv1.KubeletConfig, *machineconfigv1.KubeletConfigList,
+		*machineconfigv1.MachineConfig, *machineconfigv1.MachineConfigList,
+		*machineconfigv1.ContainerRuntimeConfig, *machineconfigv1.ContainerRuntimeConfigList:
+		return ConfigKey
+	default:
+		return ""
 	}
 }
 
@@ -117,6 +138,16 @@ func (ci *ControlPlaneClientImpl) createInConfigMap(ctx context.Context, obj cli
 	}
 	cm.Data = map[string]string{TuningKey: string(b)}
 	return ci.Client.Create(ctx, cm, opts...)
+}
+
+func (ci *ControlPlaneClientImpl) updateConfigMap(ctx context.Context, obj client.Object, dataKey string, opts ...client.UpdateOption) error {
+	cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: obj.GetName(), Namespace: HostedClustersNamespaceName}}
+	b, err := EncodeManifest(obj, scheme.Scheme)
+	if err != nil {
+		return err
+	}
+	cm.Data = map[string]string{dataKey: string(b)}
+	return ci.Client.Update(ctx, cm, opts...)
 }
 
 func EncodeManifest(obj runtime.Object, scheme *runtime.Scheme) ([]byte, error) {
