@@ -95,7 +95,7 @@ func NewControlPlaneClient(c client.Client, ns string) *ControlPlaneClientImpl {
 func (ci *ControlPlaneClientImpl) listFromConfigMaps(ctx context.Context, listObj client.ObjectList, dataKey string, opts ...client.ListOption) error {
 	cmList := &corev1.ConfigMapList{}
 	if err := ci.Client.List(ctx, cmList, &client.ListOptions{
-		Namespace: ci.managementClusterNamespaceName}); err != nil {
+		Namespace: ci.hostedControlPlaneNamespaceName}); err != nil {
 		return err
 	}
 	yamlSerializer := serializer.NewSerializerWithOptions(
