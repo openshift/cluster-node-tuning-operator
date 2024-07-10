@@ -23,6 +23,7 @@ import (
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/namespaces"
+	nodeinspector "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/node_inspector"
 
 	qe_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 )
@@ -42,6 +43,7 @@ var _ = AfterSuite(func() {
 	err := testclient.Client.Delete(context.TODO(), namespaces.TestingNamespace)
 	Expect(err).ToNot(HaveOccurred())
 	err = namespaces.WaitForDeletion(testutils.NamespaceTesting, 5*time.Minute)
+	nodeinspector.Delete(context.TODO())
 })
 
 func TestPerformanceKubelet(t *testing.T) {

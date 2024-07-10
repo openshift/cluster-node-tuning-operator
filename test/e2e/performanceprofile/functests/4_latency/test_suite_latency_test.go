@@ -28,6 +28,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/k8sreporter"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/namespaces"
+	nodeinspector "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/node_inspector"
 )
 
 var (
@@ -54,6 +55,7 @@ var _ = AfterSuite(func() {
 	err := testclient.Client.Delete(context.TODO(), namespaces.TestingNamespace)
 	Expect(err).ToNot(HaveOccurred())
 	err = namespaces.WaitForDeletion(testutils.NamespaceTesting, 5*time.Minute)
+	nodeinspector.Delete(context.TODO())
 })
 
 func TestLatency(t *testing.T) {
