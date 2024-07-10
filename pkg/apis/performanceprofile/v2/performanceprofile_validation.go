@@ -138,15 +138,13 @@ func (r *PerformanceProfile) ValidateBasicFields() field.ErrorList {
 				err.Error(),
 			),
 		)
-	// We can only process these validations if the node list was valid
-	} else {
-		allErrs = append(allErrs, r.validateAllNodesAreSameCpuArchitecture(nodes)...)
-		allErrs = append(allErrs, r.validateAllNodesAreSameCpuCapacity(nodes)...)
-		allErrs = append(allErrs, r.validateHugePages(nodes)...)
 	}
 
 	allErrs = append(allErrs, r.validateCPUs()...)
 	allErrs = append(allErrs, r.validateSelectors()...)
+	allErrs = append(allErrs, r.validateAllNodesAreSameCpuArchitecture(nodes)...)
+	allErrs = append(allErrs, r.validateAllNodesAreSameCpuCapacity(nodes)...)
+	allErrs = append(allErrs, r.validateHugePages(nodes)...)
 	allErrs = append(allErrs, r.validateNUMA()...)
 	allErrs = append(allErrs, r.validateNet()...)
 	allErrs = append(allErrs, r.validateWorkloadHints()...)
@@ -249,6 +247,19 @@ func (r *PerformanceProfile) validateSelectors() field.ErrorList {
 
 func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitecture(nodes corev1.NodeList) field.ErrorList {
 	var allErrs field.ErrorList
+	// First check if the node list has valid elements
+	if len(nodes.Items) == 0 {
+		allErrs = append(allErrs,
+			field.Invalid(
+				field.NewPath("spec.nodeSelector"),
+				r.Spec.NodeSelector,
+				"Failed to detect any nodes, unable to validate architecture",
+			),
+		)
+
+		// If we failed to detect any nodes we cannot do anything more here
+		return allErrs
+	}
 
 	// We need to use one of the nodes as a reference for comparing against the rest
 	// The first item in the list is simple and easy to use
@@ -291,6 +302,19 @@ func getCpuArchitectureForNode(node corev1.Node) string {
 
 func (r *PerformanceProfile) validateAllNodesAreSameCpuCapacity(nodes corev1.NodeList) field.ErrorList {
 	var allErrs field.ErrorList
+	// First check if the node list has valid elements
+	if len(nodes.Items) == 0 {
+		allErrs = append(allErrs,
+			field.Invalid(
+				field.NewPath("spec.nodeSelector"),
+				r.Spec.NodeSelector,
+				"Failed to detect any nodes, unable to validate cpu capacity",
+			),
+		)
+
+		// If we failed to detect any nodes we cannot do anything more here
+		return allErrs
+	}
 
 	// We need to use one of the nodes as a reference for comparing against the rest
 	// The first item in the list is simple and easy to use
@@ -335,6 +359,20 @@ func (r *PerformanceProfile) validateHugePages(nodes corev1.NodeList) field.Erro
 	var allErrs field.ErrorList
 
 	if r.Spec.HugePages == nil {
+		return allErrs
+	}
+
+	// First check if the node list has valid elements
+	if len(nodes.Items) == 0 {
+		allErrs = append(allErrs,
+			field.Invalid(
+				field.NewPath("spec.nodeSelector"),
+				r.Spec.NodeSelector,
+				"Failed to detect any nodes, unable to validate hugepages",
+			),
+		)
+
+		// If we failed to detect any nodes we cannot do anything more here
 		return allErrs
 	}
 

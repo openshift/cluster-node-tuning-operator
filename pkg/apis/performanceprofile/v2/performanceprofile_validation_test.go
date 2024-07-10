@@ -436,6 +436,19 @@ var _ = Describe("PerformanceProfile", func() {
 			errors := profile.validateAllNodesAreSameCpuArchitecture(nodes)
 			Expect(errors).ToNot(BeEmpty())
 		})
+		It("should fail when no nodes are detected", func () {
+			// Get client with zero nodes
+			nodeSpecs := []NodeSpecifications{}
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).ToNot(BeNil())
+			Expect(err.Error()).To(ContainSubstring("no nodes found with selector"))
+
+			errors := profile.validateAllNodesAreSameCpuArchitecture(nodes)
+			Expect(errors).ToNot(BeEmpty())
+			Expect(errors[0].Error()).To(ContainSubstring(("Failed to detect any nodes")))
+		})
 	})
 
 	Describe("Same CPU Capacity validation", func() {
@@ -464,6 +477,19 @@ var _ = Describe("PerformanceProfile", func() {
 
 			errors := profile.validateAllNodesAreSameCpuCapacity(nodes)
 			Expect(errors).ToNot(BeEmpty())
+		})
+		It("should fail when no nodes are detected", func () {
+			// Get client with zero nodes
+			nodeSpecs := []NodeSpecifications{}
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).ToNot(BeNil())
+			Expect(err.Error()).To(ContainSubstring("no nodes found with selector"))
+
+			errors := profile.validateAllNodesAreSameCpuCapacity(nodes)
+			Expect(errors).ToNot(BeEmpty())
+			Expect(errors[0].Error()).To(ContainSubstring(("Failed to detect any nodes")))
 		})
 	})
 
@@ -537,6 +563,20 @@ var _ = Describe("PerformanceProfile", func() {
 			errors := profile.validateHugePages(nodes)
 			Expect(errors).NotTo(BeEmpty(), "should have validation error when page with invalid format presents")
 			Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page size should be equal to one of %v", aarch64ValidHugepagesSizes)))
+		})
+
+		It("should fail when no nodes are detected", func () {
+			// Get client with zero nodes
+			nodeSpecs := []NodeSpecifications{}
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).ToNot(BeNil())
+			Expect(err.Error()).To(ContainSubstring("no nodes found with selector"))
+
+			errors := profile.validateHugePages(nodes)
+			Expect(errors).ToNot(BeEmpty())
+			Expect(errors[0].Error()).To(ContainSubstring(("Failed to detect any nodes")))
 		})
 
 		When("pages have duplication", func() {
