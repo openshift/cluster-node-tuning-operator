@@ -67,18 +67,6 @@ func (ci *ControlPlaneClientImpl) Update(ctx context.Context, obj client.Object,
 	return ci.Client.Update(ctx, obj, opts...)
 }
 
-func IsEncapsulatedInConfigMap(obj runtime.Object) bool {
-	switch obj.(type) {
-	case *performancev2.PerformanceProfile, *performancev2.PerformanceProfileList,
-		*machineconfigv1.KubeletConfig, *machineconfigv1.KubeletConfigList,
-		*machineconfigv1.MachineConfig, *machineconfigv1.MachineConfigList,
-		*tunedv1.Tuned, *tunedv1.TunedList:
-		return true
-	default:
-		return false
-	}
-}
-
 func GetObjectConfigMapDataKey(obj runtime.Object) string {
 	switch obj.(type) {
 	case *performancev2.PerformanceProfile, *performancev2.PerformanceProfileList, *tunedv1.Tuned, *tunedv1.TunedList:
