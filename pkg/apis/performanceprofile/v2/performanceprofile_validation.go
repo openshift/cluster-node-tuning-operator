@@ -138,13 +138,15 @@ func (r *PerformanceProfile) ValidateBasicFields() field.ErrorList {
 				err.Error(),
 			),
 		)
+	// We can only process these validations if the node list was valid
+	} else {
+		allErrs = append(allErrs, r.validateAllNodesAreSameCpuArchitecture(nodes)...)
+		allErrs = append(allErrs, r.validateAllNodesAreSameCpuCapacity(nodes)...)
+		allErrs = append(allErrs, r.validateHugePages(nodes)...)
 	}
 
 	allErrs = append(allErrs, r.validateCPUs()...)
 	allErrs = append(allErrs, r.validateSelectors()...)
-	allErrs = append(allErrs, r.validateAllNodesAreSameCpuArchitecture(nodes)...)
-	allErrs = append(allErrs, r.validateAllNodesAreSameCpuCapacity(nodes)...)
-	allErrs = append(allErrs, r.validateHugePages(nodes)...)
 	allErrs = append(allErrs, r.validateNUMA()...)
 	allErrs = append(allErrs, r.validateNet()...)
 	allErrs = append(allErrs, r.validateWorkloadHints()...)
@@ -261,7 +263,7 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitecture(nodes corev1
 			),
 		)
 
-		// If we failed to detect cpu architefcture there is not much point to continue
+		// If we failed to detect cpu architecture there is not much point to continue
 		// We would likely just get an error for every single node with the same error
 		return allErrs
 	}
