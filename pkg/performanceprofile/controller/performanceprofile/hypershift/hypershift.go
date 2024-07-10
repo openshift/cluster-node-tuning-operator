@@ -36,8 +36,9 @@ type ControlPlaneClientImpl struct {
 }
 
 func (ci *ControlPlaneClientImpl) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
-	if IsEncapsulatedInConfigMap(obj) {
-		return ci.getFromConfigMap(ctx, key, obj, opts...)
+	dataKey := GetObjectConfigMapDataKey(obj)
+	if dataKey != "" {
+		return ci.getFromConfigMap(ctx, key, obj, dataKey, opts...)
 	}
 	return ci.Client.Get(ctx, key, obj, opts...)
 }
@@ -51,8 +52,9 @@ func (ci *ControlPlaneClientImpl) List(ctx context.Context, objList client.Objec
 }
 
 func (ci *ControlPlaneClientImpl) Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
-	if IsEncapsulatedInConfigMap(obj) {
-		return ci.createInConfigMap(ctx, obj, opts...)
+	dataKey := GetObjectConfigMapDataKey(obj)
+	if dataKey != "" {
+		return ci.createInConfigMap(ctx, obj, dataKey, opts...)
 	}
 	return ci.Client.Create(ctx, obj, opts...)
 }
@@ -139,7 +141,7 @@ func (ci *ControlPlaneClientImpl) getFromConfigMap(ctx context.Context, key clie
 		return err
 	}
 	for _, cm := range cmList.Items {
-		err = validateAndExtractObjectFromConfigMap(&cm, ci.Scheme(), obj)
+		err = validateAndExtractObjectFromConfigMap(&cm, ci.Scheme(), obj, dataKey)
 		if err != nil {
 			return err
 		}
@@ -152,18 +154,14 @@ func (ci *ControlPlaneClientImpl) getFromConfigMap(ctx context.Context, key clie
 		apierrors.NewNotFound(schema.GroupResource{}, key.Name))
 }
 
-// validateAndExtractObjectFromConfigMap validates the object if it supposes to be encapsulated in a configmap.
-// then it tries to extract the object.
-// even if extraction failed, the returned validation value is true.
-func validateAndExtractObjectFromConfigMap(cm *corev1.ConfigMap, scheme *runtime.Scheme, obj client.Object) error {
-	var manifest string
-	switch obj.(type) {
-	case *performancev2.PerformanceProfile, *tunedv1.Tuned:
-		manifest = cm.Data[TuningKey]
-	case *machineconfigv1.KubeletConfig, *machineconfigv1.MachineConfig:
-		manifest = cm.Data[ConfigKey]
-	default:
-		return fmt.Errorf("unsupported config type: %T", obj)
+// validateAndExtractObjectFromConfigMap validates if there's object data in a configmap
+// and tries to extract the object.
+func validateAndExtractObjectFromConfigMap(cm *corev1.ConfigMap, scheme *runtime.Scheme, obj client.Object, dataKey string) error {
+	manifest, ok := cm.Data[dataKey]
+	if !ok {
+		// the given configmap does not contain data under the provided key
+		// we return here to save the unnecessary decoding
+		return nil
 	}
 	if _, err := DecodeManifest([]byte(manifest), scheme, obj); err != nil {
 		return fmt.Errorf("error decoding config: %w", err)
@@ -171,7 +169,6 @@ func validateAndExtractObjectFromConfigMap(cm *corev1.ConfigMap, scheme *runtime
 	return nil
 }
 
-func (ci *ControlPlaneClientImpl) createInConfigMap(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
 func insertDecodedObjects(objectList client.ObjectList, objs []runtime.Object) {
 	for _, obj := range objs {
 		switch list := objectList.(type) {
@@ -195,12 +192,13 @@ func insertDecodedObjects(objectList client.ObjectList, objs []runtime.Object) {
 	}
 }
 
+func (ci *ControlPlaneClientImpl) createInConfigMap(ctx context.Context, obj client.Object, dataKey string, opts ...client.CreateOption) error {
 	cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: obj.GetName(), Namespace: HostedClustersNamespaceName}}
 	b, err := EncodeManifest(obj, scheme.Scheme)
 	if err != nil {
 		return err
 	}
-	cm.Data = map[string]string{TuningKey: string(b)}
+	cm.Data = map[string]string{dataKey: string(b)}
 	return ci.Client.Create(ctx, cm, opts...)
 }
 
