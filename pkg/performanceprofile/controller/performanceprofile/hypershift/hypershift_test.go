@@ -2,6 +2,8 @@ package hypershift
 
 import (
 	"context"
+	"fmt"
+	"github.com/google/go-cmp/cmp"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -87,7 +89,6 @@ spec:
 `
 
 func TestControlPlaneClientImpl_Get(t *testing.T) {
-
 	if err := performancev2.AddToScheme(scheme.Scheme); err != nil {
 		t.Fatal(err)
 	}
@@ -251,6 +252,130 @@ func TestControlPlaneClientImpl_Get(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestControlPlaneClientImpl_List(t *testing.T) {
+	if err := performancev2.AddToScheme(scheme.Scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := machineconfigv1.AddToScheme(scheme.Scheme); err != nil {
+		t.Fatal(err)
+	}
+
+	namespace := "test"
+	testsCases := []struct {
+		name           string
+		ObjectList     client.ObjectList
+		configMaps     []runtime.Object
+		getterFunction func(client.ObjectList) ([]client.Object, []client.Object, error)
+	}{
+		{
+			name:       "list performanceprofile objects",
+			ObjectList: &performancev2.PerformanceProfileList{},
+			configMaps: []runtime.Object{
+				&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "config-1",
+						Namespace: namespace,
+					},
+					Data: map[string]string{
+						TuningKey: perfprofOne,
+					},
+				},
+			},
+			getterFunction: func(list client.ObjectList) ([]client.Object, []client.Object, error) {
+				var got, want []client.Object
+				toDecode := []string{perfprofOne}
+				ppList, ok := list.(*performancev2.PerformanceProfileList)
+				if !ok {
+					return got, want, fmt.Errorf("expected *performancev2.PerformanceProfileList, got: %T", list)
+				}
+				for i := range ppList.Items {
+					got = append(got, &ppList.Items[i])
+				}
+				for _, s := range toDecode {
+					ppWant := &performancev2.PerformanceProfile{}
+					_, err := DecodeManifest([]byte(s), scheme.Scheme, ppWant)
+					if err != nil {
+						return got, want, err
+					}
+					want = append(want, ppWant)
+				}
+				return got, want, nil
+			},
+		},
+		{
+			name:       "list multiple machineconfig",
+			ObjectList: &machineconfigv1.MachineConfigList{},
+			configMaps: []runtime.Object{
+				&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "config-1",
+						Namespace: namespace,
+					},
+					Data: map[string]string{
+						ConfigKey: machineConfig1,
+					},
+				},
+				&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "config-2",
+						Namespace: namespace,
+					},
+					Data: map[string]string{
+						ConfigKey: coreMachineConfig1,
+					},
+				},
+				&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "config-3",
+						Namespace: namespace,
+					},
+					Data: map[string]string{
+						ConfigKey: kubeletConfig1,
+					},
+				},
+			},
+			getterFunction: func(list client.ObjectList) ([]client.Object, []client.Object, error) {
+				var got, want []client.Object
+				toDecode := []string{machineConfig1, coreMachineConfig1}
+				mcList, ok := list.(*machineconfigv1.MachineConfigList)
+				if !ok {
+					return got, want, fmt.Errorf("expected *machineconfigv1.MachineConfigList, got: %T", list)
+				}
+				for i := range mcList.Items {
+					got = append(got, &mcList.Items[i])
+				}
+				for _, s := range toDecode {
+					mcWant := &machineconfigv1.MachineConfig{}
+					_, err := DecodeManifest([]byte(s), scheme.Scheme, mcWant)
+					if err != nil {
+						return got, want, err
+					}
+					want = append(want, mcWant)
+				}
+				return got, want, nil
+			},
+		},
+	}
+	for _, tc := range testsCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(tc.configMaps...).Build()
+			c := NewControlPlaneClient(fakeClient, namespace)
+			err := c.List(context.TODO(), tc.ObjectList)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, want, err := tc.getterFunction(tc.ObjectList)
+			if err != nil {
+				t.Errorf("getterFunction() error = %v, wantErr %v", err, tc.ObjectList)
+			}
+			if diff := cmp.Diff(got, want); diff != "" {
+				t.Errorf("actual object differs from expected: %s", diff)
+			}
+		})
+	}
+
 }
 
 func TestDecodeManifest(t *testing.T) {
