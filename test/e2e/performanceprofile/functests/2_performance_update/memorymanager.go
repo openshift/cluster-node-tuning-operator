@@ -17,6 +17,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/events"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
@@ -45,7 +46,7 @@ type MMPod struct {
 	runtimeclass                  string
 }
 
-var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() {
+var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(string(label.MemoryManager)), func() {
 	var (
 		workerRTNodes           []corev1.Node
 		profile, initialProfile *performancev2.PerformanceProfile
@@ -53,7 +54,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 		err                     error
 	)
 
-	Context("Group Both Numa Nodes with restricted topology", Ordered, func() {
+	Context("Group Both Numa Nodes with restricted topology", Ordered, Label(string(label.Tier2)), func() {
 		var numaCoreSiblings map[int]map[int][]int
 		var reserved, isolated []string
 		// Number of hugepages of size 2M created on both numa nodes
@@ -222,7 +223,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 		})
 	})
 
-	Context("Numa Nodes of same Hugepage size with different hugepages count and restricted policy", Ordered, func() {
+	Context("Numa Nodes of same Hugepage size with different hugepages count and restricted policy", Ordered, Label(string(label.Tier2)), func() {
 		var numaCoreSiblings map[int]map[int][]int
 		var reserved, isolated, available_node0_cpus, available_node1_cpus []string
 		var numaZone0HugepagesCount int = 10
@@ -424,7 +425,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 		})
 	})
 
-	Context("Group Both Numa Nodes with single-numa-node topology", Ordered, func() {
+	Context("Group Both Numa Nodes with single-numa-node topology", Ordered, Label(string(label.Tier2)), func() {
 		var numaCoreSiblings map[int]map[int][]int
 		var reserved, isolated []string
 		// Number of hugepages of size 2M
@@ -546,7 +547,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", func() 
 		})
 	})
 
-	Context("Numa Nodes with different hugepage size and single-numa-node policy", Ordered, func() {
+	Context("Numa Nodes with different hugepage size and single-numa-node policy", Ordered, Label(string(label.Tier2)), func() {
 		var numaCoreSiblings map[int]map[int][]int
 		var reserved, isolated, available_node0_cpus, available_node1_cpus []string
 		var numaZone0HugepagesCount int = 10

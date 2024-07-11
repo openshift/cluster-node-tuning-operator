@@ -18,6 +18,7 @@ import (
 
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	testnodes "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	testpods "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
@@ -95,7 +96,7 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 		Expect(err).ToNot(HaveOccurred(), "error getting the target node %q", targetNode)
 	})
 
-	It("Verify that pods requesting devices are correctly recovered on node restart", func() {
+	It("Verify that pods requesting devices are correctly recovered on node restart", Label(string(label.Tier3)), func() {
 		namespace := testutils.NamespaceTesting
 
 		// refresh the targetNode object
@@ -174,7 +175,7 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 		testlog.Infof("post reboot: newer workload pod %s/%s admitted: %s", updatedPod.Namespace, updatedPod.Name, extractPodStatus(updatedPod.Status))
 	})
 
-	It("Verify that pods requesting devices are not disrupted by a kubelet restart", func() {
+	It("Verify that pods requesting devices are not disrupted by a kubelet restart", Label(string(label.Tier3)), func() {
 		namespace := testutils.NamespaceTesting
 
 		// refresh the targetNode object
