@@ -36,28 +36,51 @@ type ControlPlaneClientImpl struct {
 }
 
 func (ci *ControlPlaneClientImpl) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
-	if IsEncapsulatedInConfigMap(obj) {
-		return ci.getFromConfigMap(ctx, key, obj, opts...)
+	dataKey := GetObjectConfigMapDataKey(obj)
+	if dataKey != "" {
+		return ci.getFromConfigMap(ctx, key, obj, dataKey, opts...)
 	}
 	return ci.Client.Get(ctx, key, obj, opts...)
 }
 
+func (ci *ControlPlaneClientImpl) List(ctx context.Context, objList client.ObjectList, opts ...client.ListOption) error {
+	dataKey := GetObjectConfigMapDataKey(objList)
+	if dataKey != "" {
+		return ci.listFromConfigMaps(ctx, objList, dataKey, opts...)
+	}
+	return ci.Client.List(ctx, objList, opts...)
+}
+
 func (ci *ControlPlaneClientImpl) Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
-	if IsEncapsulatedInConfigMap(obj) {
-		return ci.createInConfigMap(ctx, obj, opts...)
+	dataKey := GetObjectConfigMapDataKey(obj)
+	if dataKey != "" {
+		return ci.createInConfigMap(ctx, obj, dataKey, opts...)
 	}
 	return ci.Client.Create(ctx, obj, opts...)
 }
 
+func (ci *ControlPlaneClientImpl) Update(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+	dataKey := GetObjectConfigMapDataKey(obj)
+	if dataKey != "" {
+		return ci.updateConfigMap(ctx, obj, dataKey, opts...)
+	}
+	return ci.Client.Update(ctx, obj, opts...)
+}
+
 func IsEncapsulatedInConfigMap(obj runtime.Object) bool {
+	return GetObjectConfigMapDataKey(obj) != ""
+}
+
+func GetObjectConfigMapDataKey(obj runtime.Object) string {
 	switch obj.(type) {
-	case *performancev2.PerformanceProfile, *performancev2.PerformanceProfileList,
-		*machineconfigv1.KubeletConfig, *machineconfigv1.KubeletConfigList,
+	case *performancev2.PerformanceProfile, *performancev2.PerformanceProfileList, *tunedv1.Tuned, *tunedv1.TunedList:
+		return TuningKey
+	case *machineconfigv1.KubeletConfig, *machineconfigv1.KubeletConfigList,
 		*machineconfigv1.MachineConfig, *machineconfigv1.MachineConfigList,
-		*tunedv1.Tuned, *tunedv1.TunedList:
-		return true
+		*machineconfigv1.ContainerRuntimeConfig, *machineconfigv1.ContainerRuntimeConfigList:
+		return ConfigKey
 	default:
-		return false
+		return ""
 	}
 }
 
@@ -68,7 +91,40 @@ func NewControlPlaneClient(c client.Client, ns string) *ControlPlaneClientImpl {
 	}
 }
 
-func (ci *ControlPlaneClientImpl) getFromConfigMap(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+// We do not have a direct way to detect the ConfigMaps with the wanted objects,
+// so the function does the following:
+// 1. List() all ConfigMap within the HCP namespace
+// 2. Decodes all internal objects that are found with the provided dataKey
+// 3. Checks the listObj type and inserts the decoded objects which are match the list type
+func (ci *ControlPlaneClientImpl) listFromConfigMaps(ctx context.Context, listObj client.ObjectList, dataKey string, opts ...client.ListOption) error {
+	cmList := &corev1.ConfigMapList{}
+	if err := ci.Client.List(ctx, cmList, &client.ListOptions{
+		Namespace: ci.hostedControlPlaneNamespaceName}); err != nil {
+		return err
+	}
+	yamlSerializer := serializer.NewSerializerWithOptions(
+		serializer.DefaultMetaFactory, ci.Scheme(), ci.Scheme(),
+		serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true},
+	)
+	var decodedObjects []runtime.Object
+	for _, cm := range cmList.Items {
+		b, ok := cm.Data[dataKey]
+		if !ok {
+			// if it does not found under the key,
+			// this object it not of the wanted type
+			continue
+		}
+		obj, _, err := yamlSerializer.Decode([]byte(b), nil, nil)
+		if err != nil {
+			return err
+		}
+		decodedObjects = append(decodedObjects, obj)
+	}
+	insertDecodedObjects(listObj, decodedObjects)
+	return nil
+}
+
+func (ci *ControlPlaneClientImpl) getFromConfigMap(ctx context.Context, key client.ObjectKey, obj client.Object, dataKey string, opts ...client.GetOption) error {
 	cmList := &corev1.ConfigMapList{}
 	err := ci.Client.List(ctx, cmList, &client.ListOptions{
 		Namespace: ci.hostedControlPlaneNamespaceName,
@@ -77,7 +133,7 @@ func (ci *ControlPlaneClientImpl) getFromConfigMap(ctx context.Context, key clie
 		return err
 	}
 	for _, cm := range cmList.Items {
-		err = validateAndExtractObjectFromConfigMap(&cm, ci.Scheme(), obj)
+		err = validateAndExtractObjectFromConfigMap(&cm, ci.Scheme(), obj, dataKey)
 		if err != nil {
 			return err
 		}
@@ -90,18 +146,14 @@ func (ci *ControlPlaneClientImpl) getFromConfigMap(ctx context.Context, key clie
 		apierrors.NewNotFound(schema.GroupResource{}, key.Name))
 }
 
-// validateAndExtractObjectFromConfigMap validates the object if it supposes to be encapsulated in a configmap.
-// then it tries to extract the object.
-// even if extraction failed, the returned validation value is true.
-func validateAndExtractObjectFromConfigMap(cm *corev1.ConfigMap, scheme *runtime.Scheme, obj client.Object) error {
-	var manifest string
-	switch obj.(type) {
-	case *performancev2.PerformanceProfile, *tunedv1.Tuned:
-		manifest = cm.Data[TuningKey]
-	case *machineconfigv1.KubeletConfig, *machineconfigv1.MachineConfig:
-		manifest = cm.Data[ConfigKey]
-	default:
-		return fmt.Errorf("unsupported config type: %T", obj)
+// validateAndExtractObjectFromConfigMap validates if there's object data in a configmap
+// and tries to extract the object.
+func validateAndExtractObjectFromConfigMap(cm *corev1.ConfigMap, scheme *runtime.Scheme, obj client.Object, dataKey string) error {
+	manifest, ok := cm.Data[dataKey]
+	if !ok {
+		// the given configmap does not contain data under the provided key
+		// we return here to save the unnecessary decoding
+		return nil
 	}
 	if _, err := DecodeManifest([]byte(manifest), scheme, obj); err != nil {
 		return fmt.Errorf("error decoding config: %w", err)
@@ -109,14 +161,47 @@ func validateAndExtractObjectFromConfigMap(cm *corev1.ConfigMap, scheme *runtime
 	return nil
 }
 
-func (ci *ControlPlaneClientImpl) createInConfigMap(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
+func insertDecodedObjects(objectList client.ObjectList, objs []runtime.Object) {
+	for _, obj := range objs {
+		switch list := objectList.(type) {
+		case *performancev2.PerformanceProfileList:
+			if pp, ok := obj.(*performancev2.PerformanceProfile); ok {
+				list.Items = append(list.Items, *pp)
+			}
+		case *machineconfigv1.KubeletConfigList:
+			if kc, ok := obj.(*machineconfigv1.KubeletConfig); ok {
+				list.Items = append(list.Items, *kc)
+			}
+		case *machineconfigv1.MachineConfigList:
+			if mc, ok := obj.(*machineconfigv1.MachineConfig); ok {
+				list.Items = append(list.Items, *mc)
+			}
+		case *tunedv1.TunedList:
+			if t, ok := obj.(*tunedv1.Tuned); ok {
+				list.Items = append(list.Items, *t)
+			}
+		}
+	}
+}
+
+func (ci *ControlPlaneClientImpl) createInConfigMap(ctx context.Context, obj client.Object, dataKey string, opts ...client.CreateOption) error {
 	cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: obj.GetName(), Namespace: HostedClustersNamespaceName}}
 	b, err := EncodeManifest(obj, scheme.Scheme)
 	if err != nil {
 		return err
 	}
-	cm.Data = map[string]string{TuningKey: string(b)}
+	cm.Data = map[string]string{dataKey: string(b)}
 	return ci.Client.Create(ctx, cm, opts...)
+}
+
+func (ci *ControlPlaneClientImpl) updateConfigMap(ctx context.Context, obj client.Object, dataKey string, opts ...client.UpdateOption) error {
+	cm := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: obj.GetName(), Namespace: HostedClustersNamespaceName}}
+	b, err := EncodeManifest(obj, scheme.Scheme)
+	if err != nil {
+		return err
+	}
+	cm.Data = map[string]string{dataKey: string(b)}
+	return ci.Client.Update(ctx, cm, opts...)
 }
 
 func EncodeManifest(obj runtime.Object, scheme *runtime.Scheme) ([]byte, error) {
