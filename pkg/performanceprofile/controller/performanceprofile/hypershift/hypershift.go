@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	hypershiftconsts "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/consts"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,12 +19,8 @@ import (
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 )
 
-// a set of keys which used to classify the encapsulated objects in the ConfigMap
 const (
-	TuningKey                   = "tuning"
-	ConfigKey                   = "config"
 	HostedClustersNamespaceName = "clusters"
-	PerformanceProfileNameLabel = "hypershift.openshift.io/performanceProfileName"
 )
 
 type ControlPlaneClientImpl struct {
@@ -74,11 +71,11 @@ func IsEncapsulatedInConfigMap(obj runtime.Object) bool {
 func GetObjectConfigMapDataKey(obj runtime.Object) string {
 	switch obj.(type) {
 	case *performancev2.PerformanceProfile, *performancev2.PerformanceProfileList, *tunedv1.Tuned, *tunedv1.TunedList:
-		return TuningKey
+		return hypershiftconsts.TuningKey
 	case *machineconfigv1.KubeletConfig, *machineconfigv1.KubeletConfigList,
 		*machineconfigv1.MachineConfig, *machineconfigv1.MachineConfigList,
 		*machineconfigv1.ContainerRuntimeConfig, *machineconfigv1.ContainerRuntimeConfigList:
-		return ConfigKey
+		return hypershiftconsts.ConfigKey
 	default:
 		return ""
 	}
