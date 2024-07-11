@@ -22,14 +22,13 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift"
+	hypershiftconsts "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/consts"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
 )
 
 const (
 	hypershiftNodePoolLabel        = "hypershift.openshift.io/nodePool"
 	tunedConfigMapLabel            = "hypershift.openshift.io/tuned-config"
-	tunedConfigMapConfigKey        = "tuning"
-	mcoConfigMapConfigKey          = "config"
 	ntoGeneratedMachineConfigLabel = "hypershift.openshift.io/nto-generated-machine-config"
 )
 
@@ -85,9 +84,9 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 		return fmt.Errorf("wrong type conversion; want=*ConfigMap got=%T", obj)
 	}
 
-	s, ok := instance.Data[hypershift.TuningKey]
+	s, ok := instance.Data[hypershiftconsts.TuningKey]
 	if !ok {
-		return fmt.Errorf("key named %q not found in ConfigMap %q", hypershift.TuningKey, client.ObjectKeyFromObject(obj).String())
+		return fmt.Errorf("key named %q not found in ConfigMap %q", hypershiftconsts.TuningKey, client.ObjectKeyFromObject(obj).String())
 	}
 
 	profile := &performancev2.PerformanceProfile{}
@@ -148,7 +147,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if mcMutated != nil {
-		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.MachineConfig, profile.Name, mcoConfigMapConfigKey, ntoGeneratedMachineConfigLabel)
+		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.MachineConfig, profile.Name, hypershiftconsts.ConfigKey, ntoGeneratedMachineConfigLabel)
 		if err != nil {
 			return err
 		}
@@ -159,7 +158,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if kcMutated != nil {
-		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.KubeletConfig, profile.Name, mcoConfigMapConfigKey, ntoGeneratedMachineConfigLabel)
+		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.KubeletConfig, profile.Name, hypershiftconsts.ConfigKey, ntoGeneratedMachineConfigLabel)
 		if err != nil {
 			return err
 		}
@@ -170,7 +169,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if performanceTunedMutated != nil {
-		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.Tuned, profile.Name, tunedConfigMapConfigKey, tunedConfigMapLabel)
+		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.Tuned, profile.Name, hypershiftconsts.TuningKey, tunedConfigMapLabel)
 		if err != nil {
 			return err
 		}
@@ -201,7 +200,7 @@ func (h *handler) getContainerRuntimeName(ctx context.Context, profile *performa
 	}
 	var ctrcfgs []*mcov1.ContainerRuntimeConfig
 	for _, cm := range cmList.Items {
-		data, ok := cm.Data[hypershift.ConfigKey]
+		data, ok := cm.Data[hypershiftconsts.ConfigKey]
 		// container runtime config should be store in the Config key
 		if !ok {
 			continue
@@ -261,21 +260,21 @@ func EncapsulateObjInConfigMap(scheme *runtime.Scheme, instance *corev1.ConfigMa
 
 func createOrUpdateTunedConfigMap(ctx context.Context, cli client.Client, cm *corev1.ConfigMap) error {
 	updateFunc := func(orig, dst *corev1.ConfigMap) {
-		dst.Data[tunedConfigMapConfigKey] = orig.Data[tunedConfigMapConfigKey]
+		dst.Data[hypershiftconsts.TuningKey] = orig.Data[hypershiftconsts.TuningKey]
 	}
 	return createOrUpdateConfigMap(ctx, cli, cm, updateFunc)
 }
 
 func createOrUpdateMachineConfigConfigMap(ctx context.Context, cli client.Client, cm *corev1.ConfigMap) error {
 	machineconfigConfigMapUpdateFunc := func(orig, dst *corev1.ConfigMap) {
-		dst.Data[mcoConfigMapConfigKey] = orig.Data[mcoConfigMapConfigKey]
+		dst.Data[hypershiftconsts.ConfigKey] = orig.Data[hypershiftconsts.ConfigKey]
 	}
 	return createOrUpdateConfigMap(ctx, cli, cm, machineconfigConfigMapUpdateFunc)
 }
 
 func createOrUpdateKubeletConfigConfigMap(ctx context.Context, cli client.Client, cm *corev1.ConfigMap) error {
 	kubeletConfigConfigMapUpdateFunc := func(orig, dst *corev1.ConfigMap) {
-		dst.Data[mcoConfigMapConfigKey] = orig.Data[mcoConfigMapConfigKey]
+		dst.Data[hypershiftconsts.ConfigKey] = orig.Data[hypershiftconsts.ConfigKey]
 	}
 	return createOrUpdateConfigMap(ctx, cli, cm, kubeletConfigConfigMapUpdateFunc)
 }

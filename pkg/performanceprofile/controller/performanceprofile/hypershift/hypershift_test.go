@@ -17,6 +17,7 @@ import (
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	hypershiftconsts "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/consts"
 )
 
 const machineConfig1 = `
@@ -124,7 +125,7 @@ func TestControlPlaneClientImpl_Get(t *testing.T) {
 						Namespace: namespace,
 					},
 					Data: map[string]string{
-						ConfigKey: machineConfig1,
+						hypershiftconsts.ConfigKey: machineConfig1,
 					},
 					BinaryData: nil,
 				},
@@ -134,7 +135,7 @@ func TestControlPlaneClientImpl_Get(t *testing.T) {
 						Namespace: namespace,
 					},
 					Data: map[string]string{
-						ConfigKey: coreMachineConfig1,
+						hypershiftconsts.ConfigKey: coreMachineConfig1,
 					},
 				},
 			},
@@ -155,7 +156,7 @@ func TestControlPlaneClientImpl_Get(t *testing.T) {
 						Namespace: namespace,
 					},
 					Data: map[string]string{
-						TuningKey: perfprofOne,
+						hypershiftconsts.TuningKey: perfprofOne,
 					},
 				},
 			},
@@ -189,7 +190,7 @@ func TestControlPlaneClientImpl_Get(t *testing.T) {
 						Namespace: namespace,
 					},
 					Data: map[string]string{
-						ConfigKey: machineConfig1,
+						hypershiftconsts.ConfigKey: machineConfig1,
 					},
 					BinaryData: nil,
 				},
@@ -199,7 +200,7 @@ func TestControlPlaneClientImpl_Get(t *testing.T) {
 						Namespace: namespace,
 					},
 					Data: map[string]string{
-						ConfigKey: coreMachineConfig1,
+						hypershiftconsts.ConfigKey: coreMachineConfig1,
 					},
 				},
 				&corev1.ConfigMap{
@@ -208,7 +209,7 @@ func TestControlPlaneClientImpl_Get(t *testing.T) {
 						Namespace: namespace,
 					},
 					Data: map[string]string{
-						ConfigKey: kubeletConfig1,
+						hypershiftconsts.ConfigKey: kubeletConfig1,
 					},
 				},
 			},
@@ -229,7 +230,7 @@ func TestControlPlaneClientImpl_Get(t *testing.T) {
 						Namespace: "wrong-namespace",
 					},
 					Data: map[string]string{
-						ConfigKey: machineConfig1,
+						hypershiftconsts.ConfigKey: machineConfig1,
 					},
 					BinaryData: nil,
 				},
@@ -279,7 +280,7 @@ func TestControlPlaneClientImpl_List(t *testing.T) {
 						Namespace: namespace,
 					},
 					Data: map[string]string{
-						TuningKey: perfprofOne,
+						hypershiftconsts.TuningKey: perfprofOne,
 					},
 				},
 			},
@@ -314,7 +315,7 @@ func TestControlPlaneClientImpl_List(t *testing.T) {
 						Namespace: namespace,
 					},
 					Data: map[string]string{
-						ConfigKey: machineConfig1,
+						hypershiftconsts.ConfigKey: machineConfig1,
 					},
 				},
 				&corev1.ConfigMap{
@@ -323,7 +324,7 @@ func TestControlPlaneClientImpl_List(t *testing.T) {
 						Namespace: namespace,
 					},
 					Data: map[string]string{
-						ConfigKey: coreMachineConfig1,
+						hypershiftconsts.ConfigKey: coreMachineConfig1,
 					},
 				},
 				&corev1.ConfigMap{
@@ -332,7 +333,7 @@ func TestControlPlaneClientImpl_List(t *testing.T) {
 						Namespace: namespace,
 					},
 					Data: map[string]string{
-						ConfigKey: kubeletConfig1,
+						hypershiftconsts.ConfigKey: kubeletConfig1,
 					},
 				},
 			},
