@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	hypershiftconsts "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/consts"
 	"os"
 	"reflect"
 	"time"
@@ -33,7 +34,6 @@ import (
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/status"
 
@@ -204,21 +204,21 @@ func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Ma
 				klog.V(4).InfoS("UpdateEvent not valid", "objectName", ue.ObjectOld.GetName())
 				return false
 			}
-			return validateLabels(ue.ObjectNew, hypershift.PerformanceProfileNameLabel, "UpdateEvent")
+			return validateLabels(ue.ObjectNew, hypershiftconsts.PerformanceProfileNameLabel, "UpdateEvent")
 		},
 		CreateFunc: func(ce event.CreateEvent) bool {
 			if ce.Object == nil {
 				klog.Error("Create event has no runtime object")
 				return false
 			}
-			return validateLabels(ce.Object, hypershift.PerformanceProfileNameLabel, "CreateEvent")
+			return validateLabels(ce.Object, hypershiftconsts.PerformanceProfileNameLabel, "CreateEvent")
 		},
 		DeleteFunc: func(de event.DeleteEvent) bool {
 			if de.Object == nil {
 				klog.Error("Delete event has no runtime object")
 				return false
 			}
-			return validateLabels(de.Object, hypershift.PerformanceProfileNameLabel, "DeleteEvent")
+			return validateLabels(de.Object, hypershiftconsts.PerformanceProfileNameLabel, "DeleteEvent")
 		},
 	}
 

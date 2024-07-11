@@ -19,10 +19,8 @@ import (
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 )
 
-// a set of keys which used to classify the encapsulated objects in the ConfigMap
 const (
 	HostedClustersNamespaceName = "clusters"
-	PerformanceProfileNameLabel = "hypershift.openshift.io/performanceProfileName"
 )
 
 type ControlPlaneClientImpl struct {
