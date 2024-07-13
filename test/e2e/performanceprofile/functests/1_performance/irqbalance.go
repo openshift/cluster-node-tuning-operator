@@ -11,14 +11,12 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/cpuset"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -29,10 +27,10 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 	e2etuned "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 	"github.com/openshift/cluster-node-tuning-operator/test/framework"
@@ -46,7 +44,6 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 	var workerRTNodes []corev1.Node
 	var targetNode *corev1.Node
 	var profile, initialProfile *performancev2.PerformanceProfile
-	var performanceMCP string
 	var err error
 
 	BeforeEach(func() {
@@ -61,13 +58,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 
 		initialProfile = profile.DeepCopy()
 
-		performanceMCP, err = mcps.GetByProfile(profile)
-		Expect(err).ToNot(HaveOccurred())
-
-		// Verify that worker and performance MCP have updated state equals to true
-		for _, mcpName := range []string{testutils.RoleWorker, performanceMCP} {
-			mcps.WaitForCondition(mcpName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
-		}
+		profilesupdate.PostUpdateSync(context.TODO(), profile)
 
 		nodeIdx := pickNodeIdx(workerRTNodes)
 		targetNode = &workerRTNodes[nodeIdx]
@@ -96,7 +87,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 
 					condStatus := corev1.ConditionUnknown
 					EventuallyWithOffset(1, context.TODO(), func() bool {
-						tunedProfile, err := e2etuned.GetProfile(context.TODO(), testclient.Client, components.NamespaceNodeTuningOperator, node.Name)
+						tunedProfile, err := e2etuned.GetProfile(context.TODO(), testclient.DataPlaneClient, components.NamespaceNodeTuningOperator, node.Name)
 						Expect(err).ToNot(HaveOccurred(), "failed to get Tuned Profile for node %q", node.Name)
 						for _, cond := range tunedProfile.Status.Conditions {
 							if cond.Type != tunedv1.TunedProfileApplied {
@@ -146,14 +137,8 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 
 			defer func() { // return initial configuration
 				By("reverting the profile into its initial state")
-				spec, err := json.Marshal(initialProfile.Spec)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(testclient.Client.Patch(context.TODO(), profile,
-					client.RawPatch(
-						types.JSONPatchType,
-						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-					),
-				)).ToNot(HaveOccurred())
+				profile.Spec = initialProfile.Spec
+				profiles.UpdateWithRetry(profile)
 				// in the initial profile `GloballyDisableIrqLoadBalancing` value should be false,
 				// so we expect the banned cpu set to be empty
 				Eventually(verifyNodes).WithArguments(false).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).ShouldNot(HaveOccurred())
@@ -166,17 +151,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			profile.Spec.GloballyDisableIrqLoadBalancing = &irqLoadBalancingDisabled
 
 			By(fmt.Sprintf("Modifying profile: irqLoadBalancingDisabled switched to %v", irqLoadBalancingDisabled))
-
-			spec, err := json.Marshal(profile.Spec)
-			Expect(err).ToNot(HaveOccurred())
-
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			Expect(testclient.Client.Patch(context.TODO(), profile,
-				client.RawPatch(
-					types.JSONPatchType,
-					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-				),
-			)).ToNot(HaveOccurred())
+			profiles.UpdateWithRetry(profile)
 			Eventually(verifyNodes).WithArguments(irqLoadBalancingDisabled).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).ShouldNot(HaveOccurred())
 		})
 	})
@@ -228,7 +203,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			data, _ := json.Marshal(testpod)
 			testlog.Infof("using testpod:\n%s", string(data))
 
-			err = testclient.Client.Create(context.TODO(), testpod)
+			err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
 			defer func() {
 				if testpod != nil {

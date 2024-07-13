@@ -20,9 +20,6 @@ import (
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	mcv1 "github.com/openshift/api/machineconfiguration/v1"
-	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
-
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
@@ -37,6 +34,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 )
 
 var RunningOnSingleNode bool
@@ -81,8 +79,15 @@ var _ = Describe("[performance][config] Performance configuration", Ordered, fun
 				return err
 			}, cluster.ComputeTestTimeout(15*time.Minute, RunningOnSingleNode), 15*time.Second).ShouldNot(HaveOccurred(), "Failed creating the performance profile")
 		}
-		unpauseMCP(context.TODO(), performanceProfile, profileAlreadyExists)
-		attachProfileToNodePool(context.TODO(), performanceProfile, profileAlreadyExists)
+		unpauseMCP(context.TODO(), performanceProfile)
+		attachProfileToNodePool(context.TODO(), performanceProfile)
+		// if the profile exists, it's likely to have been through the updating phase, so we only
+		//	wait for updated.
+		if !profileAlreadyExists {
+			profilesupdate.WaitForTuningUpdating(context.TODO(), performanceProfile)
+		}
+		profilesupdate.PostUpdateSync(context.TODO(), performanceProfile)
+
 		Expect(testclient.ControlPlaneClient.Get(context.TODO(), client.ObjectKeyFromObject(performanceProfile), performanceProfile))
 		By("Printing the updated profile")
 		testlog.Info(format.Object(performanceProfile, 2))
@@ -202,7 +207,7 @@ func testProfile() (*performancev2.PerformanceProfile, error) {
 	return profile, nil
 }
 
-func unpauseMCP(ctx context.Context, performanceProfile *performancev2.PerformanceProfile, profileAlreadyExists bool) {
+func unpauseMCP(ctx context.Context, performanceProfile *performancev2.PerformanceProfile) {
 	GinkgoHelper()
 	// no MCPs on hypershift
 	if hypershift.IsHypershiftCluster() {
@@ -230,18 +235,9 @@ func unpauseMCP(ctx context.Context, performanceProfile *performancev2.Performan
 
 	By("Waiting for the MCP to pick the PerformanceProfile's MC")
 	mcps.WaitForProfilePickedUp(performanceMCP.Name, performanceProfile)
-
-	// If the profile is already there, it's likely to have been through the updating phase, so we only
-	// wait for updated.
-	if !profileAlreadyExists {
-		By("Waiting for MCP starting to update")
-		mcps.WaitForCondition(performanceMCP.Name, mcv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-	}
-	By("Waiting for MCP being updated")
-	mcps.WaitForCondition(performanceMCP.Name, mcv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 }
 
-func attachProfileToNodePool(ctx context.Context, performanceProfile *performancev2.PerformanceProfile, profileAlreadyExists bool) {
+func attachProfileToNodePool(ctx context.Context, performanceProfile *performancev2.PerformanceProfile) {
 	GinkgoHelper()
 	// no NodePools on none-hypershift
 	if !hypershift.IsHypershiftCluster() {
@@ -249,29 +245,12 @@ func attachProfileToNodePool(ctx context.Context, performanceProfile *performanc
 	}
 	// for debugging purposes
 	printEnvs()
-	npList := &hypershiftv1beta1.NodePoolList{}
-	Expect(testclient.ControlPlaneClient.List(ctx, npList)).To(Succeed())
 	hostedClusterName, err := hypershift.GetHostedClusterName()
 	Expect(err).ToNot(HaveOccurred())
-	var np *hypershiftv1beta1.NodePool
-	for i := 0; i < len(npList.Items); i++ {
-		if npList.Items[i].Spec.ClusterName == hostedClusterName {
-			np = &npList.Items[i]
-		}
-	}
-	Expect(np).ToNot(BeNil(), "failed to find nodePool associated with cluster %q; existing nodePools are: %+v", hostedClusterName, npList.Items)
+	np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
+	Expect(err).ToNot(HaveOccurred())
 	np.Spec.TuningConfig = []corev1.LocalObjectReference{{Name: performanceProfile.Name}}
 	Expect(testclient.ControlPlaneClient.Update(ctx, np)).To(Succeed())
-	key := client.ObjectKeyFromObject(np)
-	// if the profile exists, don't wait for nodePool to get into updating state
-	if !profileAlreadyExists {
-		testlog.Infof("wait for node pool %q transition into update config state", key.String())
-		err = nodepools.WaitForUpdatingConfig(ctx, testclient.ControlPlaneClient, np.Name, np.Namespace)
-		Expect(err).ToNot(HaveOccurred(), "nodePool %q is not in UpdatingConfig state", key.String())
-	}
-	testlog.Infof("wait for node pool %q transition into config ready state", key.String())
-	err = nodepools.WaitForConfigToBeReady(ctx, testclient.ControlPlaneClient, np.Name, np.Namespace)
-	Expect(err).ToNot(HaveOccurred(), "nodePool %q config is not ready", key.String())
 }
 
 func printEnvs() {
