@@ -20,6 +20,10 @@ const (
 	// The Hypershift operator watches these and acts upon their creation/update/deletion.
 	NTOGeneratedMachineConfigLabel = "hypershift.openshift.io/nto-generated-machine-config"
 
+	// NTOGeneratedPerformanceProfileStatusConfigMapLabel uses
+	//to label a ConfigMap that holds encoded performance-profile status object
+	NTOGeneratedPerformanceProfileStatusConfigMapLabel = "hypershift.openshift.io/nto-generated-performance-profile-status"
+
 	// TuningKey is the key under ConfigMap.Data on which encoded
 	// tuned and performance-profile objects are stored.
 	TuningKey = "tuning"
@@ -27,4 +31,8 @@ const (
 	// ConfigKey is the key under ConfigMap.Data on which encoded
 	// machine-config, kubelet-config and container-runtime-config objects are stored.
 	ConfigKey = "config"
+
+	// PerformanceProfileStatusKey is the key under ConfigMap.Data on which an encoded
+	// performance-profile status object is stored.
+	PerformanceProfileStatusKey = "status"
 )
