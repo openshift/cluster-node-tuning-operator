@@ -170,7 +170,7 @@ var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
 						}
 					}
 
-					ginkgo.By(fmt.Sprintf("checking real node conditions for profile %q did not change over pristine status", curProf.Name))
+					ginkgo.By(fmt.Sprintf("checking real node conditions for profile %q did not change over pristine status using %v", curProf.Name, verifData.CommandArgs))
 					out, err := util.ExecCmdInPod(targetTunedPod, verifData.CommandArgs...)
 					if err != nil {
 						return err

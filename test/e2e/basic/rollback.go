@@ -3,6 +3,8 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/onsi/ginkgo/v2"
@@ -19,16 +21,26 @@ import (
 // Test the functionality of the preStop container lifecycle hook -- TuneD settings rollback.
 var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollback", func() {
 	const (
-		profileIngress  = "../../../examples/ingress.yaml"
-		podLabelIngress = "tuned.openshift.io/ingress"
-		sysctlVar       = "net.ipv4.tcp_tw_reuse"
-		sysctlValDef    = "2" // default value of 'sysctlVar'
+		profileSHMMNI       = "../testing_manifests/deferred/tuned-basic-00.yaml"
+		profileIngress      = "../../../examples/ingress.yaml"
+		podLabelIngress     = "tuned.openshift.io/ingress"
+		sysctlTCPTWReuseVar = "net.ipv4.tcp_tw_reuse"
+		sysctlValDef        = "2" // default value of 'sysctlTCPTWReuseVar'
 	)
 
 	ginkgo.Context("TuneD settings rollback", func() {
 		var (
-			pod *coreapi.Pod
+			profilePath    string
+			currentDirPath string
+			pod            *coreapi.Pod
 		)
+
+		ginkgo.BeforeEach(func() {
+			var err error
+			currentDirPath, err = util.GetCurrentDirPath()
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			profilePath = filepath.Join(currentDirPath, profileIngress)
+		})
 
 		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of ginkgo.It()
 		ginkgo.AfterEach(func() {
@@ -36,10 +48,10 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 			if pod != nil {
 				util.ExecAndLogCommand("oc", "label", "pod", "--overwrite", "-n", ntoconfig.WatchNamespace(), pod.Name, podLabelIngress+"-")
 			}
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileIngress)
+			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profilePath)
 		})
 
-		ginkgo.It(fmt.Sprintf("%s set", sysctlVar), func() {
+		ginkgo.It(fmt.Sprintf("%s set", sysctlTCPTWReuseVar), func() {
 			const (
 				pollInterval = 5 * time.Second
 				waitDuration = 5 * time.Minute
@@ -61,20 +73,20 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 			err = util.WaitForProfileConditionStatus(cs, pollInterval, waitDuration, node.Name, util.GetDefaultWorkerProfile(node), tunedv1.TunedProfileApplied, coreapi.ConditionTrue)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("ensuring the default %s value (%s) is set in Pod %s", sysctlVar, sysctlValDef, pod.Name))
-			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlVar, sysctlValDef)
+			ginkgo.By(fmt.Sprintf("ensuring the default %s value (%s) is set in Pod %s", sysctlTCPTWReuseVar, sysctlValDef, pod.Name))
+			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlTCPTWReuseVar, sysctlValDef)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("labelling Pod %s with label %s", pod.Name, podLabelIngress))
 			_, _, err = util.ExecAndLogCommand("oc", "label", "pod", "--overwrite", "-n", ntoconfig.WatchNamespace(), pod.Name, podLabelIngress+"=")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("creating custom profile %s", profileIngress))
-			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.WatchNamespace(), "-f", profileIngress)
+			ginkgo.By(fmt.Sprintf("creating custom profile %s", profilePath))
+			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.WatchNamespace(), "-f", profilePath)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By("ensuring the custom worker node profile was set")
-			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlVar, "1")
+			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlTCPTWReuseVar, "1")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("deleting Pod %s", pod.Name))
@@ -94,25 +106,99 @@ var _ = ginkgo.Describe("[basic][rollback] Node Tuning Operator settings rollbac
 			gomega.Expect(err).NotTo(gomega.HaveOccurred(), explain)
 
 			// rollback = not_on_exit in tuned-main.conf file prevents settings rollback at TuneD exit
-			ginkgo.By(fmt.Sprintf("ensuring the custom %s value (%s) is still set in Pod %s", sysctlVar, "1", pod.Name))
-			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlVar, "1")
+			ginkgo.By(fmt.Sprintf("ensuring the custom %s value (%s) is still set in Pod %s", sysctlTCPTWReuseVar, "1", pod.Name))
+			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlTCPTWReuseVar, "1")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			ginkgo.By(fmt.Sprintf("deleting custom profile %s", profileIngress))
-			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileIngress)
+			ginkgo.By(fmt.Sprintf("deleting custom profile %s", profilePath))
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profilePath)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("waiting for TuneD profile %s on node %s", util.GetDefaultWorkerProfile(node), node.Name))
 			err = util.WaitForProfileConditionStatus(cs, pollInterval, waitDuration, node.Name, util.GetDefaultWorkerProfile(node), tunedv1.TunedProfileApplied, coreapi.ConditionTrue)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			_, err = util.ExecCmdInPod(pod, "sysctl", fmt.Sprintf("%s=%s", sysctlVar, sysctlValDef))
+			_, err = util.ExecCmdInPod(pod, "sysctl", fmt.Sprintf("%s=%s", sysctlTCPTWReuseVar, sysctlValDef))
 			gomega.Expect(err).NotTo(gomega.HaveOccurred()) // sysctl exits 1 when it fails to configure a kernel parameter at runtime
 
-			ginkgo.By(fmt.Sprintf("ensuring the default %s value (%s) is set in Pod %s", sysctlVar, sysctlValDef, pod.Name))
-			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlVar, sysctlValDef)
+			ginkgo.By(fmt.Sprintf("ensuring the default %s value (%s) is set in Pod %s", sysctlTCPTWReuseVar, sysctlValDef, pod.Name))
+			_, err = util.WaitForSysctlValueInPod(pollInterval, waitDuration, pod, sysctlTCPTWReuseVar, sysctlValDef)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		})
+	})
+
+	ginkgo.Context("TuneD settings rollback without pod restart", func() {
+		var (
+			profilePath    string
+			currentDirPath string
+		)
+
+		ginkgo.BeforeEach(func() {
+			var err error
+			currentDirPath, err = util.GetCurrentDirPath()
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			profilePath = filepath.Join(currentDirPath, profileSHMMNI)
+		})
+
+		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of ginkgo.It()
+		ginkgo.AfterEach(func() {
+			ginkgo.By("cluster changes rollback")
+			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profilePath)
+		})
+
+		ginkgo.It("kernel.shmmni set", func() {
+			const (
+				pollInterval = 5 * time.Second
+				waitDuration = 5 * time.Minute
+			)
+
+			tuned, err := util.LoadTuned(profilePath)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
+			ginkgo.By("getting a list of worker nodes")
+			nodes, err := util.GetNodesByRole(cs, "worker")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(len(nodes)).NotTo(gomega.BeZero(), "number of worker nodes is 0")
+
+			node := &nodes[0]
+			defaultProfileName := util.GetDefaultWorkerProfile(node)
+
+			// Expect the default worker node profile applied prior to getting any current values.
+			ginkgo.By(fmt.Sprintf("waiting for TuneD profile %s on node %s", defaultProfileName, node.Name))
+			err = util.WaitForProfileConditionStatus(cs, pollInterval, waitDuration, node.Name, defaultProfileName, tunedv1.TunedProfileApplied, coreapi.ConditionTrue)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By(fmt.Sprintf("checking the pristine state on node %s", node.Name))
+			// before the test profile is applied, current node state matches the pristine node state
+			verifData := util.MustExtractVerificationOutputAndCommand(cs, node, tuned)
+			gomega.Expect(verifData.OutputCurrent).ToNot(gomega.Equal(verifData.OutputExpected), "current pristine output %q already matches expected %q", verifData.OutputCurrent, verifData.OutputExpected)
+
+			ginkgo.By(fmt.Sprintf("creating custom profile %s", profilePath))
+			_, _, err = util.ExecAndLogCommand("oc", "create", "-n", ntoconfig.WatchNamespace(), "-f", profilePath)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			ginkgo.By(fmt.Sprintf("waiting for TuneD profile %s on node %s", "test-shmmni", node.Name))
+			err = util.WaitForProfileConditionStatus(cs, pollInterval, waitDuration, node.Name, "test-shmmni", tunedv1.TunedProfileApplied, coreapi.ConditionTrue)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By("ensuring the custom worker node profile was set")
+			out, err := util.ExecCmdInPod(verifData.TargetTunedPod, verifData.CommandArgs...)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			out = strings.TrimSpace(out)
+			gomega.Expect(out).To(gomega.Equal(verifData.OutputExpected), "command %q output %q does not match desired %q", verifData.CommandArgs, out, verifData.OutputExpected)
+
+			ginkgo.By(fmt.Sprintf("deleting custom profile %s", profilePath))
+			_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profilePath)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By(fmt.Sprintf("waiting for TuneD profile %s on node %s", defaultProfileName, node.Name))
+			err = util.WaitForProfileConditionStatus(cs, pollInterval, waitDuration, node.Name, defaultProfileName, tunedv1.TunedProfileApplied, coreapi.ConditionTrue)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By(fmt.Sprintf("ensuring the pristine state is restored on node %s", node.Name))
+			out, err = util.ExecCmdInPod(verifData.TargetTunedPod, verifData.CommandArgs...)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			out = strings.TrimSpace(out)
+			gomega.Expect(out).To(gomega.Equal(verifData.OutputCurrent), "command %q output %q does not match pristine %q", verifData.CommandArgs, out, verifData.OutputCurrent)
 		})
 	})
 })
