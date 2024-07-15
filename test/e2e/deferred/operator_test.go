@@ -208,3 +208,42 @@ func checkAppliedConditionStaysOKForNode(ctx context.Context, nodeName, expected
 		return err
 	}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
 }
+
+type verificationContext struct {
+	output         string
+	args           []string
+	targetTunedPod *corev1.Pod
+}
+
+func mustExtractVerificationOutputAndCommand(targetNode *corev1.Node, tuned *tunedv1.Tuned) verificationContext {
+	ginkgo.GinkgoHelper()
+
+	verificationCommand, ok := tuned.Annotations[verifyCommandAnnotation]
+	gomega.Expect(ok).To(gomega.BeTrue(), "missing verification command annotation %s", verifyCommandAnnotation)
+
+	verificationCommandArgs := []string{}
+	err := json.Unmarshal([]byte(verificationCommand), &verificationCommandArgs)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	gomega.Expect(verificationCommandArgs).ToNot(gomega.BeEmpty(), "missing verification command args")
+	ginkgo.By(fmt.Sprintf("verification command: %v", verificationCommandArgs))
+
+	targetTunedPod, err := util.GetTunedForNode(cs, targetNode)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	gomega.Expect(targetTunedPod.Status.Phase).To(gomega.Equal(corev1.PodRunning))
+
+	// gather the output now before the profile is applied so we can check nothing changed
+	verificationOutput, err := util.ExecCmdInPod(targetTunedPod, verificationCommandArgs...)
+	if err != nil {
+		// not available, which is actually a valid state. Let's record it.
+		verificationOutput = err.Error()
+	} else {
+		verificationOutput = strings.TrimSpace(verificationOutput)
+	}
+	ginkgo.By(fmt.Sprintf("verification expected output: %q", verificationOutput))
+
+	return verificationContext{
+		output:         verificationOutput,
+		args:           verificationCommandArgs,
+		targetTunedPod: targetTunedPod,
+	}
+}

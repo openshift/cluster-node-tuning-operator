@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -84,27 +83,7 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 			tuned, err := loadTuned(tunedPath)
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
-			verificationCommand, ok := tuned.Annotations[verifyCommandAnnotation]
-			gomega.Expect(ok).To(gomega.BeTrue(), "missing verification command annotation %s", verifyCommandAnnotation)
-
-			verificationCommandArgs := []string{}
-			err = json.Unmarshal([]byte(verificationCommand), &verificationCommandArgs)
-			gomega.Expect(verificationCommandArgs).ToNot(gomega.BeEmpty(), "missing verification command args")
-			ginkgo.By(fmt.Sprintf("verification command: %v", verificationCommandArgs))
-
-			targetTunedPod, err = util.GetTunedForNode(cs, targetNode)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			gomega.Expect(targetTunedPod.Status.Phase).To(gomega.Equal(corev1.PodRunning))
-
-			// gather the output now before the profile is applied so we can check nothing changed
-			verificationOutput, err := util.ExecCmdInPod(targetTunedPod, verificationCommandArgs...)
-			if err != nil {
-				// not available, which is actually a valid state. Let's record it.
-				verificationOutput = err.Error()
-			} else {
-				verificationOutput = strings.TrimSpace(verificationOutput)
-			}
-			ginkgo.By(fmt.Sprintf("verification expected output: %q", verificationOutput))
+			verifCtx := mustExtractVerificationOutputAndCommand(targetNode, tuned)
 
 			tunedMutated := setDeferred(tuned.DeepCopy())
 			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.HasDeferredUpdateAnnotation(tunedMutated.Annotations)))
@@ -138,7 +117,7 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 				if err != nil {
 					util.Logf("profile for target node %q does not match expectations about %q: %v", curProf.Name, expectedProfile, err)
 				}
-				recommended, err := getRecommendedProfile(targetTunedPod)
+				recommended, err := getRecommendedProfile(verifCtx.targetTunedPod)
 				if err != nil {
 					return err
 				}
@@ -165,14 +144,14 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 						return fmt.Errorf("Profile deferred=%v %s not degraded", ntoutil.HasDeferredUpdateAnnotation(curProf.Annotations), curProf.Name)
 					}
 				}
-				ginkgo.By(fmt.Sprintf("checking real node conditions for profile %q", curProf.Name))
-				out, err := util.ExecCmdInPod(targetTunedPod, verificationCommandArgs...)
+				ginkgo.By(fmt.Sprintf("checking real node conditions for profile %q are not changed from pristine state", curProf.Name))
+				out, err := util.ExecCmdInPod(verifCtx.targetTunedPod, verifCtx.args...)
 				if err != nil {
 					return err
 				}
 				out = strings.TrimSpace(out)
-				if out != verificationOutput {
-					return fmt.Errorf("got: %s; expected: %s", out, verificationOutput)
+				if out != verifCtx.output {
+					return fmt.Errorf("got: %s; expected: %s", out, verifCtx.output)
 				}
 				return nil
 			}).WithPolling(10 * time.Second).WithTimeout(2 * time.Minute).Should(gomega.Succeed())
@@ -191,6 +170,9 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 			tuned, err := loadTuned(tunedPath)
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
+			// gather the output now before the profile is applied so we can check nothing changed
+			verifCtx := mustExtractVerificationOutputAndCommand(targetNode, tuned)
+
 			tunedMutated := setDeferred(tuned.DeepCopy())
 			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.HasDeferredUpdateAnnotation(tunedMutated.Annotations)))
 
@@ -205,9 +187,7 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 			expectedProfile := *tuned.Spec.Recommend[0].Profile
 			ginkgo.By(fmt.Sprintf("expecting Tuned Profile %q to be picked up", expectedProfile))
 
-			targetTunedPod, err = util.GetTunedForNode(cs, targetNode)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			gomega.Expect(targetTunedPod.Status.Phase).To(gomega.Equal(corev1.PodRunning), targetTunedPod.Namespace, targetTunedPod.Name, targetTunedPod.UID, targetTunedPod.Status.Phase)
+			gomega.Expect(verifCtx.targetTunedPod.Status.Phase).To(gomega.Equal(corev1.PodRunning), "targetTunedPod %s/%s uid %s phase %s", verifCtx.targetTunedPod.Namespace, verifCtx.targetTunedPod.Name, verifCtx.targetTunedPod.UID, verifCtx.targetTunedPod.Status.Phase)
 
 			gomega.Eventually(func() error {
 				curProf, err := cs.Profiles(ntoconfig.WatchNamespace()).Get(ctx, targetNode.Name, metav1.GetOptions{})
@@ -227,7 +207,7 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 				if err != nil {
 					util.Logf("profile for target node %q does not match expectations about %q: %v", curProf.Name, expectedProfile, err)
 				}
-				recommended, err := getRecommendedProfile(targetTunedPod)
+				recommended, err := getRecommendedProfile(verifCtx.targetTunedPod)
 				if err != nil {
 					return err
 				}
@@ -263,7 +243,17 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 				if err != nil {
 					util.Logf("profile for target node %q does not match expectations about %q: %v", curProf.Name, expectedProfile, err)
 				}
-				return err
+
+				ginkgo.By(fmt.Sprintf("checking real node conditions for profile %q", curProf.Name))
+				out, err := util.ExecCmdInPod(verifCtx.targetTunedPod, verifCtx.args...)
+				if err != nil {
+					return err
+				}
+				out = strings.TrimSpace(out)
+				if out != verifCtx.output {
+					return fmt.Errorf("got: %s; expected: %s", out, verifCtx.output)
+				}
+				return nil
 			}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
 		})
 

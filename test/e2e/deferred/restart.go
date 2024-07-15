@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -67,23 +66,7 @@ var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
 
 				tunedImmediate := tunedObjVMLatency
 
-				verificationCommand, ok := tunedImmediate.Annotations[verifyCommandAnnotation]
-				gomega.Expect(ok).To(gomega.BeTrue(), "missing verification command annotation %s", verifyCommandAnnotation)
-
-				verificationCommandArgs := []string{}
-				err = json.Unmarshal([]byte(verificationCommand), &verificationCommandArgs)
-				gomega.Expect(verificationCommandArgs).ToNot(gomega.BeEmpty(), "missing verification command args")
-				ginkgo.By(fmt.Sprintf("verification command: %v", verificationCommandArgs))
-
-				// gather the output now before the profile is applied so we can check nothing changed
-				verificationOutput, err := util.ExecCmdInPod(targetTunedPod, verificationCommandArgs...)
-				if err != nil {
-					// not available, which is actually a valid state. Let's record it.
-					verificationOutput = err.Error()
-				} else {
-					verificationOutput = strings.TrimSpace(verificationOutput)
-				}
-				ginkgo.By(fmt.Sprintf("verification expected output: %q", verificationOutput))
+				verifCtx := mustExtractVerificationOutputAndCommand(targetNode, tunedImmediate)
 
 				tunedMutated := setDeferred(tunedImmediate.DeepCopy())
 				ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.HasDeferredUpdateAnnotation(tunedMutated.Annotations)))
@@ -180,14 +163,14 @@ var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
 						}
 					}
 
-					ginkgo.By(fmt.Sprintf("checking real node conditions for profile %q", curProf.Name))
-					out, err := util.ExecCmdInPod(targetTunedPod, verificationCommandArgs...)
+					ginkgo.By(fmt.Sprintf("checking real node conditions for profile %q did not change over pristine status", curProf.Name))
+					out, err := util.ExecCmdInPod(targetTunedPod, verifCtx.args...)
 					if err != nil {
 						return err
 					}
 					out = strings.TrimSpace(out)
-					if out != verificationOutput {
-						return fmt.Errorf("got: %s; expected: %s", out, verificationOutput)
+					if out != verifCtx.output {
+						return fmt.Errorf("got: %s; expected: %s", out, verifCtx.output)
 					}
 					return nil
 				}).WithPolling(10 * time.Second).WithTimeout(2 * time.Minute).Should(gomega.Succeed())
