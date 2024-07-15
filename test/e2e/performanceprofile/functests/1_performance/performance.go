@@ -45,6 +45,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/systemd"
 )
 
 const (
@@ -322,6 +323,39 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				cmds := strings.Split(output, "\n")
 				processesFound = append(processesFound, cmds[1:]...)
 				Expect(processesFound).To(BeEmpty(), "The node %s has the following processes on the root cgroup: %v", node.Name, processesFound)
+			}
+		})
+
+		It("[test_id:74767] Should have the ocp-tuned-one-shot.service started and ended before kubelet", func() {
+			// https://issues.redhat.com/browse/OCPBUGS-26401
+			for _, node := range workerRTNodes {
+				f := func(c rune) bool {
+					return c == '='
+				}
+
+				By("verify that ocp-tuned-one-shot.service end time is before kubelet.service start time")
+				out, err := systemd.ShowProperty(context.TODO(), "ocp-tuned-one-shot.service", "ExecMainExitTimestampMonotonic", &node)
+				Expect(out).ToNot(BeEmpty())
+				Expect(err).ToNot(HaveOccurred())
+
+				fields := strings.FieldsFunc(out, f)
+				Expect(len(fields)).To(Equal(2), "expected to have single pair of key-value but found:\n%s", out)
+				tunedExitTimeStr := strings.TrimSpace(fields[1])
+				Expect(tunedExitTimeStr).ToNot(BeEmpty(), "value of exit time for tuned-one-shot service was found empty:\n%s", out)
+				tunedExitTime, err := strconv.Atoi(tunedExitTimeStr)
+				Expect(err).ToNot(HaveOccurred())
+
+				out, err = systemd.ShowProperty(context.TODO(), "kubelet.service", "ExecMainStartTimestampMonotonic", &node)
+				Expect(out).ToNot(BeEmpty())
+				Expect(err).ToNot(HaveOccurred())
+				fields = strings.FieldsFunc(out, f)
+				Expect(len(fields)).To(Equal(2), "expected to have single pair of key-value but found:\n%s", out)
+				kubeletStartTimeStr := strings.TrimSpace(fields[1])
+				Expect(kubeletStartTimeStr).ToNot(BeEmpty(), "value of kubelet start time was found empty:\n%s", out)
+				kubeletStartTime, err := strconv.Atoi(kubeletStartTimeStr)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(tunedExitTime).To(BeNumerically("<", kubeletStartTime), "kubelet started before ocp-tuned-one-shot.service exits")
 			}
 		})
 	})
