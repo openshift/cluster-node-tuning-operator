@@ -44,6 +44,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 	var workerRTNodes []corev1.Node
 	var targetNode *corev1.Node
 	var profile, initialProfile *performancev2.PerformanceProfile
+	var isolatedCPUSet cpuset.CPUSet
 	var err error
 
 	BeforeEach(func() {
@@ -60,6 +61,10 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 
 		profilesupdate.PostUpdateSync(context.TODO(), profile)
 
+		Expect(profile.Spec.CPU.Isolated).NotTo(BeNil(), "expected isolated CPUs, found none")
+		isolatedCPUSet, err = cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+		Expect(err).ToNot(HaveOccurred())
+
 		nodeIdx := pickNodeIdx(workerRTNodes)
 		targetNode = &workerRTNodes[nodeIdx]
 		By(fmt.Sprintf("verifying worker node %q", targetNode.Name))
@@ -69,10 +74,6 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 		It("[test_id:36150] Verify that IRQ load balancing is enabled/disabled correctly", func() {
 
 			irqLoadBalancingDisabled := profile.Spec.GloballyDisableIrqLoadBalancing != nil && *profile.Spec.GloballyDisableIrqLoadBalancing
-
-			Expect(profile.Spec.CPU.Isolated).NotTo(BeNil(), "expected isolated CPUs, found none")
-			isolatedCPUSet, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
-			Expect(err).ToNot(HaveOccurred())
 
 			By(fmt.Sprintf("verifying the behavior with irqLoadBalancingDisabled=%v isolatedCPUSet=%v", irqLoadBalancingDisabled, isolatedCPUSet))
 			verifyNodes := func(irqLoadBalancingDisabled bool) error {
@@ -202,6 +203,10 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 
 			data, _ := json.Marshal(testpod)
 			testlog.Infof("using testpod:\n%s", string(data))
+
+			if cpuRequest >= isolatedCPUSet.Size() {
+				Skip(fmt.Sprintf("cpus request %d is greater than the available on the node as the isolated cpus are %d", cpuRequest, isolatedCPUSet.Size()))
+			}
 
 			err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())

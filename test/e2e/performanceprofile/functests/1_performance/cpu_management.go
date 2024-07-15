@@ -54,6 +54,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		listReservedCPU          []int
 		reservedCPUSet           cpuset.CPUSet
 		onlineCPUSet             cpuset.CPUSet
+		isolatedCPUSet           cpuset.CPUSet
 		err                      error
 		smtLevel                 int
 		ctx                      context.Context = context.Background()
@@ -99,6 +100,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 		Expect(profile.Spec.CPU.Isolated).NotTo(BeNil())
 		isolatedCPU = string(*profile.Spec.CPU.Isolated)
+		isolatedCPUSet, err = cpuset.Parse(isolatedCPU)
+		Expect(err).ToNot(HaveOccurred())
 
 		Expect(profile.Spec.CPU.Reserved).NotTo(BeNil())
 		reservedCPU = string(*profile.Spec.CPU.Reserved)
@@ -222,12 +225,11 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			testpod = getStressPod(workerRTNode.Name, cpuRequest)
 			testpod.Namespace = testutils.NamespaceTesting
 
-			isolatedCPUSet, _ := cpuset.Parse(isolatedCPU)
 			// the worker node on which the pod will be scheduled has other pods already scheduled on it, and these also use a
 			// portion of the node's isolated cpus, and scheduling a pod requesting all the isolated cpus on the node (hence =)
 			// would fail because there is already a base cpu load on the node
 			if cpuRequest >= isolatedCPUSet.Size() {
-				Skip(fmt.Sprintf("cpus request %d is greater than the isolated cpus %d", cpuRequest, isolatedCPUSet.Size()))
+				Skip(fmt.Sprintf("cpus request %d is greater than the available on the node as the isolated cpus are %d", cpuRequest, isolatedCPUSet.Size()))
 			}
 
 			listCPU := onlineCPUSet.List()
@@ -278,14 +280,20 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		var testpod *corev1.Pod
 		BeforeEach(func() {
 			testpod = pods.GetTestPod()
+			cpuRequest := 2
 			testpod.Namespace = testutils.NamespaceTesting
 			testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
 			testpod.Spec.Containers[0].Resources = corev1.ResourceRequirements{
 				Limits: corev1.ResourceList{
 					corev1.ResourceMemory: resource.MustParse("200Mi"),
-					corev1.ResourceCPU:    resource.MustParse("2"),
+					corev1.ResourceCPU:    resource.MustParse(fmt.Sprintf("%d", cpuRequest)),
 				},
 			}
+
+			if cpuRequest >= isolatedCPUSet.Size() {
+				Skip(fmt.Sprintf("cpus request %d is greater than the available on the node as the isolated cpus are %d", cpuRequest, isolatedCPUSet.Size()))
+			}
+
 			err := testclient.DataPlaneClient.Create(context.TODO(), testpod)
 			testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 			logEventsForPod(testpod)
@@ -620,6 +628,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			var err error
 			allTestpods = make(map[types.UID]*corev1.Pod)
 			busyCpusImage = busyCpuImageEnv()
+			cpuRequest := 2
 			testpod = getTestPodWithAnnotations(annotations, smtLevel)
 			// workaround for https://github.com/kubernetes/kubernetes/issues/107074
 			// until https://github.com/kubernetes/kubernetes/pull/120661 lands
@@ -654,7 +663,12 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			runtimeClass := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
 			testpod.Spec.RuntimeClassName = &runtimeClass
 			testpod.Spec.Containers[0].Image = busyCpusImage
-			testpod.Spec.Containers[0].Resources.Limits[corev1.ResourceCPU] = resource.MustParse("2")
+			testpod.Spec.Containers[0].Resources.Limits[corev1.ResourceCPU] = resource.MustParse(fmt.Sprintf("%d", cpuRequest))
+
+			if cpuRequest >= isolatedCPUSet.Size() {
+				Skip(fmt.Sprintf("cpus request %d is greater than the available on the node as the isolated cpus are %d", cpuRequest, isolatedCPUSet.Size()))
+			}
+
 			err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
 			testpod, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
