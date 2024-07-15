@@ -150,8 +150,7 @@ var _ = Describe("Controller", func() {
 			})
 
 			It("should update the profile status", func() {
-				skipForHypershift()
-				r := newFakeReconciler(profile, profileMCP, infra, clusterOperator)
+				r := newFakeReconciler(instance, profileMCP, infra, clusterOperator)
 
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
@@ -1198,7 +1197,7 @@ func newFakeReconcilerForHypershift(instance client.Object, initObjects ...runti
 		Recorder:          fakeRecorder,
 		FeatureGate:       fg,
 		ComponentsHandler: hcpcomponents.NewHandler(fakeMngClient, fakeHostedClient, scheme.Scheme),
-		StatusWriter:      hcpstatus.NewWriter(fakeMngClient, fakeHostedClient),
+		StatusWriter:      hcpstatus.NewWriter(fakeMngClient, fakeHostedClient, scheme.Scheme),
 	}
 }
 

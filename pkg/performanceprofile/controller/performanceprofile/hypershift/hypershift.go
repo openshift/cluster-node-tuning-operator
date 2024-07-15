@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	hypershiftconsts "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/consts"
+
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -13,10 +13,12 @@ import (
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	hypershiftconsts "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/consts"
 )
 
 const (
@@ -115,6 +117,11 @@ func (ci *ControlPlaneClientImpl) listFromConfigMaps(ctx context.Context, listOb
 		if err != nil {
 			return err
 		}
+		if pp, ok := obj.(*performancev2.PerformanceProfile); ok {
+			if err := ci.getStatusForPerformanceProfile(ctx, cm.Name, pp); err != nil {
+				return fmt.Errorf("failed to get status for PerformanceProfile ConfigMap %q; %w", fmt.Sprintf("%s/%s", cm.Namespace, cm.Name), err)
+			}
+		}
 		decodedObjects = append(decodedObjects, obj)
 	}
 	insertDecodedObjects(listObj, decodedObjects)
@@ -135,12 +142,36 @@ func (ci *ControlPlaneClientImpl) getFromConfigMap(ctx context.Context, key clie
 			return err
 		}
 		if obj.GetName() == key.Name {
+			if pp, ok := obj.(*performancev2.PerformanceProfile); ok {
+				if err = ci.getStatusForPerformanceProfile(ctx, cm.Name, pp); err != nil {
+					return fmt.Errorf("failed to get status for PerformanceProfile ConfigMap %q; %w", key.String(), err)
+				}
+			}
 			return nil
 		}
 	}
 	// we don't have the actual GroupResource, because it's an internal rendered into the ConfigMap data, so leave it empty.
 	return fmt.Errorf("the encapsulated object %s was not found in ConfigMap; %w", key.String(),
 		apierrors.NewNotFound(schema.GroupResource{}, key.Name))
+}
+
+func (ci *ControlPlaneClientImpl) getStatusForPerformanceProfile(ctx context.Context, instanceName string, profile *performancev2.PerformanceProfile) error {
+	statusConfigMap := &corev1.ConfigMap{}
+	key := client.ObjectKey{
+		Namespace: ci.hostedControlPlaneNamespaceName,
+		Name:      GetStatusConfigMapName(instanceName),
+	}
+
+	if err := ci.Get(ctx, key, statusConfigMap); err != nil {
+		return err
+	}
+	b := statusConfigMap.Data[hypershiftconsts.PerformanceProfileStatusKey]
+	ppStatus := &performancev2.PerformanceProfileStatus{}
+	if err := yaml.Unmarshal([]byte(b), ppStatus); err != nil {
+		return err
+	}
+	profile.Status = *ppStatus
+	return nil
 }
 
 // validateAndExtractObjectFromConfigMap validates if there's object data in a configmap
@@ -234,4 +265,8 @@ func DecodeManifest(b []byte, scheme *runtime.Scheme, obj runtime.Object) (bool,
 		}
 	}
 	return false, err
+}
+
+func GetStatusConfigMapName(instanceName string) string {
+	return fmt.Sprintf("%s-%s", hypershiftconsts.PerformanceProfileStatusKey, instanceName)
 }

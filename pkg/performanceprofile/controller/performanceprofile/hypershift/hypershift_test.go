@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/google/go-cmp/cmp"
+	"gopkg.in/yaml.v2"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -88,6 +89,13 @@ spec:
         highPowerConsumption: false
         realTime: true
 `
+const perfprofOneStatus = `
+conditions:
+  - type: Available
+    status: "True"
+    reason: ""
+    message: ""
+`
 
 func TestControlPlaneClientImpl_Get(t *testing.T) {
 	if err := performancev2.AddToScheme(scheme.Scheme); err != nil {
@@ -157,6 +165,15 @@ func TestControlPlaneClientImpl_Get(t *testing.T) {
 					},
 					Data: map[string]string{
 						hypershiftconsts.TuningKey: perfprofOne,
+					},
+				},
+				&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      GetStatusConfigMapName("configmap-performance-profile-1"),
+						Namespace: namespace,
+					},
+					Data: map[string]string{
+						hypershiftconsts.PerformanceProfileStatusKey: perfprofOneStatus,
 					},
 				},
 			},
@@ -283,6 +300,15 @@ func TestControlPlaneClientImpl_List(t *testing.T) {
 						hypershiftconsts.TuningKey: perfprofOne,
 					},
 				},
+				&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      GetStatusConfigMapName("config-1"),
+						Namespace: namespace,
+					},
+					Data: map[string]string{
+						hypershiftconsts.PerformanceProfileStatusKey: perfprofOneStatus,
+					},
+				},
 			},
 			getterFunction: func(list client.ObjectList) ([]client.Object, []client.Object, error) {
 				var got, want []client.Object
@@ -300,6 +326,12 @@ func TestControlPlaneClientImpl_List(t *testing.T) {
 					if err != nil {
 						return got, want, err
 					}
+
+					ppStatus := &performancev2.PerformanceProfileStatus{}
+					if err := yaml.Unmarshal([]byte(perfprofOneStatus), ppStatus); err != nil {
+						return got, want, err
+					}
+					ppWant.Status = *ppStatus
 					want = append(want, ppWant)
 				}
 				return got, want, nil

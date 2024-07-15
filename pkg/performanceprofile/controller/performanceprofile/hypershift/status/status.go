@@ -15,19 +15,12 @@ import (
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift"
 	handler "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/components"
 	hypershiftconsts "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/consts"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/status"
 	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 )
-
-const (
-	ppStatusConfigMapPrefix = "status"
-)
-
-func getStatusConfigMapName(instanceName string) string {
-	return fmt.Sprintf("%s-%s", ppStatusConfigMapPrefix, instanceName)
-}
 
 func createOrUpdateStatusConfigMap(ctx context.Context, cli client.Client, cm *corev1.ConfigMap, profileName string, conditions []conditionsv1.Condition) error {
 	prevStatus, prevStatusFound, err := getPreviousStatusFrom(ctx, cli, &corev1.ConfigMap{
@@ -74,7 +67,7 @@ func makePerformanceProfileStatusConfigMap(instance *corev1.ConfigMap, profileNa
 	if !ok {
 		return nil, fmt.Errorf("annotation %q not found in ConfigMap %q annotations", hypershiftconsts.NodePoolNameLabel, client.ObjectKeyFromObject(instance).String())
 	}
-	cm := handler.ConfigMapMeta(getStatusConfigMapName(instance.Name), profileName, instance.GetNamespace(), nodePoolNamespacedName)
+	cm := handler.ConfigMapMeta(hypershift.GetStatusConfigMapName(instance.Name), profileName, instance.GetNamespace(), nodePoolNamespacedName)
 	err := controllerutil.SetControllerReference(instance, cm, scheme)
 	if err != nil {
 		return nil, err
