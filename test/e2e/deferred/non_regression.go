@@ -39,7 +39,7 @@ var _ = ginkgo.Describe("[deferred][non_regression] Profile non-deferred", func(
 
 			createdTuneds = []string{}
 
-			dirPath, err = getCurrentDirPath()
+			dirPath, err = util.GetCurrentDirPath()
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 			tunedPathVMLatency = filepath.Join(dirPath, tunedVMLatency)
@@ -54,7 +54,7 @@ var _ = ginkgo.Describe("[deferred][non_regression] Profile non-deferred", func(
 		})
 
 		ginkgo.It("should trigger changes", func(ctx context.Context) {
-			tuned, err := loadTuned(tunedPathVMLatency)
+			tuned, err := util.LoadTuned(tunedPathVMLatency)
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tuned.Name, ntoutil.HasDeferredUpdateAnnotation(tuned.Annotations)))
 

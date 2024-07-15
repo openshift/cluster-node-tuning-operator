@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"time"
 
@@ -21,6 +24,7 @@ import (
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 	"github.com/openshift/cluster-node-tuning-operator/test/framework"
 )
 
@@ -30,6 +34,23 @@ const (
 	// The default worker profile.  See: assets/tuned/manifests/default-cr-tuned.yaml
 	DefaultWorkerProfile = "openshift-node"
 )
+
+func LoadTuned(path string) (*tunedv1.Tuned, error) {
+	src, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer src.Close()
+	return manifests.NewTuned(src)
+}
+
+func GetCurrentDirPath() (string, error) {
+	_, file, _, ok := goruntime.Caller(0)
+	if !ok {
+		return "", fmt.Errorf("cannot retrieve tests directory")
+	}
+	return filepath.Dir(file), nil
+}
 
 // Logf formats using the default formats for its operands and writes to
 // ginkgo.GinkgoWriter and a newline is appended.  It returns the number of

@@ -26,7 +26,6 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 			referenceNode     *corev1.Node // control plane
 			targetNode        *corev1.Node
 			referenceTunedPod *corev1.Pod // control plane
-			targetTunedPod    *corev1.Pod
 			referenceProfile  string
 
 			dirPath            string
@@ -61,11 +60,11 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 
 			createdTuneds = []string{}
 
-			dirPath, err = getCurrentDirPath()
+			dirPath, err = util.GetCurrentDirPath()
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 			tunedPathVMLatency = filepath.Join(dirPath, tunedVMLatency)
-			tunedObjVMLatency, err = loadTuned(tunedPathVMLatency)
+			tunedObjVMLatency, err = util.LoadTuned(tunedPathVMLatency)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		})
 
@@ -80,10 +79,11 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 			tunedPath := filepath.Join(dirPath, tunedSHMMNI)
 			ginkgo.By(fmt.Sprintf("loading tuned data from %s (basepath=%s)", tunedPath, dirPath))
 
-			tuned, err := loadTuned(tunedPath)
+			tuned, err := util.LoadTuned(tunedPath)
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
-			verifCtx := mustExtractVerificationOutputAndCommand(targetNode, tuned)
+			verifData := util.MustExtractVerificationOutputAndCommand(cs, targetNode, tuned)
+			gomega.Expect(verifData.OutputCurrent).ToNot(gomega.Equal(verifData.OutputExpected), "current output %q already matches expected %q", verifData.OutputCurrent, verifData.OutputExpected)
 
 			tunedMutated := setDeferred(tuned.DeepCopy())
 			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.HasDeferredUpdateAnnotation(tunedMutated.Annotations)))
@@ -117,7 +117,7 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 				if err != nil {
 					util.Logf("profile for target node %q does not match expectations about %q: %v", curProf.Name, expectedProfile, err)
 				}
-				recommended, err := getRecommendedProfile(verifCtx.targetTunedPod)
+				recommended, err := getRecommendedProfile(verifData.TargetTunedPod)
 				if err != nil {
 					return err
 				}
@@ -145,13 +145,13 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 					}
 				}
 				ginkgo.By(fmt.Sprintf("checking real node conditions for profile %q are not changed from pristine state", curProf.Name))
-				out, err := util.ExecCmdInPod(verifCtx.targetTunedPod, verifCtx.args...)
+				out, err := util.ExecCmdInPod(verifData.TargetTunedPod, verifData.CommandArgs...)
 				if err != nil {
 					return err
 				}
 				out = strings.TrimSpace(out)
-				if out != verifCtx.output {
-					return fmt.Errorf("got: %s; expected: %s", out, verifCtx.output)
+				if out != verifData.OutputCurrent {
+					return fmt.Errorf("got: %s; expected: %s", out, verifData.OutputCurrent)
 				}
 				return nil
 			}).WithPolling(10 * time.Second).WithTimeout(2 * time.Minute).Should(gomega.Succeed())
@@ -161,17 +161,18 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 		})
 
 		ginkgo.It("should revert the profile status on removal", func(ctx context.Context) {
-			dirPath, err := getCurrentDirPath()
+			dirPath, err := util.GetCurrentDirPath()
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 			tunedPath := filepath.Join(dirPath, tunedSHMMNI)
 			ginkgo.By(fmt.Sprintf("loading tuned data from %s (basepath=%s)", tunedPath, dirPath))
 
-			tuned, err := loadTuned(tunedPath)
+			tuned, err := util.LoadTuned(tunedPath)
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 			// gather the output now before the profile is applied so we can check nothing changed
-			verifCtx := mustExtractVerificationOutputAndCommand(targetNode, tuned)
+			verifData := util.MustExtractVerificationOutputAndCommand(cs, targetNode, tuned)
+			gomega.Expect(verifData.OutputCurrent).ToNot(gomega.Equal(verifData.OutputExpected), "current output %q already matches expected %q", verifData.OutputCurrent, verifData.OutputExpected)
 
 			tunedMutated := setDeferred(tuned.DeepCopy())
 			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.HasDeferredUpdateAnnotation(tunedMutated.Annotations)))
@@ -187,7 +188,7 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 			expectedProfile := *tuned.Spec.Recommend[0].Profile
 			ginkgo.By(fmt.Sprintf("expecting Tuned Profile %q to be picked up", expectedProfile))
 
-			gomega.Expect(verifCtx.targetTunedPod.Status.Phase).To(gomega.Equal(corev1.PodRunning), "targetTunedPod %s/%s uid %s phase %s", verifCtx.targetTunedPod.Namespace, verifCtx.targetTunedPod.Name, verifCtx.targetTunedPod.UID, verifCtx.targetTunedPod.Status.Phase)
+			gomega.Expect(verifData.TargetTunedPod.Status.Phase).To(gomega.Equal(corev1.PodRunning), "TargetTunedPod %s/%s uid %s phase %s", verifData.TargetTunedPod.Namespace, verifData.TargetTunedPod.Name, verifData.TargetTunedPod.UID, verifData.TargetTunedPod.Status.Phase)
 
 			gomega.Eventually(func() error {
 				curProf, err := cs.Profiles(ntoconfig.WatchNamespace()).Get(ctx, targetNode.Name, metav1.GetOptions{})
@@ -207,7 +208,7 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 				if err != nil {
 					util.Logf("profile for target node %q does not match expectations about %q: %v", curProf.Name, expectedProfile, err)
 				}
-				recommended, err := getRecommendedProfile(verifCtx.targetTunedPod)
+				recommended, err := getRecommendedProfile(verifData.TargetTunedPod)
 				if err != nil {
 					return err
 				}
@@ -245,24 +246,24 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 				}
 
 				ginkgo.By(fmt.Sprintf("checking real node conditions for profile %q", curProf.Name))
-				out, err := util.ExecCmdInPod(verifCtx.targetTunedPod, verifCtx.args...)
+				out, err := util.ExecCmdInPod(verifData.TargetTunedPod, verifData.CommandArgs...)
 				if err != nil {
 					return err
 				}
 				out = strings.TrimSpace(out)
-				if out != verifCtx.output {
-					return fmt.Errorf("got: %s; expected: %s", out, verifCtx.output)
+				if out != verifData.OutputCurrent {
+					return fmt.Errorf("got: %s; expected: %s", out, verifData.OutputCurrent)
 				}
 				return nil
 			}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
 		})
 
 		ginkgo.It("should be overridden by another deferred update", func(ctx context.Context) {
-			dirPath, err := getCurrentDirPath()
+			dirPath, err := util.GetCurrentDirPath()
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 			tunedPathSHMMNI := filepath.Join(dirPath, tunedSHMMNI)
-			tunedDeferred, err := loadTuned(tunedPathSHMMNI)
+			tunedDeferred, err := util.LoadTuned(tunedPathSHMMNI)
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 			tunedMutated := setDeferred(tunedDeferred.DeepCopy())
@@ -279,7 +280,7 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 			expectedProfile := *tunedMutated.Spec.Recommend[0].Profile
 			ginkgo.By(fmt.Sprintf("expecting Tuned Profile %q to be picked up", expectedProfile))
 
-			targetTunedPod, err = util.GetTunedForNode(cs, targetNode)
+			targetTunedPod, err := util.GetTunedForNode(cs, targetNode)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(targetTunedPod.Status.Phase).To(gomega.Equal(corev1.PodRunning), targetTunedPod.Namespace, targetTunedPod.Name, targetTunedPod.UID, targetTunedPod.Status.Phase)
 
@@ -375,7 +376,7 @@ var _ = ginkgo.Describe("[deferred][profile_status] Profile deferred", func() {
 			expectedProfile := *tunedMutated.Spec.Recommend[0].Profile
 			ginkgo.By(fmt.Sprintf("expecting Tuned Profile %q to be picked up", expectedProfile))
 
-			targetTunedPod, err = util.GetTunedForNode(cs, targetNode)
+			targetTunedPod, err := util.GetTunedForNode(cs, targetNode)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(targetTunedPod.Status.Phase).To(gomega.Equal(corev1.PodRunning), targetTunedPod.Namespace, targetTunedPod.Name, targetTunedPod.UID, targetTunedPod.Status.Phase)
 

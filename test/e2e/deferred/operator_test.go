@@ -4,9 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
-	goruntime "runtime"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +17,6 @@ import (
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 	ntoutil "github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 	"github.com/openshift/cluster-node-tuning-operator/test/framework"
@@ -133,23 +129,6 @@ func setDeferred(obj *tunedv1.Tuned) *tunedv1.Tuned {
 	return obj
 }
 
-func loadTuned(path string) (*tunedv1.Tuned, error) {
-	src, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer src.Close()
-	return manifests.NewTuned(src)
-}
-
-func getCurrentDirPath() (string, error) {
-	_, file, _, ok := goruntime.Caller(0)
-	if !ok {
-		return "", fmt.Errorf("cannot retrieve tests directory")
-	}
-	return filepath.Dir(file), nil
-}
-
 func findCondition(conditions []tunedv1.ProfileStatusCondition, conditionType tunedv1.ProfileConditionType) *tunedv1.ProfileStatusCondition {
 	for _, condition := range conditions {
 		if condition.Type == conditionType {
@@ -207,43 +186,4 @@ func checkAppliedConditionStaysOKForNode(ctx context.Context, nodeName, expected
 		}
 		return err
 	}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
-}
-
-type verificationContext struct {
-	output         string
-	args           []string
-	targetTunedPod *corev1.Pod
-}
-
-func mustExtractVerificationOutputAndCommand(targetNode *corev1.Node, tuned *tunedv1.Tuned) verificationContext {
-	ginkgo.GinkgoHelper()
-
-	verificationCommand, ok := tuned.Annotations[verifyCommandAnnotation]
-	gomega.Expect(ok).To(gomega.BeTrue(), "missing verification command annotation %s", verifyCommandAnnotation)
-
-	verificationCommandArgs := []string{}
-	err := json.Unmarshal([]byte(verificationCommand), &verificationCommandArgs)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	gomega.Expect(verificationCommandArgs).ToNot(gomega.BeEmpty(), "missing verification command args")
-	ginkgo.By(fmt.Sprintf("verification command: %v", verificationCommandArgs))
-
-	targetTunedPod, err := util.GetTunedForNode(cs, targetNode)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	gomega.Expect(targetTunedPod.Status.Phase).To(gomega.Equal(corev1.PodRunning))
-
-	// gather the output now before the profile is applied so we can check nothing changed
-	verificationOutput, err := util.ExecCmdInPod(targetTunedPod, verificationCommandArgs...)
-	if err != nil {
-		// not available, which is actually a valid state. Let's record it.
-		verificationOutput = err.Error()
-	} else {
-		verificationOutput = strings.TrimSpace(verificationOutput)
-	}
-	ginkgo.By(fmt.Sprintf("verification expected output: %q", verificationOutput))
-
-	return verificationContext{
-		output:         verificationOutput,
-		args:           verificationCommandArgs,
-		targetTunedPod: targetTunedPod,
-	}
 }

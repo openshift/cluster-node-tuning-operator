@@ -44,15 +44,15 @@ var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
 
 			createdTuneds = []string{}
 
-			dirPath, err = getCurrentDirPath()
+			dirPath, err = util.GetCurrentDirPath()
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 			tunedPathSHMMNI = filepath.Join(dirPath, tunedSHMMNI)
-			tunedObjSHMMNI, err = loadTuned(tunedPathSHMMNI)
+			tunedObjSHMMNI, err = util.LoadTuned(tunedPathSHMMNI)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			tunedPathVMLatency = filepath.Join(dirPath, tunedVMLatency)
-			tunedObjVMLatency, err = loadTuned(tunedPathVMLatency)
+			tunedObjVMLatency, err = util.LoadTuned(tunedPathVMLatency)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		})
 
@@ -72,7 +72,8 @@ var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
 
 				tunedImmediate := tunedObjVMLatency
 
-				verifCtx := mustExtractVerificationOutputAndCommand(targetNode, tunedImmediate)
+				verifData := util.MustExtractVerificationOutputAndCommand(cs, targetNode, tunedImmediate)
+				gomega.Expect(verifData.OutputCurrent).ToNot(gomega.Equal(verifData.OutputExpected), "current output %q already matches expected %q", verifData.OutputCurrent, verifData.OutputExpected)
 
 				tunedMutated := setDeferred(tunedImmediate.DeepCopy())
 				ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.HasDeferredUpdateAnnotation(tunedMutated.Annotations)))
@@ -170,13 +171,13 @@ var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
 					}
 
 					ginkgo.By(fmt.Sprintf("checking real node conditions for profile %q did not change over pristine status", curProf.Name))
-					out, err := util.ExecCmdInPod(targetTunedPod, verifCtx.args...)
+					out, err := util.ExecCmdInPod(targetTunedPod, verifData.CommandArgs...)
 					if err != nil {
 						return err
 					}
 					out = strings.TrimSpace(out)
-					if out != verifCtx.output {
-						return fmt.Errorf("got: %s; expected: %s", out, verifCtx.output)
+					if out != verifData.OutputCurrent {
+						return fmt.Errorf("got: %s; expected: %s", out, verifData.OutputCurrent)
 					}
 					return nil
 				}).WithPolling(10 * time.Second).WithTimeout(2 * time.Minute).Should(gomega.Succeed())
@@ -267,8 +268,8 @@ var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
 				ginkgo.By(fmt.Sprintf("got again the tuned pod running on %q: %s/%s %s", targetNode.Name, targetTunedPod.Namespace, targetTunedPod.Name, targetTunedPod.UID))
 
 				gomega.Consistently(func() error {
-					ginkgo.By(fmt.Sprintf("checking real node conditions for profile %q", targetNode.Name))
 					for _, verif := range verifications {
+						ginkgo.By(fmt.Sprintf("checking real node conditions for profile %q: %v -> %s", targetNode.Name, verif.command, verif.output))
 						out, err := util.ExecCmdInPod(targetTunedPod, verif.command...)
 						if err != nil {
 							return err
@@ -293,7 +294,8 @@ var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				ginkgo.By(fmt.Sprintf("got the tuned pod running on %q: %s/%s %s", targetNode.Name, targetTunedPod.Namespace, targetTunedPod.Name, targetTunedPod.UID))
 
-				verifCtx := mustExtractVerificationOutputAndCommand(targetNode, tunedImmediate)
+				verifData := util.MustExtractVerificationOutputAndCommand(cs, targetNode, tunedImmediate)
+				gomega.Expect(verifData.OutputCurrent).ToNot(gomega.Equal(verifData.OutputExpected), "verification output current %q matches expected %q", verifData.OutputCurrent, verifData.OutputExpected)
 
 				tunedMutated := setDeferred(tunedImmediate.DeepCopy())
 				ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.HasDeferredUpdateAnnotation(tunedMutated.Annotations)))
@@ -367,8 +369,8 @@ var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
 				ginkgo.By(fmt.Sprintf("got again the tuned pod running on %q: %s/%s %s", targetNode.Name, targetTunedPod.Namespace, targetTunedPod.Name, targetTunedPod.UID))
 
 				gomega.Consistently(func() error {
-					ginkgo.By(fmt.Sprintf("checking real node conditions for profile %q", targetNode.Name))
 					for _, verif := range verifications {
+						ginkgo.By(fmt.Sprintf("checking real node conditions for profile %q: %v -> %s", targetNode.Name, verif.command, verif.output))
 						out, err := util.ExecCmdInPod(targetTunedPod, verif.command...)
 						if err != nil {
 							return err
@@ -405,14 +407,14 @@ var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
 						util.Logf("profile for target node %q does not match expectations about %q: %v", curProf.Name, expectedProfile, err)
 					}
 
-					ginkgo.By("checking real node conditions are restored pristine")
-					out, err := util.ExecCmdInPod(targetTunedPod, verifCtx.args...)
+					ginkgo.By(fmt.Sprintf("checking real node conditions are restored pristine: %v -> %s", verifData.CommandArgs, verifData.OutputCurrent))
+					out, err := util.ExecCmdInPod(targetTunedPod, verifData.CommandArgs...)
 					if err != nil {
 						return err
 					}
 					out = strings.TrimSpace(out)
-					if out != verifCtx.output {
-						return fmt.Errorf("got: %s; expected: %s", out, verifCtx.output)
+					if out != verifData.OutputCurrent {
+						return fmt.Errorf("got: %s; expected: %s", out, verifData.OutputCurrent)
 					}
 					return nil
 				}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
