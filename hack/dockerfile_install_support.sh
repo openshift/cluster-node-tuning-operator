@@ -17,7 +17,7 @@ if [[ "${ID}" == "centos" ]]; then
   dnf --setopt=protected_packages= history -y undo 0  # Remove builddep
 
   INSTALL_PKGS="nmap-ncat procps-ng pciutils"
-  cp -r /root/assets/bin /usr/local/bin
+  cp -r /root/assets/bin/* /usr/local/bin
   cp -r /root/rpmbuild/RPMS/noarch /root/rpms
   mkdir -p /etc/grub.d/ /boot /var/lib/ocp-tuned
   dnf install --setopt=tsflags=nodocs -y ${INSTALL_PKGS}
@@ -39,7 +39,7 @@ else
      tuned-profiles-nfv-host tuned-profiles-openshift tuned-profiles-oracle tuned-profiles-postgresql tuned-profiles-realtime \
      tuned-profiles-sap tuned-profiles-sap-hana tuned-profiles-spectrumscale \
      nmap-ncat procps-ng pciutils"
-  cp -r /root/assets/bin /usr/local/bin
+  cp -r /root/assets/bin/* /usr/local/bin
   mkdir -p /etc/grub.d/ /boot /var/lib/ocp-tuned
   dnf install --setopt=tsflags=nodocs -y ${INSTALL_PKGS}
   rm -rf /etc/tuned/recommend.d
