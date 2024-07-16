@@ -218,7 +218,7 @@ cluster-deploy-pao:
 pao-functests: cluster-label-worker-cnf pao-functests-only
 
 .PHONY: pao-functests-only
-pao-functests-only:
+pao-functests-only: $(BINDATA)
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
 	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/1_performance test/e2e/performanceprofile/functests/6_mustgather_testing test/e2e/performanceprofile/functests/10_performance_ppc" -p "-v -r --fail-fast  --flake-attempts=2 --junit-report=report.xml" -m "Running Functional Tests"
@@ -227,7 +227,7 @@ pao-functests-only:
 pao-functests-updating-profile: cluster-label-worker-cnf pao-functests-update-only
 
 .PHONY: pao-functests-update-only
-pao-functests-update-only:
+pao-functests-update-only: $(BINDATA)
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
 	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/2_performance_update test/e2e/performanceprofile/functests/3_performance_status test/e2e/performanceprofile/functests/7_performance_kubelet_node test/e2e/performanceprofile/functests/9_reboot" -p "-v -r --fail-fast --flake-attempts=2 --timeout=5h --junit-report=report.xml" -m "Running Functional Tests"
@@ -236,25 +236,25 @@ pao-functests-update-only:
 pao-functests-performance-workloadhints: cluster-label-worker-cnf pao-functests-performance-workloadhints-only
 
 .PHONY: pao-functests-performance-workloadhints-only
-pao-functests-performance-workloadhints-only:
+pao-functests-performance-workloadhints-only: $(BINDATA)
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
 	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/8_performance_workloadhints" -p "-v -r --fail-fast --flake-attempts=2 --timeout=5h --junit-report=report.xml" -m "Running Functional WorkloadHints Tests"
 
 .PHONY: pao-functests-latency-testing
-pao-functests-latency-testing: dist-latency-tests
+pao-functests-latency-testing: dist-latency-tests $(BINDATA)
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
 	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/5_latency_testing" -p "-v -r --fail-fast --flake-attempts=2 --timeout=5h --junit-report=report.xml" -m "Running Functionalconfiguration latency Tests"
 
 .PHONY: pao-functests-mixedcpus
-pao-functests-mixedcpus:
+pao-functests-mixedcpus: $(BINDATA)
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
 	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/11_mixedcpus" -p "-v -r --fail-fast --flake-attempts=2 --junit-report=report.xml" -m "Running MixedCPUs Tests"
 
 .PHONY: pao-functests-hypershift
-pao-functests-hypershift:
+pao-functests-hypershift: $(BINDATA)
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
 	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/1_performance" -p "-vv --label-filter="!openshift" -r --fail-fast --flake-attempts=2 --timeout=2h --junit-report=report.xml" -m "Running Functional Tests over Hypershift"
