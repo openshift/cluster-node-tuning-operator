@@ -2,6 +2,7 @@ package operator
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
@@ -35,6 +36,7 @@ import (
 	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/flagcodec"
 	tunedset "github.com/openshift/cluster-node-tuning-operator/pkg/generated/clientset/versioned"
 	tunedinformers "github.com/openshift/cluster-node-tuning-operator/pkg/generated/informers/externalversions"
 	ntomf "github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
@@ -62,6 +64,15 @@ const (
 	wqKindConfigMap         = "configmap"
 	wqKindMachineConfigPool = "machineconfigpool"
 )
+
+const (
+	operandConfigMapName = "nto-operand"
+	operandConfigMapKey  = "nto-operand-config.json"
+)
+
+type OperandConfig struct {
+	Verbose int `json:"verbose,omitempty"`
+}
 
 // Controller is the controller implementation for Tuned resources
 type Controller struct {
@@ -531,11 +542,48 @@ func (c *Controller) enableInformers() error {
 	return nil
 }
 
+func (c *Controller) getOperandConfig() *OperandConfig {
+	cm, err := c.listers.ConfigMaps.Get(operandConfigMapName)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// can happen, nothing to worry about
+			return nil
+		}
+		klog.ErrorS(err, "error getting config map", "name", operandConfigMapName)
+		return nil
+	}
+
+	cfgData, ok := cm.Data[operandConfigMapKey]
+	if !ok {
+		klog.InfoS("missing required key", "key", operandConfigMapKey)
+		return nil
+	}
+
+	var opCfg OperandConfig
+	if err := json.Unmarshal([]byte(cfgData), &opCfg); err != nil {
+		klog.ErrorS(err, "error decoding config map data")
+		return nil
+	}
+	return &opCfg
+}
+
+func updateOperandDaemonSetFromConfig(dsMf *appsv1.DaemonSet, opCfg *OperandConfig) {
+	if opCfg == nil {
+		return // nothing to do
+	}
+
+	flags := flagcodec.ParseArgvKeyValue(dsMf.Spec.Template.Spec.Containers[0].Command, flagcodec.WithFlagNormalization)
+	flags.SetOption("-v", fmt.Sprintf("%d", opCfg.Verbose))
+	dsMf.Spec.Template.Spec.Containers[0].Command = flags.Argv()
+}
+
 func (c *Controller) syncDaemonSet(tuned *tunedv1.Tuned) error {
 	var update bool
 
 	dsMf := ntomf.TunedDaemonSet()
 	dsMf.ObjectMeta.OwnerReferences = getDefaultTunedRefs(tuned)
+
+	updateOperandDaemonSetFromConfig(dsMf, c.getOperandConfig())
 
 	ds, err := c.listers.DaemonSets.Get(dsMf.Name)
 	if err != nil {
