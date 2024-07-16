@@ -65,7 +65,9 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 				Namespace: components.NamespaceNodeTuningOperator,
 			}
 			tuned := &tunedv1.Tuned{}
-			err = testclient.GetWithRetry(context.TODO(), testclient.Client, key, tuned)
+			// on hypershift platform, we're getting the tuned object that was mirrored by NTO to the hosted cluster,
+			// hence we're using the DataPlaneClient here.
+			err = testclient.GetWithRetry(context.TODO(), testclient.DataPlaneClient, key, tuned)
 			Expect(err).ToNot(HaveOccurred(), "cannot find the Cluster Node Tuning Operator Tuned object "+key.String())
 			tunedNamespacedname := types.NamespacedName{
 				Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
@@ -85,7 +87,7 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 				Namespace: metav1.NamespaceAll,
 			}
 			runtimeClass := &nodev1.RuntimeClass{}
-			err = testclient.GetWithRetry(context.TODO(), testclient.Client, key, runtimeClass)
+			err = testclient.GetWithRetry(context.TODO(), testclient.DataPlaneClient, key, runtimeClass)
 			Expect(err).ToNot(HaveOccurred(), "cannot find the RuntimeClass object "+key.String())
 
 			Expect(profile.Status.RuntimeClass).NotTo(BeNil())
@@ -96,7 +98,7 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 			// Creating bad MC that leads to degraded state
 			By("Creating bad MachineConfig")
 			badMC := createBadMachineConfig("bad-mc")
-			err = testclient.Client.Create(context.TODO(), badMC)
+			err = testclient.ControlPlaneClient.Create(context.TODO(), badMC)
 			Expect(err).ToNot(HaveOccurred())
 
 			By("Wait for MCP condition to be Degraded")
@@ -111,7 +113,7 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 			Expect(profileConditionMessage).To(ContainSubstring(mcpConditionReason))
 
 			By("Deleting bad MachineConfig and waiting when Degraded state is removed")
-			err = testclient.Client.Delete(context.TODO(), badMC)
+			err = testclient.ControlPlaneClient.Delete(context.TODO(), badMC)
 			Expect(err).ToNot(HaveOccurred())
 
 			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
@@ -143,14 +145,14 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 
 			// Creating bad Tuned object that leads to degraded state
 			badTuned := createBadTuned(tunedName, ns)
-			err = testclient.Client.Create(context.TODO(), badTuned)
+			err = testclient.ControlPlaneClient.Create(context.TODO(), badTuned)
 			Expect(err).ToNot(HaveOccurred())
 
 			By("Waiting for performance profile condition to be Degraded")
 			profiles.WaitForCondition(testutils.NodeSelectorLabels, v1.ConditionDegraded, corev1.ConditionTrue)
 
 			By("Deleting bad Tuned and waiting when Degraded state is removed")
-			err = testclient.Client.Delete(context.TODO(), badTuned)
+			err = testclient.ControlPlaneClient.Delete(context.TODO(), badTuned)
 			profiles.WaitForCondition(testutils.NodeSelectorLabels, v1.ConditionAvailable, corev1.ConditionTrue)
 		})
 	})
