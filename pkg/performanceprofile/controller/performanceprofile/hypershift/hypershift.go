@@ -66,6 +66,14 @@ func (ci *ControlPlaneClientImpl) Update(ctx context.Context, obj client.Object,
 	return ci.Client.Update(ctx, obj, opts...)
 }
 
+func (ci *ControlPlaneClientImpl) Delete(ctx context.Context, obj client.Object, opts ...client.DeleteOption) error {
+	dataKey := GetObjectConfigMapDataKey(obj)
+	if dataKey != "" {
+		return ci.deleteFromConfigMap(ctx, obj, dataKey, opts...)
+	}
+	return ci.Client.Delete(ctx, obj, opts...)
+}
+
 func IsWriteableToControlPlane(obj runtime.Object) bool {
 	return GetObjectConfigMapDataKey(obj) == ""
 }
@@ -238,6 +246,38 @@ func (ci *ControlPlaneClientImpl) updateConfigMap(ctx context.Context, obj clien
 	}
 	cm.Data = map[string]string{dataKey: string(b)}
 	return ci.Client.Update(ctx, cm, opts...)
+}
+
+func (ci *ControlPlaneClientImpl) deleteFromConfigMap(ctx context.Context, obj client.Object, dataKey string, opts ...client.DeleteOption) error {
+	cmList := &corev1.ConfigMapList{}
+	err := ci.Client.List(ctx, cmList, &client.ListOptions{
+		Namespace: HostedClustersNamespaceName,
+	})
+	if err != nil {
+		return err
+	}
+	yamlSerializer := serializer.NewSerializerWithOptions(
+		serializer.DefaultMetaFactory, ci.Scheme(), ci.Scheme(),
+		serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true},
+	)
+
+	for _, cm := range cmList.Items {
+		manifest, ok := cm.Data[dataKey]
+		if !ok {
+			continue
+		}
+		decodedObj, _, err := yamlSerializer.Decode([]byte(manifest), nil, nil)
+		if err != nil {
+			return err
+		}
+		if obj.GetName() == decodedObj.(client.Object).GetName() {
+			return ci.Client.Delete(ctx, &cm)
+		}
+	}
+	// we don't have the actual GroupResource,
+	//because it's an internal rendered into the ConfigMap data, so leave it empty.
+	return fmt.Errorf("cannot delete the encapsulated object %s, because it was not found in ConfigMap in the %s namespace; %w", obj.GetName(), HostedClustersNamespaceName,
+		apierrors.NewNotFound(schema.GroupResource{}, obj.GetName()))
 }
 
 func EncodeManifest(obj runtime.Object, scheme *runtime.Scheme) ([]byte, error) {

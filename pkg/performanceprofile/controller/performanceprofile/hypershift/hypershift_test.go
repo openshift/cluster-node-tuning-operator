@@ -97,6 +97,29 @@ conditions:
     message: ""
 `
 
+const tuned1 = `
+apiVersion: tuned.openshift.io/v1
+kind: Tuned
+metadata:
+  name: tuned-1
+  namespace: openshift-cluster-node-tuning-operator
+spec:
+  profile:
+  - data: |
+      [main]
+      summary=Custom OpenShift profile
+      include=openshift-node
+
+      [sysctl]
+      vm.dirty_ratio="55"
+    name: tuned-1-profile
+  recommend:
+  - match:
+    - label: tuned-1-node-label
+    priority: 20
+    profile: tuned-1-profile
+`
+
 func TestControlPlaneClientImpl_Get(t *testing.T) {
 	if err := performancev2.AddToScheme(scheme.Scheme); err != nil {
 		t.Fatal(err)
@@ -408,7 +431,113 @@ func TestControlPlaneClientImpl_List(t *testing.T) {
 			}
 		})
 	}
+}
 
+func TestControlPlaneClientImpl_Delete(t *testing.T) {
+	if err := performancev2.AddToScheme(scheme.Scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := machineconfigv1.AddToScheme(scheme.Scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := tunedv1.AddToScheme(scheme.Scheme); err != nil {
+		t.Fatal(err)
+	}
+	namespace := "test"
+	testsCases := []struct {
+		name                     string
+		encapsulatedObjsToDelete []client.Object
+		configMaps               []runtime.Object
+	}{
+		{
+			name: "delete config map that holds machineconfig object",
+			encapsulatedObjsToDelete: []client.Object{
+				&machineconfigv1.MachineConfig{
+					TypeMeta: metav1.TypeMeta{},
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "config-1",
+					},
+				},
+			},
+			configMaps: []runtime.Object{
+				&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "config-1-configmap",
+						Namespace: HostedClustersNamespaceName,
+					},
+					Data: map[string]string{
+						hypershiftconsts.ConfigKey: machineConfig1,
+					},
+				},
+				&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "core-config-1-configmap",
+						Namespace: HostedClustersNamespaceName,
+					},
+					Data: map[string]string{
+						hypershiftconsts.ConfigKey: coreMachineConfig1,
+					},
+				},
+			},
+		},
+		{
+			name: "delete config map that holds performanceProfile object",
+			encapsulatedObjsToDelete: []client.Object{
+				&performancev2.PerformanceProfile{
+					TypeMeta: metav1.TypeMeta{},
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "perfprofOne",
+					},
+				},
+			},
+			configMaps: []runtime.Object{
+				&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "perfprofOne-configmap",
+						Namespace: HostedClustersNamespaceName,
+					},
+					Data: map[string]string{
+						hypershiftconsts.TuningKey: perfprofOne,
+					},
+				},
+			},
+		},
+		{
+			name: "delete config map that holds tuned object even when ns name is wrong",
+			encapsulatedObjsToDelete: []client.Object{
+				&performancev2.PerformanceProfile{
+					TypeMeta: metav1.TypeMeta{},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "tuned-1",
+						Namespace: namespace,
+					},
+				},
+			},
+			configMaps: []runtime.Object{
+				&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "tuned-1-configmap",
+						Namespace: HostedClustersNamespaceName,
+					},
+					Data: map[string]string{
+						hypershiftconsts.TuningKey: tuned1,
+					},
+				},
+			},
+		},
+	}
+	for _, tc := range testsCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(tc.configMaps...).Build()
+			c := NewControlPlaneClient(fakeClient, namespace)
+			for _, obj := range tc.encapsulatedObjsToDelete {
+				err := c.Delete(context.TODO(), obj)
+				if err != nil {
+					t.Errorf("failed to delete encapsulated object %s: %v", obj.GetName(), err)
+				}
+			}
+		})
+	}
 }
 
 func TestDecodeManifest(t *testing.T) {
