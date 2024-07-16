@@ -94,7 +94,7 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 			Expect(*profile.Status.RuntimeClass).To(Equal(runtimeClass.Name))
 		})
 
-		It("[test_id:29673] Machine config pools status tied to Performance Profile", func() {
+		It("[test_id:29673] Machine config pools status tied to Performance Profile", Label(string(label.OpenShift)), func() {
 			// Creating bad MC that leads to degraded state
 			By("Creating bad MachineConfig")
 			badMC := createBadMachineConfig("bad-mc")
