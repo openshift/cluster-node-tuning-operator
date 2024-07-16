@@ -32,6 +32,18 @@ type ControlPlaneClientImpl struct {
 	// hostedControlPlaneNamespaceName is the namespace name on the management cluster
 	// on which the control-plane objects reside
 	hostedControlPlaneNamespaceName string
+
+	yamlSerializer *serializer.Serializer
+}
+
+func NewControlPlaneClient(c client.Client, ns string) *ControlPlaneClientImpl {
+	return &ControlPlaneClientImpl{
+		Client:                          c,
+		hostedControlPlaneNamespaceName: ns,
+		yamlSerializer: serializer.NewSerializerWithOptions(
+			serializer.DefaultMetaFactory, c.Scheme(), c.Scheme(),
+			serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true}),
+	}
 }
 
 func (ci *ControlPlaneClientImpl) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
@@ -99,13 +111,6 @@ func GetObjectConfigMapDataKey(obj runtime.Object) string {
 	}
 }
 
-func NewControlPlaneClient(c client.Client, ns string) *ControlPlaneClientImpl {
-	return &ControlPlaneClientImpl{
-		Client:                          c,
-		hostedControlPlaneNamespaceName: ns,
-	}
-}
-
 // We do not have a direct way to detect the ConfigMaps with the wanted objects,
 // so the function does the following:
 // 1. List() all ConfigMap within the HCP namespace
@@ -117,10 +122,6 @@ func (ci *ControlPlaneClientImpl) listFromConfigMaps(ctx context.Context, listOb
 		Namespace: ci.hostedControlPlaneNamespaceName}); err != nil {
 		return err
 	}
-	yamlSerializer := serializer.NewSerializerWithOptions(
-		serializer.DefaultMetaFactory, ci.Scheme(), ci.Scheme(),
-		serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true},
-	)
 	var decodedObjects []runtime.Object
 	for _, cm := range cmList.Items {
 		b, ok := cm.Data[dataKey]
@@ -129,7 +130,7 @@ func (ci *ControlPlaneClientImpl) listFromConfigMaps(ctx context.Context, listOb
 			// this object it not of the wanted type
 			continue
 		}
-		obj, _, err := yamlSerializer.Decode([]byte(b), nil, nil)
+		obj, _, err := ci.yamlSerializer.Decode([]byte(b), nil, nil)
 		if err != nil {
 			return err
 		}
@@ -256,17 +257,13 @@ func (ci *ControlPlaneClientImpl) deleteFromConfigMap(ctx context.Context, obj c
 	if err != nil {
 		return err
 	}
-	yamlSerializer := serializer.NewSerializerWithOptions(
-		serializer.DefaultMetaFactory, ci.Scheme(), ci.Scheme(),
-		serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true},
-	)
 
 	for _, cm := range cmList.Items {
 		manifest, ok := cm.Data[dataKey]
 		if !ok {
 			continue
 		}
-		decodedObj, _, err := yamlSerializer.Decode([]byte(manifest), nil, nil)
+		decodedObj, _, err := ci.yamlSerializer.Decode([]byte(manifest), nil, nil)
 		if err != nil {
 			return err
 		}
