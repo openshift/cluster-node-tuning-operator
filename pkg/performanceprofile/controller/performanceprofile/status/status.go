@@ -3,13 +3,13 @@ package status
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -296,21 +296,18 @@ func CalculateUpdated(prevStatus *performancev2.PerformanceProfileStatus, profil
 		}
 	}
 
-	if statusCopy.Tuned == nil {
-		tunedNamespacedName := types.NamespacedName{
-			Name:      components.GetComponentName(profileName, components.ProfileNamePerformance),
-			Namespace: components.NamespaceNodeTuningOperator,
-		}
-		if npName != "" {
-			tunedNamespacedName.Name = nto.MakeTunedUniqueName(tunedNamespacedName.Name, npName)
-		}
-		tunedStatus := tunedNamespacedName.String()
+	tunedName := components.GetComponentName(profileName, components.ProfileNamePerformance)
+	if npName != "" {
+		tunedName = nto.MakeTunedUniqueName(tunedName, npName)
+	}
+	tunedStatus := fmt.Sprintf("%s/%s", components.NamespaceNodeTuningOperator, tunedName)
+	if statusCopy.Tuned == nil || tunedStatus != *statusCopy.Tuned {
 		statusCopy.Tuned = &tunedStatus
 		modified = true
 	}
 
-	if statusCopy.RuntimeClass == nil {
-		runtimeClassName := components.GetComponentName(profileName, components.ComponentNamePrefix)
+	runtimeClassName := components.GetComponentName(profileName, components.ComponentNamePrefix)
+	if statusCopy.RuntimeClass == nil || runtimeClassName != *statusCopy.RuntimeClass {
 		statusCopy.RuntimeClass = &runtimeClassName
 		modified = true
 	}
