@@ -963,14 +963,16 @@ func (c *Controller) changeSyncerProfileStatus(change Change) (synced bool) {
 // changeSyncerTuneD synchronizes k8s objects to disk, compares them with
 // current TuneD configuration and signals TuneD process reload or restart.
 func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
+	var restart bool
 	var reload bool
 	var cfgUpdated bool
 	var changeRecommend bool
 
-	klog.V(2).Infof("changeSyncerTuneD(%s)", change.String())
-	defer klog.V(2).Infof("changeSyncerTuneD(%s) done updated=%v", change.String(), cfgUpdated)
-
+	restart = change.nodeRestart
 	reload = change.nodeRestart
+
+	klog.V(2).Infof("changeSyncerTuneD(%s) restart=%v reload=%v", change.String(), restart, reload)
+	defer klog.V(2).Infof("changeSyncerTuneD(%s) done updated=%v restart=%v reload=%v", change.String(), cfgUpdated, restart, reload)
 
 	if (c.daemon.status & scReloading) != 0 {
 		// This should not be necessary, but keep this here as a reminder.
@@ -1029,7 +1031,7 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 		if debug != change.debug {
 			// A complete restart of the TuneD daemon is needed due to a debugging request switched on or off.
 			klog.V(4).Infof("debug control triggering tuned restart")
-			c.daemon.restart |= ctrlRestart
+			restart = true
 			if change.debug {
 				c.daemon.restart |= ctrlDebug
 			} else {
@@ -1050,14 +1052,12 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 				return false, fmt.Errorf("failed to write global TuneD configuration file: %v", err)
 			}
 			klog.V(4).Infof("reapplySysctl triggering tuned restart")
-			c.daemon.restart |= ctrlRestart // A complete restart of the TuneD daemon is needed due to configuration change in tuned-main.conf file.
+			restart = true // A complete restart of the TuneD daemon is needed due to configuration change in tuned-main.conf file.
 		}
 	}
 
-	if reload {
-		// failures pertaining to deferred updates are not critical
-		_ = c.handleDaemonReloadRequest(change)
-	}
+	// failures pertaining to deferred updates are not critical
+	_ = c.handleDaemonReloadRestartRequest(change, reload, restart)
 
 	cfgUpdated, err = c.changeSyncerRestartOrReloadTuneD()
 	klog.V(2).Infof("changeSyncerTuneD() configuration updated: %v", cfgUpdated)
@@ -1068,10 +1068,21 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 	return err == nil, err
 }
 
-func (c *Controller) handleDaemonReloadRequest(change Change) error {
+func (c *Controller) handleDaemonReloadRestartRequest(change Change, reload, restart bool) error {
+	if !reload && !restart {
+		// nothing to do
+		return nil
+	}
+
 	if !change.deferred || change.nodeRestart {
-		klog.V(2).Infof("immediate update, setting reload flag")
-		c.daemon.restart |= ctrlReload
+		if reload {
+			klog.V(2).Infof("immediate update, setting reload flag")
+			c.daemon.restart |= ctrlReload
+		}
+		if restart {
+			klog.V(2).Infof("immediate update, setting restart flag")
+			c.daemon.restart |= ctrlRestart
+		}
 		return nil
 	}
 
