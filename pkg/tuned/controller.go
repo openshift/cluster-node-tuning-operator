@@ -1028,6 +1028,7 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 		debug := (c.daemon.restart & ctrlDebug) != 0
 		if debug != change.debug {
 			// A complete restart of the TuneD daemon is needed due to a debugging request switched on or off.
+			klog.V(4).Infof("debug control triggering tuned restart")
 			c.daemon.restart |= ctrlRestart
 			if change.debug {
 				c.daemon.restart |= ctrlDebug
@@ -1039,6 +1040,8 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 		// Does the current TuneD process have the reapply_sysctl option turned on?
 		reapplySysctl := c.tunedMainCfg.Section("").Key("reapply_sysctl").MustBool()
 		if reapplySysctl != change.reapplySysctl {
+			klog.V(4).Infof("reapplySysctl rewriting configuration file")
+
 			if err = iniCfgSetKey(c.tunedMainCfg, "reapply_sysctl", !reapplySysctl); err != nil {
 				return false, err
 			}
@@ -1046,6 +1049,7 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 			if err != nil {
 				return false, fmt.Errorf("failed to write global TuneD configuration file: %v", err)
 			}
+			klog.V(4).Infof("reapplySysctl triggering tuned restart")
 			c.daemon.restart |= ctrlRestart // A complete restart of the TuneD daemon is needed due to configuration change in tuned-main.conf file.
 		}
 	}
