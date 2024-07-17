@@ -71,6 +71,9 @@ spec:
                   tunedProfile:
                     description: TuneD profile to apply
                     type: string
+                  verbosity:
+                    description: klog logging verbosity
+                    type: integer
                 required:
                 - tunedProfile
                 type: object

@@ -164,7 +164,7 @@ type ComputedProfile struct {
 // * the tuned daemon profile name
 // * the list of all TunedProfiles out of which the tuned profile was calculated
 // * MachineConfig labels if the profile was selected by machineConfigLabels
-// * whether to run the Tuned daemon in debug mode on node nodeName
+// * operand configuration as defined by tunedv1.OperandConfig
 // * an error if any
 func (pc *ProfileCalculator) calculateProfile(nodeName string) (ComputedProfile, error) {
 	klog.V(3).Infof("calculateProfile(%s)", nodeName)
@@ -288,7 +288,7 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (ComputedProfile,
 // * the tuned daemon profile name
 // * the list of all TunedProfiles out of which the tuned profile was calculated
 // * the NodePool name for this Node
-// * whether to run the Tuned daemon in debug mode on node nodeName
+// * operand configuration as defined by tunedv1.OperandConfig
 // * an error if any
 func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (ComputedProfile, error) {
 	klog.V(3).Infof("calculateProfileHyperShift(%s)", nodeName)
