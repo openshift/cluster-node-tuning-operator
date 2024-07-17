@@ -776,16 +776,26 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		AfterEach(func() {
 			cmd := []string{"rm", "-f", "/rootfs/var/roothome/create"}
 			nodes.ExecCommand(ctx, workerRTNode, cmd)
-			deletePod(ctx, guaranteedPod)
-			deletePod(ctx, secondPod)
+			deleteTestPod(ctx, guaranteedPod)
+			deleteTestPod(ctx, secondPod)
 		})
 
 		It("[test_id: 74461] Verify that runc excludes the cpus used by guaranteed pod", func() {
-			guaranteedPod = getGuaranteedPod(ctx, workerRTNode)
-			secondPod = getNonGuaranteedPod(ctx, workerRTNode)
+			guaranteedPod, err := getGuaranteedPod(ctx, workerRTNode)
+			err = testclient.Client.Create(ctx, guaranteedPod)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(guaranteedPod), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(guaranteedPod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
+
+			secondPod, err := getNonGuaranteedPod(ctx, workerRTNode)
+			err = testclient.Client.Create(ctx, secondPod)
+			Expect(err).ToNot(HaveOccurred())
+			_, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(secondPod), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
+			Expect(err).ToNot(HaveOccurred())
+
 			containerIDs := make([]string, 2)
 
-			var err error
 			containerIDs[0], err = pods.GetContainerIDByName(guaranteedPod, "test")
 			Expect(err).ToNot(HaveOccurred())
 			containerIDs[1], err = pods.GetContainerIDByName(secondPod, "test")
@@ -805,9 +815,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 			hostnameMatches := hostnameRe.FindAllStringSubmatch(out, -1)
 			cpusMatches := cpusRe.FindAllStringSubmatch(out, -1)
-			if len(hostnameMatches) == 0 || len(cpusMatches) == 0 {
-				Fail("Failed to extract hostname or cpus information")
-			}
+			Expect(len(hostnameMatches)).ToNot(Equal(0), "Failed to extract hostname information")
+			Expect(len(cpusMatches)).ToNot(Equal(0), "Failed to extract cpus information")
 			uniqueCombinations := make(map[string]struct{})
 			zippedMatches := make([]map[string]string, 0)
 			for i := 0; i < len(hostnameMatches) && i < len(cpusMatches); i++ {
@@ -820,47 +829,18 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 					})
 				}
 			}
-
-			parseCPUs := func(cpuStr string) []int {
-				var cpus []int
-				for _, part := range strings.Split(cpuStr, ",") {
-					if strings.Contains(part, "-") {
-						bounds := strings.Split(part, "-")
-						min, _ := strconv.Atoi(bounds[0])
-						max, _ := strconv.Atoi(bounds[1])
-						for i := min; i <= max; i++ {
-							cpus = append(cpus, i)
-						}
-					} else {
-						val, _ := strconv.Atoi(part)
-						cpus = append(cpus, val)
-					}
-				}
-				return cpus
-			}
-
-			guaranteedPodCpus := parseCPUs(zippedMatches[0]["cpus"])
-			runcCpus := parseCPUs(zippedMatches[1]["cpus"])
-			overlapFound := false
-			for _, guaranteedCpu := range guaranteedPodCpus {
-				for _, runcCpu := range runcCpus {
-					if guaranteedCpu == runcCpu {
-						overlapFound = true
-						break
-					}
-				}
-				if overlapFound {
-					break
-				}
-			}
-			Expect(overlapFound).ToNot(BeTrue(), "Overlap of cpus found, not expected behaviour")
+			guaranteedPodCpus, err := cpuset.Parse(zippedMatches[0]["cpus"])
+			Expect(err).ToNot(HaveOccurred())
+			runcCpus, err := cpuset.Parse(zippedMatches[1]["cpus"])
+			Expect(err).ToNot(HaveOccurred())
+			overlapFound := !guaranteedPodCpus.Intersection(runcCpus).IsEmpty()
+			Expect(overlapFound).ToNot(BeTrue(), "Overlap found between guaranteedPod cpus and runtime Cpus, not expected behaviour")
 		})
 	})
 
 })
 
-func getGuaranteedPod(ctx context.Context, workerRTNode *corev1.Node) *corev1.Pod {
-	var err error
+func getGuaranteedPod(ctx context.Context, workerRTNode *corev1.Node) (*corev1.Pod, error) {
 	testpod1 := pods.GetTestPod()
 	testpod1.Namespace = testutils.NamespaceTesting
 	testpod1.Spec.Containers[0].Resources = corev1.ResourceRequirements{
@@ -875,16 +855,10 @@ func getGuaranteedPod(ctx context.Context, workerRTNode *corev1.Node) *corev1.Po
 	runtimeClass := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
 	testpod1.Spec.RuntimeClassName = &runtimeClass
 
-	err = testclient.Client.Create(ctx, testpod1)
-	Expect(err).ToNot(HaveOccurred())
-	_, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testpod1), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
-	Expect(err).ToNot(HaveOccurred())
-	Expect(testpod1.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
-	return testpod1
+	return testpod1, nil
 }
 
-func getNonGuaranteedPod(ctx context.Context, workerRTNode *corev1.Node) *corev1.Pod {
-	var err error
+func getNonGuaranteedPod(ctx context.Context, workerRTNode *corev1.Node) (*corev1.Pod, error) {
 	testpod2 := pods.GetTestPod()
 	testpod2.Namespace = testutils.NamespaceTesting
 	testpod2.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
@@ -893,23 +867,7 @@ func getNonGuaranteedPod(ctx context.Context, workerRTNode *corev1.Node) *corev1
 	runtimeClass := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
 	testpod2.Spec.RuntimeClassName = &runtimeClass
 
-	err = testclient.Client.Create(ctx, testpod2)
-	Expect(err).ToNot(HaveOccurred())
-	_, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testpod2), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
-	Expect(err).ToNot(HaveOccurred())
-	return testpod2
-}
-
-func deletePod(ctx context.Context, pod *corev1.Pod) {
-	err := testclient.Client.Delete(ctx, pod)
-	if err != nil {
-		testlog.Errorf("Failed to delete Pod %s/%s: %v", pod.Namespace, pod.Name, err)
-	}
-
-	err = pods.WaitForDeletion(ctx, pod, pods.DefaultDeletionTimeout*time.Second)
-	if err != nil {
-		testlog.Errorf("Timed out waiting for deletion of Pod %s/%s: %v", pod.Namespace, pod.Name, err)
-	}
+	return testpod2, nil
 }
 
 func checkForWorkloadPartitioning(ctx context.Context) bool {
