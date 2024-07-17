@@ -1,4 +1,4 @@
-package ready
+package wait
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/framework"
 )
 
-func Node(node corev1.Node) bool {
+func NodeReady(node corev1.Node) bool {
 	for _, c := range node.Status.Conditions {
 		if c.Type == corev1.NodeReady {
 			return c.Status == corev1.ConditionTrue
@@ -23,7 +23,9 @@ func Node(node corev1.Node) bool {
 	return false
 }
 
-func WaitNodeOrFail(cs *framework.ClientSet, tag, nodeName string, timeout, polling time.Duration) {
+// NodeBecomeReadyOrFail aits for node nodeName to change its status condition from NodeReady == false
+// to NodeReady == true with timeout timeout and polling interval polling.
+func NodeBecomeReadyOrFail(cs *framework.ClientSet, tag, nodeName string, timeout, polling time.Duration) {
 	ginkgo.GinkgoHelper()
 
 	util.Logf("%s: waiting for node %q: to be NOT-ready", tag, nodeName)
@@ -34,10 +36,10 @@ func WaitNodeOrFail(cs *framework.ClientSet, tag, nodeName string, timeout, poll
 			util.Logf("wait for node %q ready: %v", nodeName, err)
 			return false, nil
 		}
-		ready := Node(*node)
+		ready := NodeReady(*node)
 		util.Logf("node %q ready=%v", nodeName, ready)
 		return !ready, nil // note "not"
-	}).WithTimeout(2*time.Minute).WithPolling(polling).Should(gomega.BeTrue(), "post reboot/1: cannot get readiness status after reboot for node %q", nodeName)
+	}).WithTimeout(2*time.Minute).WithPolling(polling).Should(gomega.BeTrue(), "node unready: cannot get readiness status for node %q", nodeName)
 
 	util.Logf("%s: waiting for node %q: to be ready", tag, nodeName)
 	gomega.Eventually(func() (bool, error) {
@@ -47,10 +49,10 @@ func WaitNodeOrFail(cs *framework.ClientSet, tag, nodeName string, timeout, poll
 			util.Logf("wait for node %q ready: %v", nodeName, err)
 			return false, nil
 		}
-		ready := Node(*node)
+		ready := NodeReady(*node)
 		util.Logf("node %q ready=%v", nodeName, ready)
 		return ready, nil
-	}).WithTimeout(timeout).WithPolling(polling).Should(gomega.BeTrue(), "post reboot/2: cannot get readiness status after reboot for node %q", nodeName)
+	}).WithTimeout(timeout).WithPolling(polling).Should(gomega.BeTrue(), "node ready cannot get readiness status for node %q", nodeName)
 
 	util.Logf("%s: node %q: reported ready", tag, nodeName)
 }

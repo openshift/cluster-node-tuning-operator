@@ -17,7 +17,7 @@ import (
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	ntoutil "github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util/ready"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util/wait"
 )
 
 var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
@@ -145,7 +145,7 @@ var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
 					if targetTunedPod.UID == oldTunedPodUID {
 						return fmt.Errorf("pod %s/%s not refreshed old UID %q current UID %q", targetTunedPod.Namespace, targetTunedPod.Name, oldTunedPodUID, targetTunedPod.UID)
 					}
-					if !ready.Pod(*targetTunedPod) {
+					if !wait.PodReady(*targetTunedPod) {
 						return fmt.Errorf("pod %s/%s (%s) not ready", targetTunedPod.Namespace, targetTunedPod.Name, targetTunedPod.UID)
 					}
 					return nil
@@ -239,7 +239,7 @@ var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
 				_, err = util.ExecCmdInPodNamespace(targetMCDPod.Namespace, targetMCDPod.Name, "chroot", "/rootfs", "systemctl", "reboot")
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				// Very generous timeout. On baremetal a reboot can take a long time
-				ready.WaitNodeOrFail(cs, "post-reboot", targetNode.Name, 20*time.Minute, 5*time.Second)
+				wait.NodeBecomeReadyOrFail(cs, "post-reboot", targetNode.Name, 20*time.Minute, 5*time.Second)
 
 				gomega.Eventually(func() error {
 					curProf, err := cs.Profiles(ntoconfig.WatchNamespace()).Get(ctx, targetNode.Name, metav1.GetOptions{})
@@ -340,7 +340,7 @@ var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
 				_, err = util.ExecCmdInPodNamespace(targetMCDPod.Namespace, targetMCDPod.Name, "chroot", "/rootfs", "systemctl", "reboot")
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				// Very generous timeout. On baremetal a reboot can take a long time
-				ready.WaitNodeOrFail(cs, "post-reboot", targetNode.Name, 20*time.Minute, 5*time.Second)
+				wait.NodeBecomeReadyOrFail(cs, "post-reboot", targetNode.Name, 20*time.Minute, 5*time.Second)
 
 				gomega.Eventually(func() error {
 					curProf, err := cs.Profiles(ntoconfig.WatchNamespace()).Get(ctx, targetNode.Name, metav1.GetOptions{})
