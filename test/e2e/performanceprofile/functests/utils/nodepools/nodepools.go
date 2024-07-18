@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 )
 
@@ -62,4 +63,51 @@ func GetByClusterName(ctx context.Context, c client.Client, hostedClusterName st
 		return nil, fmt.Errorf("failed to find nodePool associated with cluster %q; existing nodePools are: %+v", hostedClusterName, npList.Items)
 	}
 	return np, nil
+}
+
+// AttachTuningObject is attaches a tuning object into the nodepool associated with the hosted-cluster
+// The function is idempotent
+func AttachTuningObject(ctx context.Context, cli client.Client, object client.Object) error {
+	hostedClusterName, err := hypershift.GetHostedClusterName()
+	if err != nil {
+		return err
+	}
+	np, err := GetByClusterName(ctx, cli, hostedClusterName)
+	if err != nil {
+		return err
+	}
+
+	updatedTuningConfig := []corev1.LocalObjectReference{{Name: object.GetName()}}
+	for i := range np.Spec.TuningConfig {
+		tuningConfig := np.Spec.TuningConfig[i]
+		if tuningConfig.Name != object.GetName() {
+			updatedTuningConfig = append(updatedTuningConfig, tuningConfig)
+		}
+	}
+	np.Spec.TuningConfig = updatedTuningConfig
+	if cli.Update(ctx, np) != nil {
+		return err
+	}
+	return nil
+}
+
+func DeattachTuningObject(ctx context.Context, cli client.Client, object client.Object) error {
+	hostedClusterName, err := hypershift.GetHostedClusterName()
+	if err != nil {
+		return err
+	}
+	np, err := GetByClusterName(ctx, cli, hostedClusterName)
+	if err != nil {
+		return err
+	}
+	for i := range np.Spec.TuningConfig {
+		if np.Spec.TuningConfig[i].Name == object.GetName() {
+			np.Spec.TuningConfig = append(np.Spec.TuningConfig[:i], np.Spec.TuningConfig[i+1:]...)
+			break
+		}
+	}
+	if cli.Update(ctx, np) != nil {
+		return err
+	}
+	return nil
 }
