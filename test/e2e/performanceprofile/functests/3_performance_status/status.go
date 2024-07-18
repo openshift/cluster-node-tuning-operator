@@ -39,7 +39,6 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 	var (
 		workerCNFNodes []corev1.Node
 		err            error
-		clean          func() error
 	)
 
 	BeforeEach(func() {
@@ -51,15 +50,6 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 		workerCNFNodes, err = nodes.MatchingOptionalSelector(workerCNFNodes)
 		Expect(err).ToNot(HaveOccurred(), "error looking for the optional selector: %v", err)
 		Expect(workerCNFNodes).ToNot(BeEmpty())
-		// initialized clean function handler to be nil on every It execution
-		clean = nil
-	})
-
-	AfterEach(func() {
-		if clean != nil {
-			Expect(clean(), "failed to cleanup in AfterEach")
-		}
-
 	})
 
 	Context("[rfe_id:28881][performance] Performance Addons detailed status", Label(string(label.Tier1)), func() {
