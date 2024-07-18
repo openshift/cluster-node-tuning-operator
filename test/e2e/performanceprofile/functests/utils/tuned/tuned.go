@@ -18,10 +18,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	nto "github.com/openshift/cluster-node-tuning-operator/pkg/operator"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
+	hypershiftutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 )
 
@@ -182,4 +185,20 @@ func AddPstateParameter(ctx context.Context, node *corev1.Node) string {
 		}
 	}
 	return pstateActive
+}
+
+func GetName(ctx context.Context, cli client.Client, profileName string) (string, error) {
+	tunedName := components.GetComponentName(profileName, components.ProfileNamePerformance)
+	if hypershiftutils.IsHypershiftCluster() {
+		name, err := hypershiftutils.GetHostedClusterName()
+		if err != nil {
+			return "", err
+		}
+		np, err := nodepools.GetByClusterName(ctx, cli, name)
+		if err != nil {
+			return "", err
+		}
+		tunedName = nto.MakeTunedUniqueName(tunedName, np.Name)
+	}
+	return tunedName, nil
 }
