@@ -203,7 +203,7 @@ func parseTunedManifests(data []byte, nodePoolName string) ([]tunedv1.Tuned, err
 		}
 		// Make Tuned names unique if a Tuned is duplicated across NodePools
 		// for example, if one ConfigMap is referenced in multiple NodePools
-		t.SetName(t.ObjectMeta.Name + "-" + hashStruct(nodePoolName))
+		t.SetName(MakeTunedUniqueName(t.ObjectMeta.Name, nodePoolName))
 		klog.V(2).Infof("parseTunedManifests: name: %s", t.GetName())
 
 		// Propagate NodePool name from ConfigMap down to Tuned object
@@ -306,4 +306,8 @@ func generatedConfigMapAnnotations(nodePoolName string) map[string]string {
 	return map[string]string{
 		hypershiftNodePoolLabel: nodePoolName,
 	}
+}
+
+func MakeTunedUniqueName(tunedName, nodePoolName string) string {
+	return fmt.Sprintf("%s-%s", tunedName, hashStruct(nodePoolName))
 }
