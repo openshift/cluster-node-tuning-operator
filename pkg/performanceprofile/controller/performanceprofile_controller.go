@@ -231,6 +231,19 @@ func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Ma
 		},
 	}
 
+	tunedProfilePredicates := predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if !validateUpdateEvent(&e) {
+				return false
+			}
+
+			tunedProfileOld := e.ObjectOld.(*tunedv1.Profile)
+			tunedProfileNew := e.ObjectNew.(*tunedv1.Profile)
+
+			return !reflect.DeepEqual(tunedProfileOld.Status.Conditions, tunedProfileNew.Status.Conditions)
+		},
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("performanceprofile_controller").
 		// we can't use For() and Owns(), because this calls are using the cache of the hosted cluster's client.
@@ -248,6 +261,10 @@ func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Ma
 			&nodev1.RuntimeClass{}),
 			handler.EnqueueRequestForOwner(mgr.GetScheme(), mgr.GetRESTMapper(), &corev1.ConfigMap{}, handler.OnlyControllerOwner()),
 			builder.WithPredicates(rtClassPredicate)).
+		WatchesRawSource(source.Kind(mgr.GetCache(),
+			&tunedv1.Profile{}),
+			handler.EnqueueRequestsFromMapFunc(r.tunedProfileToPerformanceProfileForHypershift),
+			builder.WithPredicates(tunedProfilePredicates)).
 		Complete(r)
 }
 
@@ -257,6 +274,39 @@ func validateLabels(obj client.Object, label, eventType string) bool {
 		return true
 	}
 	return false
+}
+
+func (r *PerformanceProfileReconciler) tunedProfileToPerformanceProfileForHypershift(ctx context.Context, tunedProfileObj client.Object) []reconcile.Request {
+	node := &corev1.Node{}
+	key := types.NamespacedName{
+		// the tuned profile name is the same as node
+		Name: tunedProfileObj.GetName(),
+	}
+
+	if err := r.Get(ctx, key, node); err != nil {
+		klog.Errorf("failed to get the tuned profile %+v: %v", key, err)
+		return nil
+	}
+
+	npName, ok := node.Labels[hypershiftconsts.NodePoolNameLabel]
+	if !ok {
+		klog.Errorf("node label %s not found in node %s", hypershiftconsts.NodePoolNameLabel, node.GetName())
+	}
+	cmList := &corev1.ConfigMapList{}
+	err := r.ManagementClient.List(ctx, cmList, client.MatchingLabels{hypershiftconsts.NodePoolNameLabel: npName, hypershiftconsts.ControllerGeneratedPerformanceProfileConfigMapLabel: "true"})
+	if err != nil {
+		klog.Errorf("failed to get performance profiles ConfigMaps: %v", err)
+		return nil
+	}
+	if len(cmList.Items) == 0 {
+		klog.Errorf("no performance profile ConfigMap found that matches label %s", hypershiftconsts.NodePoolNameLabel)
+		return nil
+	}
+	if len(cmList.Items) > 1 {
+		klog.Errorf("no more than a single performance profile ConfigMap that matches label %s is expected to be found", hypershiftconsts.NodePoolNameLabel)
+		return nil
+	}
+	return []reconcile.Request{{NamespacedName: namespacedName(&cmList.Items[0])}}
 }
 
 func (r *PerformanceProfileReconciler) mcpToPerformanceProfile(ctx context.Context, mcpObj client.Object) []reconcile.Request {
