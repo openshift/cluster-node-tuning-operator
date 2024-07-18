@@ -66,8 +66,16 @@ func (ci *ControlPlaneClientImpl) Update(ctx context.Context, obj client.Object,
 	return ci.Client.Update(ctx, obj, opts...)
 }
 
-func IsEncapsulatedInConfigMap(obj runtime.Object) bool {
-	return GetObjectConfigMapDataKey(obj) != ""
+func IsWriteableToControlPlane(obj runtime.Object) bool {
+	return GetObjectConfigMapDataKey(obj) == ""
+}
+
+func IsReadableFromControlPlane(obj runtime.Object) bool {
+	switch obj.(type) {
+	case *tunedv1.Tuned, *tunedv1.TunedList:
+		return true
+	}
+	return GetObjectConfigMapDataKey(obj) == ""
 }
 
 func GetObjectConfigMapDataKey(obj runtime.Object) string {
