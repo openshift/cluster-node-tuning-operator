@@ -194,6 +194,11 @@ func operatorRun() {
 			klog.Exitf("unable to create PerformanceProfile v2 webhook: %v", err)
 		}
 	} else {
+		operatorNamespace := config.OperatorNamespace()
+		fg, err := setupFeatureGates(context.TODO(), restConfig, operatorNamespace)
+		if err != nil {
+			klog.Exitf("failed to setup feature gates: %v", err)
+		}
 		// HyperShift configuration
 		restConfig, err := ntoclient.GetInClusterConfig()
 		if err != nil {
@@ -201,7 +206,6 @@ func operatorRun() {
 		}
 
 		fOps := func(opts *cluster.Options) {
-			operatorNamespace := config.OperatorNamespace()
 			opts.Cache.Namespaces = []string{operatorNamespace}
 			opts.Scheme = mgr.GetScheme()
 			opts.MapperProvider = func(c *rest.Config, httpClient *http.Client) (meta.RESTMapper, error) {
@@ -230,6 +234,7 @@ func operatorRun() {
 			Recorder:          managementCluster.GetEventRecorderFor("performance-profile-controller"),
 			ComponentsHandler: hcpcomponents.NewHandler(managementCluster.GetClient(), mgr.GetClient(), mgr.GetScheme()),
 			StatusWriter:      hcpstatus.NewWriter(managementCluster.GetClient(), mgr.GetClient(), mgr.GetScheme()),
+			FeatureGate:       fg,
 		}).SetupWithManagerForHypershift(mgr, managementCluster); err != nil {
 			klog.Exitf("unable to create PerformanceProfile controller: %v", err)
 		}
@@ -254,8 +259,10 @@ func setupFeatureGates(ctx context.Context, config *rest.Config, operatorNamespa
 		return nil, err
 	}
 	controllerRef, err := events.GetControllerReferenceForCurrentPod(ctx, k8sClient, operatorNamespace, nil)
+	// library-go just logs a warning and continues
+	// https://github.com/openshift/library-go/blob/4362aa519714a4b62b00ab8318197ba2bba51cb7/pkg/controller/controllercmd/builder.go#L230
 	if err != nil {
-		return nil, err
+		klog.Warningf("unable to get owner reference (falling back to namespace): %v", err)
 	}
 	eventRecorder := events.NewKubeRecorder(k8sClient.CoreV1().Events(metav1.NamespaceNone), "performance-profile-controller", controllerRef)
 	informersFactory := configinformers.NewSharedInformerFactory(configClient, 10*time.Minute)
