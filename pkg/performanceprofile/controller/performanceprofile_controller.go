@@ -564,9 +564,9 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	err = r.ComponentsHandler.Apply(ctx, instance, r.Recorder, &components.Options{
 		ProfileMCP: profileMCP,
 		MachineConfig: components.MachineConfigOptions{
-			PinningMode:      &pinningMode,
-			MixedCPUsEnabled: r.isMixedCPUsEnabled(instance),
+			PinningMode: &pinningMode,
 		},
+		MixedCPUsFeatureGateEnabled: r.isMixedCPUsFeatureGateEnabled(),
 	})
 	if err != nil {
 		klog.Errorf("failed to deploy performance profile %q components: %v", instance.GetName(), err)
@@ -585,14 +585,8 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	return ctrl.Result{}, nil
 }
 
-func (r *PerformanceProfileReconciler) isMixedCPUsEnabled(object client.Object) bool {
-	if ntoconfig.InHyperShift() {
-		return false
-	}
-	if !r.FeatureGate.Enabled(apifeatures.FeatureGateMixedCPUsAllocation) {
-		return false
-	}
-	return profileutil.IsMixedCPUsEnabled(object.(*performancev2.PerformanceProfile))
+func (r *PerformanceProfileReconciler) isMixedCPUsFeatureGateEnabled() bool {
+	return r.FeatureGate.Enabled(apifeatures.FeatureGateMixedCPUsAllocation)
 }
 
 func hasFinalizer(obj client.Object, finalizer string) bool {

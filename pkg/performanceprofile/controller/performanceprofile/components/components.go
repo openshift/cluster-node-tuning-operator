@@ -35,8 +35,9 @@ type Handler interface {
 }
 
 type Options struct {
-	ProfileMCP    *mcov1.MachineConfigPool
-	MachineConfig MachineConfigOptions
+	ProfileMCP                  *mcov1.MachineConfigPool
+	MachineConfig               MachineConfigOptions
+	MixedCPUsFeatureGateEnabled bool
 }
 
 type MachineConfigOptions struct {
