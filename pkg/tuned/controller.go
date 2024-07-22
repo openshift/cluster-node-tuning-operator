@@ -1062,16 +1062,14 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 		}
 
 		// Does the current TuneD process have the reapply_sysctl option turned on?
-		reapplySysctl := c.tunedMainCfg.Section("").Key("reapply_sysctl").MustBool()
-		if reapplySysctl != change.reapplySysctl {
+		if reapplySysctl := c.tunedMainCfg.Section("").Key("reapply_sysctl").MustBool(); reapplySysctl != change.reapplySysctl {
 			klog.V(4).Infof("reapplySysctl rewriting configuration file")
-
 			if err = iniCfgSetKey(c.tunedMainCfg, "reapply_sysctl", !reapplySysctl); err != nil {
 				return false, err
 			}
 			err = iniFileSave(tunedMainConfPath, c.tunedMainCfg)
 			if err != nil {
-				return false, fmt.Errorf("failed to write global TuneD configuration file: %v", err)
+				return false, fmt.Errorf("failed to write global TuneD configuration file: %w", err)
 			}
 			klog.V(4).Infof("reapplySysctl triggering tuned restart")
 			restart = true // A complete restart of the TuneD daemon is needed due to configuration change in tuned-main.conf file.
