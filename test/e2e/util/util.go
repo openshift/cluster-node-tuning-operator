@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"time"
 
@@ -21,6 +24,7 @@ import (
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 	"github.com/openshift/cluster-node-tuning-operator/test/framework"
 )
 
@@ -30,6 +34,23 @@ const (
 	// The default worker profile.  See: assets/tuned/manifests/default-cr-tuned.yaml
 	DefaultWorkerProfile = "openshift-node"
 )
+
+func LoadTuned(path string) (*tunedv1.Tuned, error) {
+	src, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer src.Close()
+	return manifests.NewTuned(src)
+}
+
+func GetCurrentDirPath() (string, error) {
+	_, file, _, ok := goruntime.Caller(0)
+	if !ok {
+		return "", fmt.Errorf("cannot retrieve tests directory")
+	}
+	return filepath.Dir(file), nil
+}
 
 // Logf formats using the default formats for its operands and writes to
 // ginkgo.GinkgoWriter and a newline is appended.  It returns the number of
@@ -57,6 +78,27 @@ func GetNodesByRole(cs *framework.ClientSet, role string) ([]corev1.Node, error)
 		return nil, fmt.Errorf("couldn't get a list of nodes by role (%s): %v", role, err)
 	}
 	return nodeList, nil
+}
+
+// GetMachineConfigDaemonForNode returns the machine-config-daemon pod that runs on the specified node
+func GetMachineConfigDaemonForNode(cs *framework.ClientSet, node *corev1.Node) (*corev1.Pod, error) {
+	listOptions := metav1.ListOptions{
+		FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": node.Name}).String(),
+		LabelSelector: labels.SelectorFromSet(labels.Set{"k8s-app": "machine-config-daemon"}).String(),
+	}
+
+	podList, err := cs.Pods("openshift-machine-config-operator").List(context.TODO(), listOptions)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't get a list of TuneD Pods: %v", err)
+	}
+
+	if len(podList.Items) != 1 {
+		if len(podList.Items) == 0 {
+			return nil, fmt.Errorf("failed to find a TuneD Pod for node %s", node.Name)
+		}
+		return nil, fmt.Errorf("too many (%d) TuneD Pods for node %s", len(podList.Items), node.Name)
+	}
+	return &podList.Items[0], nil
 }
 
 // GetTunedForNode returns a Pod that runs on a given node.
@@ -130,12 +172,17 @@ func ExecAndLogCommand(name string, args ...string) (bytes.Buffer, bytes.Buffer,
 
 // ExecCmdInPod executes command with arguments 'cmd' in Pod 'pod'.
 func ExecCmdInPod(pod *corev1.Pod, cmd ...string) (string, error) {
-	ocArgs := []string{"rsh", "-n", ntoconfig.WatchNamespace(), pod.Name}
+	return ExecCmdInPodNamespace(ntoconfig.WatchNamespace(), pod.Name, cmd...)
+}
+
+// ExecCmdInPodNamespace executes command with arguments 'cmd' in Pod 'podNamespace/podName'.
+func ExecCmdInPodNamespace(podNamespace, podName string, cmd ...string) (string, error) {
+	ocArgs := []string{"rsh", "-n", podNamespace, podName}
 	ocArgs = append(ocArgs, cmd...)
 
 	stdout, stderr, err := execCommand(false, "oc", ocArgs...)
 	if err != nil {
-		return "", fmt.Errorf("failed to run %s in Pod %s:\n  out=%s\n  err=%s\n  ret=%v", cmd, pod.Name, stdout.String(), stderr.String(), err.Error())
+		return "", fmt.Errorf("failed to run %s in pod %s/%s:\n  out=%s\n  err=%s\n  ret=%v", cmd, podNamespace, podName, stdout.String(), stderr.String(), err.Error())
 	}
 
 	return stdout.String(), nil

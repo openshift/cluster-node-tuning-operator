@@ -28,6 +28,9 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Degraded")].status
       name: Degraded
       type: string
+    - jsonPath: .status.conditions[?(@.type=="Applied")].message
+      name: Message
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date

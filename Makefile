@@ -99,8 +99,8 @@ pkg/generated: $(API_TYPES)
 $(GOBINDATA_BIN):
 	$(GO) build -o $(GOBINDATA_BIN) ./vendor/github.com/kevinburke/go-bindata/go-bindata
 
-test-e2e:
-	for d in core basic reboots reboots/sno; do \
+test-e2e: $(BINDATA)
+	for d in core basic reboots reboots/sno deferred; do \
 	  KUBERNETES_CONFIG="$(KUBECONFIG)" $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.no-color -ginkgo.fail-fast || exit; \
 	done
 
@@ -293,13 +293,16 @@ gather-sysinfo-tests: build-gather-sysinfo
 render-sync: build
 	hack/render-sync.sh
 
+build-e2e-%:
+	@hack/build-test-bin.sh $(shell echo $@ | sed -e 's/^build-e2e-//' )
+
 pao-build-e2e-%:
-	@hack/build-test-bin.sh $(shell echo $@ | sed -e 's/^pao-build-e2e-//' )
+	@hack/build-pao-test-bin.sh $(shell echo $@ | sed -e 's/^pao-build-e2e-//' )
 
 .PHONY: pao-build-e2e
 pao-build-e2e:
 	@for suite in $(PAO_E2E_SUITES); do \
-		hack/build-test-bin.sh $$suite; \
+		hack/build-pao-test-bin.sh $$suite; \
 	done
 
 .PHONY: pao-clean-e2e

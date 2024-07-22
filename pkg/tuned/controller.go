@@ -4,11 +4,15 @@ import (
 	"bufio"   // scanner
 	"bytes"   // bytes.Buffer
 	"context" // context.TODO()
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"  // errors.Is()
 	"fmt"     // Printf()
 	"math"    // math.Pow()
 	"os"      // os.Exit(), os.Stderr, ...
 	"os/exec" // os.Exec()
+	"path/filepath"
+	"sort"
 	"strings" // strings.Join()
 	"syscall" // syscall.SIGHUP, ...
 	"time"    // time.Second, ...
@@ -43,6 +47,7 @@ const (
 	scError
 	scSysctlOverride
 	scReloading // reloading is true during the TuneD daemon reload.
+	scDeferred
 	scUnknown
 )
 
@@ -87,6 +92,15 @@ const (
 	ocpTunedImageEnv           = ocpTunedHome + "/image.env"
 	tunedProfilesDirCustomHost = ocpTunedHome + "/profiles"
 	tunedRecommendDirHost      = ocpTunedHome + "/recommend.d"
+
+	// How do we detect a reboot? The NTO operand owns and uses two separate files to track deferred updates.
+	// 1. /var/lib/... - persistent storage which will survive across reboots. Contains the actual data.
+	// 2. /run/..      - ephemeral file on tmpfs. Lost on reboot. Since this file is going to be wiped out
+	//                   automatically and implicitly on reboot, if it is missing we assume a reboot.
+	// this means the admin can tamper the node state and fake a node restart by deleting this file
+	// and restarting the tuned daemon.
+	tunedDeferredUpdateEphemeralFilePath  = ocpTunedRunDir + "/pending_profile"
+	tunedDeferredUpdatePersistentFilePath = ocpTunedHome + "/pending_profile"
 )
 
 // Types
@@ -104,6 +118,12 @@ type Daemon struct {
 	// recommendedProfile is the TuneD profile the operator calculated to be applied.
 	// This variable is used to cache the value which was written to tunedRecommendFile.
 	recommendedProfile string
+	// profileFingerprintUnpacked is the fingerprint of the profile unpacked on the node.
+	// Relevant in the startup flow with deferred updates.
+	profileFingerprintUnpacked string
+	// profileFingerprintEffective is the fingerprint of the profile effective on the node.
+	// Relevant in the startup flow with deferred updates.
+	profileFingerprintEffective string
 }
 
 type Change struct {
@@ -111,6 +131,12 @@ type Change struct {
 	profile bool
 	// Do we need to update Tuned Profile status?
 	profileStatus bool
+
+	// Is this Change caused by a TuneD reload?
+	tunedReload bool
+
+	// Is this Change caused by a node restart?
+	nodeRestart bool
 
 	// The following keys are set when profile == true.
 	// Was debugging set in Profile k8s object?
@@ -121,6 +147,46 @@ type Change struct {
 	reapplySysctl bool
 	// The current recommended profile as calculated by the operator.
 	recommendedProfile string
+
+	// Is the current Change triggered by an object with the deferred annotation?
+	deferred bool
+	// Text to convey in status message, if present.
+	message string
+}
+
+func (ch Change) String() string {
+	var items []string
+	if ch.profile {
+		items = append(items, "profile:true")
+	}
+	if ch.profileStatus {
+		items = append(items, "profileStatus:true")
+	}
+	if ch.tunedReload {
+		items = append(items, "tunedReload:true")
+	}
+	if ch.nodeRestart {
+		items = append(items, "nodeRestart:true")
+	}
+	if ch.debug {
+		items = append(items, "debug:true")
+	}
+	if ch.provider != "" {
+		items = append(items, fmt.Sprintf("provider:%q", ch.provider))
+	}
+	if ch.reapplySysctl {
+		items = append(items, "reapplySysctl:true")
+	}
+	if ch.recommendedProfile != "" {
+		items = append(items, fmt.Sprintf("recommendedProfile:%q", ch.recommendedProfile))
+	}
+	if ch.deferred {
+		items = append(items, "deferred:true")
+	}
+	if ch.message != "" {
+		items = append(items, fmt.Sprintf("message:%q", ch.message))
+	}
+	return "tuned.Change{" + strings.Join(items, ", ") + "}"
 }
 
 type Controller struct {
@@ -144,6 +210,8 @@ type Controller struct {
 	changeCh     chan Change     // bi-directional channel to wake-up the main thread to process accrued changes
 	changeChRet  chan bool       // bi-directional channel to announce success/failure of change processing
 	tunedMainCfg *ini.File       // global TuneD configuration as defined in tuned-main.conf
+
+	pendingChange *Change // pending deferred change to be applied on node restart (if any)
 }
 
 type wqKeyKube struct {
@@ -278,6 +346,7 @@ func (c *Controller) sync(key wqKeyKube) error {
 			return fmt.Errorf("failed to get Profile %s: %v", key.name, err)
 		}
 
+		change.profile = true
 		change.provider = profile.Spec.Config.ProviderName
 		change.recommendedProfile = profile.Spec.Config.TunedProfile
 		change.debug = profile.Spec.Config.Debug
@@ -285,8 +354,7 @@ func (c *Controller) sync(key wqKeyKube) error {
 		if profile.Spec.Config.TuneDConfig.ReapplySysctl != nil {
 			change.reapplySysctl = *profile.Spec.Config.TuneDConfig.ReapplySysctl
 		}
-
-		change.profile = true
+		change.deferred = util.HasDeferredUpdateAnnotation(profile.Annotations)
 		// Notify the event processor that the Profile k8s object containing information about which TuneD profile to apply changed.
 		c.wqTuneD.Add(wqKeyTuned{kind: wqKindDaemon, change: change})
 
@@ -325,23 +393,27 @@ func profilesEqual(profileFile string, profileData string) bool {
 // Returns:
 //   - True if the data in the to-be-extracted recommended profile or the profiles being
 //     included from the current recommended profile have changed.
+//   - If the data changed, the fingerprint of the new profile, or "" otherwise.
 //   - A map with successfully extracted TuneD profile names.
 //   - A map with names of TuneD profiles the current TuneD recommended profile depends on.
 //   - Error if any or nil.
-func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string) (bool, map[string]bool, map[string]bool, error) {
-	var (
-		change bool
-	)
-	klog.Infof("profilesExtract(): extracting %d TuneD profiles", len(profiles))
+func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string) (bool, string, map[string]bool, map[string]bool, error) {
+	klog.Infof("profilesExtract(): extracting %d TuneD profiles (recommended=%s)", len(profiles), recommendedProfile)
+	// Get a list of TuneD profiles names the recommended profile depends on.
+	deps := profileDepends(recommendedProfile)
+	// Add the recommended profile itself.
+	deps[recommendedProfile] = true
+	klog.V(2).Infof("profilesExtract(): profile deps: %#v", deps)
+	return profilesExtractPathWithDeps(tunedProfilesDirCustom, profiles, recommendedProfile, deps)
+}
 
-	recommendedProfileDeps := map[string]bool{}
-	if len(recommendedProfile) > 0 {
-		// Get a list of TuneD profiles names the recommended profile depends on.
-		recommendedProfileDeps = profileDepends(recommendedProfile)
-		// Add the recommended profile itself.
-		recommendedProfileDeps[recommendedProfile] = true
-	}
-	extracted := map[string]bool{} // TuneD profile names present in TuneD CR and successfully extracted to tunedProfilesDirCustom
+// profilesExtractPathWithDeps is like ProfilesExtract but takes explicit profiles root dir path and
+// explicit dependencies, so it's easier to test. To be used only internally.
+func profilesExtractPathWithDeps(profilesRootDir string, profiles []tunedv1.TunedProfile, recommendedProfile string, recommendedProfileDeps map[string]bool) (bool, string, map[string]bool, map[string]bool, error) {
+	var (
+		change    bool            = false
+		extracted map[string]bool = map[string]bool{} // TuneD profile names present in TuneD CR and successfully extracted to tunedProfilesDirCustom
+	)
 
 	for index, profile := range profiles {
 		if profile.Name == nil {
@@ -352,11 +424,11 @@ func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string)
 			klog.Warningf("profilesExtract(): profile data missing for Profile %v", index)
 			continue
 		}
-		profileDir := fmt.Sprintf("%s/%s", tunedProfilesDirCustom, *profile.Name)
-		profileFile := fmt.Sprintf("%s/%s", profileDir, tunedConfFile)
+		profileDir := filepath.Join(profilesRootDir, *profile.Name)
+		profileFile := filepath.Join(profileDir, tunedConfFile)
 
 		if err := os.MkdirAll(profileDir, os.ModePerm); err != nil {
-			return change, extracted, recommendedProfileDeps, fmt.Errorf("failed to create TuneD profile directory %q: %v", profileDir, err)
+			return change, "", extracted, recommendedProfileDeps, fmt.Errorf("failed to create TuneD profile directory %q: %v", profileDir, err)
 		}
 
 		if recommendedProfileDeps[*profile.Name] {
@@ -367,21 +439,62 @@ func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string)
 			if !change {
 				un = "un"
 			}
-			klog.Infof("recommended TuneD profile %s content %schanged [%s]", recommendedProfile, un, *profile.Name)
+			klog.Infof("profilesExtract(): recommended TuneD profile %s content %schanged [%s]", recommendedProfile, un, *profile.Name)
 		}
 
-		f, err := os.Create(profileFile)
+		err := os.WriteFile(profileFile, []byte(*profile.Data), 0644)
 		if err != nil {
-			return change, extracted, recommendedProfileDeps, fmt.Errorf("failed to create TuneD profile file %q: %v", profileFile, err)
-		}
-		defer f.Close()
-		if _, err = f.WriteString(*profile.Data); err != nil {
-			return change, extracted, recommendedProfileDeps, fmt.Errorf("failed to write TuneD profile file %q: %v", profileFile, err)
+			return change, "", extracted, recommendedProfileDeps, fmt.Errorf("failed to write TuneD profile file %q: %v", profileFile, err)
 		}
 		extracted[*profile.Name] = true
+		klog.V(2).Infof("profilesExtract(): extracted profile %q to %q (%d bytes)", *profile.Name, profileFile, len(*profile.Data))
 	}
 
-	return change, extracted, recommendedProfileDeps, nil
+	profilesFP := profilesFingerprint(profiles, recommendedProfile)
+	klog.Infof("profilesExtract(): fingerprint of extracted profiles: %q", profilesFP)
+	return change, profilesFP, extracted, recommendedProfileDeps, nil
+}
+
+// profilesRepackPath reconstructs the TunedProfile object from the data unpacked on the node
+// by earlier operations of the operand code. Takes the paths of the recommend file and of
+// the profiles root directory. For testability, the production code always uses the same
+// hardcoded path (see for example RunInCluster). Returns the reconstructed TunedProfiles,
+// the name of the recommended profile, error if any. If the returned error is not nil,
+// the other return values are not significant and should be ignored.
+func profilesRepackPath(recommendFilePath, profilesRootDir string) ([]tunedv1.TunedProfile, string, error) {
+	recommendedProfile, err := TunedRecommendFileReadPath(recommendFilePath)
+	if err != nil {
+		return nil, "", err
+	}
+	klog.V(1).Infof("profilesRepack(): recovered recommended profile: %q", recommendedProfile)
+
+	dents, err := os.ReadDir(profilesRootDir)
+	if err != nil {
+		return nil, "", err
+	}
+	var profiles []tunedv1.TunedProfile
+	for _, dent := range dents {
+		profileDir := filepath.Join(profilesRootDir, dent.Name())
+		if !dent.IsDir() {
+			klog.V(2).Infof("profilesRepack(): skipped entry %q: not a directory", profileDir)
+			continue
+		}
+		profilePath := filepath.Join(profileDir, tunedConfFile)
+		profileBytes, err := os.ReadFile(profilePath)
+		if err != nil {
+			return profiles, recommendedProfile, err
+		}
+		profileName := dent.Name()
+		profileData := string(profileBytes)
+		profiles = append(profiles, tunedv1.TunedProfile{
+			Name: &profileName,
+			Data: &profileData,
+		})
+		klog.V(2).Infof("profilesRepack(): recovered profile: %q from %q (%d bytes)", profileName, profilePath, len(profileBytes))
+	}
+
+	klog.V(2).Infof("profilesRepack(): recovered %d profiles", len(profiles))
+	return profiles, recommendedProfile, nil
 }
 
 // profilesSync extracts TuneD daemon profiles to the daemon configuration directory
@@ -390,16 +503,17 @@ func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string)
 // Returns:
 //   - True if the data in the to-be-extracted recommended profile or the profiles being
 //     included from the current recommended profile have changed.
+//   - The synced profile fingerprint.
 //   - Error if any or nil.
-func profilesSync(profiles []tunedv1.TunedProfile, recommendedProfile string) (bool, error) {
-	change, extractedNew, recommendedProfileDeps, err := ProfilesExtract(profiles, recommendedProfile)
+func profilesSync(profiles []tunedv1.TunedProfile, recommendedProfile string) (bool, string, error) {
+	change, profilesFP, extractedNew, recommendedProfileDeps, err := ProfilesExtract(profiles, recommendedProfile)
 	if err != nil {
-		return change, err
+		return change, "", err
 	}
 
 	dirEntries, err := os.ReadDir(tunedProfilesDirCustom)
 	if err != nil {
-		return change, err
+		return change, "", err
 	}
 
 	// Deal with TuneD profiles absent from Tuned CRs, but still present in <tunedProfilesDirCustom>/<profile>/
@@ -423,9 +537,9 @@ func profilesSync(profiles []tunedv1.TunedProfile, recommendedProfile string) (b
 		profileDir := fmt.Sprintf("%s/%s", tunedProfilesDirCustom, profile)
 		err := os.RemoveAll(profileDir)
 		if err != nil {
-			return change, fmt.Errorf("failed to remove %q: %v", profileDir, err)
+			return change, "", fmt.Errorf("failed to remove %q: %v", profileDir, err)
 		}
-		klog.Infof("removed TuneD profile %q", profileDir)
+		klog.Infof("profilesSync(): removed TuneD profile %q", profileDir)
 
 		if recommendedProfileDeps[profile] {
 			// This TuneD profile does not exist in the Profile CR, but the recommended profile depends on it.
@@ -434,22 +548,43 @@ func profilesSync(profiles []tunedv1.TunedProfile, recommendedProfile string) (b
 		}
 	}
 
-	return change, nil
+	return change, profilesFP, nil
+}
+
+// filterAndSortProfiles returns a slice of valid (non-nil name, non-nil data) profiles
+// from the given slice, and the returned slice have all the valid profiles sorted by name.
+func filterAndSortProfiles(profiles []tunedv1.TunedProfile) []tunedv1.TunedProfile {
+	profs := make([]tunedv1.TunedProfile, 0, len(profiles))
+	for _, prof := range profiles {
+		if prof.Name == nil {
+			continue
+		}
+		if prof.Data == nil {
+			continue
+		}
+		profs = append(profs, prof)
+	}
+	sort.Slice(profs, func(i, j int) bool { return *profs[i].Name < *profs[j].Name })
+	return profs
+}
+
+// profilesFingerprint returns a hash of `recommendedProfile` name joined with the data sections of all TuneD profiles in the `profiles` slice.
+func profilesFingerprint(profiles []tunedv1.TunedProfile, recommendedProfile string) string {
+	profiles = filterAndSortProfiles(profiles)
+	h := sha256.New()
+	h.Write([]byte(recommendedProfile))
+	for _, prof := range profiles {
+		h.Write([]byte(*prof.Data))
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // providerExtract extracts Cloud Provider name into ocpTunedProvider file.
 func providerExtract(provider string) error {
-	klog.Infof("extracting cloud provider name to %v", ocpTunedProvider)
-
-	f, err := os.Create(ocpTunedProvider)
-	if err != nil {
-		return fmt.Errorf("failed to create cloud provider name file %q: %v", ocpTunedProvider, err)
-	}
-	defer f.Close()
-	if _, err = f.WriteString(provider); err != nil {
+	klog.Infof("providerExtract(): extracting cloud provider name to %v", ocpTunedProvider)
+	if err := os.WriteFile(ocpTunedProvider, []byte(provider), 0o644); err != nil {
 		return fmt.Errorf("failed to write cloud provider name file %q: %v", ocpTunedProvider, err)
 	}
-
 	return nil
 }
 
@@ -539,21 +674,36 @@ func writeOpenShiftTunedImageEnv() error {
 	return nil
 }
 
-func TunedRecommendFileWrite(profileName string) error {
-	klog.V(2).Infof("tunedRecommendFileWrite(): %s", profileName)
-	if err := os.MkdirAll(tunedRecommendDir, os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create directory %q: %v", tunedRecommendDir, err)
+func TunedRecommendFileWritePath(recommendFilePath, profileName string) error {
+	rfDir := filepath.Dir(recommendFilePath)
+	klog.V(2).Infof("tunedRecommendFileWrite(): %s %s", profileName, rfDir)
+	if err := os.MkdirAll(rfDir, os.ModePerm); err != nil {
+		return fmt.Errorf("failed to create directory %q: %v", rfDir, err)
 	}
-	f, err := os.Create(tunedRecommendFile)
-	if err != nil {
-		return fmt.Errorf("failed to create file %q: %v", tunedRecommendFile, err)
+	data := []byte(fmt.Sprintf("[%s]\n", profileName))
+	if err := os.WriteFile(recommendFilePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write file %q: %v", recommendFilePath, err)
 	}
-	defer f.Close()
-	if _, err = f.WriteString(fmt.Sprintf("[%s]\n", profileName)); err != nil {
-		return fmt.Errorf("failed to write file %q: %v", tunedRecommendFile, err)
-	}
-	klog.Infof("written %q to set TuneD profile %s", tunedRecommendFile, profileName)
+	klog.Infof("tunedRecommendFileWrite(): written %q to set TuneD profile %s", recommendFilePath, profileName)
 	return nil
+}
+
+func TunedRecommendFileReadPath(recommendFilePath string) (string, error) {
+	data, err := os.ReadFile(recommendFilePath)
+	if err != nil {
+		return "", err
+	}
+	recommended := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(string(data)), "["), "]")
+	klog.Infof("tunedRecommendFileRead(): read %q from %q", recommended, tunedRecommendFile)
+	return recommended, nil
+}
+
+func TunedRecommendFileWrite(profileName string) error {
+	return TunedRecommendFileWritePath(tunedRecommendFile, profileName)
+}
+
+func TunedRecommendFileRead() (string, error) {
+	return TunedRecommendFileReadPath(tunedRecommendFile)
 }
 
 // overridenSysctl returns name of a host-level sysctl that overrides TuneD-level sysctl,
@@ -597,7 +747,10 @@ func (c *Controller) tunedRun() {
 
 	onDaemonReload := func() {
 		// Notify the event processor that the TuneD daemon finished reloading and that we might need to update Profile status.
-		c.wqTuneD.Add(wqKeyTuned{kind: wqKindDaemon, change: Change{profileStatus: true}})
+		c.wqTuneD.Add(wqKeyTuned{kind: wqKindDaemon, change: Change{
+			profileStatus: true,
+			tunedReload:   true,
+		}})
 	}
 
 	err := TunedRun(c.tunedCmd, &c.daemon, onDaemonReload)
@@ -758,9 +911,36 @@ func GetBootcmdline() (string, error) {
 	return responseString, nil
 }
 
+// changeSyncerPostReloadOrRestart synchronizes the daemon status after a node restart or a TuneD reload.
+// The deferred updates are meant to be applied only after a full node restart.
+// However, after a TuneD reload caused by a immediate update, we need to update the internal state
+// pertaining to the effective profile applied on a node.
+func (c *Controller) changeSyncerPostReloadOrRestart(change Change) {
+	klog.V(2).Infof("changeSyncerPostReloadOrRestart(%s)", change.String())
+	defer klog.V(2).Infof("changeSyncerPostReloadOrRestart(%s) done", change.String())
+
+	if !change.nodeRestart && !change.tunedReload {
+		return // nothing to do
+	}
+
+	profiles, recommended, err := profilesRepackPath(tunedRecommendFile, tunedProfilesDirCustom)
+	if err != nil {
+		// keep going, immediate updates are expected to work as usual
+		// and we expect the vast majority of updates to be immediate anyway
+		klog.Errorf("error repacking the profile: %v", err)
+		klog.Infof("deferred updates likely broken")
+	}
+
+	profileFP := profilesFingerprint(profiles, recommended)
+	klog.V(2).Infof("changeSyncerPostReloadOrRestart(): current effective profile fingerprint %q -> %q", c.daemon.profileFingerprintEffective, profileFP)
+
+	c.daemon.profileFingerprintEffective = profileFP
+	c.daemon.status &= ^scDeferred // force clear even if it was never set.
+}
+
 func (c *Controller) changeSyncerProfileStatus(change Change) (synced bool) {
-	klog.V(2).Infof("changeSyncerProfileStatus(%#v)", change)
-	defer klog.V(2).Infof("changeSyncerProfileStatus(%#v) done", change)
+	klog.V(2).Infof("changeSyncerProfileStatus(%s)", change.String())
+	defer klog.V(2).Infof("changeSyncerProfileStatus(%s) done", change.String())
 
 	if !change.profileStatus {
 		return true
@@ -773,7 +953,7 @@ func (c *Controller) changeSyncerProfileStatus(change Change) (synced bool) {
 	// 2) TuneD daemon was reloaded.  Make sure the node Profile k8s object is in sync with
 	//    the active profile, e.g. the Profile indicates the presence of the stall daemon on
 	//    the host if requested by the current active profile.
-	if err := c.updateTunedProfile(); err != nil {
+	if err := c.updateTunedProfile(change); err != nil {
 		klog.Error(err.Error())
 		return false // retry later
 	}
@@ -783,9 +963,16 @@ func (c *Controller) changeSyncerProfileStatus(change Change) (synced bool) {
 // changeSyncerTuneD synchronizes k8s objects to disk, compares them with
 // current TuneD configuration and signals TuneD process reload or restart.
 func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
+	var restart bool
 	var reload bool
+	var cfgUpdated bool
+	var changeRecommend bool
 
-	klog.V(2).Infof("changeSyncerTuneD()")
+	restart = change.nodeRestart
+	reload = change.nodeRestart
+
+	klog.V(2).Infof("changeSyncerTuneD(%s) restart=%v reload=%v", change.String(), restart, reload)
+	defer klog.V(2).Infof("changeSyncerTuneD(%s) done updated=%v restart=%v reload=%v", change.String(), cfgUpdated, restart, reload)
 
 	if (c.daemon.status & scReloading) != 0 {
 		// This should not be necessary, but keep this here as a reminder.
@@ -801,19 +988,22 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 		}
 		reload = reload || changeProvider
 
-		if c.daemon.recommendedProfile != change.recommendedProfile {
+		if (c.daemon.recommendedProfile != change.recommendedProfile) || change.nodeRestart {
 			if err = TunedRecommendFileWrite(change.recommendedProfile); err != nil {
 				return false, err
 			}
-			klog.Infof("recommended TuneD profile changed from (%s) to (%s)", c.daemon.recommendedProfile, change.recommendedProfile)
+			klog.V(1).Infof("recommended TuneD profile changed from %q to %q [deferred=%v nodeRestart=%v]", c.daemon.recommendedProfile, change.recommendedProfile, change.deferred, change.nodeRestart)
 			// Cache the value written to tunedRecommendFile.
 			c.daemon.recommendedProfile = change.recommendedProfile
 			reload = true
+		} else if !change.deferred && (c.daemon.status&scDeferred != 0) {
+			klog.V(1).Infof("detected deferred update changed to immediate after object update")
+			reload = true
 		} else {
-			klog.Infof("recommended profile (%s) matches current configuration", c.daemon.recommendedProfile)
+			klog.V(1).Infof("recommended profile (%s) matches current configuration", c.daemon.recommendedProfile)
 			// We do not need to reload the TuneD daemon, however, someone may have tampered with the k8s Profile status for this node.
 			// Make sure its status is up-to-date.
-			if err = c.updateTunedProfile(); err != nil {
+			if err = c.updateTunedProfile(change); err != nil {
 				klog.Error(err.Error())
 				return false, nil // retry later
 			}
@@ -823,17 +1013,25 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 		if err != nil {
 			return false, fmt.Errorf("failed to get Profile %s: %v", c.nodeName, err)
 		}
-		changeProfiles, err := profilesSync(profile.Spec.Profile, c.daemon.recommendedProfile)
+
+		changeProfiles, profilesFP, err := profilesSync(profile.Spec.Profile, c.daemon.recommendedProfile)
 		if err != nil {
 			return false, err
 		}
-		reload = reload || changeProfiles
+		if changeProfiles || changeRecommend {
+			if c.daemon.profileFingerprintUnpacked != profilesFP {
+				klog.V(2).Infof("current unpacked profile fingerprint %q -> %q", c.daemon.profileFingerprintUnpacked, profilesFP)
+				c.daemon.profileFingerprintUnpacked = profilesFP
+			}
+			reload = true
+		}
 
 		// Does the current TuneD process have debugging turned on?
 		debug := (c.daemon.restart & ctrlDebug) != 0
 		if debug != change.debug {
 			// A complete restart of the TuneD daemon is needed due to a debugging request switched on or off.
-			c.daemon.restart |= ctrlRestart
+			klog.V(4).Infof("debug control triggering tuned restart")
+			restart = true
 			if change.debug {
 				c.daemon.restart |= ctrlDebug
 			} else {
@@ -844,6 +1042,8 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 		// Does the current TuneD process have the reapply_sysctl option turned on?
 		reapplySysctl := c.tunedMainCfg.Section("").Key("reapply_sysctl").MustBool()
 		if reapplySysctl != change.reapplySysctl {
+			klog.V(4).Infof("reapplySysctl rewriting configuration file")
+
 			if err = iniCfgSetKey(c.tunedMainCfg, "reapply_sysctl", !reapplySysctl); err != nil {
 				return false, err
 			}
@@ -851,41 +1051,86 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 			if err != nil {
 				return false, fmt.Errorf("failed to write global TuneD configuration file: %v", err)
 			}
-			c.daemon.restart |= ctrlRestart // A complete restart of the TuneD daemon is needed due to configuration change in tuned-main.conf file.
+			klog.V(4).Infof("reapplySysctl triggering tuned restart")
+			restart = true // A complete restart of the TuneD daemon is needed due to configuration change in tuned-main.conf file.
 		}
 	}
 
-	if reload {
-		c.daemon.restart |= ctrlReload
+	// failures pertaining to deferred updates are not critical
+	_ = c.handleDaemonReloadRestartRequest(change, reload, restart)
+
+	cfgUpdated, err = c.changeSyncerRestartOrReloadTuneD()
+	klog.V(2).Infof("changeSyncerTuneD() configuration updated: %v", cfgUpdated)
+	if err != nil {
+		return false, err
 	}
-	err = c.changeSyncerRestartOrReloadTuneD()
 
 	return err == nil, err
 }
 
-func (c *Controller) changeSyncerRestartOrReloadTuneD() error {
-	var err error
+func (c *Controller) handleDaemonReloadRestartRequest(change Change, reload, restart bool) error {
+	if !reload && !restart {
+		// nothing to do
+		return nil
+	}
 
-	klog.V(2).Infof("changeSyncerRestartOrReloadTuneD()")
+	if !change.deferred || change.nodeRestart {
+		if reload {
+			klog.V(2).Infof("immediate update, setting reload flag")
+			c.daemon.restart |= ctrlReload
+		}
+		if restart {
+			klog.V(2).Infof("immediate update, setting restart flag")
+			c.daemon.restart |= ctrlRestart
+		}
+		return nil
+	}
 
-	if (c.daemon.restart & ctrlRestart) != 0 {
-		// Complete restart of the TuneD daemon needed.  For example, debuging option is used or an option in tuned-main.conf file changed).
-		err = c.tunedRestart()
+	klog.V(2).Infof("deferred update profile unpacked %q profile effective %q", c.daemon.profileFingerprintUnpacked, c.daemon.profileFingerprintEffective)
+
+	if c.daemon.profileFingerprintUnpacked == c.daemon.profileFingerprintEffective {
+		klog.V(2).Infof("deferred update, but it seems already applied (profile unpacked == profile effective), nothing to do")
+		return nil
+	}
+
+	err := c.storeDeferredUpdate(c.daemon.profileFingerprintUnpacked)
+	// on restart, we will have the deferred flag but the profileFingerprint will match. So the change must take effect immediately
+	klog.Infof("deferred update: TuneD daemon won't be reloaded until next restart or immediate update (err=%v)", err)
+	if err != nil {
 		return err
 	}
 
-	if (c.daemon.restart & ctrlReload) != 0 {
-		err = c.tunedReload()
-	}
+	// trigger status update
+	c.wqTuneD.Add(wqKeyTuned{kind: wqKindDaemon, change: Change{
+		profileStatus: true,
+		message:       fmt.Sprintf("status change for deferred update %q", change.recommendedProfile),
+	}})
+	return nil
+}
 
-	return err
+func (c *Controller) changeSyncerRestartOrReloadTuneD() (bool, error) {
+	klog.V(2).Infof("changeSyncerRestartOrReloadTuneD()")
+	if (c.daemon.restart & ctrlRestart) != 0 {
+		// Complete restart of the TuneD daemon needed.  For example, debuging option is used or an option in tuned-main.conf file changed).
+		return true, c.tunedRestart()
+	}
+	if (c.daemon.restart & ctrlReload) != 0 {
+		return true, c.tunedReload()
+	}
+	return false, nil
 }
 
 // Method changeSyncer performs k8s Profile object updates and TuneD daemon
 // reloads as needed.  Returns indication whether the change was successfully
 // synced and an error.  Only critical errors are returned, as non-nil errors
 // will cause restart of the main control loop -- the changeWatcher() method.
-func (c *Controller) changeSyncer(change Change) (synced bool, err error) {
+func (c *Controller) changeSyncer(change Change) (bool, error) {
+	klog.V(2).Infof("changeSyncer(%s)", change.String())
+	defer klog.V(2).Infof("changeSyncer(%s) done", change.String())
+
+	// Sync internal status after a node restart
+	c.changeSyncerPostReloadOrRestart(change)
+
 	// Sync k8s Profile status if/when needed.
 	if !c.changeSyncerProfileStatus(change) {
 		return false, nil
@@ -1001,29 +1246,26 @@ func (c *Controller) updateNodeAnnotations(node *corev1.Node, annotations map[st
 	return nil
 }
 
+func (c *Controller) daemonMessage(change Change, message string) string {
+	if len(message) > 0 {
+		return message
+	}
+	if len(change.message) > 0 {
+		return change.message
+	}
+	return c.daemon.stderr
+}
+
 // Method updateTunedProfile updates a Tuned Profile with information to report back
 // to the operator.  Note this method must be called only when the TuneD daemon is
 // not reloading.
-func (c *Controller) updateTunedProfile() (err error) {
-	var (
-		bootcmdline string
-	)
+func (c *Controller) updateTunedProfile(change Change) (err error) {
+	var bootcmdline string
 
 	if bootcmdline, err = GetBootcmdline(); err != nil {
 		// This should never happen unless something is seriously wrong (e.g. TuneD
 		// daemon no longer uses tunedBootcmdlineFile).  Do not continue.
 		return fmt.Errorf("unable to get kernel command-line parameters: %v", err)
-	}
-
-	profileName := getNodeName()
-	profile, err := c.listers.TunedProfiles.Get(profileName)
-	if err != nil {
-		return fmt.Errorf("failed to get Profile %s: %v", profileName, err)
-	}
-
-	activeProfile, err := getActiveProfile()
-	if err != nil {
-		return err
 	}
 
 	node, err := c.getNodeForProfile(c.nodeName)
@@ -1035,9 +1277,7 @@ func (c *Controller) updateTunedProfile() (err error) {
 		node.ObjectMeta.Annotations = map[string]string{}
 	}
 
-	statusConditions := computeStatusConditions(c.daemon.status, c.daemon.stderr, profile.Status.Conditions)
 	bootcmdlineAnnotVal, bootcmdlineAnnotSet := node.ObjectMeta.Annotations[tunedv1.TunedBootcmdlineAnnotationKey]
-
 	if !bootcmdlineAnnotSet || bootcmdlineAnnotVal != bootcmdline {
 		annotations := map[string]string{tunedv1.TunedBootcmdlineAnnotationKey: bootcmdline}
 		err = c.updateNodeAnnotations(node, annotations)
@@ -1046,9 +1286,45 @@ func (c *Controller) updateTunedProfile() (err error) {
 		}
 	}
 
+	return c.updateTunedProfileStatus(context.TODO(), change)
+}
+
+func (c *Controller) updateTunedProfileStatus(ctx context.Context, change Change) error {
+	activeProfile, err := getActiveProfile()
+	if err != nil {
+		return err
+	}
+
+	profile, err := c.listers.TunedProfiles.Get(c.nodeName)
+	if err != nil {
+		return fmt.Errorf("failed to get Profile %s: %v", c.nodeName, err)
+	}
+
+	var message string
+	wantsDeferred := util.HasDeferredUpdateAnnotation(profile.Annotations)
+	isApplied := (c.daemon.profileFingerprintUnpacked == c.daemon.profileFingerprintEffective)
+	daemonStatus := c.daemon.status
+
+	klog.V(4).Infof("daemonStatus(): change: deferred=%v applied=%v nodeRestart=%v", wantsDeferred, isApplied, change.nodeRestart)
+	if (wantsDeferred && !isApplied) && !change.nodeRestart { // avoid setting the flag on updates deferred -> immediate
+		daemonStatus |= scDeferred
+		recommendProfile, err := TunedRecommendFileRead()
+		if err == nil {
+			klog.V(2).Infof("updateTunedProfileStatus(): recommended profile %q (deferred)", recommendProfile)
+			message = c.daemonMessage(change, recommendProfile)
+		} else {
+			// just log and carry on, we will use this info to clarify status conditions
+			klog.Errorf("%s", err.Error())
+		}
+	}
+
+	statusConditions := computeStatusConditions(daemonStatus, message, profile.Status.Conditions)
+	klog.V(4).Infof("computed status conditions: %#v", statusConditions)
+	c.daemon.status = daemonStatus
+
 	if profile.Status.TunedProfile == activeProfile &&
 		conditionsEqual(profile.Status.Conditions, statusConditions) {
-		klog.V(2).Infof("updateTunedProfile(): no need to update status of Profile %s", profile.Name)
+		klog.V(2).Infof("updateTunedProfileStatus(): no need to update status of Profile %s", profile.Name)
 		return nil
 	}
 
@@ -1056,11 +1332,82 @@ func (c *Controller) updateTunedProfile() (err error) {
 
 	profile.Status.TunedProfile = activeProfile
 	profile.Status.Conditions = statusConditions
-	_, err = c.clients.Tuned.TunedV1().Profiles(operandNamespace).UpdateStatus(context.TODO(), profile, metav1.UpdateOptions{})
+	_, err = c.clients.Tuned.TunedV1().Profiles(operandNamespace).UpdateStatus(ctx, profile, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update Profile %s status: %v", profile.Name, err)
 	}
 	return nil
+}
+
+// storeDeferredUpdate sets the node state (on storage, like disk) to signal
+// there is a deferred update pending.
+func (c *Controller) storeDeferredUpdate(deferredFP string) (derr error) {
+	// "overwriting" is fine, because we only want an empty data file.
+	// all the races are benign, so we go for the simplest approach
+	fp, err := os.Create(tunedDeferredUpdateEphemeralFilePath)
+	if err != nil {
+		return err
+	}
+	_ = fp.Close() // unlikely to fail, we don't write anything
+
+	// overwriting files is racy, and output can be mixed in.
+	// the safest approach is to create a temporary file, write
+	// the full content to it and then rename it, because rename(2)
+	// is atomic, this is guaranteed safe and race-free.
+	dst, err := os.CreateTemp(ocpTunedHome, "ocpdeferred")
+	if err != nil {
+		return err
+	}
+	tmpName := dst.Name()
+	defer func() {
+		if dst == nil {
+			return
+		}
+		derr = dst.Close()
+		os.Remove(dst.Name()) // avoid littering with tmp files
+	}()
+	if _, err := dst.WriteString(deferredFP); err != nil {
+		return err
+	}
+	if err := dst.Close(); err != nil {
+		return err
+	}
+	dst = nil // avoid double close()s, the second will fail
+	return os.Rename(tmpName, tunedDeferredUpdatePersistentFilePath)
+}
+
+// recoverAndClearDeferredUpdate detects the presence and removes the persistent
+// deferred updates file.
+// Returns:
+//   - The defered profile fingerprint.
+//   - A boolean indicating the absence of the ephemeral deferred update file.
+//     If the file is absent, a node restart is assumed and true is returned.
+//   - Error if any.
+func (c *Controller) recoverAndClearDeferredUpdate() (string, bool, error) {
+	isReboot := false
+
+	deferredFP, err := os.ReadFile(tunedDeferredUpdatePersistentFilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			klog.Infof("recover: no pending deferred change")
+			return "", isReboot, nil
+		}
+		klog.Infof("recover: failed to restore pending deferred change: %v", err)
+		return "", isReboot, err
+	}
+	pendingFP := strings.TrimSpace(string(deferredFP))
+	err = os.Remove(tunedDeferredUpdatePersistentFilePath)
+	klog.Infof("recover: found pending deferred update: %q", pendingFP)
+
+	if _, errEph := os.Stat(tunedDeferredUpdateEphemeralFilePath); errEph != nil {
+		if os.IsNotExist(errEph) {
+			isReboot = true
+		} else {
+			klog.Infof("recover: failed to detect node restart, assuming not: %v", err)
+			return "", false, errEph
+		}
+	}
+	return pendingFP, isReboot, err
 }
 
 func (c *Controller) informerEventHandler(workqueueKey wqKeyKube) cache.ResourceEventHandlerFuncs {
@@ -1167,6 +1514,12 @@ func (c *Controller) changeWatcher() (err error) {
 	defer c.wqTuneD.ShutDown()
 	klog.Info("started events processors")
 
+	if c.pendingChange != nil {
+		klog.Infof("processing pending change: %s", c.pendingChange.String())
+		c.wqTuneD.Add(wqKeyTuned{kind: wqKindDaemon, change: *c.pendingChange})
+		c.pendingChange = nil
+	}
+
 	// Watch for filesystem changes on the tunedBootcmdlineFile file.
 	wFs, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -1178,8 +1531,9 @@ func (c *Controller) changeWatcher() (err error) {
 	for _, element := range []string{tunedBootcmdlineFile} {
 		err = wFs.Add(element)
 		if err != nil {
-			return fmt.Errorf("failed to start watching %q: %v", element, err)
+			return fmt.Errorf("failed to start monitoring filesystem events on %q: %v", element, err)
 		}
+		klog.Infof("monitoring filesystem events on %q", element)
 	}
 
 	klog.Info("started controller")
@@ -1202,7 +1556,6 @@ func (c *Controller) changeWatcher() (err error) {
 			return fmt.Errorf("error watching filesystem: %v", err)
 
 		case ch := <-c.changeCh:
-			var synced bool
 			klog.V(2).Infof("changeCh")
 
 			synced, err := c.changeSyncer(ch)
@@ -1298,6 +1651,39 @@ func RunInCluster(stopCh <-chan struct{}, version string) error {
 	c, err := newController(getNodeName(), stopCh)
 	if err != nil {
 		panic(err.Error())
+	}
+
+	if err := os.MkdirAll(ocpTunedRunDir, os.ModePerm); err != nil {
+		panic(err.Error())
+	}
+
+	profiles, recommended, err := profilesRepackPath(tunedRecommendFile, tunedProfilesDirCustom)
+	if err != nil {
+		// keep going, immediate updates are expected to work as usual
+		// and we expect the vast majority of updates to be immediate anyway
+		klog.Errorf("error repacking the profile: %v", err)
+		klog.Infof("deferred updates likely broken")
+	}
+
+	profileFP := profilesFingerprint(profiles, recommended)
+	c.daemon.profileFingerprintUnpacked = profileFP
+	klog.Infof("starting: profile fingerprint unpacked %q", profileFP)
+
+	deferredFP, isNodeReboot, err := c.recoverAndClearDeferredUpdate()
+	if err != nil {
+		klog.ErrorS(err, "unable to recover the pending update")
+	} else if !isNodeReboot {
+		klog.Infof("starting: does not seem a node reboot, but a daemon restart. Ignoring pending deferred updates (if any)")
+	} else if deferredFP == "" {
+		klog.Infof("starting: node reboot, but no pending deferred update")
+	} else {
+		klog.Infof("starting: recovered and cleared pending deferred update %q (fingerprint=%q)", recommended, deferredFP)
+		c.pendingChange = &Change{
+			profile:            true,
+			nodeRestart:        true,
+			recommendedProfile: recommended,
+			message:            deferredFP,
+		}
 	}
 
 	return retryLoop(c)

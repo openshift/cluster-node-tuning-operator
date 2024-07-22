@@ -153,9 +153,17 @@ func (pc *ProfileCalculator) nodeChangeHandler(nodeName string) (bool, error) {
 type ComputedProfile struct {
 	TunedProfileName string
 	AllProfiles      []tunedv1.TunedProfile
+	Deferred         bool
 	MCLabels         map[string]string
 	NodePoolName     string
 	Operand          tunedv1.OperandConfig
+}
+
+type RecommendedProfile struct {
+	TunedProfileName string
+	Deferred         bool
+	Labels           map[string]string
+	Config           tunedv1.OperandConfig
 }
 
 // calculateProfile calculates a tuned profile for Node nodeName.
@@ -176,7 +184,7 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (ComputedProfile,
 
 	profilesAll := tunedProfiles(tunedList)
 	recommendAll := TunedRecommend(tunedList)
-	recommendProfile := func(nodeName string, iStart int) (int, string, map[string]string, tunedv1.OperandConfig, error) {
+	recommendProfile := func(nodeName string, iStart int) (int, RecommendedProfile, error) {
 		var i int
 		for i = iStart; i < len(recommendAll); i++ {
 			var (
@@ -191,7 +199,11 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (ComputedProfile,
 			// we do not want to call profileMatches() in that case unless machineConfigLabels
 			// is undefined.
 			if (recommend.Match != nil || recommend.MachineConfigLabels == nil) && pc.profileMatches(recommend.Match, nodeName) {
-				return i, *recommend.Profile, nil, recommend.Operand, nil
+				return i, RecommendedProfile{
+					TunedProfileName: *recommend.Profile,
+					Config:           recommend.Operand,
+					Deferred:         recommend.Deferred,
+				}, nil
 			}
 
 			if recommend.MachineConfigLabels == nil {
@@ -205,24 +217,29 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (ComputedProfile,
 				// is often unneeded and would likely have a performance impact.
 				node, err = pc.listers.Nodes.Get(nodeName)
 				if err != nil {
-					return i, "", nil, tunedv1.OperandConfig{}, err
+					return i, RecommendedProfile{}, err
 				}
 
 				pools, err = pc.getPoolsForNode(node)
 				if err != nil {
-					return i, "", nil, tunedv1.OperandConfig{}, err
+					return i, RecommendedProfile{}, err
 				}
 			}
 
 			// MachineConfigLabels based matching
 			if pc.machineConfigLabelsMatch(recommend.MachineConfigLabels, pools) {
-				return i, *recommend.Profile, recommend.MachineConfigLabels, recommend.Operand, nil
+				return i, RecommendedProfile{
+					TunedProfileName: *recommend.Profile,
+					Labels:           recommend.MachineConfigLabels,
+					Config:           recommend.Operand,
+					Deferred:         recommend.Deferred,
+				}, nil
 			}
 		}
 		// No profile matches.  This is not necessarily a problem, e.g. when we check for matching profiles with the same priority.
-		return i, defaultProfile, nil, tunedv1.OperandConfig{}, nil
+		return i, RecommendedProfile{TunedProfileName: defaultProfile}, nil
 	}
-	iStop, tunedProfileName, mcLabels, operand, err := recommendProfile(nodeName, 0)
+	iStop, recommendedProfile, err := recommendProfile(nodeName, 0)
 
 	if iStop == len(recommendAll) {
 		// This should never happen; the default Tuned CR should always be accessible and with a catch-all rule
@@ -231,19 +248,19 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (ComputedProfile,
 		if err != nil {
 			return ComputedProfile{
 				TunedProfileName: defaultProfile,
-				Operand:          operand,
+				Operand:          recommendedProfile.Config,
 			}, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
 		}
 
 		return ComputedProfile{
 			TunedProfileName: defaultProfile,
-			Operand:          operand,
+			Operand:          recommendedProfile.Config,
 		}, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
 	}
 
 	// Make sure we do not have multiple matching profiles with the same priority.  If so, report a warning.
 	for i := iStop + 1; i < len(recommendAll); i++ {
-		j, tunedProfileNameDup, _, _, err := recommendProfile(nodeName, i)
+		j, recommendedProfileDup, err := recommendProfile(nodeName, i)
 		if err != nil {
 			// Duplicate matching profile priority detection failed, likely due to a failure to retrieve a k8s object.
 			// This is not fatal, do not spam the logs, as we will retry later during a periodic resync.
@@ -264,9 +281,9 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (ComputedProfile,
 		// If they have the same name and different contents a separate warning
 		// will be issued by manifests.tunedRenderedProfiles()
 		if *recommendAll[iStop].Priority == *recommendAll[i].Priority {
-			if tunedProfileName != tunedProfileNameDup {
+			if recommendedProfile.TunedProfileName != recommendedProfileDup.TunedProfileName {
 				klog.Warningf("profiles %s/%s have the same priority %d and match %s; please use a different priority for your custom profiles!",
-					tunedProfileName, tunedProfileNameDup, *recommendAll[i].Priority, nodeName)
+					recommendedProfile.TunedProfileName, recommendedProfileDup.TunedProfileName, *recommendAll[i].Priority, nodeName)
 			}
 		} else {
 			// We no longer have recommend rules with the same priority -- do not go through the entire (priority-ordered) list.
@@ -275,11 +292,19 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (ComputedProfile,
 	}
 
 	return ComputedProfile{
-		TunedProfileName: tunedProfileName,
+		TunedProfileName: recommendedProfile.TunedProfileName,
 		AllProfiles:      profilesAll,
-		MCLabels:         mcLabels,
-		Operand:          operand,
+		Deferred:         recommendedProfile.Deferred,
+		MCLabels:         recommendedProfile.Labels,
+		Operand:          recommendedProfile.Config,
 	}, err
+}
+
+type HypershiftRecommendedProfile struct {
+	TunedProfileName string
+	Deferred         bool
+	NodePoolName     string
+	Config           tunedv1.OperandConfig
 }
 
 // calculateProfileHyperShift calculates a tuned profile for Node nodeName.
@@ -322,7 +347,7 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (Comput
 
 	profilesAll := tunedProfiles(tunedList)
 	recommendAll := TunedRecommend(tunedList)
-	recommendProfile := func(nodeName string, iStart int) (int, string, string, tunedv1.OperandConfig, error) {
+	recommendProfile := func(nodeName string, iStart int) (int, HypershiftRecommendedProfile, error) {
 		var i int
 		for i = iStart; i < len(recommendAll); i++ {
 			recommend := recommendAll[i]
@@ -330,35 +355,45 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (Comput
 			// Start with node/pod label based matching
 			if recommend.Match != nil && pc.profileMatches(recommend.Match, nodeName) {
 				klog.V(3).Infof("calculateProfileHyperShift: node / pod label matching used for node: %s, tunedProfileName: %s, nodePoolName: %s, operand: %v", nodeName, *recommend.Profile, "", recommend.Operand)
-				return i, *recommend.Profile, "", recommend.Operand, nil
+				return i, HypershiftRecommendedProfile{
+					TunedProfileName: *recommend.Profile,
+					Config:           recommend.Operand,
+				}, nil
 			}
 
 			// If recommend.Match is empty, NodePool based matching is assumed
 			if recommend.Match == nil {
 				if *recommend.Profile == defaultProfile {
 					// Don't set nodepool for default profile, no MachineConfigs should be generated.
-					return i, *recommend.Profile, "", recommend.Operand, nil
+					return i, HypershiftRecommendedProfile{
+						TunedProfileName: *recommend.Profile,
+						Config:           recommend.Operand,
+					}, nil
 				}
 				klog.V(3).Infof("calculateProfileHyperShift: NodePool based matching used for node: %s, tunedProfileName: %s, nodePoolName: %s", nodeName, *recommend.Profile, nodePoolName)
-				return i, *recommend.Profile, nodePoolName, recommend.Operand, nil
+				return i, HypershiftRecommendedProfile{
+					TunedProfileName: *recommend.Profile,
+					NodePoolName:     nodePoolName,
+					Config:           recommend.Operand,
+				}, nil
 			}
 		}
 		// No profile matches.  This is not necessarily a problem, e.g. when we check for matching profiles with the same priority.
-		return i, defaultProfile, "", tunedv1.OperandConfig{}, nil
+		return i, HypershiftRecommendedProfile{TunedProfileName: defaultProfile}, nil
 	}
-	iStop, tunedProfileName, nodePoolName, operand, err := recommendProfile(nodeName, 0)
+	iStop, recommendedProfile, err := recommendProfile(nodeName, 0)
 
 	if iStop == len(recommendAll) {
 		return ComputedProfile{
 			TunedProfileName: defaultProfile,
 			AllProfiles:      profilesAll,
-			Operand:          operand,
+			Operand:          recommendedProfile.Config,
 		}, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
 	}
 
 	// Make sure we do not have multiple matching profiles with the same priority.  If so, report a warning.
 	for i := iStop + 1; i < len(recommendAll); i++ {
-		j, tunedProfileNameDup, _, _, err := recommendProfile(nodeName, i)
+		j, recommendedProfileDup, err := recommendProfile(nodeName, i)
 		if err != nil {
 			// Duplicate matching profile priority detection failed, likely due to a failure to retrieve a k8s object.
 			// This is not fatal, do not spam the logs, as we will retry later during a periodic resync.
@@ -379,9 +414,9 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (Comput
 		// If they have the same name and different contents a separate warning
 		// will be issued by manifests.tunedRenderedProfiles()
 		if *recommendAll[iStop].Priority == *recommendAll[i].Priority {
-			if tunedProfileName != tunedProfileNameDup {
+			if recommendedProfile.TunedProfileName != recommendedProfileDup.TunedProfileName {
 				klog.Warningf("profiles %s/%s have the same priority %d and match %s; please use a different priority for your custom profiles!",
-					tunedProfileName, tunedProfileNameDup, *recommendAll[i].Priority, nodeName)
+					recommendedProfile.TunedProfileName, recommendedProfileDup.TunedProfileName, *recommendAll[i].Priority, nodeName)
 			}
 		} else {
 			// We no longer have recommend rules with the same priority -- do not go through the entire (priority-ordered) list.
@@ -390,10 +425,11 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (Comput
 	}
 
 	return ComputedProfile{
-		TunedProfileName: tunedProfileName,
+		TunedProfileName: recommendedProfile.TunedProfileName,
 		AllProfiles:      profilesAll,
-		NodePoolName:     nodePoolName,
-		Operand:          operand,
+		Deferred:         recommendedProfile.Deferred,
+		NodePoolName:     recommendedProfile.NodePoolName,
+		Operand:          recommendedProfile.Config,
 	}, err
 }
 
@@ -694,10 +730,15 @@ func tunedProfiles(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedProfile {
 	return tunedProfiles
 }
 
+type TunedRecommendInfo struct {
+	tunedv1.TunedRecommend
+	Deferred bool
+}
+
 // TunedRecommend returns a priority-sorted TunedRecommend slice out of
 // a slice of Tuned objects for profile-calculation purposes.
-func TunedRecommend(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedRecommend {
-	var recommendAll []tunedv1.TunedRecommend
+func TunedRecommend(tunedSlice []*tunedv1.Tuned) []TunedRecommendInfo {
+	var recommendAll []TunedRecommendInfo
 
 	// Tuned profiles should have unique priority across all Tuned CRs and users
 	// will be warned about this.  However, go into some effort to make the profile
@@ -708,8 +749,11 @@ func TunedRecommend(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedRecommend {
 	})
 
 	for _, tuned := range tunedSlice {
-		if tuned.Spec.Recommend != nil {
-			recommendAll = append(recommendAll, tuned.Spec.Recommend...)
+		for _, recommend := range tuned.Spec.Recommend {
+			recommendAll = append(recommendAll, TunedRecommendInfo{
+				TunedRecommend: recommend,
+				Deferred:       util.HasDeferredUpdateAnnotation(tuned.Annotations),
+			})
 		}
 	}
 

@@ -190,7 +190,11 @@ func profileExists(profileName string, tunedProfilesDir string) bool {
 // Note: only basic expansion of TuneD built-in functions into profiles is
 // performed.  See expandTuneDBuiltin for more detail.
 func profileDepends(profileName string) map[string]bool {
-	return profileDependsLoop(profileName, map[string]bool{})
+	deps := map[string]bool{}
+	if len(profileName) == 0 {
+		return deps
+	}
+	return profileDependsLoop(profileName, deps)
 }
 
 func profileDependsLoop(profileName string, seenProfiles map[string]bool) map[string]bool {
