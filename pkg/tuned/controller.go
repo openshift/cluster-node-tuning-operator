@@ -1406,16 +1406,14 @@ func (c *Controller) storeDeferredUpdate(deferredFP string) (derr error) {
 //     If the file is absent, a node restart is assumed and true is returned.
 //   - Error if any.
 func (c *Controller) recoverAndClearDeferredUpdate() (string, bool, error) {
-	isReboot := false
-
 	deferredFP, err := os.ReadFile(tunedDeferredUpdatePersistentFilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			klog.Infof("recover: no pending deferred change")
-			return "", isReboot, nil
+			return "", false, nil
 		}
 		klog.Infof("recover: failed to restore pending deferred change: %v", err)
-		return "", isReboot, err
+		return "", false, err
 	}
 	pendingFP := strings.TrimSpace(string(deferredFP))
 	err = os.Remove(tunedDeferredUpdatePersistentFilePath)
@@ -1423,13 +1421,12 @@ func (c *Controller) recoverAndClearDeferredUpdate() (string, bool, error) {
 
 	if _, errEph := os.Stat(tunedDeferredUpdateEphemeralFilePath); errEph != nil {
 		if os.IsNotExist(errEph) {
-			isReboot = true
-		} else {
-			klog.Infof("recover: failed to detect node restart, assuming not: %v", err)
-			return "", false, errEph
+			return pendingFP, true, err
 		}
+		klog.Infof("recover: failed to detect node restart, assuming not: %v", err)
+		return "", false, errEph
 	}
-	return pendingFP, isReboot, err
+	return pendingFP, false, err
 }
 
 func (c *Controller) informerEventHandler(workqueueKey wqKeyKube) cache.ResourceEventHandlerFuncs {
