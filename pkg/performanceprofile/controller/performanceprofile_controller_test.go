@@ -30,6 +30,7 @@ import (
 	hcpstatus "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/status"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/status"
 	testutils "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/utils/testing"
+	ntoutil "github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 
@@ -271,13 +272,14 @@ var _ = Describe("Controller", func() {
 
 			It("should remove outdated tuned objects", func() {
 				skipForHypershift()
-				tunedOutdatedA, err := tuned.NewNodePerformance(profile)
+				opts := tuned.OptionsFromPerformanceProfile(profile)
+				tunedOutdatedA, err := tuned.NewNodePerformance(profile, &opts)
 				Expect(err).ToNot(HaveOccurred())
 				tunedOutdatedA.Name = "outdated-a"
 				tunedOutdatedA.OwnerReferences = []metav1.OwnerReference{
 					{Name: profile.Name},
 				}
-				tunedOutdatedB, err := tuned.NewNodePerformance(profile)
+				tunedOutdatedB, err := tuned.NewNodePerformance(profile, &opts)
 				Expect(err).ToNot(HaveOccurred())
 				tunedOutdatedB.Name = "outdated-b"
 				tunedOutdatedB.OwnerReferences = []metav1.OwnerReference{
@@ -373,7 +375,8 @@ var _ = Describe("Controller", func() {
 					kc, err = kubeletconfig.New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{mcpSelectorKey: mcpSelectorValue}})
 					Expect(err).ToNot(HaveOccurred())
 
-					tunedPerformance, err = tuned.NewNodePerformance(profile)
+					opts := tuned.OptionsFromPerformanceProfile(profile)
+					tunedPerformance, err = tuned.NewNodePerformance(profile, &opts)
 					Expect(err).ToNot(HaveOccurred())
 
 					runtimeClass = runtimeclass.New(profile, machineconfig.HighPerformanceRuntime)
@@ -837,6 +840,49 @@ var _ = Describe("Controller", func() {
 			})
 		})
 
+		Context("with the deferred annotation set", func() {
+			It("should propagate the deferred annotation only in the tuned object", func() {
+				skipForHypershift() // deferred updates not supported in hypershift yet
+
+				prof := profile.DeepCopy()
+				prof.Annotations = ntoutil.ToggleDeferredUpdateAnnotation(prof.Annotations, true)
+				r := newFakeReconciler(prof, profileMCP, infra, clusterOperator)
+
+				Expect(reconcileTimes(r, request, 2)).To(Equal(reconcile.Result{}))
+
+				mcKey := types.NamespacedName{
+					Name:      machineconfig.GetMachineConfigName(profile.Name),
+					Namespace: metav1.NamespaceNone,
+				}
+
+				mc := &mcov1.MachineConfig{}
+				Expect(r.ManagementClient.Get(context.TODO(), mcKey, mc)).To(Succeed())
+				Expect(ntoutil.HasDeferredUpdateAnnotation(mc.Annotations)).To(BeFalse())
+
+				genericKey := types.NamespacedName{
+					Name:      components.GetComponentName(prof.Name, components.ComponentNamePrefix),
+					Namespace: metav1.NamespaceNone,
+				}
+
+				kc := &mcov1.KubeletConfig{}
+				Expect(r.ManagementClient.Get(context.TODO(), genericKey, kc)).To(Succeed())
+				Expect(ntoutil.HasDeferredUpdateAnnotation(kc.Annotations)).To(BeFalse())
+
+				runtimeClass := &nodev1.RuntimeClass{}
+				Expect(r.Get(context.TODO(), genericKey, runtimeClass)).To(Succeed())
+				Expect(ntoutil.HasDeferredUpdateAnnotation(runtimeClass.Annotations)).To(BeFalse())
+
+				// the tuned object must be the only one to have the annotation propagated
+				tunedPerformance := &tunedv1.Tuned{}
+				tunedKey := types.NamespacedName{
+					Name:      components.GetComponentName(prof.Name, components.ProfileNamePerformance),
+					Namespace: components.NamespaceNodeTuningOperator,
+				}
+				Expect(r.ManagementClient.Get(context.TODO(), tunedKey, tunedPerformance)).To(Succeed())
+				Expect(ntoutil.HasDeferredUpdateAnnotation(tunedPerformance.Annotations)).To(BeTrue())
+			})
+		})
+
 		Context("with profile with deletion timestamp", func() {
 			BeforeEach(func() {
 				skipForHypershift()
@@ -854,7 +900,8 @@ var _ = Describe("Controller", func() {
 				kc, err := kubeletconfig.New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{mcpSelectorKey: mcpSelectorValue}})
 				Expect(err).ToNot(HaveOccurred())
 
-				tunedPerformance, err := tuned.NewNodePerformance(profile)
+				opts := tuned.OptionsFromPerformanceProfile(profile)
+				tunedPerformance, err := tuned.NewNodePerformance(profile, &opts)
 				Expect(err).ToNot(HaveOccurred())
 
 				runtimeClass := runtimeclass.New(profile, machineconfig.HighPerformanceRuntime)

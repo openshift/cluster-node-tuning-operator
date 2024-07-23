@@ -17,6 +17,7 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	profilecomponent "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
+	ntoutil "github.com/openshift/cluster-node-tuning-operator/pkg/util"
 )
 
 const (
@@ -40,8 +41,17 @@ const (
 	templatePerformanceProfileName          = "PerformanceProfileName"
 )
 
-func new(name string, profiles []tunedv1.TunedProfile, recommends []tunedv1.TunedRecommend) *tunedv1.Tuned {
-	return &tunedv1.Tuned{
+func OptionsFromPerformanceProfile(pp *performancev2.PerformanceProfile) components.TunedOptions {
+	opts := components.TunedOptions{}
+	if pp == nil {
+		return opts
+	}
+	opts.DeferredEnabled = ntoutil.HasDeferredUpdateAnnotation(pp.Annotations)
+	return opts
+}
+
+func newTuned(name string, profiles []tunedv1.TunedProfile, recommends []tunedv1.TunedRecommend, opts *components.TunedOptions) *tunedv1.Tuned {
+	obj := tunedv1.Tuned{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: tunedv1.SchemeGroupVersion.String(),
 			Kind:       "Tuned",
@@ -55,10 +65,14 @@ func new(name string, profiles []tunedv1.TunedProfile, recommends []tunedv1.Tune
 			Recommend: recommends,
 		},
 	}
+	if opts != nil {
+		obj.Annotations = ntoutil.ToggleDeferredUpdateAnnotation(obj.Annotations, opts.DeferredEnabled)
+	}
+	return &obj
 }
 
 // NewNodePerformance returns tuned profile for performance sensitive workflows
-func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tuned, error) {
+func NewNodePerformance(profile *performancev2.PerformanceProfile, opts *components.TunedOptions) (*tunedv1.Tuned, error) {
 	templateArgs := make(map[string]interface{})
 
 	templateArgs[templatePerformanceProfileName] = profile.Name
@@ -244,7 +258,7 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 			MachineConfigLabels: profilecomponent.GetMachineConfigLabel(profile),
 		},
 	}
-	return new(name, profiles, recommends), nil
+	return newTuned(name, profiles, recommends, opts), nil
 }
 
 func getProfileData(tunedTemplate string, data interface{}) (string, error) {

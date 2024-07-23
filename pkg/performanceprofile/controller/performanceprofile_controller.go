@@ -596,6 +596,7 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 			PinningMode: &pinningMode,
 		},
 		MixedCPUsFeatureGateEnabled: r.isMixedCPUsFeatureGateEnabled(),
+		Tuned:                       components.TunedOptions{}, // ensure not nil. The handler will fill later in the flow.
 	})
 	if err != nil {
 		klog.Errorf("failed to deploy performance profile %q components: %v", instance.GetName(), err)

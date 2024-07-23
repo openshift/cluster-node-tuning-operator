@@ -67,7 +67,7 @@ func GetNewComponents(profile *performancev2.PerformanceProfile, opts *component
 		return nil, err
 	}
 
-	performanceTuned, err := tuned.NewNodePerformance(profile)
+	performanceTuned, err := tuned.NewNodePerformance(profile, &opts.Tuned)
 	if err != nil {
 		return nil, err
 	}

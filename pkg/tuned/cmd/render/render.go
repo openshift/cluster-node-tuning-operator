@@ -173,7 +173,8 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 		klog.Infof("No PerformanceProfile found for MachineConfigPool %s", mcpName)
 	}
 	for _, pp := range filteredPerformanceProfiles {
-		tunedFromPP, err := tuned.NewNodePerformance(pp)
+		tunedOpts := tuned.OptionsFromPerformanceProfile(pp)
+		tunedFromPP, err := tuned.NewNodePerformance(pp, &tunedOpts)
 		if err != nil {
 			e := fmt.Errorf("unable to get tuned from PerformanceProfile:%s. error: %w", pp.Name, err)
 			klog.Error(e)

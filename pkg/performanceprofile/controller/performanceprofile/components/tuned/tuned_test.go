@@ -45,7 +45,8 @@ var _ = Describe("Tuned", func() {
 	})
 
 	getTunedManifest := func(profile *performancev2.PerformanceProfile) string {
-		tuned, err := NewNodePerformance(profile)
+		opts := OptionsFromPerformanceProfile(profile)
+		tuned, err := NewNodePerformance(profile, &opts)
 		Expect(err).ToNot(HaveOccurred())
 		y, err := yaml.Marshal(tuned)
 		Expect(err).ToNot(HaveOccurred())
@@ -53,7 +54,8 @@ var _ = Describe("Tuned", func() {
 	}
 
 	getTunedStructuredData := func(profile *performancev2.PerformanceProfile) *ini.File {
-		tuned, err := NewNodePerformance(profile)
+		opts := OptionsFromPerformanceProfile(profile)
+		tuned, err := NewNodePerformance(profile, &opts)
 		Expect(err).ToNot(HaveOccurred())
 		tunedData := []byte(*tuned.Spec.Profile[0].Data)
 		cfg, err := ini.Load(tunedData)
@@ -198,7 +200,8 @@ var _ = Describe("Tuned", func() {
 						HighPowerConsumption:  pointer.Bool(true),
 						PerPodPowerManagement: pointer.Bool(true),
 					}
-					_, err := NewNodePerformance(profile)
+					opts := OptionsFromPerformanceProfile(profile)
+					_, err := NewNodePerformance(profile, &opts)
 					Expect(err.Error()).To(ContainSubstring("Invalid WorkloadHints configuration: HighPowerConsumption is true and PerPodPowerManagement is true"))
 				})
 			})

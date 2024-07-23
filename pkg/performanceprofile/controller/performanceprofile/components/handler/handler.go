@@ -14,6 +14,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	ntoutil "github.com/openshift/cluster-node-tuning-operator/pkg/util"
+
 	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
@@ -48,6 +50,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 	// set missing options
 	opts.MachineConfig.MixedCPUsEnabled = opts.MixedCPUsFeatureGateEnabled && profileutil.IsMixedCPUsEnabled(profile)
+	opts.Tuned.DeferredEnabled = ntoutil.HasDeferredUpdateAnnotation(profile.Annotations)
 
 	ctrRuntime, err := h.getContainerRuntimeName(ctx, profile, opts.ProfileMCP)
 	if err != nil {

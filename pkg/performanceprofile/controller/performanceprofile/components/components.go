@@ -38,6 +38,11 @@ type Options struct {
 	ProfileMCP                  *mcov1.MachineConfigPool
 	MachineConfig               MachineConfigOptions
 	MixedCPUsFeatureGateEnabled bool
+	Tuned                       TunedOptions
+}
+
+type TunedOptions struct {
+	DeferredEnabled bool
 }
 
 type MachineConfigOptions struct {

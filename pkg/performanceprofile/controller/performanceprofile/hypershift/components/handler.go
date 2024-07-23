@@ -95,6 +95,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 	// set missing options
 	options.MachineConfig.MixedCPUsEnabled = options.MixedCPUsFeatureGateEnabled && profileutil.IsMixedCPUsEnabled(profile)
+	// deferred updates not supported in hypershift yet
 
 	ctrRuntime, err := h.getContainerRuntimeName(ctx, profile)
 	if err != nil {

@@ -915,7 +915,8 @@ func getNodeNames(nodes []corev1.Node) []string {
 }
 
 func getTunedStructuredData(profile *performancev2.PerformanceProfile) *ini.File {
-	tuned, err := tuned.NewNodePerformance(profile)
+	opts := tuned.OptionsFromPerformanceProfile(profile)
+	tuned, err := tuned.NewNodePerformance(profile, &opts)
 	Expect(err).ToNot(HaveOccurred())
 	tunedData := []byte(*tuned.Spec.Profile[0].Data)
 	cfg, err := ini.Load(tunedData)
