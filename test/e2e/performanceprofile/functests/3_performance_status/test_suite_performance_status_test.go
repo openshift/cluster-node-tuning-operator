@@ -41,8 +41,8 @@ var _ = BeforeSuite(func() {
 var _ = AfterSuite(func() {
 	err := testclient.Client.Delete(context.TODO(), namespaces.TestingNamespace)
 	Expect(err).ToNot(HaveOccurred())
-	err = namespaces.WaitForDeletion(testutils.NamespaceTesting, 5*time.Minute)
-	nodeinspector.Delete(context.TODO())
+	Expect(namespaces.WaitForDeletion(testutils.NamespaceTesting, 5*time.Minute)).To(Succeed())
+	Expect(nodeinspector.Delete(context.TODO())).To(Succeed())
 })
 
 func TestPerformanceUpdate(t *testing.T) {

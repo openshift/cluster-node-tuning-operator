@@ -3,36 +3,42 @@ package __performance_status
 import (
 	"context"
 	"encoding/json"
+	"time"
 
-	ign2types "github.com/coreos/ignition/config/v2_2/types"
+	"github.com/onsi/gomega/gcustom"
+	types2 "github.com/onsi/gomega/types"
+	tunedutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
+	nodev1 "k8s.io/api/node/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	ign2types "github.com/coreos/ignition/config/v2_2/types"
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-	v1 "github.com/openshift/custom-resource-status/conditions/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	hypershiftutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
-
-	corev1 "k8s.io/api/core/v1"
-	nodev1 "k8s.io/api/node/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	utilrand "k8s.io/apimachinery/pkg/util/rand"
+	v1 "github.com/openshift/custom-resource-status/conditions/v1"
 )
 
 var _ = Describe("Status testing of performance profile", Ordered, func() {
 	var (
 		workerCNFNodes []corev1.Node
 		err            error
-		clean          func() error
 	)
 
 	BeforeEach(func() {
@@ -44,36 +50,29 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 		workerCNFNodes, err = nodes.MatchingOptionalSelector(workerCNFNodes)
 		Expect(err).ToNot(HaveOccurred(), "error looking for the optional selector: %v", err)
 		Expect(workerCNFNodes).ToNot(BeEmpty())
-		// initialized clean function handler to be nil on every It execution
-		clean = nil
-	})
-
-	AfterEach(func() {
-		if clean != nil {
-			Expect(clean(), "failed to cleanup in AfterEach")
-		}
-
 	})
 
 	Context("[rfe_id:28881][performance] Performance Addons detailed status", Label(string(label.Tier1)), func() {
-
 		It("[test_id:30894] Tuned status name tied to Performance Profile", func() {
 			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
-			key := types.NamespacedName{
-				Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
+			tunedList := &tunedv1.TunedList{}
+			tunedName, err := tunedutils.GetName(context.TODO(), testclient.ControlPlaneClient, profile.Name)
+			Expect(err).ToNot(HaveOccurred())
+			tunedNamespacedName := types.NamespacedName{
+				Name:      tunedName,
 				Namespace: components.NamespaceNodeTuningOperator,
 			}
-			tuned := &tunedv1.Tuned{}
-			err = testclient.GetWithRetry(context.TODO(), testclient.Client, key, tuned)
-			Expect(err).ToNot(HaveOccurred(), "cannot find the Cluster Node Tuning Operator Tuned object "+key.String())
-			tunedNamespacedname := types.NamespacedName{
-				Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
-				Namespace: components.NamespaceNodeTuningOperator,
-			}
-			tunedStatus := tunedNamespacedname.String()
-			Expect(profile.Status.Tuned).NotTo(BeNil())
-			Expect(*profile.Status.Tuned).To(Equal(tunedStatus))
+			// on hypershift platform, we're getting the tuned object that was mirrored by NTO to the hosted cluster,
+			// hence we're using the DataPlaneClient here.
+			Eventually(func(g Gomega) {
+				g.Expect(testclient.DataPlaneClient.List(context.TODO(), tunedList, &client.ListOptions{
+					Namespace: tunedNamespacedName.Namespace,
+				})).To(Succeed())
+				Expect(tunedList.Items).To(MatchTunedName(tunedName))
+			}).WithTimeout(time.Minute).WithPolling(time.Second * 10).Should(Succeed())
+			Expect(*profile.Status.Tuned).ToNot(BeNil())
+			Expect(*profile.Status.Tuned).To(Equal(tunedNamespacedName.String()))
 		})
 
 		It("[test_id:33791] Should include the generated runtime class name", func() {
@@ -85,18 +84,18 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 				Namespace: metav1.NamespaceAll,
 			}
 			runtimeClass := &nodev1.RuntimeClass{}
-			err = testclient.GetWithRetry(context.TODO(), testclient.Client, key, runtimeClass)
+			err = testclient.GetWithRetry(context.TODO(), testclient.DataPlaneClient, key, runtimeClass)
 			Expect(err).ToNot(HaveOccurred(), "cannot find the RuntimeClass object "+key.String())
 
 			Expect(profile.Status.RuntimeClass).NotTo(BeNil())
 			Expect(*profile.Status.RuntimeClass).To(Equal(runtimeClass.Name))
 		})
 
-		It("[test_id:29673] Machine config pools status tied to Performance Profile", func() {
+		It("[test_id:29673] Machine config pools status tied to Performance Profile", Label(string(label.OpenShift)), func() {
 			// Creating bad MC that leads to degraded state
 			By("Creating bad MachineConfig")
 			badMC := createBadMachineConfig("bad-mc")
-			err = testclient.Client.Create(context.TODO(), badMC)
+			err = testclient.ControlPlaneClient.Create(context.TODO(), badMC)
 			Expect(err).ToNot(HaveOccurred())
 
 			By("Wait for MCP condition to be Degraded")
@@ -111,7 +110,7 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 			Expect(profileConditionMessage).To(ContainSubstring(mcpConditionReason))
 
 			By("Deleting bad MachineConfig and waiting when Degraded state is removed")
-			err = testclient.Client.Delete(context.TODO(), badMC)
+			err = testclient.ControlPlaneClient.Delete(context.TODO(), badMC)
 			Expect(err).ToNot(HaveOccurred())
 
 			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
@@ -123,35 +122,21 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 			// This tuned CR will be applied on the profiles.tuned.openshift.io CR (there is such profile per node)
 			// which is associate to the node object with the same name.
 			// The connection between the node object and the tuned object is via the MachineConfigLables, worker-cnf in our case.
-			ns := "openshift-cluster-node-tuning-operator"
 			tunedName := "openshift-cause-tuned-failure"
+			// on hypershift this is the namespace name on the hosted cluster where the tuned object is mirrored to.
+			// on openshift this is the namespace where NTO/PAO creates tuned objects
+			ns := components.NamespaceNodeTuningOperator
 
-			// Make sure to clean badTuned object even if the It threw an error
-			clean = func() error {
-				key := types.NamespacedName{
-					Name:      tunedName,
-					Namespace: ns,
-				}
-				runtimeClass := &tunedv1.Tuned{}
-				err := testclient.Client.Get(context.TODO(), key, runtimeClass)
-				// if err != nil probably the resource were already deleted
-				if err == nil {
-					Expect(testclient.Client.Delete(context.TODO(), runtimeClass), "failed to delete runtimeClass %q", runtimeClass.Name)
-				}
-				return err
-			}
-
-			// Creating bad Tuned object that leads to degraded state
-			badTuned := createBadTuned(tunedName, ns)
-			err = testclient.Client.Create(context.TODO(), badTuned)
-			Expect(err).ToNot(HaveOccurred())
+			// Creating a bad Tuned object that leads to degraded state
+			cleanupFunc := createBadTuned(tunedName, ns)
+			defer func() {
+				By("Deleting bad Tuned and waiting when Degraded state is removed")
+				cleanupFunc()
+				profiles.WaitForCondition(testutils.NodeSelectorLabels, v1.ConditionAvailable, corev1.ConditionTrue)
+			}()
 
 			By("Waiting for performance profile condition to be Degraded")
 			profiles.WaitForCondition(testutils.NodeSelectorLabels, v1.ConditionDegraded, corev1.ConditionTrue)
-
-			By("Deleting bad Tuned and waiting when Degraded state is removed")
-			err = testclient.Client.Delete(context.TODO(), badTuned)
-			profiles.WaitForCondition(testutils.NodeSelectorLabels, v1.ConditionAvailable, corev1.ConditionTrue)
 		})
 	})
 })
@@ -190,15 +175,18 @@ func createBadMachineConfig(name string) *machineconfigv1.MachineConfig {
 	}
 }
 
-func createBadTuned(name, ns string) *tunedv1.Tuned {
+// createBadTuned creates bad tuned that should ended up in a degraded state
+// and return a cleanup function that can be called to wipe out the bad tuned object
+func createBadTuned(name, ns string) func() {
 	priority := uint64(20)
 	// include=profile-does-not-exist
 	// points to tuned profile which doesn't exist
 	data := "[main]\nsummary=A Tuned daemon profile that does not exist\ninclude=profile-does-not-exist"
 
-	return &tunedv1.Tuned{
+	badTuned := &tunedv1.Tuned{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: tunedv1.SchemeGroupVersion.String(),
+			Kind:       "Tuned",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -222,4 +210,27 @@ func createBadTuned(name, ns string) *tunedv1.Tuned {
 		},
 	}
 
+	Expect(testclient.ControlPlaneClient.Create(context.TODO(), badTuned)).To(Succeed())
+	if hypershiftutils.IsHypershiftCluster() {
+		Expect(nodepools.AttachTuningObject(context.TODO(), testclient.ControlPlaneClient, badTuned)).To(Succeed())
+	}
+
+	return func() {
+		GinkgoHelper()
+		if hypershiftutils.IsHypershiftCluster() {
+			Expect(nodepools.DeattachTuningObject(context.TODO(), testclient.ControlPlaneClient, badTuned)).ToNot(HaveOccurred(), "failed to de-attach tuned %q from NodePool", badTuned.Name)
+		}
+		Expect(testclient.ControlPlaneClient.Delete(context.TODO(), badTuned)).ToNot(HaveOccurred(), "failed to delete tuned %q", badTuned.Name)
+	}
+}
+
+func MatchTunedName(expected interface{}) types2.GomegaMatcher {
+	return gcustom.MakeMatcher(func(tuneds []tunedv1.Tuned) (bool, error) {
+		for _, tuned := range tuneds {
+			if tuned.Name == expected {
+				return true, nil
+			}
+		}
+		return false, nil
+	}).WithTemplate("Expected:\n{{.FormattedActual}}\n{{.To}} contain Tuned object with the name\n{{format .Data 1}}").WithTemplateData(expected)
 }

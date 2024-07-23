@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	hypershiftconsts "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/consts"
+
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -13,10 +13,12 @@ import (
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	hypershiftconsts "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/consts"
 )
 
 const (
@@ -30,6 +32,18 @@ type ControlPlaneClientImpl struct {
 	// hostedControlPlaneNamespaceName is the namespace name on the management cluster
 	// on which the control-plane objects reside
 	hostedControlPlaneNamespaceName string
+
+	yamlSerializer *serializer.Serializer
+}
+
+func NewControlPlaneClient(c client.Client, ns string) *ControlPlaneClientImpl {
+	return &ControlPlaneClientImpl{
+		Client:                          c,
+		hostedControlPlaneNamespaceName: ns,
+		yamlSerializer: serializer.NewSerializerWithOptions(
+			serializer.DefaultMetaFactory, c.Scheme(), c.Scheme(),
+			serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true}),
+	}
 }
 
 func (ci *ControlPlaneClientImpl) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
@@ -64,8 +78,24 @@ func (ci *ControlPlaneClientImpl) Update(ctx context.Context, obj client.Object,
 	return ci.Client.Update(ctx, obj, opts...)
 }
 
-func IsEncapsulatedInConfigMap(obj runtime.Object) bool {
-	return GetObjectConfigMapDataKey(obj) != ""
+func (ci *ControlPlaneClientImpl) Delete(ctx context.Context, obj client.Object, opts ...client.DeleteOption) error {
+	dataKey := GetObjectConfigMapDataKey(obj)
+	if dataKey != "" {
+		return ci.deleteFromConfigMap(ctx, obj, dataKey, opts...)
+	}
+	return ci.Client.Delete(ctx, obj, opts...)
+}
+
+func IsWriteableToControlPlane(obj runtime.Object) bool {
+	return GetObjectConfigMapDataKey(obj) == ""
+}
+
+func IsReadableFromControlPlane(obj runtime.Object) bool {
+	switch obj.(type) {
+	case *tunedv1.Tuned, *tunedv1.TunedList:
+		return true
+	}
+	return GetObjectConfigMapDataKey(obj) == ""
 }
 
 func GetObjectConfigMapDataKey(obj runtime.Object) string {
@@ -81,13 +111,6 @@ func GetObjectConfigMapDataKey(obj runtime.Object) string {
 	}
 }
 
-func NewControlPlaneClient(c client.Client, ns string) *ControlPlaneClientImpl {
-	return &ControlPlaneClientImpl{
-		Client:                          c,
-		hostedControlPlaneNamespaceName: ns,
-	}
-}
-
 // We do not have a direct way to detect the ConfigMaps with the wanted objects,
 // so the function does the following:
 // 1. List() all ConfigMap within the HCP namespace
@@ -99,10 +122,6 @@ func (ci *ControlPlaneClientImpl) listFromConfigMaps(ctx context.Context, listOb
 		Namespace: ci.hostedControlPlaneNamespaceName}); err != nil {
 		return err
 	}
-	yamlSerializer := serializer.NewSerializerWithOptions(
-		serializer.DefaultMetaFactory, ci.Scheme(), ci.Scheme(),
-		serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true},
-	)
 	var decodedObjects []runtime.Object
 	for _, cm := range cmList.Items {
 		b, ok := cm.Data[dataKey]
@@ -111,9 +130,14 @@ func (ci *ControlPlaneClientImpl) listFromConfigMaps(ctx context.Context, listOb
 			// this object it not of the wanted type
 			continue
 		}
-		obj, _, err := yamlSerializer.Decode([]byte(b), nil, nil)
+		obj, _, err := ci.yamlSerializer.Decode([]byte(b), nil, nil)
 		if err != nil {
 			return err
+		}
+		if pp, ok := obj.(*performancev2.PerformanceProfile); ok {
+			if err := ci.getStatusForPerformanceProfile(ctx, cm.Name, pp); err != nil {
+				return fmt.Errorf("failed to get status for PerformanceProfile ConfigMap %q; %w", fmt.Sprintf("%s/%s", cm.Namespace, cm.Name), err)
+			}
 		}
 		decodedObjects = append(decodedObjects, obj)
 	}
@@ -135,12 +159,36 @@ func (ci *ControlPlaneClientImpl) getFromConfigMap(ctx context.Context, key clie
 			return err
 		}
 		if obj.GetName() == key.Name {
+			if pp, ok := obj.(*performancev2.PerformanceProfile); ok {
+				if err = ci.getStatusForPerformanceProfile(ctx, cm.Name, pp); err != nil {
+					return fmt.Errorf("failed to get status for PerformanceProfile ConfigMap %q; %w", key.String(), err)
+				}
+			}
 			return nil
 		}
 	}
 	// we don't have the actual GroupResource, because it's an internal rendered into the ConfigMap data, so leave it empty.
 	return fmt.Errorf("the encapsulated object %s was not found in ConfigMap; %w", key.String(),
 		apierrors.NewNotFound(schema.GroupResource{}, key.Name))
+}
+
+func (ci *ControlPlaneClientImpl) getStatusForPerformanceProfile(ctx context.Context, instanceName string, profile *performancev2.PerformanceProfile) error {
+	statusConfigMap := &corev1.ConfigMap{}
+	key := client.ObjectKey{
+		Namespace: ci.hostedControlPlaneNamespaceName,
+		Name:      GetStatusConfigMapName(instanceName),
+	}
+
+	if err := ci.Get(ctx, key, statusConfigMap); err != nil {
+		return err
+	}
+	b := statusConfigMap.Data[hypershiftconsts.PerformanceProfileStatusKey]
+	ppStatus := &performancev2.PerformanceProfileStatus{}
+	if err := yaml.Unmarshal([]byte(b), ppStatus); err != nil {
+		return err
+	}
+	profile.Status = *ppStatus
+	return nil
 }
 
 // validateAndExtractObjectFromConfigMap validates if there's object data in a configmap
@@ -201,6 +249,34 @@ func (ci *ControlPlaneClientImpl) updateConfigMap(ctx context.Context, obj clien
 	return ci.Client.Update(ctx, cm, opts...)
 }
 
+func (ci *ControlPlaneClientImpl) deleteFromConfigMap(ctx context.Context, obj client.Object, dataKey string, opts ...client.DeleteOption) error {
+	cmList := &corev1.ConfigMapList{}
+	err := ci.Client.List(ctx, cmList, &client.ListOptions{
+		Namespace: HostedClustersNamespaceName,
+	})
+	if err != nil {
+		return err
+	}
+
+	for _, cm := range cmList.Items {
+		manifest, ok := cm.Data[dataKey]
+		if !ok {
+			continue
+		}
+		decodedObj, _, err := ci.yamlSerializer.Decode([]byte(manifest), nil, nil)
+		if err != nil {
+			return err
+		}
+		if obj.GetName() == decodedObj.(client.Object).GetName() {
+			return ci.Client.Delete(ctx, &cm)
+		}
+	}
+	// we don't have the actual GroupResource,
+	//because it's an internal rendered into the ConfigMap data, so leave it empty.
+	return fmt.Errorf("cannot delete the encapsulated object %s, because it was not found in ConfigMap in the %s namespace; %w", obj.GetName(), HostedClustersNamespaceName,
+		apierrors.NewNotFound(schema.GroupResource{}, obj.GetName()))
+}
+
 func EncodeManifest(obj runtime.Object, scheme *runtime.Scheme) ([]byte, error) {
 	yamlSerializer := serializer.NewSerializerWithOptions(
 		serializer.DefaultMetaFactory, scheme, scheme,
@@ -234,4 +310,8 @@ func DecodeManifest(b []byte, scheme *runtime.Scheme, obj runtime.Object) (bool,
 		}
 	}
 	return false, err
+}
+
+func GetStatusConfigMapName(instanceName string) string {
+	return fmt.Sprintf("%s-%s", hypershiftconsts.PerformanceProfileStatusKey, instanceName)
 }

@@ -10,7 +10,6 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -245,12 +244,7 @@ func attachProfileToNodePool(ctx context.Context, performanceProfile *performanc
 	}
 	// for debugging purposes
 	printEnvs()
-	hostedClusterName, err := hypershift.GetHostedClusterName()
-	Expect(err).ToNot(HaveOccurred())
-	np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
-	Expect(err).ToNot(HaveOccurred())
-	np.Spec.TuningConfig = []corev1.LocalObjectReference{{Name: performanceProfile.Name}}
-	Expect(testclient.ControlPlaneClient.Update(ctx, np)).To(Succeed())
+	Expect(nodepools.AttachTuningObject(ctx, testclient.ControlPlaneClient, performanceProfile)).To(Succeed())
 }
 
 func printEnvs() {

@@ -4,14 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
-
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
 	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 )
 
@@ -83,52 +80,12 @@ func (w *writer) updateDegradedCondition(instance client.Object, conditionState 
 }
 
 func (w *writer) update(ctx context.Context, profile *performancev2.PerformanceProfile, conditions []conditionsv1.Condition) error {
-	profileCopy := profile.DeepCopy()
-
-	if conditions != nil {
-		profileCopy.Status.Conditions = conditions
-	}
-
-	// check if we need to update the status
-	modified := false
-
-	// since we always set the same four conditions, we don't need to check if we need to remove old conditions
-	for _, newCondition := range profileCopy.Status.Conditions {
-		oldCondition := conditionsv1.FindStatusCondition(profile.Status.Conditions, newCondition.Type)
-		if oldCondition == nil {
-			modified = true
-			break
-		}
-
-		// ignore timestamps to avoid infinite reconcile loops
-		if oldCondition.Status != newCondition.Status ||
-			oldCondition.Reason != newCondition.Reason ||
-			oldCondition.Message != newCondition.Message {
-			modified = true
-			break
-		}
-	}
-
-	if profileCopy.Status.Tuned == nil {
-		tunedNamespacedname := types.NamespacedName{
-			Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
-			Namespace: components.NamespaceNodeTuningOperator,
-		}
-		tunedStatus := tunedNamespacedname.String()
-		profileCopy.Status.Tuned = &tunedStatus
-		modified = true
-	}
-
-	if profileCopy.Status.RuntimeClass == nil {
-		runtimeClassName := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
-		profileCopy.Status.RuntimeClass = &runtimeClassName
-		modified = true
-	}
-
-	if !modified {
+	updatedStatus := CalculateUpdated(&profile.Status, profile.Name, "", conditions)
+	if updatedStatus == nil {
 		return nil
 	}
+	profile.Status = *updatedStatus
 
 	klog.V(4).Infof("Updating the performance profile %q status", profile.Name)
-	return w.Client.Status().Update(ctx, profileCopy)
+	return w.Client.Status().Update(ctx, profile)
 }

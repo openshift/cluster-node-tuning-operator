@@ -3,20 +3,23 @@ package status
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"time"
 
-	mcov1 "github.com/openshift/api/machineconfiguration/v1"
-	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
-	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
-	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	mcov1 "github.com/openshift/api/machineconfiguration/v1"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	nto "github.com/openshift/cluster-node-tuning-operator/pkg/operator"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
+	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 )
 
 const (
@@ -192,8 +195,18 @@ func GetTunedConditionsByProfile(ctx context.Context, cli client.Client, profile
 	// remove Tuned profiles that are not associate with this performance profile
 	// Tuned profile's name and node's name should be equal
 	filtered := removeUnMatchedTunedProfiles(nodes.Items, tunedProfileList.Items)
+
+	messageString := GetTunedProfilesMessage(filtered)
+	if len(messageString) == 0 {
+		return nil, nil
+	}
+
+	return GetDegradedConditions(ConditionReasonTunedDegraded, messageString), nil
+}
+
+func GetTunedProfilesMessage(profiles []tunedv1.Profile) string {
 	message := bytes.Buffer{}
-	for _, tunedProfile := range filtered {
+	for _, tunedProfile := range profiles {
 		isDegraded := false
 		isApplied := true
 		var tunedDegradedCondition *tunedv1.ProfileStatusCondition
@@ -220,13 +233,7 @@ func GetTunedConditionsByProfile(ctx context.Context, cli client.Client, profile
 			}
 		}
 	}
-
-	messageString := message.String()
-	if len(messageString) == 0 {
-		return nil, nil
-	}
-
-	return GetDegradedConditions(ConditionReasonTunedDegraded, messageString), nil
+	return message.String()
 }
 
 func getLatestKubeletConfigCondition(conditions []mcov1.KubeletConfigCondition) *mcov1.KubeletConfigCondition {
@@ -260,4 +267,53 @@ func removeUnMatchedTunedProfiles(nodes []corev1.Node, profiles []tunedv1.Profil
 		}
 	}
 	return filteredProfiles
+}
+
+func CalculateUpdated(prevStatus *performancev2.PerformanceProfileStatus, profileName, npName string, conditions []conditionsv1.Condition) *performancev2.PerformanceProfileStatus {
+	statusCopy := prevStatus.DeepCopy()
+
+	if conditions != nil {
+		statusCopy.Conditions = conditions
+	}
+
+	// check if we need to update the status
+	modified := false
+
+	// since we always set the same four conditions, we don't need to check if we need to remove old conditions
+	for _, newCondition := range statusCopy.Conditions {
+		oldCondition := conditionsv1.FindStatusCondition(prevStatus.Conditions, newCondition.Type)
+		if oldCondition == nil {
+			modified = true
+			break
+		}
+
+		// ignore timestamps to avoid infinite reconcile loops
+		if oldCondition.Status != newCondition.Status ||
+			oldCondition.Reason != newCondition.Reason ||
+			oldCondition.Message != newCondition.Message {
+			modified = true
+			break
+		}
+	}
+
+	tunedName := components.GetComponentName(profileName, components.ProfileNamePerformance)
+	if npName != "" {
+		tunedName = nto.MakeTunedUniqueName(tunedName, npName)
+	}
+	tunedStatus := fmt.Sprintf("%s/%s", components.NamespaceNodeTuningOperator, tunedName)
+	if statusCopy.Tuned == nil || tunedStatus != *statusCopy.Tuned {
+		statusCopy.Tuned = &tunedStatus
+		modified = true
+	}
+
+	runtimeClassName := components.GetComponentName(profileName, components.ComponentNamePrefix)
+	if statusCopy.RuntimeClass == nil || runtimeClassName != *statusCopy.RuntimeClass {
+		statusCopy.RuntimeClass = &runtimeClassName
+		modified = true
+	}
+
+	if !modified {
+		return nil
+	}
+	return statusCopy
 }
