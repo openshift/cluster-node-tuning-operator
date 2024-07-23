@@ -80,7 +80,7 @@ const (
 	// be generous and give it 10s.
 	tunedGracefulExitWait = time.Second * time.Duration(10)
 	ocpTunedHome          = "/var/lib/ocp-tuned"
-	ocpTunedRunDir        = "/run/" + programName
+	ocpTunedRunDir        = "/run/ocp-tuned"
 	ocpTunedProvider      = ocpTunedHome + "/provider"
 	// With the less aggressive rate limiter, retries will happen at 100ms*2^(retry_n-1):
 	// 100ms, 200ms, 400ms, 800ms, 1.6s, 3.2s, 6.4s, 12.8s, 25.6s, 51.2s, 102.4s, 3.4m, 6.8m, 13.7m, 27.3m
@@ -389,15 +389,23 @@ func profilesEqual(profileFile string, profileData string) bool {
 	return profileData == string(content)
 }
 
+type ExtractedProfiles struct {
+	// True if the data in the to-be-extracted recommended profile or the profiles being
+	// included from the current recommended profile have changed.
+	Changed bool
+	// If the data changed, the fingerprint of the new profile, or "" otherwise.
+	Fingerprint string
+	// A map with successfully extracted TuneD profile names.
+	Names map[string]bool
+	// A map with names of TuneD profiles the current TuneD recommended profile depends on.
+	Dependencies map[string]bool
+}
+
 // ProfilesExtract extracts TuneD daemon profiles to tunedProfilesDirCustom directory.
 // Returns:
-//   - True if the data in the to-be-extracted recommended profile or the profiles being
-//     included from the current recommended profile have changed.
-//   - If the data changed, the fingerprint of the new profile, or "" otherwise.
-//   - A map with successfully extracted TuneD profile names.
-//   - A map with names of TuneD profiles the current TuneD recommended profile depends on.
+//   - ExtractedProfiles with the details of the operation performed
 //   - Error if any or nil.
-func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string) (bool, string, map[string]bool, map[string]bool, error) {
+func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string) (ExtractedProfiles, error) {
 	klog.Infof("profilesExtract(): extracting %d TuneD profiles (recommended=%s)", len(profiles), recommendedProfile)
 	// Get a list of TuneD profiles names the recommended profile depends on.
 	deps := profileDepends(recommendedProfile)
@@ -409,7 +417,7 @@ func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string)
 
 // profilesExtractPathWithDeps is like ProfilesExtract but takes explicit profiles root dir path and
 // explicit dependencies, so it's easier to test. To be used only internally.
-func profilesExtractPathWithDeps(profilesRootDir string, profiles []tunedv1.TunedProfile, recommendedProfile string, recommendedProfileDeps map[string]bool) (bool, string, map[string]bool, map[string]bool, error) {
+func profilesExtractPathWithDeps(profilesRootDir string, profiles []tunedv1.TunedProfile, recommendedProfile string, recommendedProfileDeps map[string]bool) (ExtractedProfiles, error) {
 	var (
 		change    bool            = false
 		extracted map[string]bool = map[string]bool{} // TuneD profile names present in TuneD CR and successfully extracted to tunedProfilesDirCustom
@@ -428,7 +436,11 @@ func profilesExtractPathWithDeps(profilesRootDir string, profiles []tunedv1.Tune
 		profileFile := filepath.Join(profileDir, tunedConfFile)
 
 		if err := os.MkdirAll(profileDir, os.ModePerm); err != nil {
-			return change, "", extracted, recommendedProfileDeps, fmt.Errorf("failed to create TuneD profile directory %q: %v", profileDir, err)
+			return ExtractedProfiles{
+				Changed:      change,
+				Names:        extracted,
+				Dependencies: recommendedProfileDeps,
+			}, fmt.Errorf("failed to create TuneD profile directory %q: %v", profileDir, err)
 		}
 
 		if recommendedProfileDeps[*profile.Name] {
@@ -444,7 +456,11 @@ func profilesExtractPathWithDeps(profilesRootDir string, profiles []tunedv1.Tune
 
 		err := os.WriteFile(profileFile, []byte(*profile.Data), 0644)
 		if err != nil {
-			return change, "", extracted, recommendedProfileDeps, fmt.Errorf("failed to write TuneD profile file %q: %v", profileFile, err)
+			return ExtractedProfiles{
+				Changed:      change,
+				Names:        extracted,
+				Dependencies: recommendedProfileDeps,
+			}, fmt.Errorf("failed to write TuneD profile file %q: %v", profileFile, err)
 		}
 		extracted[*profile.Name] = true
 		klog.V(2).Infof("profilesExtract(): extracted profile %q to %q (%d bytes)", *profile.Name, profileFile, len(*profile.Data))
@@ -452,7 +468,12 @@ func profilesExtractPathWithDeps(profilesRootDir string, profiles []tunedv1.Tune
 
 	profilesFP := profilesFingerprint(profiles, recommendedProfile)
 	klog.Infof("profilesExtract(): fingerprint of extracted profiles: %q", profilesFP)
-	return change, profilesFP, extracted, recommendedProfileDeps, nil
+	return ExtractedProfiles{
+		Changed:      change,
+		Fingerprint:  profilesFP,
+		Names:        extracted,
+		Dependencies: recommendedProfileDeps,
+	}, nil
 }
 
 // profilesRepackPath reconstructs the TunedProfile object from the data unpacked on the node
@@ -506,16 +527,17 @@ func profilesRepackPath(recommendFilePath, profilesRootDir string) ([]tunedv1.Tu
 //   - The synced profile fingerprint.
 //   - Error if any or nil.
 func profilesSync(profiles []tunedv1.TunedProfile, recommendedProfile string) (bool, string, error) {
-	change, profilesFP, extractedNew, recommendedProfileDeps, err := ProfilesExtract(profiles, recommendedProfile)
+	extracted, err := ProfilesExtract(profiles, recommendedProfile)
 	if err != nil {
-		return change, "", err
+		return extracted.Changed, "", err
 	}
 
 	dirEntries, err := os.ReadDir(tunedProfilesDirCustom)
 	if err != nil {
-		return change, "", err
+		return extracted.Changed, "", err
 	}
 
+	changed := extracted.Changed // shortcut, but we also modify before
 	// Deal with TuneD profiles absent from Tuned CRs, but still present in <tunedProfilesDirCustom>/<profile>/
 	for _, dirEntry := range dirEntries {
 		profile := dirEntry.Name()
@@ -529,7 +551,7 @@ func profilesSync(profiles []tunedv1.TunedProfile, recommendedProfile string) (b
 			continue
 		}
 
-		if extractedNew[profile] {
+		if extracted.Names[profile] {
 			// Do not delete the freshly extracted profiles.  These are the profiles present in the Profile CR.
 			continue
 		}
@@ -537,18 +559,18 @@ func profilesSync(profiles []tunedv1.TunedProfile, recommendedProfile string) (b
 		profileDir := fmt.Sprintf("%s/%s", tunedProfilesDirCustom, profile)
 		err := os.RemoveAll(profileDir)
 		if err != nil {
-			return change, "", fmt.Errorf("failed to remove %q: %v", profileDir, err)
+			return changed, "", fmt.Errorf("failed to remove %q: %v", profileDir, err)
 		}
 		klog.Infof("profilesSync(): removed TuneD profile %q", profileDir)
 
-		if recommendedProfileDeps[profile] {
+		if extracted.Dependencies[profile] {
 			// This TuneD profile does not exist in the Profile CR, but the recommended profile depends on it.
 			// Trigger a change to report a configuration issue -- we depend on a profile that does not exist.
-			change = true
+			changed = true
 		}
 	}
 
-	return change, profilesFP, nil
+	return changed, extracted.Fingerprint, nil
 }
 
 // filterAndSortProfiles returns a slice of valid (non-nil name, non-nil data) profiles
@@ -1040,16 +1062,14 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 		}
 
 		// Does the current TuneD process have the reapply_sysctl option turned on?
-		reapplySysctl := c.tunedMainCfg.Section("").Key("reapply_sysctl").MustBool()
-		if reapplySysctl != change.reapplySysctl {
+		if reapplySysctl := c.tunedMainCfg.Section("").Key("reapply_sysctl").MustBool(); reapplySysctl != change.reapplySysctl {
 			klog.V(4).Infof("reapplySysctl rewriting configuration file")
-
 			if err = iniCfgSetKey(c.tunedMainCfg, "reapply_sysctl", !reapplySysctl); err != nil {
 				return false, err
 			}
 			err = iniFileSave(tunedMainConfPath, c.tunedMainCfg)
 			if err != nil {
-				return false, fmt.Errorf("failed to write global TuneD configuration file: %v", err)
+				return false, fmt.Errorf("failed to write global TuneD configuration file: %w", err)
 			}
 			klog.V(4).Infof("reapplySysctl triggering tuned restart")
 			restart = true // A complete restart of the TuneD daemon is needed due to configuration change in tuned-main.conf file.
@@ -1384,16 +1404,14 @@ func (c *Controller) storeDeferredUpdate(deferredFP string) (derr error) {
 //     If the file is absent, a node restart is assumed and true is returned.
 //   - Error if any.
 func (c *Controller) recoverAndClearDeferredUpdate() (string, bool, error) {
-	isReboot := false
-
 	deferredFP, err := os.ReadFile(tunedDeferredUpdatePersistentFilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			klog.Infof("recover: no pending deferred change")
-			return "", isReboot, nil
+			return "", false, nil
 		}
 		klog.Infof("recover: failed to restore pending deferred change: %v", err)
-		return "", isReboot, err
+		return "", false, err
 	}
 	pendingFP := strings.TrimSpace(string(deferredFP))
 	err = os.Remove(tunedDeferredUpdatePersistentFilePath)
@@ -1401,13 +1419,12 @@ func (c *Controller) recoverAndClearDeferredUpdate() (string, bool, error) {
 
 	if _, errEph := os.Stat(tunedDeferredUpdateEphemeralFilePath); errEph != nil {
 		if os.IsNotExist(errEph) {
-			isReboot = true
-		} else {
-			klog.Infof("recover: failed to detect node restart, assuming not: %v", err)
-			return "", false, errEph
+			return pendingFP, true, err
 		}
+		klog.Infof("recover: failed to detect node restart, assuming not: %v", err)
+		return "", false, errEph
 	}
-	return pendingFP, isReboot, err
+	return pendingFP, false, err
 }
 
 func (c *Controller) informerEventHandler(workqueueKey wqKeyKube) cache.ResourceEventHandlerFuncs {
