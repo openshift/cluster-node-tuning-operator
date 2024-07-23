@@ -221,7 +221,7 @@ spec:
               --volume /run/tuned:/run/tuned:rslave \
               --volume /run/systemd:/run/systemd:rslave \
               --volume /sys:/sys:rslave \
-              --entrypoint '["/usr/bin/cluster-node-tuning-operator","openshift-tuned","--in-cluster=false","--one-shot=true","-v=1"]' \
+              --entrypoint '["/usr/bin/cluster-node-tuning-operator","ocp-tuned","--in-cluster=false","--one-shot=true","-v=1"]' \
               $NTO_IMAGE
           Environment=PODMAN_SYSTEMD_UNIT=%n
           EnvironmentFile=-/var/lib/ocp-tuned/image.env
