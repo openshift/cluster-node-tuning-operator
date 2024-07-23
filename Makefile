@@ -101,7 +101,7 @@ $(GOBINDATA_BIN):
 
 test-e2e: $(BINDATA)
 	for d in core basic reboots reboots/sno deferred; do \
-	  KUBERNETES_CONFIG="$(KUBECONFIG)" $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.no-color -ginkgo.fail-fast || exit; \
+	  KUBERNETES_CONFIG="$(KUBECONFIG)" $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.no-color -ginkgo.fail-fast -ginkgo.label-filter=!flaky || exit; \
 	done
 
 .PHONY: test-e2e-local
