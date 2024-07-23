@@ -20,7 +20,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util/wait"
 )
 
-var _ = ginkgo.Describe("[deferred][restart] Profile deferred", func() {
+var _ = ginkgo.Describe("[deferred][restart][slow][disruptive][flaky] Profile deferred", ginkgo.Label("deferred", "restart", "slow", "disruptive", "flaky"), func() {
 	ginkgo.Context("when restarting", func() {
 		var (
 			createdTuneds []string

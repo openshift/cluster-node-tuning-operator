@@ -18,7 +18,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 )
 
-var _ = ginkgo.Describe("[deferred][non_regression] Profile non-deferred", func() {
+var _ = ginkgo.Describe("[deferred][non-regression] Profile non-deferred", ginkgo.Label("deferred", "non-regression"), func() {
 	ginkgo.Context("when applied", func() {
 		var (
 			createdTuneds []string
