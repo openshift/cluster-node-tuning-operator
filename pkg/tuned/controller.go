@@ -80,7 +80,7 @@ const (
 	// be generous and give it 10s.
 	tunedGracefulExitWait = time.Second * time.Duration(10)
 	ocpTunedHome          = "/var/lib/ocp-tuned"
-	ocpTunedRunDir        = "/run/" + programName
+	ocpTunedRunDir        = "/run/ocp-tuned"
 	ocpTunedProvider      = ocpTunedHome + "/provider"
 	// With the less aggressive rate limiter, retries will happen at 100ms*2^(retry_n-1):
 	// 100ms, 200ms, 400ms, 800ms, 1.6s, 3.2s, 6.4s, 12.8s, 25.6s, 51.2s, 102.4s, 3.4m, 6.8m, 13.7m, 27.3m
