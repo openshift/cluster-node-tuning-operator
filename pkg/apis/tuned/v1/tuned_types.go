@@ -20,7 +20,7 @@ const (
 	TunedClusterOperatorResourceName = "node-tuning"
 
 	// Name of the NTO operand for versioning in ClusterOperator.
-	TunedOperandName = "openshift-tuned"
+	TunedOperandName = "ocp-tuned"
 
 	// TunedBootcmdlineAnnotationKey is a Node-specific annotation denoting kernel command-line parameters
 	// calculated by TuneD for the current profile applied to that Node.

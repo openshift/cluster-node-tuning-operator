@@ -80,7 +80,7 @@ const (
 	// be generous and give it 10s.
 	tunedGracefulExitWait = time.Second * time.Duration(10)
 	ocpTunedHome          = "/var/lib/ocp-tuned"
-	ocpTunedRunDir        = "/run/ocp-tuned"
+	ocpTunedRunDir        = "/run/" + programName
 	ocpTunedProvider      = ocpTunedHome + "/provider"
 	// With the less aggressive rate limiter, retries will happen at 100ms*2^(retry_n-1):
 	// 100ms, 200ms, 400ms, 800ms, 1.6s, 3.2s, 6.4s, 12.8s, 25.6s, 51.2s, 102.4s, 3.4m, 6.8m, 13.7m, 27.3m
@@ -206,7 +206,7 @@ type Controller struct {
 
 	tunedCmd     *exec.Cmd       // external command (tuned) being prepared or run
 	tunedExit    chan bool       // bi-directional channel to signal and register TuneD daemon exit
-	stopCh       <-chan struct{} // receive-only channel to stop the openshift-tuned controller
+	stopCh       <-chan struct{} // receive-only channel to stop the ocp-tuned controller
 	changeCh     chan Change     // bi-directional channel to wake-up the main thread to process accrued changes
 	changeChRet  chan bool       // bi-directional channel to announce success/failure of change processing
 	tunedMainCfg *ini.File       // global TuneD configuration as defined in tuned-main.conf
@@ -845,7 +845,7 @@ func (c *Controller) tunedReload() error {
 	}
 
 	if c.tunedCmd == nil {
-		// TuneD hasn't been started by openshift-tuned, start it.
+		// TuneD hasn't been started by ocp-tuned, start it.
 		tunedStart()
 		return nil
 	}
@@ -1440,7 +1440,7 @@ func (c *Controller) informerEventHandler(workqueueKey wqKeyKube) cache.Resource
 			if workqueueKey.kind == wqKindProfile && workqueueKey.name == c.nodeName {
 				// When moving this code elsewhere, consider whether it is desirable
 				// to disable system tuned on nodes that should not be managed by
-				// openshift-tuned.
+				// ocp-tuned.
 				disableSystemTuned()
 			}
 
