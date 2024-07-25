@@ -23,7 +23,6 @@ const (
 	HostedControlPlaneNamespaceEnv = "HYPERSHIFT_HOSTED_CONTROL_PLANE_NAMESPACE"
 	HostedClusterKubeConfigEnv     = "KUBECONFIG"
 	HostedClusterNameEnv           = "CLUSTER_NAME"
-	NodePoolNamespace              = "clusters"
 )
 
 func BuildControlPlaneClient() (client.Client, error) {
