@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	hypershiftconsts "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/consts"
 	"os"
 	"reflect"
 	"time"
@@ -32,8 +31,10 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/operator"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
+	hypershiftconsts "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/consts"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/status"
 
@@ -244,6 +245,30 @@ func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Ma
 		},
 	}
 
+	containerRuntimeConfigPredicate := predicate.Funcs{
+		UpdateFunc: func(ue event.UpdateEvent) bool {
+			if !validateUpdateEvent(&ue) {
+				klog.V(4).InfoS("UpdateEvent not valid", "objectName", ue.ObjectOld.GetName())
+				return false
+			}
+			return validateLabels(ue.ObjectNew, operator.HypershiftControllerGeneratedContainerRuntimeConfig, "UpdateEvent")
+		},
+		CreateFunc: func(ce event.CreateEvent) bool {
+			if ce.Object == nil {
+				klog.Error("Create event has no runtime object")
+				return false
+			}
+			return validateLabels(ce.Object, operator.HypershiftControllerGeneratedContainerRuntimeConfig, "CreateEvent")
+		},
+		DeleteFunc: func(de event.DeleteEvent) bool {
+			if de.Object == nil {
+				klog.Error("Delete event has no runtime object")
+				return false
+			}
+			return validateLabels(de.Object, operator.HypershiftControllerGeneratedContainerRuntimeConfig, "DeleteEvent")
+		},
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("performanceprofile_controller").
 		// we can't use For() and Owns(), because this calls are using the cache of the hosted cluster's client.
@@ -252,6 +277,10 @@ func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Ma
 			&corev1.ConfigMap{}),
 			&handler.EnqueueRequestForObject{},
 			builder.WithPredicates(performanceProfileConfigMapPredicate)).
+		WatchesRawSource(source.Kind(managementCluster.GetCache(),
+			&corev1.ConfigMap{}),
+			&handler.EnqueueRequestForObject{},
+			builder.WithPredicates(containerRuntimeConfigPredicate)).
 		WatchesRawSource(source.Kind(managementCluster.GetCache(),
 			&corev1.ConfigMap{}),
 			handler.EnqueueRequestForOwner(r.ManagementClient.Scheme(), r.ManagementClient.RESTMapper(), &corev1.ConfigMap{}, handler.OnlyControllerOwner()),
