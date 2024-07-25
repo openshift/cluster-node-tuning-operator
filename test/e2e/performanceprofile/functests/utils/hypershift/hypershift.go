@@ -21,7 +21,7 @@ func init() {
 const (
 	ManagementClusterKubeConfigEnv = "HYPERSHIFT_MANAGEMENT_CLUSTER_KUBECONFIG"
 	ManagementClusterNamespaceEnv  = "HYPERSHIFT_MANAGEMENT_CLUSTER_NAMESPACE"
-	HostedClusterKubeConfigEnv     = "HYPERSHIFT_HOSTED_CLUSTER_KUBECONFIG"
+	HostedClusterKubeConfigEnv     = "KUBECONFIG"
 	HostedClusterNameEnv           = "CLUSTER_NAME"
 	NodePoolNamespace              = "clusters"
 )
