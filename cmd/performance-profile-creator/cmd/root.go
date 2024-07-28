@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"k8s.io/apimachinery/pkg/runtime"
 	"os"
 	"sort"
 	"strconv"
@@ -31,6 +32,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -138,31 +140,7 @@ func NewRootCommand() *cobra.Command {
 		Short: "A tool that automates creation of Performance Profiles",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if cmd.Flag("info").Changed {
-				infoMode := cmd.Flag("info").Value.String()
-				if err := validateFlag("info", infoMode, validInfoModes); err != nil {
-					return err
-				}
-
-				missingRequiredFlags := checkRequiredFlags(cmd, "must-gather-dir-path")
-				if len(missingRequiredFlags) > 0 {
-					return fmt.Errorf("missing required flags: %s", strings.Join(argNameToFlag(missingRequiredFlags), ", "))
-				}
-
-				mustGatherDirPath := cmd.Flag("must-gather-dir-path").Value.String()
-				cluster, err := getClusterData(mustGatherDirPath)
-				if err != nil {
-					return fmt.Errorf("failed to parse the cluster data: %v", err)
-				}
-
-				clusterInfo := makeClusterInfoFromClusterData(cluster)
-				if infoMode == infoModeJSON {
-					if err := showClusterInfoJSON(clusterInfo); err != nil {
-						return fmt.Errorf("unable to show cluster info %w", err)
-					}
-				} else {
-					showClusterInfoLog(clusterInfo)
-				}
-				return nil
+				return executeInfoMode(cmd)
 			}
 
 			missingRequiredFlags := checkRequiredFlags(cmd, requiredFlags...)
@@ -189,23 +167,54 @@ func NewRootCommand() *cobra.Command {
 			return writeProfile(profile, profileData.enableHardwareTuning)
 		},
 	}
-
-	root.PersistentFlags().IntVar(&pcArgs.ReservedCPUCount, "reserved-cpu-count", 0, "Number of reserved CPUs (required)")
-	root.PersistentFlags().IntVar(&pcArgs.OfflinedCPUCount, "offlined-cpu-count", 0, "Number of offlined CPUs")
-	root.PersistentFlags().BoolVar(&pcArgs.SplitReservedCPUsAcrossNUMA, "split-reserved-cpus-across-numa", false, "Split the Reserved CPUs across NUMA nodes")
-	root.PersistentFlags().StringVar(&pcArgs.MCPName, "mcp-name", "", "MCP name corresponding to the target machines (required)")
-	root.PersistentFlags().BoolVar(&pcArgs.DisableHT, "disable-ht", false, "Disable Hyperthreading")
-	root.PersistentFlags().BoolVar(&pcArgs.RTKernel, "rt-kernel", false, "Enable Real Time Kernel (required)")
-	root.PersistentFlags().BoolVar(pcArgs.UserLevelNetworking, "user-level-networking", false, "Run with User level Networking(DPDK) enabled")
-	root.PersistentFlags().StringVar(&pcArgs.PowerConsumptionMode, "power-consumption-mode", defaultLatency, fmt.Sprintf("The power consumption mode.  [Valid values: %s]", strings.Join(validPowerConsumptionModes, ", ")))
-	root.PersistentFlags().StringVar(&pcArgs.MustGatherDirPath, "must-gather-dir-path", "must-gather", "Must gather directory path")
-	root.PersistentFlags().StringVar(&pcArgs.ProfileName, "profile-name", "performance", "Name of the performance profile to be created")
-	root.PersistentFlags().StringVar(&pcArgs.TMPolicy, "topology-manager-policy", kubeletconfig.RestrictedTopologyManagerPolicy, fmt.Sprintf("Kubelet Topology Manager Policy of the performance profile to be created. [Valid values: %s, %s, %s]", kubeletconfig.SingleNumaNodeTopologyManagerPolicy, kubeletconfig.BestEffortTopologyManagerPolicy, kubeletconfig.RestrictedTopologyManagerPolicy))
-	root.PersistentFlags().StringVar(&pcArgs.Info, "info", infoModeLog, fmt.Sprintf("Show cluster information; requires --must-gather-dir-path, ignore the other arguments. [Valid values: %s]", strings.Join(validInfoModes, ", ")))
-	root.PersistentFlags().BoolVar(pcArgs.PerPodPowerManagement, "per-pod-power-management", false, "Enable Per Pod Power Management")
-	root.PersistentFlags().BoolVar(&pcArgs.EnableHardwareTuning, "enable-hardware-tuning", false, "Enable setting maximum cpu frequencies")
+	initFlags(root.PersistentFlags(), pcArgs)
 
 	return root
+}
+
+func initFlags(flags *pflag.FlagSet, pcArgs *ProfileCreatorArgs) {
+	flags.IntVar(&pcArgs.ReservedCPUCount, "reserved-cpu-count", 0, "Number of reserved CPUs (required)")
+	flags.IntVar(&pcArgs.OfflinedCPUCount, "offlined-cpu-count", 0, "Number of offlined CPUs")
+	flags.BoolVar(&pcArgs.SplitReservedCPUsAcrossNUMA, "split-reserved-cpus-across-numa", false, "Split the Reserved CPUs across NUMA nodes")
+	flags.StringVar(&pcArgs.MCPName, "mcp-name", "", "MCP name corresponding to the target machines (required)")
+	flags.BoolVar(&pcArgs.DisableHT, "disable-ht", false, "Disable Hyperthreading")
+	flags.BoolVar(&pcArgs.RTKernel, "rt-kernel", false, "Enable Real Time Kernel (required)")
+	flags.BoolVar(pcArgs.UserLevelNetworking, "user-level-networking", false, "Run with User level Networking(DPDK) enabled")
+	flags.StringVar(&pcArgs.PowerConsumptionMode, "power-consumption-mode", defaultLatency, fmt.Sprintf("The power consumption mode.  [Valid values: %s]", strings.Join(validPowerConsumptionModes, ", ")))
+	flags.StringVar(&pcArgs.MustGatherDirPath, "must-gather-dir-path", "must-gather", "Must gather directory path")
+	flags.StringVar(&pcArgs.ProfileName, "profile-name", "performance", "Name of the performance profile to be created")
+	flags.StringVar(&pcArgs.TMPolicy, "topology-manager-policy", kubeletconfig.RestrictedTopologyManagerPolicy, fmt.Sprintf("Kubelet Topology Manager Policy of the performance profile to be created. [Valid values: %s, %s, %s]", kubeletconfig.SingleNumaNodeTopologyManagerPolicy, kubeletconfig.BestEffortTopologyManagerPolicy, kubeletconfig.RestrictedTopologyManagerPolicy))
+	flags.StringVar(&pcArgs.Info, "info", infoModeLog, fmt.Sprintf("Shows cluster information; requires --must-gather-dir-path, ignores other arguments. [Valid values: %s]", strings.Join(validInfoModes, ", ")))
+	flags.BoolVar(pcArgs.PerPodPowerManagement, "per-pod-power-management", false, "Enable Per Pod Power Management")
+	flags.BoolVar(&pcArgs.EnableHardwareTuning, "enable-hardware-tuning", false, "Enable setting maximum cpu frequencies")
+}
+
+func executeInfoMode(cmd *cobra.Command) error {
+	infoMode := cmd.Flag("info").Value.String()
+	if err := validateFlag("info", infoMode, validInfoModes); err != nil {
+		return err
+	}
+
+	missingRequiredFlags := checkRequiredFlags(cmd, "must-gather-dir-path")
+	if len(missingRequiredFlags) > 0 {
+		return fmt.Errorf("missing required flags: %s", strings.Join(argNameToFlag(missingRequiredFlags), ", "))
+	}
+
+	mustGatherDirPath := cmd.Flag("must-gather-dir-path").Value.String()
+	cluster, err := getClusterData(mustGatherDirPath)
+	if err != nil {
+		return fmt.Errorf("failed to parse the cluster data: %v", err)
+	}
+
+	clusterInfo := makeClusterInfoFromClusterData(cluster)
+	if infoMode == infoModeJSON {
+		if err := showClusterInfoJSON(clusterInfo); err != nil {
+			return fmt.Errorf("unable to show cluster info %w", err)
+		}
+	} else {
+		showClusterInfoLog(clusterInfo)
+	}
+	return nil
 }
 
 func checkRequiredFlags(cmd *cobra.Command, argNames ...string) []string {
