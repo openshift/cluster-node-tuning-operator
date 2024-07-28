@@ -185,8 +185,8 @@ func NewRootCommand() *cobra.Command {
 				return err
 			}
 
-			err = createProfile(*profileData)
-			return err
+			profile := makePerformanceProfileFrom(profileData)
+			return writeProfile(profile, profileData.enableHardwareTuning)
 		},
 	}
 
@@ -578,7 +578,7 @@ type ProfileCreatorArgs struct {
 	EnableHardwareTuning        bool   `json:"enable-hardware-tuning,omitempty"`
 }
 
-func createProfile(profileData ProfileData) error {
+func makePerformanceProfileFrom(profileData *ProfileData) *performancev2.PerformanceProfile {
 	reserved := performancev2.CPUSet(profileData.reservedCPUs)
 
 	isolated := performancev2.CPUSet(profileData.isolatedCPUs)
@@ -640,14 +640,17 @@ func createProfile(profileData ProfileData) error {
 			UserLevelNetworking: profileData.userLevelNetworking,
 		}
 	}
+	return profile
+}
 
+func writeProfile(obj runtime.Object, enableHardwareTuning bool) error {
 	// write CSV to out dir
 	writer := strings.Builder{}
-	if err := MarshallObject(&profile, &writer); err != nil {
+	if err := MarshallObject(obj, &writer); err != nil {
 		return err
 	}
 
-	if profileData.enableHardwareTuning {
+	if enableHardwareTuning {
 		if _, err := writer.Write([]byte(hardwareTuningMessage)); err != nil {
 			return err
 		}
