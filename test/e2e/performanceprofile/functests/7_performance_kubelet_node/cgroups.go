@@ -14,9 +14,12 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/cpuset"
@@ -523,6 +526,158 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					Expect(ovnContainerCpusetAfterReboot).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", ovnContainerCpusetAfterReboot.String(), cpumask.String())
 				}
 			})
+
+			// Automates OCPBUGS-35347: ovs-vswitchd is using isolated cpu pool instead of reserved pool
+			It("[test_id:75257] verify ovs-switchd threads inherit cpu affinity", func() {
+				checkCpuCount(context.TODO(), workerRTNode)
+				By("Get Thread Affinity of ovs-vswitchd process")
+				//Get ovs-switchd thread affinity
+				threadAffinity, err := ovsSwitchdThreadAffinity(ctx, workerRTNode)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Verify thread affinity contains all the online cpu's
+				for _, line := range threadAffinity {
+					if line != "" {
+						cpumask := strings.Split(line, ":")
+						threadsCpuset, err := cpuset.Parse(strings.TrimSpace(cpumask[1]))
+						Expect(err).ToNot(HaveOccurred())
+						Expect(threadsCpuset).To(Equal(onlineCPUSet))
+					}
+				}
+
+				// create deployment with 2 replicas and each pod have 2 cpus
+				var dp *appsv1.Deployment
+				// create a deployment to deploy gu pods
+				dp = newDeployment()
+				testNode := make(map[string]string)
+				testNode["kubernetes.io/hostname"] = workerRTNode.Name
+				dp.Spec.Template.Spec.NodeSelector = testNode
+				err = testclient.DataPlaneClient.Create(ctx, dp)
+				Expect(err).ToNot(HaveOccurred(), "Unable to create Deployment")
+
+				// Delete deployment
+				defer func() {
+					// delete deployment
+					By("Delete Deployment")
+					testlog.Infof("Deleting Deployment %v", dp.Name)
+					err := testclient.Client.Delete(ctx, dp)
+					Expect(err).ToNot(HaveOccurred())
+				}()
+
+				testlog.Info("Get the pods list form the deployment")
+				// Get pods from the deployment
+				listOptions := &client.ListOptions{
+					Namespace:     dp.Namespace,
+					FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": workerRTNode.Name}),
+					LabelSelector: labels.SelectorFromSet(labels.Set{"type": "telco"}),
+				}
+				podList := &v1.PodList{}
+				dpObj := client.ObjectKeyFromObject(dp)
+				Eventually(func() bool {
+					if err := testclient.DataPlaneClient.List(context.TODO(), podList, listOptions); err != nil {
+						return false
+					}
+					if err = testclient.DataPlaneClient.Get(context.TODO(), dpObj, dp); err != nil {
+						return false
+					}
+					if dp.Status.ReadyReplicas != int32(2) {
+						testlog.Warningf("Waiting for deployment: %q to have %d replicas ready, current number of replicas: %d", dpObj.String(), int32(2), dp.Status.ReadyReplicas)
+						return false
+					}
+					for _, s := range podList.Items[0].Status.ContainerStatuses {
+						if s.Ready == false {
+							return false
+						}
+					}
+					return true
+				}, 10*time.Second, 5*time.Second).Should(BeTrue())
+				// Post Deployment verify ovs-vswitchd thread affinity
+				testlog.Info("Get ovs-vswitchd threads affinity post deployment")
+				postDeploymentThreadAffinity, err := ovsSwitchdThreadAffinity(ctx, workerRTNode)
+				Expect(err).ToNot(HaveOccurred())
+				for _, pod := range podList.Items {
+					cmd := []string{"taskset", "-pc", "1"}
+					outputb, err := pods.ExecCommandOnPod(testclient.K8sClient, &pod, "", cmd)
+					Expect(err).ToNot(HaveOccurred())
+					testpodCpus := bytes.Split(outputb, []byte(":"))
+					testlog.Infof("%v pod is using cpus %v", pod.Name, string(testpodCpus[1]))
+					podcpus, err := cpuset.Parse(strings.TrimSpace(string(testpodCpus[1])))
+					for _, line := range postDeploymentThreadAffinity {
+						if line != "" {
+							cpumask := strings.Split(line, ":")
+							threadsCpuset, err := cpuset.Parse(strings.TrimSpace(cpumask[1]))
+							Expect(err).ToNot(HaveOccurred())
+							testlog.Infof("ovs-switchd thread CpuAffinity: %s, pod %s Affinity: %s", threadsCpuset.String(), pod.Name, podcpus.String())
+							Expect(podcpus.IsSubsetOf(threadsCpuset)).To(Equal(false))
+						}
+					}
+				}
+
+				// Delete one of the pods of the deployment so that
+				// the new pod picks up new set of cpus(or not) and verify ovs-vswitchd
+				// process adjusts it's affinity accordingly
+				testlog.Infof("Deleting one of the pods of the deployment %q", dpObj.String())
+				podToDelete := podList.Items[0]
+				err = testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(&podToDelete), &podToDelete)
+				Expect(err).ToNot(HaveOccurred())
+				err = testclient.DataPlaneClient.Delete(ctx, &podToDelete)
+				Expect(err).ToNot(HaveOccurred())
+				err = pods.WaitForDeletion(ctx, &podToDelete, pods.DefaultDeletionTimeout*time.Second)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(func() bool {
+					err = testclient.DataPlaneClient.Get(context.TODO(), dpObj, dp)
+					if dp.Status.ReadyReplicas != int32(2) {
+						testlog.Warningf("Waiting for deployment: %q to have %d replicas ready, current number of replicas: %d", dpObj.String(), int32(2), dp.Status.ReadyReplicas)
+						return false
+					}
+					return true
+				}).WithTimeout(time.Minute*5).WithPolling(time.Second*30).Should(BeTrue(), "deployment %q failed to have %d running replicas within the defined period", dpObj.String(), int32(2))
+
+				// Get pods from the deployment
+				listOptions = &client.ListOptions{
+					Namespace:     dp.Namespace,
+					FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": workerRTNode.Name}),
+					LabelSelector: labels.SelectorFromSet(labels.Set{"type": "telco"}),
+				}
+				podList = &v1.PodList{}
+				Eventually(func() bool {
+					if err := testclient.DataPlaneClient.List(context.TODO(), podList, listOptions); err != nil {
+						return false
+					}
+					if len(podList.Items) < 1 {
+						return false
+					}
+					for _, s := range podList.Items[0].Status.ContainerStatuses {
+						if s.Ready == false {
+							return false
+						}
+					}
+					return true
+				}, 10*time.Second, 5*time.Second).Should(BeTrue())
+				// Post deletion of deployment pods verify ovs-vswitchd thread affinity
+				refresshedThreadAffinity, err := ovsSwitchdThreadAffinity(ctx, workerRTNode)
+				Expect(err).ToNot(HaveOccurred())
+				for _, pod := range podList.Items {
+					cmd := []string{"taskset", "-pc", "1"}
+					outputb, err := pods.ExecCommandOnPod(testclient.K8sClient, &pod, "", cmd)
+					Expect(err).ToNot(HaveOccurred())
+					testpodCpus := bytes.Split(outputb, []byte(":"))
+					testlog.Infof("%v pod is using cpus %v", pod.Name, string(testpodCpus[1]))
+					podcpus, err := cpuset.Parse(strings.TrimSpace(string(testpodCpus[1])))
+					for _, line := range refresshedThreadAffinity {
+						if line != "" {
+							cpumask := strings.Split(line, ":")
+							threadsCpuset, err := cpuset.Parse(strings.TrimSpace(cpumask[1]))
+							Expect(err).ToNot(HaveOccurred())
+							testlog.Infof("ovs-switchd thread CpuAffinity: %s, pod %s Affinity: %s", threadsCpuset.String(), pod.Name, podcpus.String())
+							Expect(podcpus.IsSubsetOf(threadsCpuset)).To(Equal(false))
+						}
+					}
+				}
+
+			})
+
 			AfterAll(func() {
 				By("Reverting the Profile")
 				profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
@@ -762,4 +917,21 @@ func taskSet(ctx context.Context, pid string, workerRTNode *corev1.Node) cpuset.
 	ctnCpuset, err := cpuset.Parse(cpus)
 	Expect(err).ToNot(HaveOccurred(), "Unable to parse %s", cpus)
 	return ctnCpuset
+}
+
+// ovsSwitchdThreadAffinity returns cpu affinity of ovs-vswitchd threads
+func ovsSwitchdThreadAffinity(ctx context.Context, workerRTNode *corev1.Node) ([]string, error) {
+	cmd := []string{"pidof", "ovs-vswitchd"}
+	switchdPidB, err := nodes.ExecCommand(ctx, workerRTNode, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get pid of ovs-vswitchd process")
+	}
+	ovsswitchdPid := strings.TrimSpace(string(switchdPidB))
+	affinity := []string{"taskset", "-apc", ovsswitchdPid}
+	out, err := nodes.ExecCommand(ctx, workerRTNode, affinity)
+	if err != nil {
+		return nil, fmt.Errorf("unable to fetch thread affinity of ovs-vswitchd process")
+	}
+	threadAffinity := strings.Split(string(out), "\n")
+	return threadAffinity, nil
 }
