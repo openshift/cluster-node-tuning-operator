@@ -72,6 +72,21 @@ func configDaemonMode() (func(), error) {
 	return restoreF, nil
 }
 
+func TunedRsyncEtcToHost() error {
+	const (
+		source = "/etc/tuned.orig/"
+		target = ocpTunedHome + "/tuned"
+	)
+
+	cmd := exec.Command("rsync", "--delete", "-av", source, target)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("rsync of %q to %q failed: %v\n%s", source, target, err, out)
+	}
+
+	return nil
+}
+
 func TunedRunNoDaemon(timeout time.Duration) error {
 	var (
 		cmd    *exec.Cmd
