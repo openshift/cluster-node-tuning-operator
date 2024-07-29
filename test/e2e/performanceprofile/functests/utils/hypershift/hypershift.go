@@ -20,10 +20,9 @@ func init() {
 
 const (
 	ManagementClusterKubeConfigEnv = "HYPERSHIFT_MANAGEMENT_CLUSTER_KUBECONFIG"
-	ManagementClusterNamespaceEnv  = "HYPERSHIFT_MANAGEMENT_CLUSTER_NAMESPACE"
-	HostedClusterKubeConfigEnv     = "HYPERSHIFT_HOSTED_CLUSTER_KUBECONFIG"
+	HostedControlPlaneNamespaceEnv = "HYPERSHIFT_HOSTED_CONTROL_PLANE_NAMESPACE"
+	HostedClusterKubeConfigEnv     = "KUBECONFIG"
 	HostedClusterNameEnv           = "CLUSTER_NAME"
-	NodePoolNamespace              = "clusters"
 )
 
 func BuildControlPlaneClient() (client.Client, error) {
@@ -59,9 +58,9 @@ func GetHostedClusterName() (string, error) {
 }
 
 func GetManagementClusterNamespace() (string, error) {
-	ns, ok := os.LookupEnv(ManagementClusterNamespaceEnv)
+	ns, ok := os.LookupEnv(HostedControlPlaneNamespaceEnv)
 	if !ok {
-		return "", fmt.Errorf("failed to retrieve management cluster namespace; %q environment var is not set", ManagementClusterNamespaceEnv)
+		return "", fmt.Errorf("failed to retrieve management cluster namespace; %q environment var is not set", HostedControlPlaneNamespaceEnv)
 	}
 	return ns, nil
 }
