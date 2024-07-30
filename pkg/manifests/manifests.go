@@ -76,9 +76,11 @@ func TunedDaemonSet() *appsv1.DaemonSet {
 	ds.Spec.Template.Spec.Containers[0].Image = imageTuned
 
 	for i := range ds.Spec.Template.Spec.Containers[0].Env {
-		if ds.Spec.Template.Spec.Containers[0].Env[i].Name == "RELEASE_VERSION" {
+		switch ds.Spec.Template.Spec.Containers[0].Env[i].Name {
+		case "RELEASE_VERSION":
 			ds.Spec.Template.Spec.Containers[0].Env[i].Value = os.Getenv("RELEASE_VERSION")
-			break
+		case "CLUSTER_NODE_TUNED_IMAGE":
+			ds.Spec.Template.Spec.Containers[0].Env[i].Value = os.Getenv("CLUSTER_NODE_TUNED_IMAGE")
 		}
 	}
 

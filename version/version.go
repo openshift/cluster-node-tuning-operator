@@ -1,5 +1,9 @@
 package version
 
+const (
+	OperandFilename = "openshift-tuned"
+)
+
 var (
 	// Version is the operator version
 	Version = "0.0.1"

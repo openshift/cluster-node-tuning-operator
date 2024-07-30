@@ -8,12 +8,12 @@ COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_o
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/performance-profile-creator /usr/bin/
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/gather-sysinfo /usr/bin/
 COPY manifests/*.yaml manifests/image-references /manifests/
-ENV APP_ROOT=/var/lib/tuned
+ENV APP_ROOT=/var/lib/ocp-tuned
 ENV PATH=${APP_ROOT}/bin:${PATH}
 ENV HOME=${APP_ROOT}
+ENV SYSTEMD_IGNORE_CHROOT=1
 WORKDIR ${APP_ROOT}
 COPY assets ${APP_ROOT}
-COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/openshift-tuned /usr/bin/
 RUN INSTALL_PKGS=" \
       tuned tuned-profiles-atomic tuned-profiles-cpu-partitioning tuned-profiles-mssql tuned-profiles-nfv tuned-profiles-nfv-guest \
       tuned-profiles-nfv-host tuned-profiles-openshift tuned-profiles-oracle tuned-profiles-postgresql tuned-profiles-realtime \
@@ -21,7 +21,8 @@ RUN INSTALL_PKGS=" \
       nmap-ncat procps-ng pciutils" && \
     mkdir -p /etc/grub.d/ /boot && \
     dnf install --setopt=tsflags=nodocs -y $INSTALL_PKGS && \
-    rm -rf /var/lib/tuned/tuned && \
+    rm -rf /var/lib/ocp-tuned/{tuned,performanceprofile} && \
+    sed -Ei 's|^#?\s*enable_unix_socket\s*=.*$|enable_unix_socket = 1|;s|^#?\s*rollback\s*=.*$|rollback = not_on_exit|' /etc/tuned/tuned-main.conf && \
     touch /etc/sysctl.conf $APP_ROOT/provider && \
     dnf clean all && \
     rm -rf /var/cache/yum ~/patches /root/rpms && \
