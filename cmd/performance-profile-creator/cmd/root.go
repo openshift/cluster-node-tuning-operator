@@ -166,8 +166,25 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to parse the cluster data: %v", err)
 			}
-
-			profile := makePerformanceProfileFrom(profileData)
+			mcps, err := profilecreator.GetMCPList(mustGatherDirPath)
+			if err != nil {
+				return fmt.Errorf("failed to get the MCP list under %s: %v", mustGatherDirPath, err)
+			}
+			mcpSelector, err := profilecreator.GetMCPSelector(mcp, mcps)
+			if err != nil {
+				return fmt.Errorf("failed to get the MCP selector for MCP %s: %w", mcp.Name, err)
+			}
+			if err := profilecreator.EnsureNodesHaveTheSameHardware(nodesHandlers); err != nil {
+				return fmt.Errorf("targeted nodes differ: %v", err)
+			}
+			// We make sure that the matched Nodes are the same
+			// Assumption here is moving forward matchedNodes[0] is representative of how all the nodes are
+			// same from hardware topology point of view
+			profileData, err := makeProfileDataFrom(nodesHandlers[0], profileCreatorArgsFromFlags, mcp.Spec.NodeSelector, mcpSelector)
+			if err != nil {
+				return fmt.Errorf("failed to make profile data from node handler: %w", err)
+			}
+			profile := makePerformanceProfileFrom(*profileData)
 			return writeProfile(profile, profileData.enableHardwareTuning)
 		},
 	}
@@ -281,6 +298,58 @@ func makeNodesHandlersForMCP(mustGatherDirPath string, nodes []*corev1.Node, mcp
 	}
 	log.Infof("Nodes names targeted by %s MCP are: %s", mcpName, sb.String())
 	return handlers, selectedMCP, nil
+}
+
+func makeProfileDataFrom(nodeHandler *profilecreator.GHWHandler, args ProfileCreatorArgs, nodeSelector *metav1.LabelSelector, mcpSelector map[string]string) (*ProfileData, error) {
+	systemInfo, err := nodeHandler.GatherSystemInfo()
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute get system information: %v", err)
+	}
+	reservedCPUs, isolatedCPUs, offlinedCPUs, err := profilecreator.CalculateCPUSets(systemInfo, args.ReservedCPUCount, args.OfflinedCPUCount, args.SplitReservedCPUsAcrossNUMA, args.DisableHT, args.PowerConsumptionMode == ultraLowLatency)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute the reserved and isolated CPUs: %v", err)
+	}
+	log.Infof("%d reserved CPUs allocated: %v ", reservedCPUs.Size(), reservedCPUs.String())
+	log.Infof("%d isolated CPUs allocated: %v", isolatedCPUs.Size(), isolatedCPUs.String())
+	kernelArgs := profilecreator.GetAdditionalKernelArgs(args.DisableHT)
+	profileData := &ProfileData{
+		reservedCPUs:              reservedCPUs.String(),
+		offlinedCPUs:              offlinedCPUs.String(),
+		isolatedCPUs:              isolatedCPUs.String(),
+		nodeSelector:              nodeSelector,
+		mcpSelector:               mcpSelector,
+		performanceProfileName:    args.ProfileName,
+		topologyPolicy:            args.TMPolicy,
+		rtKernel:                  args.RTKernel,
+		additionalKernelArgs:      kernelArgs,
+		userLevelNetworking:       args.UserLevelNetworking,
+		disableHT:                 args.DisableHT,
+		perPodPowerManagementHint: args.PerPodPowerManagement,
+		enableHardwareTuning:      args.EnableHardwareTuning,
+	}
+
+	// setting workload hints
+	switch args.PowerConsumptionMode {
+	case defaultLatency:
+		if profileData.rtKernel {
+			return nil, fmt.Errorf(
+				"%v power consumption mode is not available with real-time kernel, please use one of %v modes",
+				defaultLatency, validPowerConsumptionModes[1:],
+			)
+		}
+	case lowLatency:
+		profileData.realtimeHint = ptr.To(true)
+	case ultraLowLatency:
+		profileData.realtimeHint = ptr.To(true)
+		profileData.highPowerConsumptionHint = ptr.To(true)
+		if profileData.perPodPowerManagementHint != nil && *profileData.perPodPowerManagementHint {
+			return nil, fmt.Errorf(
+				"please use one of %v power consumption modes together with the perPodPowerManagement",
+				validPowerConsumptionModes[:2],
+			)
+		}
+	}
+	return profileData, nil
 }
 
 func validateMustGatherDirPath(path string) error {
@@ -478,100 +547,6 @@ func getDataFromFlags(cmd *cobra.Command) (ProfileCreatorArgs, error) {
 	return creatorArgs, nil
 }
 
-func getProfileData(args ProfileCreatorArgs, cluster ClusterData) (*ProfileData, error) {
-	mcps := make([]*machineconfigv1.MachineConfigPool, len(cluster))
-	mcpNames := make([]string, len(cluster))
-	var mcp *machineconfigv1.MachineConfigPool
-
-	i := 0
-	for m := range cluster {
-		mcps[i] = m
-		mcpNames[i] = m.Name
-		if m.Name == args.MCPName {
-			mcp = m
-		}
-		i++
-	}
-
-	if mcp == nil {
-		return nil, fmt.Errorf("'%s' MCP does not exist, valid values are %v", args.MCPName, mcpNames)
-	}
-
-	mcpSelector, err := profilecreator.GetMCPSelector(mcp, mcps)
-	if err != nil {
-		return nil, fmt.Errorf("failed to compute the MCP selector: %v", err)
-	}
-
-	if len(cluster[mcp]) == 0 {
-		return nil, fmt.Errorf("no schedulable nodes are associated with '%s' MCP", args.MCPName)
-	}
-
-	var matchedNodeNames []string
-	for _, nodeHandler := range cluster[mcp] {
-		matchedNodeNames = append(matchedNodeNames, nodeHandler.Node.GetName())
-	}
-	log.Infof("Nodes targeted by %s MCP are: %v", args.MCPName, matchedNodeNames)
-	err = profilecreator.EnsureNodesHaveTheSameHardware(cluster[mcp])
-	if err != nil {
-		return nil, fmt.Errorf("targeted nodes differ: %v", err)
-	}
-
-	// We make sure that the matched Nodes are the same
-	// Assumption here is moving forward matchedNodes[0] is representative of how all the nodes are
-	// same from hardware topology point of view
-
-	nodeHandle := cluster[mcp][0]
-	systemInfo, err := nodeHandle.GatherSystemInfo()
-	if err != nil {
-		return nil, fmt.Errorf("failed to compute get system information: %v", err)
-	}
-	reservedCPUs, isolatedCPUs, offlinedCPUs, err := profilecreator.CalculateCPUSets(systemInfo, args.ReservedCPUCount, args.OfflinedCPUCount, args.SplitReservedCPUsAcrossNUMA, args.DisableHT, args.PowerConsumptionMode == ultraLowLatency)
-	if err != nil {
-		return nil, fmt.Errorf("failed to compute the reserved and isolated CPUs: %v", err)
-	}
-	log.Infof("%d reserved CPUs allocated: %v ", reservedCPUs.Size(), reservedCPUs.String())
-	log.Infof("%d isolated CPUs allocated: %v", isolatedCPUs.Size(), isolatedCPUs.String())
-	kernelArgs := profilecreator.GetAdditionalKernelArgs(args.DisableHT)
-	profileData := &ProfileData{
-		reservedCPUs:              reservedCPUs.String(),
-		offlinedCPUs:              offlinedCPUs.String(),
-		isolatedCPUs:              isolatedCPUs.String(),
-		nodeSelector:              mcp.Spec.NodeSelector,
-		mcpSelector:               mcpSelector,
-		performanceProfileName:    args.ProfileName,
-		topologyPolicy:            args.TMPolicy,
-		rtKernel:                  args.RTKernel,
-		additionalKernelArgs:      kernelArgs,
-		userLevelNetworking:       args.UserLevelNetworking,
-		disableHT:                 args.DisableHT,
-		perPodPowerManagementHint: args.PerPodPowerManagement,
-		enableHardwareTuning:      args.EnableHardwareTuning,
-	}
-
-	// setting workload hints
-	switch args.PowerConsumptionMode {
-	case defaultLatency:
-		if profileData.rtKernel {
-			return nil, fmt.Errorf(
-				"%v power consumption mode is not available with real-time kernel, please use one of %v modes",
-				defaultLatency, validPowerConsumptionModes[1:],
-			)
-		}
-	case lowLatency:
-		profileData.realtimeHint = ptr.To(true)
-	case ultraLowLatency:
-		profileData.realtimeHint = ptr.To(true)
-		profileData.highPowerConsumptionHint = ptr.To(true)
-		if profileData.perPodPowerManagementHint != nil && *profileData.perPodPowerManagementHint {
-			return nil, fmt.Errorf(
-				"please use one of %v power consumption modes together with the perPodPowerManagement",
-				validPowerConsumptionModes[:2],
-			)
-		}
-	}
-	return profileData, nil
-}
-
 func validateFlag(name, value string, validValues []string) error {
 	if isStringInSlice(value, validValues) {
 		return nil
@@ -607,7 +582,7 @@ type ProfileCreatorArgs struct {
 	EnableHardwareTuning        bool   `json:"enable-hardware-tuning,omitempty"`
 }
 
-func makePerformanceProfileFrom(profileData *ProfileData) *performancev2.PerformanceProfile {
+func makePerformanceProfileFrom(profileData ProfileData) *performancev2.PerformanceProfile {
 	reserved := performancev2.CPUSet(profileData.reservedCPUs)
 
 	isolated := performancev2.CPUSet(profileData.isolatedCPUs)
