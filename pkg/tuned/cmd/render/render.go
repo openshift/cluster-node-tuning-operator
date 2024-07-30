@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/operator"
@@ -184,8 +185,7 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 	}
 
 	//Should run tuned
-	tunedCmd := tunedpkg.TunedCreateCmd(false)
-	err = tunedpkg.TunedRunNoDaemon(tunedCmd)
+	err = tunedpkg.TunedRunNoDaemon(0 * time.Second)
 	if err != nil {
 		klog.Errorf("Unable to run tuned error : %v", err)
 		return err

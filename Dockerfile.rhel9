@@ -13,17 +13,19 @@ ENV PATH=${APP_ROOT}/bin:${PATH}
 ENV HOME=${APP_ROOT}
 ENV SYSTEMD_IGNORE_CHROOT=1
 WORKDIR ${APP_ROOT}
-COPY assets ${APP_ROOT}
+COPY assets/bin /usr/local/bin
 RUN INSTALL_PKGS=" \
       tuned tuned-profiles-atomic tuned-profiles-cpu-partitioning tuned-profiles-mssql tuned-profiles-nfv tuned-profiles-nfv-guest \
       tuned-profiles-nfv-host tuned-profiles-openshift tuned-profiles-oracle tuned-profiles-postgresql tuned-profiles-realtime \
       tuned-profiles-sap tuned-profiles-sap-hana tuned-profiles-spectrumscale \
       nmap-ncat procps-ng pciutils" && \
-    mkdir -p /etc/grub.d/ /boot && \
+    mkdir -p /etc/grub.d/ /boot /var/lib/ocp-tuned && \
     dnf install --setopt=tsflags=nodocs -y $INSTALL_PKGS && \
-    rm -rf /var/lib/ocp-tuned/{tuned,performanceprofile} && \
-    sed -Ei 's|^#?\s*enable_unix_socket\s*=.*$|enable_unix_socket = 1|;s|^#?\s*rollback\s*=.*$|rollback = not_on_exit|' /etc/tuned/tuned-main.conf && \
-    touch /etc/sysctl.conf $APP_ROOT/provider && \
+    rm -rf /etc/tuned/recommend.d && \
+    echo auto > /etc/tuned/profile_mode && \
+    sed -Ei 's|^#?\s*enable_unix_socket\s*=.*$|enable_unix_socket = 1|;s|^#?\s*rollback\s*=.*$|rollback = not_on_exit|;s|^#?\s*profile_dirs\s*=.*$|profile_dirs = /var/lib/ocp-tuned/profiles,/usr/lib/tuned|' \
+      /etc/tuned/tuned-main.conf && \
+    touch /etc/sysctl.conf && \
     dnf clean all && \
     rm -rf /var/cache/yum ~/patches /root/rpms && \
     useradd -r -u 499 cluster-node-tuning-operator
