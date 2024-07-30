@@ -139,6 +139,10 @@ func NewRootCommand() *cobra.Command {
 		Use:   "performance-profile-creator",
 		Short: "A tool that automates creation of Performance Profiles",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			mustGatherDirPath := cmd.Flag("must-gather-dir-path").Value.String()
+			if err := validateMustGatherDirPath(mustGatherDirPath); err != nil {
+				return err
+			}
 			if cmd.Flag("info").Changed {
 				return executeInfoMode(cmd)
 			}
@@ -275,6 +279,20 @@ func getClusterData(mustGatherDirPath string) (ClusterData, error) {
 	}
 
 	return cluster, nil
+}
+
+func validateMustGatherDirPath(path string) error {
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return fmt.Errorf("must-gather path '%s' is not valid", path)
+	}
+	if err != nil {
+		return fmt.Errorf("can't access the must-gather path: %v", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("must-gather path '%s' is not a directory", path)
+	}
+	return nil
 }
 
 // NUMACellInfo describe a NUMA cell on a node
