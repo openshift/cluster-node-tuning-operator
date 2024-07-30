@@ -131,19 +131,21 @@ func NewRootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "performance-profile-creator",
 		Short: "A tool that automates creation of Performance Profiles",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			mustGatherDirPath := cmd.Flag("must-gather-dir-path").Value.String()
-			if err := validateMustGatherDirPath(mustGatherDirPath); err != nil {
-				return err
-			}
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			return validateMustGatherDirPath(pcArgs.MustGatherDirPath)
+		},
+		PreRunE: func(cmd *cobra.Command, args []string) error {
 			missingRequiredFlags := checkRequiredFlags(cmd, requiredFlags...)
 			if len(missingRequiredFlags) > 0 {
 				return fmt.Errorf("missing required flags: %s", strings.Join(argNameToFlag(missingRequiredFlags), ", "))
 			}
-
 			if err := validateProfileCreatorFlags(pcArgs); err != nil {
 				return err
 			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			mustGatherDirPath := pcArgs.MustGatherDirPath
 
 			nodes, err := profilecreator.GetNodeList(mustGatherDirPath)
 			if err != nil {
