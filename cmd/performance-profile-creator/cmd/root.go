@@ -22,7 +22,6 @@ import (
 	"io"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -153,16 +152,16 @@ func NewRootCommand() *cobra.Command {
 				return fmt.Errorf("missing required flags: %s", strings.Join(argNameToFlag(missingRequiredFlags), ", "))
 			}
 
+			if err := validateProfileCreatorFlags(pcArgs); err != nil {
+				return err
+			}
+
 			nodes, err := profilecreator.GetNodeList(mustGatherDirPath)
 			if err != nil {
 				return fmt.Errorf("failed to load the cluster nodes: %v", err)
 			}
 
-			profileCreatorArgsFromFlags, err := getDataFromFlags(cmd)
-			if err != nil {
-				return fmt.Errorf("failed to obtain data from flags %v", err)
-			}
-			nodesHandlers, mcp, err := makeNodesHandlersForMCP(mustGatherDirPath, nodes, profileCreatorArgsFromFlags.MCPName)
+			nodesHandlers, mcp, err := makeNodesHandlersForMCP(mustGatherDirPath, nodes, pcArgs.MCPName)
 			if err != nil {
 				return fmt.Errorf("failed to parse the cluster data: %v", err)
 			}
@@ -180,7 +179,7 @@ func NewRootCommand() *cobra.Command {
 			// We make sure that the matched Nodes are the same
 			// Assumption here is moving forward matchedNodes[0] is representative of how all the nodes are
 			// same from hardware topology point of view
-			profileData, err := makeProfileDataFrom(nodesHandlers[0], profileCreatorArgsFromFlags, mcp.Spec.NodeSelector, mcpSelector)
+			profileData, err := makeProfileDataFrom(nodesHandlers[0], pcArgs, mcp.Spec.NodeSelector, mcpSelector)
 			if err != nil {
 				return fmt.Errorf("failed to make profile data from node handler: %w", err)
 			}
@@ -208,6 +207,19 @@ func initFlags(flags *pflag.FlagSet, pcArgs *ProfileCreatorArgs) {
 	flags.StringVar(&pcArgs.Info, "info", infoModeLog, fmt.Sprintf("Shows cluster information; requires --must-gather-dir-path, ignores other arguments. [Valid values: %s]", strings.Join(validInfoModes, ", ")))
 	flags.BoolVar(pcArgs.PerPodPowerManagement, "per-pod-power-management", false, "Enable Per Pod Power Management")
 	flags.BoolVar(&pcArgs.EnableHardwareTuning, "enable-hardware-tuning", false, "Enable setting maximum cpu frequencies")
+}
+
+func validateProfileCreatorFlags(pcArgs *ProfileCreatorArgs) error {
+	if err := validateFlag("topology-manager-policy", pcArgs.TMPolicy, validTMPolicyValues); err != nil {
+		return fmt.Errorf("invalid value for topology-manager-policy flag specified: %w", err)
+	}
+	if pcArgs.TMPolicy == kubeletconfig.SingleNumaNodeTopologyManagerPolicy && pcArgs.SplitReservedCPUsAcrossNUMA {
+		return fmt.Errorf("not appropriate to split reserved CPUs in case of topology-manager-policy: %s", pcArgs.TMPolicy)
+	}
+	if err := validateFlag("power-consumption-mode", pcArgs.PowerConsumptionMode, validPowerConsumptionModes); err != nil {
+		return fmt.Errorf("invalid value for power-consumption-mode flag specified: %w", err)
+	}
+	return nil
 }
 
 func executeInfoMode(cmd *cobra.Command) error {
@@ -300,7 +312,7 @@ func makeNodesHandlersForMCP(mustGatherDirPath string, nodes []*corev1.Node, mcp
 	return handlers, selectedMCP, nil
 }
 
-func makeProfileDataFrom(nodeHandler *profilecreator.GHWHandler, args ProfileCreatorArgs, nodeSelector *metav1.LabelSelector, mcpSelector map[string]string) (*ProfileData, error) {
+func makeProfileDataFrom(nodeHandler *profilecreator.GHWHandler, args *ProfileCreatorArgs, nodeSelector *metav1.LabelSelector, mcpSelector map[string]string) (*ProfileData, error) {
 	systemInfo, err := nodeHandler.GatherSystemInfo()
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute get system information: %v", err)
@@ -461,90 +473,6 @@ func showClusterInfoLog(cInfo ClusterInfo) {
 		}
 		log.Infof("---")
 	}
-}
-func getDataFromFlags(cmd *cobra.Command) (ProfileCreatorArgs, error) {
-	creatorArgs := ProfileCreatorArgs{}
-	mustGatherDirPath := cmd.Flag("must-gather-dir-path").Value.String()
-	mcpName := cmd.Flag("mcp-name").Value.String()
-	reservedCPUCount, err := strconv.Atoi(cmd.Flag("reserved-cpu-count").Value.String())
-	if err != nil {
-		return creatorArgs, fmt.Errorf("failed to parse reserved-cpu-count flag: %v", err)
-	}
-	offlinedCPUCount, err := strconv.Atoi(cmd.Flag("offlined-cpu-count").Value.String())
-	if err != nil {
-		return creatorArgs, fmt.Errorf("failed to parse offlined-cpu-count flag: %v", err)
-	}
-	splitReservedCPUsAcrossNUMA, err := strconv.ParseBool(cmd.Flag("split-reserved-cpus-across-numa").Value.String())
-	if err != nil {
-		return creatorArgs, fmt.Errorf("failed to parse split-reserved-cpus-across-numa flag: %v", err)
-	}
-	profileName := cmd.Flag("profile-name").Value.String()
-	tmPolicy := cmd.Flag("topology-manager-policy").Value.String()
-	if err != nil {
-		return creatorArgs, fmt.Errorf("failed to parse topology-manager-policy flag: %v", err)
-	}
-	err = validateFlag("topology-manager-policy", tmPolicy, validTMPolicyValues)
-	if err != nil {
-		return creatorArgs, fmt.Errorf("invalid value for topology-manager-policy flag specified: %v", err)
-	}
-	if tmPolicy == kubeletconfig.SingleNumaNodeTopologyManagerPolicy && splitReservedCPUsAcrossNUMA {
-		return creatorArgs, fmt.Errorf("not appropriate to split reserved CPUs in case of topology-manager-policy: %v", tmPolicy)
-	}
-	powerConsumptionMode := cmd.Flag("power-consumption-mode").Value.String()
-	if err != nil {
-		return creatorArgs, fmt.Errorf("failed to parse power-consumption-mode flag: %v", err)
-	}
-	err = validateFlag("power-consumption-mode", powerConsumptionMode, validPowerConsumptionModes)
-	if err != nil {
-		return creatorArgs, fmt.Errorf("invalid value for power-consumption-mode flag specified: %v", err)
-	}
-
-	rtKernelEnabled, err := strconv.ParseBool(cmd.Flag("rt-kernel").Value.String())
-	if err != nil {
-		return creatorArgs, fmt.Errorf("failed to parse rt-kernel flag: %v", err)
-	}
-
-	htDisabled, err := strconv.ParseBool(cmd.Flag("disable-ht").Value.String())
-	if err != nil {
-		return creatorArgs, fmt.Errorf("failed to parse disable-ht flag: %v", err)
-	}
-
-	hwEnabled, err := strconv.ParseBool(cmd.Flag("enable-hardware-tuning").Value.String())
-	if err != nil {
-		return creatorArgs, fmt.Errorf("failed to parse enable-hardware-tuning flag: %v", err)
-	}
-
-	creatorArgs = ProfileCreatorArgs{
-		MustGatherDirPath:           mustGatherDirPath,
-		ProfileName:                 profileName,
-		ReservedCPUCount:            reservedCPUCount,
-		OfflinedCPUCount:            offlinedCPUCount,
-		SplitReservedCPUsAcrossNUMA: splitReservedCPUsAcrossNUMA,
-		MCPName:                     mcpName,
-		TMPolicy:                    tmPolicy,
-		RTKernel:                    rtKernelEnabled,
-		PowerConsumptionMode:        powerConsumptionMode,
-		DisableHT:                   htDisabled,
-		EnableHardwareTuning:        hwEnabled,
-	}
-
-	if cmd.Flag("user-level-networking").Changed {
-		userLevelNetworkingEnabled, err := strconv.ParseBool(cmd.Flag("user-level-networking").Value.String())
-		if err != nil {
-			return creatorArgs, fmt.Errorf("failed to parse user-level-networking flag: %v", err)
-		}
-		creatorArgs.UserLevelNetworking = &userLevelNetworkingEnabled
-	}
-
-	if cmd.Flag("per-pod-power-management").Changed {
-		perPodPowerManagementEnabled, err := strconv.ParseBool(cmd.Flag("per-pod-power-management").Value.String())
-		if err != nil {
-			return creatorArgs, fmt.Errorf("failed to parse user-level-networking flag: %v", err)
-		}
-		creatorArgs.PerPodPowerManagement = &perPodPowerManagementEnabled
-	}
-
-	return creatorArgs, nil
 }
 
 func validateFlag(name, value string, validValues []string) error {
