@@ -20,25 +20,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"k8s.io/apimachinery/pkg/runtime"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 
-	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator"
 	log "github.com/sirupsen/logrus"
-	"sigs.k8s.io/yaml"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	kubeletconfig "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/yaml"
+
+	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator"
 )
 
 const (
