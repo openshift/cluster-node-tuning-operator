@@ -103,7 +103,8 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 
 		for name, path := range mustGatherDirs {
 			cmdArgs := []string{
-				"--info=json",
+				"info",
+				"--json",
 				fmt.Sprintf("--must-gather-dir-path=%s", path),
 			}
 
