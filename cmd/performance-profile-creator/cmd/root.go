@@ -103,6 +103,7 @@ type ProfileData struct {
 	highPowerConsumptionHint  *bool
 	perPodPowerManagementHint *bool
 	enableHardwareTuning      bool
+	createForHypershift       bool
 }
 
 // ClusterData collects the cluster wide information, each mcp points to a list of ghw node handlers
@@ -145,7 +146,6 @@ func NewRootCommand() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mustGatherDirPath := pcArgs.MustGatherDirPath
 			nodes, err := listNodesForPool(pcArgs)
 			if err != nil {
 				return err
@@ -154,21 +154,13 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			mcps, err := profilecreator.GetMCPList(mustGatherDirPath)
-			if err != nil {
-				return fmt.Errorf("failed to get the MCP list under %s: %v", mustGatherDirPath, err)
-			}
-			mcpSelector, err := profilecreator.GetMCPSelector(mcp, mcps)
-			if err != nil {
-				return fmt.Errorf("failed to get the MCP selector for MCP %s: %w", mcp.Name, err)
-			}
 			if err := profilecreator.EnsureNodesHaveTheSameHardware(nodesHandlers); err != nil {
 				return fmt.Errorf("targeted nodes differ: %v", err)
 			}
 			// We make sure that the matched Nodes are the same
 			// Assumption here is moving forward matchedNodes[0] is representative of how all the nodes are
 			// same from hardware topology point of view
-			profileData, err := makeProfileDataFrom(nodesHandlers[0], pcArgs, mcp.Spec.NodeSelector, mcpSelector)
+			profileData, err := makeProfileDataFrom(nodesHandlers[0], pcArgs)
 			if err != nil {
 				return fmt.Errorf("failed to make profile data from node handler: %w", err)
 			}
@@ -289,7 +281,7 @@ func makeNodesHandlersForMCP(mustGatherDirPath string, nodes []*corev1.Node, mcp
 	return handlers, selectedMCP, nil
 }
 
-func makeProfileDataFrom(nodeHandler *profilecreator.GHWHandler, args *ProfileCreatorArgs, nodeSelector *metav1.LabelSelector, mcpSelector map[string]string) (*ProfileData, error) {
+func makeProfileDataFrom(nodeHandler *profilecreator.GHWHandler, args *ProfileCreatorArgs) (*ProfileData, error) {
 	systemInfo, err := nodeHandler.GatherSystemInfo()
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute get system information: %v", err)
@@ -305,8 +297,6 @@ func makeProfileDataFrom(nodeHandler *profilecreator.GHWHandler, args *ProfileCr
 		reservedCPUs:              reservedCPUs.String(),
 		offlinedCPUs:              offlinedCPUs.String(),
 		isolatedCPUs:              isolatedCPUs.String(),
-		nodeSelector:              nodeSelector,
-		mcpSelector:               mcpSelector,
 		performanceProfileName:    args.ProfileName,
 		topologyPolicy:            args.TMPolicy,
 		rtKernel:                  args.RTKernel,
@@ -336,6 +326,20 @@ func makeProfileDataFrom(nodeHandler *profilecreator.GHWHandler, args *ProfileCr
 				"please use one of %v power consumption modes together with the perPodPowerManagement",
 				validPowerConsumptionModes[:2],
 			)
+		}
+	}
+	profileData.createForHypershift, err = hypershift.IsHypershift(args.MustGatherDirPath)
+	if err != nil {
+		return nil, err
+	}
+	// on Hypershift the node selector does not have an actual meaning since all the nodes associated with the
+	// node pool get applied with the new profile.
+	// but still we have to have a value in the node selector to pass the validation on the hypershift operator side:
+	// https://github.com/openshift/hypershift/blob/bf0fa65e6f0f048e02076cf176379abbfd04134b/vendor/github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2/performanceprofile_validation.go#L203-L202
+	profileData.nodeSelector = metav1.SetAsLabelSelector(map[string]string{"node-role.kubernetes.io/worker": ""})
+	if !profileData.createForHypershift {
+		if err := setSelectorsFor(profileData, args); err != nil {
+			return nil, err
 		}
 	}
 	return profileData, nil
@@ -576,4 +580,27 @@ func listNodesForPool(args *ProfileCreatorArgs) ([]*corev1.Node, error) {
 		return nil, fmt.Errorf("failed to find MCP %s's nodes: %w", selectedMCP.Name, err)
 	}
 	return matchedNodes, nil
+}
+
+func setSelectorsFor(profileData *ProfileData, args *ProfileCreatorArgs) error {
+	mcps, err := profilecreator.GetMCPList(args.MustGatherDirPath)
+	if err != nil {
+		return fmt.Errorf("failed to get the MCP list under %s: %w", args.MustGatherDirPath, err)
+	}
+	var mcp *machineconfigv1.MachineConfigPool
+	for i := range mcps {
+		if mcps[i].Name == args.MCPName {
+			mcp = mcps[i]
+		}
+	}
+	if mcp == nil {
+		return fmt.Errorf("failed to find the MCP %s under must-gather path: %s", args.MCPName, args.MustGatherDirPath)
+	}
+	mcpSelector, err := profilecreator.GetMCPSelector(mcp, mcps)
+	if err != nil {
+		return fmt.Errorf("failed to get the MCP selector for MCP %s: %w", args.MCPName, err)
+	}
+	profileData.nodeSelector = mcp.Spec.NodeSelector
+	profileData.mcpSelector = mcpSelector
+	return nil
 }
