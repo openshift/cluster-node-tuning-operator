@@ -1,0 +1,93 @@
+---
+apiVersion: config.openshift.io/v1
+kind: Infrastructure
+metadata:
+  creationTimestamp: "2024-06-13T12:58:24Z"
+  generation: 1
+  managedFields:
+  - apiVersion: config.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:spec:
+        .: {}
+        f:cloudConfig:
+          .: {}
+          f:name: {}
+        f:platformSpec:
+          .: {}
+          f:baremetal:
+            .: {}
+            f:apiServerInternalIPs: {}
+            f:ingressIPs: {}
+            f:machineNetworks: {}
+          f:type: {}
+    manager: cluster-bootstrap
+    operation: Update
+    time: "2024-06-13T12:58:24Z"
+  - apiVersion: config.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:status:
+        .: {}
+        f:apiServerInternalURI: {}
+        f:apiServerURL: {}
+        f:controlPlaneTopology: {}
+        f:cpuPartitioning: {}
+        f:etcdDiscoveryDomain: {}
+        f:infrastructureName: {}
+        f:infrastructureTopology: {}
+        f:platform: {}
+        f:platformStatus:
+          .: {}
+          f:baremetal:
+            .: {}
+            f:apiServerInternalIP: {}
+            f:apiServerInternalIPs: {}
+            f:ingressIP: {}
+            f:ingressIPs: {}
+            f:loadBalancer:
+              .: {}
+              f:type: {}
+            f:machineNetworks: {}
+          f:type: {}
+    manager: cluster-bootstrap
+    operation: Update
+    subresource: status
+    time: "2024-06-13T12:58:24Z"
+  name: cluster
+  resourceVersion: "516"
+  uid: 0ebe4af5-4c3c-4faa-b9d4-718aad94d672
+spec:
+  cloudConfig:
+    name: ""
+  platformSpec:
+    baremetal:
+      apiServerInternalIPs:
+      - 10.8.34.57
+      ingressIPs:
+      - 10.8.34.65
+      machineNetworks:
+      - 10.8.34.0/24
+    type: BareMetal
+status:
+  apiServerInternalURI: https://api-int.cnfdf7.telco5gran.eng.rdu2.redhat.com:6443
+  apiServerURL: https://api.cnfdf7.telco5gran.eng.rdu2.redhat.com:6443
+  controlPlaneTopology: HighlyAvailable
+  cpuPartitioning: None
+  etcdDiscoveryDomain: ""
+  infrastructureName: cnfdf7-mqm94
+  infrastructureTopology: HighlyAvailable
+  platform: BareMetal
+  platformStatus:
+    baremetal:
+      apiServerInternalIP: 10.8.34.57
+      apiServerInternalIPs:
+      - 10.8.34.57
+      ingressIP: 10.8.34.65
+      ingressIPs:
+      - 10.8.34.65
+      loadBalancer:
+        type: OpenShiftManagedDefault
+      machineNetworks:
+      - 10.8.34.0/24
+    type: BareMetal
