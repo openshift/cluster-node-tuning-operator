@@ -161,7 +161,7 @@ func NewRootCommand() *cobra.Command {
 				return err
 			}
 			if err := profilecreator.EnsureNodesHaveTheSameHardware(nodesHandlers); err != nil {
-				return fmt.Errorf("targeted nodes differ: %v", err)
+				return fmt.Errorf("targeted nodes differ: %w", err)
 			}
 			// We make sure that the matched Nodes are the same
 			// Assumption here is moving forward matchedNodes[0] is representative of how all the nodes are
