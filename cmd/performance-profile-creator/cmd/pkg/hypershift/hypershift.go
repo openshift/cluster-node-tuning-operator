@@ -6,7 +6,11 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator"
 )
 
-const NodePoolLabel = "hypershift.openshift.io/nodePool"
+const (
+	NodePoolLabel              = "hypershift.openshift.io/nodePool"
+	HostedClusterNamespaceName = "clusters"
+	ConfigMapTuningKey         = "tuning"
+)
 
 func IsHypershift(mustGatherPath string) (bool, error) {
 	isHypershift, err := profilecreator.IsExternalControlPlaneCluster(mustGatherPath)

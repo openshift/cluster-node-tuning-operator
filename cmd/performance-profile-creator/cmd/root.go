@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -31,6 +32,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	serializer "k8s.io/apimachinery/pkg/runtime/serializer/json"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	kubeletconfig "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/yaml"
@@ -75,6 +78,7 @@ const (
 )
 
 var (
+	scheme                     = runtime.NewScheme()
 	validTMPolicyValues        = []string{kubeletconfig.SingleNumaNodeTopologyManagerPolicy, kubeletconfig.BestEffortTopologyManagerPolicy, kubeletconfig.RestrictedTopologyManagerPolicy}
 	validPowerConsumptionModes = []string{defaultLatency, lowLatency, ultraLowLatency}
 	hardwareTuningMessage      = `#HardwareTuning is an advanced feature, and only intended to be used if 
@@ -114,6 +118,7 @@ func init() {
 	log.SetFormatter(&log.TextFormatter{
 		DisableTimestamp: true,
 	})
+	utilruntime.Must(performancev2.AddToScheme(scheme))
 }
 
 // NewRootCommand returns entrypoint command to interact with all other commands
@@ -164,7 +169,10 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to make profile data from node handler: %w", err)
 			}
-			profile := makePerformanceProfileFrom(*profileData)
+			profile, err := makePerformanceProfileFrom(*profileData)
+			if err != nil {
+				return err
+			}
 			return writeProfile(profile, profileData.enableHardwareTuning)
 		},
 	}
@@ -394,7 +402,7 @@ type ProfileCreatorArgs struct {
 	EnableHardwareTuning        bool   `json:"enable-hardware-tuning,omitempty"`
 }
 
-func makePerformanceProfileFrom(profileData ProfileData) *performancev2.PerformanceProfile {
+func makePerformanceProfileFrom(profileData ProfileData) (runtime.Object, error) {
 	reserved := performancev2.CPUSet(profileData.reservedCPUs)
 
 	isolated := performancev2.CPUSet(profileData.isolatedCPUs)
@@ -456,7 +464,31 @@ func makePerformanceProfileFrom(profileData ProfileData) *performancev2.Performa
 			UserLevelNetworking: profileData.userLevelNetworking,
 		}
 	}
-	return profile
+	if profileData.createForHypershift {
+		yamlSerializer := serializer.NewSerializerWithOptions(
+			serializer.DefaultMetaFactory, scheme, scheme,
+			serializer.SerializerOptions{Yaml: true, Pretty: true, Strict: true})
+		buff := &bytes.Buffer{}
+		err := yamlSerializer.Encode(profile, buff)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize performance-profile: %w", err)
+		}
+		cm := &corev1.ConfigMap{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ConfigMap",
+				APIVersion: corev1.SchemeGroupVersion.String(),
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      profileData.performanceProfileName,
+				Namespace: hypershift.HostedClusterNamespaceName,
+			},
+			Data: map[string]string{
+				hypershift.ConfigMapTuningKey: buff.String(),
+			},
+		}
+		return cm, nil
+	}
+	return profile, nil
 }
 
 func writeProfile(obj runtime.Object, enableHardwareTuning bool) error {
