@@ -123,7 +123,6 @@ func NewRootCommand() *cobra.Command {
 
 	var requiredFlags = []string{
 		"reserved-cpu-count",
-		"mcp-name",
 		"rt-kernel",
 		"must-gather-dir-path",
 	}
@@ -146,7 +145,6 @@ func NewRootCommand() *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mustGatherDirPath := pcArgs.MustGatherDirPath
-
 			nodes, err := profilecreator.GetNodeList(mustGatherDirPath)
 			if err != nil {
 				return fmt.Errorf("failed to load the cluster nodes: %v", err)
@@ -199,6 +197,7 @@ func initFlags(flags *pflag.FlagSet, pcArgs *ProfileCreatorArgs) {
 	flags.StringVar(&pcArgs.TMPolicy, "topology-manager-policy", kubeletconfig.RestrictedTopologyManagerPolicy, fmt.Sprintf("Kubelet Topology Manager Policy of the performance profile to be created. [Valid values: %s, %s, %s]", kubeletconfig.SingleNumaNodeTopologyManagerPolicy, kubeletconfig.BestEffortTopologyManagerPolicy, kubeletconfig.RestrictedTopologyManagerPolicy))
 	flags.BoolVar(pcArgs.PerPodPowerManagement, "per-pod-power-management", false, "Enable Per Pod Power Management")
 	flags.BoolVar(&pcArgs.EnableHardwareTuning, "enable-hardware-tuning", false, "Enable setting maximum cpu frequencies")
+	flags.StringVar(&pcArgs.NodePoolName, "node-pool-name", "", "Node pool name corresponding to the target machines (HyperShift only)")
 }
 
 func validateProfileCreatorFlags(pcArgs *ProfileCreatorArgs) error {
@@ -210,6 +209,16 @@ func validateProfileCreatorFlags(pcArgs *ProfileCreatorArgs) error {
 	}
 	if err := validateFlag("power-consumption-mode", pcArgs.PowerConsumptionMode, validPowerConsumptionModes); err != nil {
 		return fmt.Errorf("invalid value for power-consumption-mode flag specified: %w", err)
+	}
+	if pcArgs.MCPName == "" && pcArgs.NodePoolName == "" {
+		return fmt.Errorf("--mcp-name or --node-pool-name options must be set")
+	}
+	if pcArgs.MCPName != "" && pcArgs.NodePoolName != "" {
+		return fmt.Errorf("--mcp-name and --node-pool-name options cannot be used together")
+	}
+	if pcArgs.NodePoolName == "" {
+		// NodePoolName is an alias of MCPName
+		pcArgs.NodePoolName = pcArgs.MCPName
 	}
 	return nil
 }
@@ -359,6 +368,7 @@ type ProfileCreatorArgs struct {
 	RTKernel                    bool   `json:"rt-kernel"`
 	UserLevelNetworking         *bool  `json:"user-level-networking,omitempty"`
 	MCPName                     string `json:"mcp-name"`
+	NodePoolName                string `json:"node-pool-name"`
 	TMPolicy                    string `json:"topology-manager-policy"`
 	PerPodPowerManagement       *bool  `json:"per-pod-power-management,omitempty"`
 	EnableHardwareTuning        bool   `json:"enable-hardware-tuning,omitempty"`
