@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
+	"github.com/openshift/cluster-node-tuning-operator/cmd/performance-profile-creator/cmd/pkg/hypershift"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator"
 )
@@ -145,14 +146,13 @@ func NewRootCommand() *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mustGatherDirPath := pcArgs.MustGatherDirPath
-			nodes, err := profilecreator.GetNodeList(mustGatherDirPath)
+			nodes, err := listNodesForPool(pcArgs)
 			if err != nil {
-				return fmt.Errorf("failed to load the cluster nodes: %v", err)
+				return err
 			}
-
-			nodesHandlers, mcp, err := makeNodesHandlersForMCP(mustGatherDirPath, nodes, pcArgs.MCPName)
+			nodesHandlers, err := makeNodesHandlers(pcArgs, nodes)
 			if err != nil {
-				return fmt.Errorf("failed to parse the cluster data: %v", err)
+				return err
 			}
 			mcps, err := profilecreator.GetMCPList(mustGatherDirPath)
 			if err != nil {
@@ -181,6 +181,22 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(NewInfoCommand(pcArgs))
 
 	return root
+}
+
+func makeNodesHandlers(args *ProfileCreatorArgs, nodes []*corev1.Node) ([]*profilecreator.GHWHandler, error) {
+	handlers := make([]*profilecreator.GHWHandler, len(nodes))
+	sb := strings.Builder{}
+	for i, node := range nodes {
+		handle, err := profilecreator.NewGHWHandler(args.MustGatherDirPath, node)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load node's GHW snapshot: %w", err)
+		}
+		handlers[i] = handle
+		sb.WriteString(node.Name + " ")
+	}
+	// NodePoolName is alias of MCPName
+	log.Infof("Nodes names targeted by %s pool are: %s", args.NodePoolName, sb.String())
+	return handlers, nil
 }
 
 func initFlags(flags *pflag.FlagSet, pcArgs *ProfileCreatorArgs) {
@@ -518,4 +534,46 @@ func MarshallObject(obj interface{}, writer io.Writer) error {
 	}
 
 	return nil
+}
+
+func listNodesForPool(args *ProfileCreatorArgs) ([]*corev1.Node, error) {
+	nodes, err := profilecreator.GetNodeList(args.MustGatherDirPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load the cluster nodes: %w", err)
+	}
+	isHypershift, err := hypershift.IsHypershift(args.MustGatherDirPath)
+	if err != nil {
+		return nil, err
+	}
+	if isHypershift {
+		var matchedNodes []*corev1.Node
+		for i := range nodes {
+			v, ok := nodes[i].Labels[hypershift.NodePoolLabel]
+			if !ok {
+				continue
+			}
+			if v == args.NodePoolName {
+				matchedNodes = append(matchedNodes, nodes[i])
+			}
+		}
+		return matchedNodes, nil
+	}
+	mcps, err := profilecreator.GetMCPList(args.MustGatherDirPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get the MCP list under %s: %w", args.MustGatherDirPath, err)
+	}
+	var selectedMCP *machineconfigv1.MachineConfigPool
+	for i := range mcps {
+		if mcps[i].Name == args.MCPName {
+			selectedMCP = mcps[i]
+		}
+	}
+	if selectedMCP == nil {
+		return nil, fmt.Errorf("failed to find the MCP %s under must-gather path: %s", args.MCPName, args.MustGatherDirPath)
+	}
+	matchedNodes, err := profilecreator.GetNodesForPool(selectedMCP, mcps, nodes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find MCP %s's nodes: %w", selectedMCP.Name, err)
+	}
+	return matchedNodes, nil
 }
