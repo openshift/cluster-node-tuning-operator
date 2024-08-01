@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 	kubeletconfig "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/yaml"
@@ -111,7 +112,7 @@ type ProfileData struct {
 }
 
 // ClusterData collects the cluster wide information, each mcp points to a list of ghw node handlers
-type ClusterData map[*machineconfigv1.MachineConfigPool][]*profilecreator.GHWHandler
+type ClusterData map[string][]*profilecreator.GHWHandler
 
 func init() {
 	log.SetOutput(os.Stderr)
@@ -155,7 +156,7 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			nodesHandlers, err := makeNodesHandlers(pcArgs, nodes)
+			nodesHandlers, err := makeNodesHandlers(pcArgs.MustGatherDirPath, pcArgs.NodePoolName, nodes)
 			if err != nil {
 				return err
 			}
@@ -183,11 +184,11 @@ func NewRootCommand() *cobra.Command {
 	return root
 }
 
-func makeNodesHandlers(args *ProfileCreatorArgs, nodes []*corev1.Node) ([]*profilecreator.GHWHandler, error) {
+func makeNodesHandlers(mustGatherDirPath, poolName string, nodes []*corev1.Node) ([]*profilecreator.GHWHandler, error) {
 	handlers := make([]*profilecreator.GHWHandler, len(nodes))
 	sb := strings.Builder{}
 	for i, node := range nodes {
-		handle, err := profilecreator.NewGHWHandler(args.MustGatherDirPath, node)
+		handle, err := profilecreator.NewGHWHandler(mustGatherDirPath, node)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load node's GHW snapshot: %w", err)
 		}
@@ -195,7 +196,7 @@ func makeNodesHandlers(args *ProfileCreatorArgs, nodes []*corev1.Node) ([]*profi
 		sb.WriteString(node.Name + " ")
 	}
 	// NodePoolName is alias of MCPName
-	log.Infof("Nodes names targeted by %s pool are: %s", args.NodePoolName, sb.String())
+	log.Infof("Nodes names targeted by %s pool are: %s", poolName, sb.String())
 	return handlers, nil
 }
 
@@ -257,36 +258,64 @@ func argNameToFlag(argNames []string) []string {
 	return flagNames
 }
 
-func makeNodesHandlersForMCP(mustGatherDirPath string, nodes []*corev1.Node, mcpName string) ([]*profilecreator.GHWHandler, *machineconfigv1.MachineConfigPool, error) {
-	mcps, err := profilecreator.GetMCPList(mustGatherDirPath)
+func makeClusterData(mustGatherDirPath string) (ClusterData, error) {
+	clusterData := ClusterData{}
+	nodes, err := profilecreator.GetNodeList(mustGatherDirPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get the MCP list under %s: %v", mustGatherDirPath, err)
+		return nil, fmt.Errorf("failed to load the cluster nodes: %v", err)
 	}
-	var selectedMCP *machineconfigv1.MachineConfigPool
-	for i := range mcps {
-		if mcps[i].Name == mcpName {
-			selectedMCP = mcps[i]
+	isHypershift, err := hypershift.IsHypershift(mustGatherDirPath)
+	if err != nil {
+		return nil, err
+	}
+	if isHypershift {
+		nodePoolNames := sets.NewString()
+		// create a set with all available nodePool names in the cluster
+		for i := range nodes {
+			name, ok := nodes[i].Labels[hypershift.NodePoolLabel]
+			if !ok {
+				continue
+			}
+			if !nodePoolNames.Has(name) {
+				nodePoolNames.Insert(name)
+			}
 		}
-	}
-	if selectedMCP == nil {
-		return nil, nil, fmt.Errorf("failed to find the MCP %s under must-gather path: %s", mcpName, mustGatherDirPath)
-	}
-	matchedNodes, err := profilecreator.GetNodesForPool(selectedMCP, mcps, nodes)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to find MCP %s's nodes: %v", selectedMCP.Name, err)
-	}
-	handlers := make([]*profilecreator.GHWHandler, len(matchedNodes))
-	sb := strings.Builder{}
-	for i, node := range matchedNodes {
-		handle, err := profilecreator.NewGHWHandler(mustGatherDirPath, node)
+		// classify the nodes per their matching nodePool name
+		for nodePoolName := range nodePoolNames {
+			var matchedNodes []*corev1.Node
+			for i := range nodes {
+				name, ok := nodes[i].Labels[hypershift.NodePoolLabel]
+				if !ok {
+					continue
+				}
+				if nodePoolName == name {
+					matchedNodes = append(matchedNodes, nodes[i])
+				}
+			}
+			handlers, err := makeNodesHandlers(mustGatherDirPath, nodePoolName, matchedNodes)
+			if err != nil {
+				return nil, err
+			}
+			clusterData[nodePoolName] = append(clusterData[nodePoolName], handlers...)
+		}
+	} else {
+		mcps, err := profilecreator.GetMCPList(mustGatherDirPath)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to load node's %s's GHW snapshot : %v", selectedMCP.Name, err)
+			return nil, fmt.Errorf("failed to get the MCP list under %s: %v", mustGatherDirPath, err)
 		}
-		handlers[i] = handle
-		sb.WriteString(node.Name + " ")
+		for i := range mcps {
+			matchedNodes, err := profilecreator.GetNodesForPool(mcps[i], mcps, nodes)
+			if err != nil {
+				return nil, fmt.Errorf("failed to find MCP %s's nodes: %v", mcps[i].Name, err)
+			}
+			handlers, err := makeNodesHandlers(mustGatherDirPath, mcps[i].Name, matchedNodes)
+			if err != nil {
+				return nil, err
+			}
+			clusterData[mcps[i].Name] = append(clusterData[mcps[i].Name], handlers...)
+		}
 	}
-	log.Infof("Nodes names targeted by %s MCP are: %s", mcpName, sb.String())
-	return handlers, selectedMCP, nil
+	return clusterData, nil
 }
 
 func makeProfileDataFrom(nodeHandler *profilecreator.GHWHandler, args *ProfileCreatorArgs) (*ProfileData, error) {

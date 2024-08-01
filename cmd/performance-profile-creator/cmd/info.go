@@ -8,8 +8,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-
-	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator"
 )
 
 const (
@@ -37,23 +35,10 @@ func NewInfoCommand(pcArgs *ProfileCreatorArgs) *cobra.Command {
 }
 
 func executeInfoMode(mustGatherDirPath string, infoOpts *infoOptions) error {
-	nodes, err := profilecreator.GetNodeList(mustGatherDirPath)
+	clusterData, err := makeClusterData(mustGatherDirPath)
 	if err != nil {
-		return fmt.Errorf("failed to load the cluster nodes: %v", err)
+		return fmt.Errorf("failed to parse the cluster data: %w", err)
 	}
-	mcps, err := profilecreator.GetMCPList(mustGatherDirPath)
-	if err != nil {
-		return fmt.Errorf("failed to get the MCP list under %s: %v", mustGatherDirPath, err)
-	}
-	clusterData := ClusterData{}
-	for _, mcp := range mcps {
-		nodesHandlers, _, err := makeNodesHandlersForMCP(mustGatherDirPath, nodes, mcp.Name)
-		if err != nil {
-			return fmt.Errorf("failed to parse the cluster data for mcp %s: %w", mcp.Name, err)
-		}
-		clusterData[mcp] = nodesHandlers
-	}
-
 	clusterInfo := makeClusterInfoFromClusterData(clusterData)
 	if infoOpts.jsonOutput {
 		if err := showClusterInfoJSON(clusterInfo); err != nil {
@@ -104,9 +89,9 @@ func (cInfo ClusterInfo) Sort() ClusterInfo {
 
 func makeClusterInfoFromClusterData(cluster ClusterData) ClusterInfo {
 	var cInfo ClusterInfo
-	for mcp, nodeHandlers := range cluster {
+	for poolName, nodeHandlers := range cluster {
 		mInfo := MCPInfo{
-			Name: mcp.Name,
+			Name: poolName,
 		}
 		for _, handle := range nodeHandlers {
 			topology, err := handle.SortedTopology()
