@@ -27,15 +27,15 @@ func NewInfoCommand(pcArgs *ProfileCreatorArgs) *cobra.Command {
 		Use:   "info",
 		Short: fmt.Sprintf("requires --must-gather-dir-path, ignores other arguments. [Valid values: %s,%s]", infoModeLog, infoModeJSON),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return executeInfoMode(pcArgs.MustGatherDirPath, &opts)
+			return executeInfoMode(pcArgs.MustGatherDirPath, pcArgs.createForHypershift, &opts)
 		},
 	}
 	info.Flags().BoolVar(&opts.jsonOutput, "json", false, "output as JSON")
 	return info
 }
 
-func executeInfoMode(mustGatherDirPath string, infoOpts *infoOptions) error {
-	clusterData, err := makeClusterData(mustGatherDirPath)
+func executeInfoMode(mustGatherDirPath string, createForHypershift bool, infoOpts *infoOptions) error {
+	clusterData, err := makeClusterData(mustGatherDirPath, createForHypershift)
 	if err != nil {
 		return fmt.Errorf("failed to parse the cluster data: %w", err)
 	}

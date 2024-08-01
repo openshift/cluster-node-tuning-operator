@@ -139,7 +139,15 @@ func NewRootCommand() *cobra.Command {
 		Use:   "performance-profile-creator",
 		Short: "A tool that automates creation of Performance Profiles",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			return validateMustGatherDirPath(pcArgs.MustGatherDirPath)
+			err := validateMustGatherDirPath(pcArgs.MustGatherDirPath)
+			if err != nil {
+				return err
+			}
+			pcArgs.createForHypershift, err = hypershift.IsHypershift(pcArgs.MustGatherDirPath)
+			if err != nil {
+				return err
+			}
+			return nil
 		},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			missingRequiredFlags := checkRequiredFlags(cmd, requiredFlags...)
@@ -258,17 +266,13 @@ func argNameToFlag(argNames []string) []string {
 	return flagNames
 }
 
-func makeClusterData(mustGatherDirPath string) (ClusterData, error) {
+func makeClusterData(mustGatherDirPath string, createForHypershift bool) (ClusterData, error) {
 	clusterData := ClusterData{}
 	nodes, err := profilecreator.GetNodeList(mustGatherDirPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load the cluster nodes: %v", err)
 	}
-	isHypershift, err := hypershift.IsHypershift(mustGatherDirPath)
-	if err != nil {
-		return nil, err
-	}
-	if isHypershift {
+	if createForHypershift {
 		nodePoolNames := sets.NewString()
 		// create a set with all available nodePool names in the cluster
 		for i := range nodes {
@@ -365,10 +369,7 @@ func makeProfileDataFrom(nodeHandler *profilecreator.GHWHandler, args *ProfileCr
 			)
 		}
 	}
-	profileData.createForHypershift, err = hypershift.IsHypershift(args.MustGatherDirPath)
-	if err != nil {
-		return nil, err
-	}
+	profileData.createForHypershift = args.createForHypershift
 	// on Hypershift the node selector does not have an actual meaning since all the nodes associated with the
 	// node pool get applied with the new profile.
 	// but still we have to have a value in the node selector to pass the validation on the hypershift operator side:
@@ -429,6 +430,9 @@ type ProfileCreatorArgs struct {
 	TMPolicy                    string `json:"topology-manager-policy"`
 	PerPodPowerManagement       *bool  `json:"per-pod-power-management,omitempty"`
 	EnableHardwareTuning        bool   `json:"enable-hardware-tuning,omitempty"`
+	// internal only this argument not passed by the user
+	// but detected automatically
+	createForHypershift bool
 }
 
 func makePerformanceProfileFrom(profileData ProfileData) (runtime.Object, error) {
@@ -606,11 +610,7 @@ func listNodesForPool(args *ProfileCreatorArgs) ([]*corev1.Node, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load the cluster nodes: %w", err)
 	}
-	isHypershift, err := hypershift.IsHypershift(args.MustGatherDirPath)
-	if err != nil {
-		return nil, err
-	}
-	if isHypershift {
+	if args.createForHypershift {
 		var matchedNodes []*corev1.Node
 		for i := range nodes {
 			v, ok := nodes[i].Labels[hypershift.NodePoolLabel]
