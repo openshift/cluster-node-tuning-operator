@@ -185,8 +185,7 @@ func NewRootCommand() *cobra.Command {
 			return writeProfile(profile, profileData.enableHardwareTuning)
 		},
 	}
-	initFlags(root.PersistentFlags(), pcArgs)
-
+	pcArgs.AddFlags(root.PersistentFlags())
 	root.AddCommand(NewInfoCommand(pcArgs))
 
 	return root
@@ -206,23 +205,6 @@ func makeNodesHandlers(mustGatherDirPath, poolName string, nodes []*corev1.Node)
 	// NodePoolName is alias of MCPName
 	log.Infof("Nodes names targeted by %s pool are: %s", poolName, sb.String())
 	return handlers, nil
-}
-
-func initFlags(flags *pflag.FlagSet, pcArgs *ProfileCreatorArgs) {
-	flags.IntVar(&pcArgs.ReservedCPUCount, "reserved-cpu-count", 0, "Number of reserved CPUs (required)")
-	flags.IntVar(&pcArgs.OfflinedCPUCount, "offlined-cpu-count", 0, "Number of offlined CPUs")
-	flags.BoolVar(&pcArgs.SplitReservedCPUsAcrossNUMA, "split-reserved-cpus-across-numa", false, "Split the Reserved CPUs across NUMA nodes")
-	flags.StringVar(&pcArgs.MCPName, "mcp-name", "", "MCP name corresponding to the target machines (required)")
-	flags.BoolVar(&pcArgs.DisableHT, "disable-ht", false, "Disable Hyperthreading")
-	flags.BoolVar(&pcArgs.RTKernel, "rt-kernel", false, "Enable Real Time Kernel (required)")
-	flags.BoolVar(pcArgs.UserLevelNetworking, "user-level-networking", false, "Run with User level Networking(DPDK) enabled")
-	flags.StringVar(&pcArgs.PowerConsumptionMode, "power-consumption-mode", defaultLatency, fmt.Sprintf("The power consumption mode.  [Valid values: %s]", strings.Join(validPowerConsumptionModes, ", ")))
-	flags.StringVar(&pcArgs.MustGatherDirPath, "must-gather-dir-path", "must-gather", "Must gather directory path")
-	flags.StringVar(&pcArgs.ProfileName, "profile-name", "performance", "Name of the performance profile to be created")
-	flags.StringVar(&pcArgs.TMPolicy, "topology-manager-policy", kubeletconfig.RestrictedTopologyManagerPolicy, fmt.Sprintf("Kubelet Topology Manager Policy of the performance profile to be created. [Valid values: %s, %s, %s]", kubeletconfig.SingleNumaNodeTopologyManagerPolicy, kubeletconfig.BestEffortTopologyManagerPolicy, kubeletconfig.RestrictedTopologyManagerPolicy))
-	flags.BoolVar(pcArgs.PerPodPowerManagement, "per-pod-power-management", false, "Enable Per Pod Power Management")
-	flags.BoolVar(&pcArgs.EnableHardwareTuning, "enable-hardware-tuning", false, "Enable setting maximum cpu frequencies")
-	flags.StringVar(&pcArgs.NodePoolName, "node-pool-name", "", "Node pool name corresponding to the target machines (HyperShift only)")
 }
 
 func validateProfileCreatorFlags(pcArgs *ProfileCreatorArgs) error {
@@ -433,6 +415,23 @@ type ProfileCreatorArgs struct {
 	// internal only this argument not passed by the user
 	// but detected automatically
 	createForHypershift bool
+}
+
+func (pca *ProfileCreatorArgs) AddFlags(flags *pflag.FlagSet) {
+	flags.IntVar(&pca.ReservedCPUCount, "reserved-cpu-count", 0, "Number of reserved CPUs (required)")
+	flags.IntVar(&pca.OfflinedCPUCount, "offlined-cpu-count", 0, "Number of offlined CPUs")
+	flags.BoolVar(&pca.SplitReservedCPUsAcrossNUMA, "split-reserved-cpus-across-numa", false, "Split the Reserved CPUs across NUMA nodes")
+	flags.StringVar(&pca.MCPName, "mcp-name", "", "MCP name corresponding to the target machines (required)")
+	flags.BoolVar(&pca.DisableHT, "disable-ht", false, "Disable Hyperthreading")
+	flags.BoolVar(&pca.RTKernel, "rt-kernel", false, "Enable Real Time Kernel (required)")
+	flags.BoolVar(pca.UserLevelNetworking, "user-level-networking", false, "Run with User level Networking(DPDK) enabled")
+	flags.StringVar(&pca.PowerConsumptionMode, "power-consumption-mode", defaultLatency, fmt.Sprintf("The power consumption mode.  [Valid values: %s]", strings.Join(validPowerConsumptionModes, ", ")))
+	flags.StringVar(&pca.MustGatherDirPath, "must-gather-dir-path", "must-gather", "Must gather directory path")
+	flags.StringVar(&pca.ProfileName, "profile-name", "performance", "Name of the performance profile to be created")
+	flags.StringVar(&pca.TMPolicy, "topology-manager-policy", kubeletconfig.RestrictedTopologyManagerPolicy, fmt.Sprintf("Kubelet Topology Manager Policy of the performance profile to be created. [Valid values: %s, %s, %s]", kubeletconfig.SingleNumaNodeTopologyManagerPolicy, kubeletconfig.BestEffortTopologyManagerPolicy, kubeletconfig.RestrictedTopologyManagerPolicy))
+	flags.BoolVar(pca.PerPodPowerManagement, "per-pod-power-management", false, "Enable Per Pod Power Management")
+	flags.BoolVar(&pca.EnableHardwareTuning, "enable-hardware-tuning", false, "Enable setting maximum cpu frequencies")
+	flags.StringVar(&pca.NodePoolName, "node-pool-name", "", "Node pool name corresponding to the target machines (HyperShift only)")
 }
 
 func makePerformanceProfileFrom(profileData ProfileData) (runtime.Object, error) {
