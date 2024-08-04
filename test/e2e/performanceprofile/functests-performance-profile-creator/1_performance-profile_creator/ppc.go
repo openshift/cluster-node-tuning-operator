@@ -3,7 +3,7 @@ package __performance_profile_creator
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -86,7 +86,7 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 			err = yaml.Unmarshal(out, profile)
 			Expect(err).To(BeNil(), "failed to unmarshal the output yaml for '%s': %v", expectedProfilePath, err)
 
-			bytes, err := ioutil.ReadFile(expectedProfilePath)
+			bytes, err := os.ReadFile(expectedProfilePath)
 			Expect(err).To(BeNil(), "failed to read the expected yaml for '%s': %v", expectedProfilePath, err)
 
 			expectedProfile := &performancev2.PerformanceProfile{}
@@ -115,7 +115,7 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 			err = json.Unmarshal(out, &cInfo)
 			Expect(err).To(BeNil(), "failed to unmarshal the output json for %q: %v", path, err)
 			expectedClusterInfoPath := filepath.Join(expectedInfoPath, fmt.Sprintf("%s.json", name))
-			bytes, err := ioutil.ReadFile(expectedClusterInfoPath)
+			bytes, err := os.ReadFile(expectedClusterInfoPath)
 			Expect(err).To(BeNil(), "failed to read the expected json for %q: %v", expectedClusterInfoPath, err)
 
 			var expectedInfo cmd.ClusterInfo
@@ -369,7 +369,7 @@ func getMustGatherDirs(mustGatherPath string) map[string]string {
 	Expect(mustGatherPath).To(BeADirectory())
 
 	mustGatherDirs := make(map[string]string)
-	mustGatherPathContent, err := ioutil.ReadDir(mustGatherPath)
+	mustGatherPathContent, err := os.ReadDir(mustGatherPath)
 	Expect(err).To(BeNil(), fmt.Errorf("can't list '%s' files: %v", mustGatherPath, err))
 
 	for _, file := range mustGatherPathContent {
@@ -385,7 +385,7 @@ func getMustGatherDirs(mustGatherPath string) map[string]string {
 func getExpectedProfiles(expectedProfilesPath string, mustGatherDirs map[string]string) map[string]cmd.ProfileCreatorArgs {
 	Expect(expectedProfilesPath).To(BeADirectory())
 
-	expectedProfilesPathContent, err := ioutil.ReadDir(expectedProfilesPath)
+	expectedProfilesPathContent, err := os.ReadDir(expectedProfilesPath)
 	Expect(err).To(BeNil(), fmt.Errorf("can't list '%s' files: %v", expectedProfilesPath, err))
 
 	// read ppc params files
@@ -396,7 +396,7 @@ func getExpectedProfiles(expectedProfilesPath string, mustGatherDirs map[string]
 		}
 
 		fullFilePath := filepath.Join(expectedProfilesPath, file.Name())
-		bytes, err := ioutil.ReadFile(fullFilePath)
+		bytes, err := os.ReadFile(fullFilePath)
 		Expect(err).To(BeNil(), "failed to read the ppc params file for '%s': %v", fullFilePath, err)
 
 		var ppcArgs cmd.ProfileCreatorArgs
