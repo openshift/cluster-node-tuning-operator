@@ -3,19 +3,18 @@ package __performance
 import (
 	"context"
 	"fmt"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/deployments"
-	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/cpuset"
@@ -34,6 +33,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/controller"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/deployments"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/events"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
@@ -654,7 +654,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			// quick succession to verify pre-start hook is able to write to
 			// cpuset.cpus.exclusive
 			for i := 0; i < 5; i++ {
-				// Create Deployment
+				testlog.Infof("%d Create deployment %s with 2 Guaranteed pods requesting 2 cpus", i, DeploymentName)
 				dp = deployments.Make(DeploymentName, testutils.NamespaceTesting,
 					deployments.WithPodTemplate(p),
 					deployments.WithNodeSelector(testutils.NodeSelectorLabels))
@@ -667,8 +667,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 					if err := testclient.DataPlaneClient.List(context.TODO(), podList, listOptions); err != nil {
 						return false
 					}
-					//readyPods := 0
 					for _, pod := range podList.Items {
+						Expect(pod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
 						if pod.Status.Phase != corev1.PodRunning && !isPodReady(&pod) {
 							for _, containerStatus := range pod.Status.ContainerStatuses {
 								if containerStatus.State.Waiting != nil {
