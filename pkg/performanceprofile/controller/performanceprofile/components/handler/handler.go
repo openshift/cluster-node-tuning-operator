@@ -50,7 +50,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 	// set missing options
 	opts.MachineConfig.MixedCPUsEnabled = opts.MixedCPUsFeatureGateEnabled && profileutil.IsMixedCPUsEnabled(profile)
-	opts.Tuned.DeferredEnabled = ntoutil.HasDeferredUpdateAnnotation(profile.Annotations)
+	opts.Tuned.DeferredEnabled = ntoutil.HasAnnotation(profile.Annotations, performancev2.PerformanceProfileDeferredUpdateAnnotation, performancev2.DeferredUpdateTuned)
 
 	ctrRuntime, err := h.getContainerRuntimeName(ctx, profile, opts.ProfileMCP)
 	if err != nil {

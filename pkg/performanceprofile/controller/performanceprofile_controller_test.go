@@ -845,7 +845,7 @@ var _ = Describe("Controller", func() {
 				skipForHypershift() // deferred updates not supported in hypershift yet
 
 				prof := profile.DeepCopy()
-				prof.Annotations = ntoutil.ToggleDeferredUpdateAnnotation(prof.Annotations, true)
+				prof.Annotations = ntoutil.AddAnnotation(prof.Annotations, performancev2.PerformanceProfileDeferredUpdateAnnotation, performancev2.DeferredUpdateTuned)
 				r := newFakeReconciler(prof, profileMCP, infra, clusterOperator)
 
 				Expect(reconcileTimes(r, request, 2)).To(Equal(reconcile.Result{}))

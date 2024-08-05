@@ -34,6 +34,18 @@ const PerformanceProfileEnablePhysicalRpsAnnotation = "performance.openshift.io/
 // that ignores the removal of all RPS settings when realtime workload hint is explicitly set to false.
 const PerformanceProfileEnableRpsAnnotation = "performance.openshift.io/enable-rps"
 
+// PerformanceProfileDeferredUpdateAnnotation is an advanced annotation which request the
+// object generated and govenred by PerformanceProfile to be updated in a deferred way,
+// minimizing the number of reboots. Please check the `DeferredUpdate*` constants to
+// learn which objects support deferred updates.
+const PerformanceProfileDeferredUpdateAnnotation = "performance.openshift.io/deferred"
+
+const (
+	// DeferredUpdateTuned requests the tuned object generated from performanceprofile
+	// to be applied in a deferred way, minimizing the node reboots.
+	DeferredUpdateTuned = "tuned"
+)
+
 // PerformanceProfileSpec defines the desired state of PerformanceProfile.
 type PerformanceProfileSpec struct {
 	// CPU defines a set of CPU related parameters.

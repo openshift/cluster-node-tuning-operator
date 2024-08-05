@@ -1,30 +1,63 @@
 package util
 
 import (
+	"strings"
+
+	"k8s.io/apimachinery/pkg/util/sets"
+
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 )
 
-func HasDeferredUpdateAnnotation(anns map[string]string) bool {
+const (
+	AnnotationValueAny = "*" // "" is treated as the same
+)
+
+func HasAnnotation(anns map[string]string, key string, values ...string) bool {
 	if anns == nil {
 		return false
 	}
-	_, ok := anns[tunedv1.TunedDeferredUpdate]
-	return ok
+	annVals, ok := anns[key]
+	if !ok {
+		return false
+	}
+	if len(annVals) == 0 || len(values) == 0 {
+		// annotation value == "", treated as wildcard like AnnotationValueAny. But faster.
+		// if nothing to check, we only need to check for the ann presence, and if
+		// we got this far, we have it.
+		return true
+	}
+	annSet := sets.New[string](parseValuesAnnotation(annVals)...)
+	return annSet.Has(AnnotationValueAny) || annSet.HasAll(values...)
 }
 
-func SetDeferredUpdateAnnotation(anns map[string]string, tuned *tunedv1.Tuned) map[string]string {
-	if anns == nil {
-		anns = make(map[string]string)
-	}
-	return ToggleDeferredUpdateAnnotation(anns, HasDeferredUpdateAnnotation(tuned.Annotations))
+func AddAnnotation(anns map[string]string, key, val string) map[string]string {
+	ret := cloneMapStringString(anns)
+	ret[key] = val
+	return ret
+}
+
+func DelAnnotation(anns map[string]string, key string) map[string]string {
+	ret := cloneMapStringString(anns)
+	delete(ret, key)
+	return ret
 }
 
 func ToggleDeferredUpdateAnnotation(anns map[string]string, toggle bool) map[string]string {
-	ret := cloneMapStringString(anns)
 	if toggle {
-		ret[tunedv1.TunedDeferredUpdate] = ""
-	} else {
-		delete(ret, tunedv1.TunedDeferredUpdate)
+		return AddAnnotation(anns, tunedv1.TunedDeferredUpdate, "")
+	}
+	return DelAnnotation(anns, tunedv1.TunedDeferredUpdate)
+}
+
+func HasDeferredUpdateAnnotation(anns map[string]string, values ...string) bool {
+	return HasAnnotation(anns, tunedv1.TunedDeferredUpdate, values...)
+}
+
+func parseValuesAnnotation(s string) []string {
+	items := strings.Split(s, ",")
+	ret := make([]string, 0, len(items))
+	for _, item := range items {
+		ret = append(ret, strings.TrimSpace(item))
 	}
 	return ret
 }
