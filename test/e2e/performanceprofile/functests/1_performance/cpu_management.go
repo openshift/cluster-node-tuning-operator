@@ -671,16 +671,21 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 						Expect(pod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
 						if pod.Status.Phase != corev1.PodRunning && !isPodReady(&pod) {
 							for _, containerStatus := range pod.Status.ContainerStatuses {
-								if containerStatus.State.Waiting == nil {
-									continue
-								}
-								if containerStatus.State.Waiting.Reason == "RunContainerError" {
-									if strings.Contains(containerStatus.State.Waiting.Message, "failed to run pre-start hook for container") {
+								if containerStatus.State.Waiting != nil {
+									if containerStatus.State.Waiting.Reason == "RunContainerError" && strings.Contains(containerStatus.State.Waiting.Message, "failed to run pre-start hook for container") {
 										testlog.Infof("container %s failed to start with error: %s", pod.Spec.Containers[0].Name, containerStatus.State.Waiting.Message)
 										return false
 									}
 								}
 							}
+						}
+					}
+					if len(podList.Items) < 1 {
+						return false
+					}
+					for _, s := range podList.Items[0].Status.ContainerStatuses {
+						if s.Ready == false {
+							return false
 						}
 					}
 					return true
