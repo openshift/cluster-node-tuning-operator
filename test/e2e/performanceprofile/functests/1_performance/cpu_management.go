@@ -3,6 +3,9 @@ package __performance
 import (
 	"context"
 	"fmt"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/deployments"
+	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"os"
 	"regexp"
 	"strconv"
@@ -615,6 +618,80 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		)
 
 	})
+	// Automates OCPBUGS-34812: cgroupsv2: failed to write on cpuset.cpus.exclusive
+	Context("Cgroupsv2", func() {
+		It("[test_id:75327] cpus from deleted cgroup can be reassigned to new cgroup", Label(string(label.Tier0)), func() {
+
+			// we need system with more than 10 cpus to execute this test
+			if len(onlineCPUSet.List()) < 10 {
+				Skip("Requires system with  more than 10 cpus")
+			}
+			if !cgroupV2 {
+				Skip("Requires CgroupV2")
+			}
+			// create deployment with 2 replicas and each pod having cpu load balancing disabled
+			// and runtime class. This is required as the cpu id's used by the container are
+			// written to cpuset.cpus.exclusive
+			const DeploymentName = "test-deployment"
+			var numberofReplicas int32 = 2
+			var dp *appsv1.Deployment
+			annotations := map[string]string{
+				"cpu-load-balancing.crio.io": "disable",
+			}
+			p := pods.GetTestPod()
+			p.Spec.NodeSelector = testutils.NodeSelectorLabels
+			runtimeClass := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+			p.Spec.RuntimeClassName = &runtimeClass
+			p.Spec.Containers[0].Image = images.Test()
+			p.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceMemory: resource.MustParse("200Mi"),
+					corev1.ResourceCPU:    resource.MustParse("2"),
+				},
+			}
+
+			// we create and delete deployment in loop to create deployments in
+			// quick succession to verify pre-start hook is able to write to
+			// cpuset.cpus.exclusive
+			for i := 0; i < 5; i++ {
+				// Create Deployment
+				dp = deployments.Make(DeploymentName, testutils.NamespaceTesting,
+					deployments.WithPodTemplate(p),
+					deployments.WithNodeSelector(testutils.NodeSelectorLabels))
+				dp.Spec.Template.Annotations = annotations
+				dp.Spec.Replicas = &numberofReplicas
+				Expect(testclient.DataPlaneClient.Create(ctx, dp)).ToNot(HaveOccurred())
+				podList := &corev1.PodList{}
+				listOptions := &client.ListOptions{Namespace: testutils.NamespaceTesting, LabelSelector: labels.SelectorFromSet(dp.Spec.Selector.MatchLabels)}
+				Eventually(func() bool {
+					if err := testclient.DataPlaneClient.List(context.TODO(), podList, listOptions); err != nil {
+						return false
+					}
+					//readyPods := 0
+					for _, pod := range podList.Items {
+						if pod.Status.Phase != corev1.PodRunning && !isPodReady(&pod) {
+							for _, containerStatus := range pod.Status.ContainerStatuses {
+								if containerStatus.State.Waiting != nil {
+									if containerStatus.State.Waiting.Reason == "RunContainerError" {
+										if strings.Contains(containerStatus.State.Waiting.Message, "failed to run pre-start hook for container") {
+											testlog.Infof("container %s failed to start with error: %s", pod.Spec.Containers[0].Name, containerStatus.State.Waiting.Message)
+											return false
+										}
+									}
+								}
+							}
+						}
+					}
+					return true
+				}, 10*time.Second, 5*time.Second).Should(BeTrue())
+				// delete deployment
+				time.Sleep(5 * time.Second)
+				testlog.Infof("Deleting Deployment %v", dp.Name)
+				err := testclient.Client.Delete(ctx, dp)
+				Expect(err).ToNot(HaveOccurred())
+			}
+		})
+	})
 	Context("Crio Annotations", Label(string(label.Tier0)), func() {
 		var testpod *corev1.Pod
 		var allTestpods map[types.UID]*corev1.Pod
@@ -711,7 +788,6 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				Expect(cgroupCpuset).To(Equal(podAffinityCpuset), "cpuset.cpus not matching the process affinity")
 			})
 		})
-
 		Describe("Load Balancing Annotation", func() {
 			It("[test_id:32646] cpus used by container should not be load balanced", func() {
 				output, err := getPodCpus(testpod)
@@ -1082,4 +1158,14 @@ func busyCpuImageEnv() string {
 		qeImageRegistry = "quay.io/ocp-edge-qe/"
 	}
 	return fmt.Sprintf("%s%s", qeImageRegistry, busyCpusImage)
+}
+
+// isPodReady checks if the pod is in ready state
+func isPodReady(pod *corev1.Pod) bool {
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }
