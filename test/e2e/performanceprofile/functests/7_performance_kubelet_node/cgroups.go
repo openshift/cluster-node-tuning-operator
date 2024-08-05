@@ -547,7 +547,6 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 
 				// create deployment with 2 replicas and each pod have 2 cpus
 				var dp *appsv1.Deployment
-				// create a deployment to deploy gu pods
 				dp = newDeployment()
 				testNode := make(map[string]string)
 				testNode["kubernetes.io/hostname"] = workerRTNode.Name
@@ -557,7 +556,6 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 
 				// Delete deployment
 				defer func() {
-					// delete deployment
 					By("Delete Deployment")
 					testlog.Infof("Deleting Deployment %v", dp.Name)
 					err := testclient.Client.Delete(ctx, dp)
@@ -591,7 +589,6 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					}
 					return true
 				}, 10*time.Second, 5*time.Second).Should(BeTrue())
-				// Post Deployment verify ovs-vswitchd thread affinity
 				testlog.Info("Get ovs-vswitchd threads affinity post deployment")
 				postDeploymentThreadAffinity, err := ovsSwitchdThreadAffinity(ctx, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
@@ -612,10 +609,6 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 						}
 					}
 				}
-
-				// Delete one of the pods of the deployment so that
-				// the new pod picks up new set of cpus(or not) and verify ovs-vswitchd
-				// process adjusts it's affinity accordingly
 				testlog.Infof("Deleting one of the pods of the deployment %q", dpObj.String())
 				podToDelete := podList.Items[0]
 				err = testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(&podToDelete), &podToDelete)
