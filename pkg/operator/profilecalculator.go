@@ -153,7 +153,7 @@ func (pc *ProfileCalculator) nodeChangeHandler(nodeName string) (bool, error) {
 type ComputedProfile struct {
 	TunedProfileName string
 	AllProfiles      []tunedv1.TunedProfile
-	Deferred         bool
+	Deferred         util.DeferMode
 	MCLabels         map[string]string
 	NodePoolName     string
 	Operand          tunedv1.OperandConfig
@@ -161,7 +161,7 @@ type ComputedProfile struct {
 
 type RecommendedProfile struct {
 	TunedProfileName string
-	Deferred         bool
+	Deferred         util.DeferMode
 	Labels           map[string]string
 	Config           tunedv1.OperandConfig
 }
@@ -302,7 +302,7 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (ComputedProfile,
 
 type HypershiftRecommendedProfile struct {
 	TunedProfileName string
-	Deferred         bool
+	Deferred         util.DeferMode
 	NodePoolName     string
 	Config           tunedv1.OperandConfig
 }
@@ -732,7 +732,7 @@ func tunedProfiles(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedProfile {
 
 type TunedRecommendInfo struct {
 	tunedv1.TunedRecommend
-	Deferred bool
+	Deferred util.DeferMode
 }
 
 // TunedRecommend returns a priority-sorted TunedRecommend slice out of
@@ -752,7 +752,7 @@ func TunedRecommend(tunedSlice []*tunedv1.Tuned) []TunedRecommendInfo {
 		for _, recommend := range tuned.Spec.Recommend {
 			recommendAll = append(recommendAll, TunedRecommendInfo{
 				TunedRecommend: recommend,
-				Deferred:       util.HasDeferredUpdateAnnotation(tuned.Annotations),
+				Deferred:       util.GetDeferredUpdateAnnotation(tuned.Annotations),
 			})
 		}
 	}
