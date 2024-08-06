@@ -117,6 +117,10 @@ type OperandConfig struct {
 	// +optional
 	Debug bool `json:"debug,omitempty"`
 
+	// klog logging verbosity
+	// +optional
+	Verbosity int `json:"verbosity,omitempty"`
+
 	// +optional
 	TuneDConfig TuneDConfig `json:"tunedConfig,omitempty"`
 }
@@ -168,6 +172,9 @@ type ProfileConfig struct {
 	// option to debug TuneD daemon execution
 	// +optional
 	Debug bool `json:"debug"`
+	// klog logging verbosity
+	// +optional
+	Verbosity int `json:"verbosity"`
 	// +optional
 	TuneDConfig TuneDConfig `json:"tunedConfig,omitempty"`
 	// Name of the cloud provider as taken from the Node providerID: <ProviderName>://<ProviderSpecificNodeID>

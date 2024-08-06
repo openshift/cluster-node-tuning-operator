@@ -648,6 +648,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 			profileMf.Annotations = util.ToggleDeferredUpdateAnnotation(profileMf.Annotations, computed.Deferred)
 			profileMf.Spec.Config.TunedProfile = computed.TunedProfileName
 			profileMf.Spec.Config.Debug = computed.Operand.Debug
+			profileMf.Spec.Config.Verbosity = computed.Operand.Verbosity
 			profileMf.Spec.Config.TuneDConfig = computed.Operand.TuneDConfig
 			profileMf.Spec.Profile = computed.AllProfiles
 			profileMf.Status.Conditions = tunedpkg.InitializeStatusConditions()
@@ -711,6 +712,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	// Minimize updates
 	if profile.Spec.Config.TunedProfile == computed.TunedProfileName &&
 		profile.Spec.Config.Debug == computed.Operand.Debug &&
+		profile.Spec.Config.Verbosity == computed.Operand.Verbosity &&
 		reflect.DeepEqual(profile.Spec.Config.TuneDConfig, computed.Operand.TuneDConfig) &&
 		reflect.DeepEqual(profile.Spec.Profile, computed.AllProfiles) &&
 		util.HasDeferredUpdateAnnotation(profile.Annotations) == util.HasDeferredUpdateAnnotation(anns) &&
@@ -722,6 +724,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	profile.Annotations = anns
 	profile.Spec.Config.TunedProfile = computed.TunedProfileName
 	profile.Spec.Config.Debug = computed.Operand.Debug
+	profile.Spec.Config.Verbosity = computed.Operand.Verbosity
 	profile.Spec.Config.TuneDConfig = computed.Operand.TuneDConfig
 	profile.Spec.Config.ProviderName = providerName
 	profile.Spec.Profile = computed.AllProfiles
