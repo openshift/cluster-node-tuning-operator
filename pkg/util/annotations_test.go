@@ -3,25 +3,22 @@ package util
 import (
 	"reflect"
 	"testing"
-
-	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestHasDeferredUpdateAnnotation(t *testing.T) {
 	testCases := []struct {
 		name     string
 		anns     map[string]string
-		expected bool
+		expected DeferMode
 	}{
 		{
 			name:     "nil",
-			expected: false,
+			expected: DeferNever,
 		},
 		{
 			name:     "empty",
 			anns:     map[string]string{},
-			expected: false,
+			expected: DeferNever,
 		},
 		{
 			name: "no-ann",
@@ -29,26 +26,40 @@ func TestHasDeferredUpdateAnnotation(t *testing.T) {
 				"foo": "bar",
 				"baz": "2",
 			},
-			expected: false,
+			expected: DeferNever,
 		},
 		{
 			name: "wrong-case",
 			anns: map[string]string{
 				"tuned.openshift.io/Deferred": "",
 			},
-			expected: false,
+			expected: DeferNever,
 		},
 		{
 			name: "found",
 			anns: map[string]string{
 				"tuned.openshift.io/deferred": "",
 			},
-			expected: true,
+			expected: DeferNever,
+		},
+		{
+			name: "found-explicit",
+			anns: map[string]string{
+				"tuned.openshift.io/deferred": "always",
+			},
+			expected: DeferAlways,
+		},
+		{
+			name: "found-wrong-case",
+			anns: map[string]string{
+				"tuned.openshift.io/deferred": "Always",
+			},
+			expected: DeferNever,
 		},
 	}
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
-			got := HasDeferredUpdateAnnotation(tt.anns)
+			got := GetDeferredUpdateAnnotation(tt.anns)
 			if got != tt.expected {
 				t.Errorf("got=%v expected=%v", got, tt.expected)
 			}
@@ -60,74 +71,48 @@ func TestSetDeferredUpdateAnnotation(t *testing.T) {
 	testCases := []struct {
 		name     string
 		anns     map[string]string
-		tuned    *tunedv1.Tuned
+		mode     DeferMode
 		expected map[string]string
 	}{
 		{
 			name:     "nil",
-			tuned:    &tunedv1.Tuned{},
+			mode:     DeferNever,
 			expected: map[string]string{},
 		},
 		{
-			name: "nil-add",
-			tuned: &tunedv1.Tuned{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						"tuned.openshift.io/deferred": "",
-					},
-				},
-			},
+			name: "add",
+			mode: DeferAlways,
 			expected: map[string]string{
-				"tuned.openshift.io/deferred": "",
+				"tuned.openshift.io/deferred": "always",
 			},
 		},
 		{
-			name: "existing-add",
+			name: "add-existing",
 			anns: map[string]string{
 				"foobar": "42",
 			},
-			tuned: &tunedv1.Tuned{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						"tuned.openshift.io/deferred": "",
-					},
-				},
-			},
+			mode: DeferAlways,
 			expected: map[string]string{
 				"foobar":                      "42",
-				"tuned.openshift.io/deferred": "",
+				"tuned.openshift.io/deferred": "always",
 			},
 		},
 		{
-			name:     "nil-remove",
-			tuned:    &tunedv1.Tuned{},
-			expected: map[string]string{},
-		},
-		{
-			name: "existing-remove",
+			name: "add-overwrite",
 			anns: map[string]string{
 				"foobar":                      "42",
 				"tuned.openshift.io/deferred": "",
 			},
-			tuned: &tunedv1.Tuned{},
+			mode: DeferAlways,
 			expected: map[string]string{
-				"foobar": "42",
-			},
-		},
-		{
-			name: "missing-remove",
-			anns: map[string]string{
-				"foobar": "42",
-			},
-			tuned: &tunedv1.Tuned{},
-			expected: map[string]string{
-				"foobar": "42",
+				"foobar":                      "42",
+				"tuned.openshift.io/deferred": "always",
 			},
 		},
 	}
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
-			got := SetDeferredUpdateAnnotation(tt.anns, tt.tuned)
+			got := SetDeferredUpdateAnnotation(tt.anns, tt.mode)
 			if !reflect.DeepEqual(got, tt.expected) {
 				t.Errorf("got=%v expected=%v", got, tt.expected)
 			}
@@ -135,37 +120,14 @@ func TestSetDeferredUpdateAnnotation(t *testing.T) {
 	}
 }
 
-func TestToggleDeferredUpdateAnnotation(t *testing.T) {
+func TestDeleteDeferredUpdateAnnotation(t *testing.T) {
 	testCases := []struct {
 		name     string
 		anns     map[string]string
-		toggle   bool
 		expected map[string]string
 	}{
 		{
 			name:     "nil",
-			expected: map[string]string{},
-		},
-		{
-			name:   "nil-add",
-			toggle: true,
-			expected: map[string]string{
-				"tuned.openshift.io/deferred": "",
-			},
-		},
-		{
-			name: "existing-add",
-			anns: map[string]string{
-				"foobar": "42",
-			},
-			toggle: true,
-			expected: map[string]string{
-				"foobar":                      "42",
-				"tuned.openshift.io/deferred": "",
-			},
-		},
-		{
-			name:     "nil-remove",
 			expected: map[string]string{},
 		},
 		{
@@ -191,7 +153,7 @@ func TestToggleDeferredUpdateAnnotation(t *testing.T) {
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
 			anns := cloneMapStringString(tt.anns)
-			got := ToggleDeferredUpdateAnnotation(tt.anns, tt.toggle)
+			got := DeleteDeferredUpdateAnnotation(tt.anns)
 			// must not mutate the argument
 			if tt.anns != nil && !reflect.DeepEqual(anns, tt.anns) {
 				t.Errorf("toggle must return a new copy")
