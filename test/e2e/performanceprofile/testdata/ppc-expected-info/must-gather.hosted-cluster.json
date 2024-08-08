@@ -1,0 +1,1 @@
+[{"name":"hostedcluster02","nodes":[{"name":"hostedcluster02-jsldx","smt_enabled":true,"cpus_count":16,"numa_cells":[{"id":0,"cores":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]}]},{"name":"hostedcluster02-pgvbt","smt_enabled":true,"cpus_count":16,"numa_cells":[{"id":0,"cores":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]}]}]}]

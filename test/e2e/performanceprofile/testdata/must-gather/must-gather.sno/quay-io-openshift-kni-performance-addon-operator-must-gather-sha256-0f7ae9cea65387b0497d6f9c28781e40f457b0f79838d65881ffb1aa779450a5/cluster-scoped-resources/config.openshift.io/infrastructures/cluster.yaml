@@ -1,0 +1,60 @@
+---
+apiVersion: config.openshift.io/v1
+kind: Infrastructure
+metadata:
+  creationTimestamp: "2024-07-22T20:12:41Z"
+  generation: 1
+  managedFields:
+  - apiVersion: config.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:spec:
+        .: {}
+        f:cloudConfig:
+          .: {}
+          f:name: {}
+        f:platformSpec:
+          .: {}
+          f:type: {}
+    manager: cluster-bootstrap
+    operation: Update
+    time: "2024-07-22T20:12:41Z"
+  - apiVersion: config.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:status:
+        .: {}
+        f:apiServerInternalURI: {}
+        f:apiServerURL: {}
+        f:controlPlaneTopology: {}
+        f:cpuPartitioning: {}
+        f:etcdDiscoveryDomain: {}
+        f:infrastructureName: {}
+        f:infrastructureTopology: {}
+        f:platform: {}
+        f:platformStatus:
+          .: {}
+          f:type: {}
+    manager: cluster-bootstrap
+    operation: Update
+    subresource: status
+    time: "2024-07-22T20:12:41Z"
+  name: cluster
+  resourceVersion: "536"
+  uid: 7bac1d45-c184-422f-aaa2-c92a6b5ecf5f
+spec:
+  cloudConfig:
+    name: ""
+  platformSpec:
+    type: None
+status:
+  apiServerInternalURI: https://api-int.cnfdt6.lab.eng.tlv2.redhat.com:6443
+  apiServerURL: https://api.cnfdt6.lab.eng.tlv2.redhat.com:6443
+  controlPlaneTopology: SingleReplica
+  cpuPartitioning: None
+  etcdDiscoveryDomain: ""
+  infrastructureName: cnfdt6-97cpm
+  infrastructureTopology: SingleReplica
+  platform: None
+  platformStatus:
+    type: None

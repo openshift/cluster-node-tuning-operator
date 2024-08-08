@@ -31,11 +31,11 @@ import (
 	"github.com/jaypipes/ghw/pkg/topology"
 	log "github.com/sirupsen/logrus"
 
-	k8syaml "k8s.io/apimachinery/pkg/util/yaml"
-	"k8s.io/utils/cpuset"
-
+	configv1 "github.com/openshift/api/config/v1"
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	v1 "k8s.io/api/core/v1"
+	k8syaml "k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/utils/cpuset"
 )
 
 const (
@@ -58,6 +58,8 @@ const (
 	noSMTKernelArg = "nosmt"
 	// allCores correspond to the value when all the processorCores need to be added to the generated CPUset
 	allCores = -1
+	// defines the sub path relative to ClusterScopedResources, on which OCP infrastructure object is
+	configOCPInfra = "config.openshift.io/infrastructures"
 )
 
 var (
@@ -824,4 +826,23 @@ func updateExtendedCPUInfo(extCpuInfo *extendedCPUInfo, used cpuset.CPUSet, disa
 func IsLogicalProcessorUsed(extCPUInfo *extendedCPUInfo, logicalProcessor int) bool {
 	_, ok := extCPUInfo.LogicalProcessorsUsed[logicalProcessor]
 	return ok
+}
+
+// IsExternalControlPlaneCluster return whether the control plane is running on externally outside the cluster
+func IsExternalControlPlaneCluster(mustGatherDirPath string) (bool, error) {
+	infraPath := path.Join(ClusterScopedResources, configOCPInfra, "cluster.yaml")
+	fullInfraPath, err := getMustGatherFullPaths(mustGatherDirPath, infraPath)
+	if fullInfraPath == "" || err != nil {
+		return false, fmt.Errorf("failed to get Infrastructure object from must gather directory path: %s; %w", mustGatherDirPath, err)
+	}
+	f, err := os.Open(fullInfraPath)
+	if err != nil {
+		return false, fmt.Errorf("failed to open file %s; %w", fullInfraPath, err)
+	}
+	infra := &configv1.Infrastructure{}
+	dec := k8syaml.NewYAMLOrJSONDecoder(f, 1024)
+	if err := dec.Decode(infra); err != nil {
+		return false, fmt.Errorf("failed to Decode file %s; %w", fullInfraPath, err)
+	}
+	return infra.Status.ControlPlaneTopology == configv1.ExternalTopologyMode, nil
 }

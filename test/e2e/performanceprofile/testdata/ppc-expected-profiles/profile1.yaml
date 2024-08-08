@@ -18,3 +18,5 @@ spec:
     highPowerConsumption: false
     realTime: true
     perPodpowerManagement: false
+  net:
+    userLevelNetworking: false
