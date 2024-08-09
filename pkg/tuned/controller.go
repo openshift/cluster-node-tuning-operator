@@ -149,7 +149,7 @@ type Change struct {
 	recommendedProfile string
 
 	// Is the current Change triggered by an object with the deferred annotation?
-	deferred bool
+	deferredMode util.DeferMode
 	// Text to convey in status message, if present.
 	message string
 }
@@ -180,8 +180,8 @@ func (ch Change) String() string {
 	if ch.recommendedProfile != "" {
 		items = append(items, fmt.Sprintf("recommendedProfile:%q", ch.recommendedProfile))
 	}
-	if ch.deferred {
-		items = append(items, "deferred:true")
+	if ch.deferredMode != "" {
+		items = append(items, fmt.Sprintf("deferredMode:%q", string(ch.deferredMode)))
 	}
 	if ch.message != "" {
 		items = append(items, fmt.Sprintf("message:%q", ch.message))
@@ -354,7 +354,7 @@ func (c *Controller) sync(key wqKeyKube) error {
 		if profile.Spec.Config.TuneDConfig.ReapplySysctl != nil {
 			change.reapplySysctl = *profile.Spec.Config.TuneDConfig.ReapplySysctl
 		}
-		change.deferred = util.HasDeferredUpdateAnnotation(profile.Annotations)
+		change.deferredMode = util.GetDeferredUpdateAnnotation(profile.Annotations)
 		// Notify the event processor that the Profile k8s object containing information about which TuneD profile to apply changed.
 		c.wqTuneD.Add(wqKeyTuned{kind: wqKindDaemon, change: change})
 
@@ -987,6 +987,7 @@ func (c *Controller) changeSyncerProfileStatus(change Change) (synced bool) {
 func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 	var restart bool
 	var reload bool
+	var inplaceUpdate bool // updating a profile already recommended
 	var cfgUpdated bool
 	var changeRecommend bool
 
@@ -1010,15 +1011,16 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 		}
 		reload = reload || changeProvider
 
-		if (c.daemon.recommendedProfile != change.recommendedProfile) || change.nodeRestart {
+		inplaceUpdate = (c.daemon.recommendedProfile == change.recommendedProfile)
+		if !inplaceUpdate || change.nodeRestart {
 			if err = TunedRecommendFileWrite(change.recommendedProfile); err != nil {
 				return false, err
 			}
-			klog.V(1).Infof("recommended TuneD profile changed from %q to %q [deferred=%v nodeRestart=%v]", c.daemon.recommendedProfile, change.recommendedProfile, change.deferred, change.nodeRestart)
+			klog.V(1).Infof("recommended TuneD profile changed from %q to %q [deferred=%v nodeRestart=%v]", c.daemon.recommendedProfile, change.recommendedProfile, change.deferredMode, change.nodeRestart)
 			// Cache the value written to tunedRecommendFile.
 			c.daemon.recommendedProfile = change.recommendedProfile
 			reload = true
-		} else if !change.deferred && (c.daemon.status&scDeferred != 0) {
+		} else if util.IsImmediateUpdate(change.deferredMode) && (c.daemon.status&scDeferred != 0) {
 			klog.V(1).Infof("detected deferred update changed to immediate after object update")
 			reload = true
 		} else {
@@ -1077,7 +1079,7 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 	}
 
 	// failures pertaining to deferred updates are not critical
-	_ = c.handleDaemonReloadRestartRequest(change, reload, restart)
+	_ = c.handleDaemonReloadRestartRequest(change, reload, restart, inplaceUpdate)
 
 	cfgUpdated, err = c.changeSyncerRestartOrReloadTuneD()
 	klog.V(2).Infof("changeSyncerTuneD() configuration updated: %v", cfgUpdated)
@@ -1088,19 +1090,32 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 	return err == nil, err
 }
 
-func (c *Controller) handleDaemonReloadRestartRequest(change Change, reload, restart bool) error {
+func treatAsImmediate(change Change, inplaceUpdate bool) (bool, string) {
+	if change.nodeRestart {
+		return true, "node restart"
+	}
+	if util.IsImmediateUpdate(change.deferredMode) {
+		return true, "immediate update"
+	}
+	if !inplaceUpdate && change.deferredMode == util.DeferUpdate {
+		return true, "recommend change with deferredMode=" + util.DeferUpdate.String()
+	}
+	return false, ""
+}
+
+func (c *Controller) handleDaemonReloadRestartRequest(change Change, reload, restart, inplaceUpdate bool) error {
 	if !reload && !restart {
 		// nothing to do
 		return nil
 	}
 
-	if !change.deferred || change.nodeRestart {
+	if ok, reason := treatAsImmediate(change, inplaceUpdate); ok {
 		if reload {
-			klog.V(2).Infof("immediate update, setting reload flag")
+			klog.V(2).Infof("%s: setting reload flag", reason)
 			c.daemon.restart |= ctrlReload
 		}
 		if restart {
-			klog.V(2).Infof("immediate update, setting restart flag")
+			klog.V(2).Infof("%s: setting restart flag", reason)
 			c.daemon.restart |= ctrlRestart
 		}
 		return nil
@@ -1321,7 +1336,7 @@ func (c *Controller) updateTunedProfileStatus(ctx context.Context, change Change
 	}
 
 	var message string
-	wantsDeferred := util.HasDeferredUpdateAnnotation(profile.Annotations)
+	wantsDeferred := util.IsDeferredUpdate(util.GetDeferredUpdateAnnotation(profile.Annotations))
 	isApplied := (c.daemon.profileFingerprintUnpacked == c.daemon.profileFingerprintEffective)
 	daemonStatus := c.daemon.status
 
@@ -1684,7 +1699,8 @@ func RunInCluster(stopCh <-chan struct{}, version string) error {
 
 	profileFP := profilesFingerprint(profiles, recommended)
 	c.daemon.profileFingerprintUnpacked = profileFP
-	klog.Infof("starting: profile fingerprint unpacked %q", profileFP)
+	c.daemon.recommendedProfile = recommended
+	klog.Infof("starting: profile unpacked is %q fingerprint %q", recommended, profileFP)
 
 	deferredFP, isNodeReboot, err := c.recoverAndClearDeferredUpdate()
 	if err != nil {

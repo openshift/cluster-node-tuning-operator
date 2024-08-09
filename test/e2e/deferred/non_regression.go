@@ -56,7 +56,7 @@ var _ = ginkgo.Describe("[deferred][non-regression] Profile non-deferred", ginkg
 		ginkgo.It("should trigger changes", func(ctx context.Context) {
 			tuned, err := util.LoadTuned(tunedPathVMLatency)
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
-			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tuned.Name, ntoutil.HasDeferredUpdateAnnotation(tuned.Annotations)))
+			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tuned.Name, ntoutil.GetDeferredUpdateAnnotation(tuned.Annotations)))
 
 			verifications := extractVerifications(tuned)
 			gomega.Expect(len(verifications)).To(gomega.Equal(1), "unexpected verification count, check annotations")
