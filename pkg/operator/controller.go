@@ -320,7 +320,8 @@ func (c *Controller) sync(key wqKey) error {
 			return fmt.Errorf("failed to find key %s in ConfigMap %s/%s", metrics.AuthConfigMapClientCAKey, metrics.AuthConfigMapNamespace, metrics.AuthConfigMapName)
 		}
 
-		return metrics.DumpCA(ca)
+		metrics.DumpCA(ca)
+		return nil
 
 	case key.kind == wqKindConfigMap:
 		// This should only happen in HyperShift
