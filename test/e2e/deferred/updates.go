@@ -26,7 +26,7 @@ import (
  * - we need fresh manifests never seen before in the node; this is why we also
  *   set the annoation natively. This restriction many be lifted in the future.
  */
-var _ = ginkgo.Describe("[deferred][inplace-update] Profile deferred", ginkgo.Label("deferred", "inplace-update"), func() {
+var _ = ginkgo.Describe("Profile deferred", ginkgo.Label("deferred", "inplace-update"), func() {
 	ginkgo.Context("when applied", func() {
 		var (
 			createdTuneds     []string
@@ -227,7 +227,7 @@ var _ = ginkgo.Describe("[deferred][inplace-update] Profile deferred", ginkgo.La
 			checkAppliedConditionStaysOKForNode(ctx, referenceNode.Name, referenceProfile)
 		})
 
-		ginkgo.It("[reload] should trigger changes when applied fist, then deferred when edited, if tuned restart should be kept deferred", ginkgo.Label("reload"), func(ctx context.Context) {
+		ginkgo.It("should trigger changes when applied fist, then deferred when edited, if tuned restart should be kept deferred", ginkgo.Label("reload", "flaky"), func(ctx context.Context) {
 			tunedPathBootstrap := filepath.Join(dirPath, tunedVMLatInplaceBootstrap)
 			ginkgo.By(fmt.Sprintf("loading tuned data from %s (basepath=%s)", tunedPathBootstrap, dirPath))
 			tunedPathUpdate := filepath.Join(dirPath, tunedVMLatInplaceUpdate)

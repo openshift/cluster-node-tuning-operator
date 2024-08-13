@@ -20,7 +20,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util/wait"
 )
 
-var _ = ginkgo.Describe("[deferred][slow][disruptive][flaky] Profile deferred", ginkgo.Label("deferred", "slow", "disruptive", "flaky"), func() {
+var _ = ginkgo.Describe("Profile deferred", ginkgo.Label("deferred", "slow", "disruptive", "flaky"), func() {
 	ginkgo.Context("when restarting", func() {
 		var (
 			createdTuneds []string
@@ -67,11 +67,11 @@ var _ = ginkgo.Describe("[deferred][slow][disruptive][flaky] Profile deferred", 
 			if len(createdTuneds) == 0 {
 				return
 			}
-			checkNontargetWorkerNodesAreUnaffected(context.TODO(), workerNodes, targetNode.Name)
+			checkNonTargetWorkerNodesAreUnaffected(context.TODO(), workerNodes, targetNode.Name)
 		})
 
-		ginkgo.Context("[slow][pod]the tuned daemon", func() {
-			ginkgo.It("[reload] should not be applied", ginkgo.Label("reload"), func(ctx context.Context) {
+		ginkgo.Context("the tuned daemon", ginkgo.Label("slow", "pod"), func() {
+			ginkgo.It("should not be applied", ginkgo.Label("reload"), func(ctx context.Context) {
 				ginkgo.By(fmt.Sprintf("getting the tuned pod running on %q", targetNode.Name))
 				targetTunedPod, err := util.GetTunedForNode(cs, targetNode)
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -191,8 +191,8 @@ var _ = ginkgo.Describe("[deferred][slow][disruptive][flaky] Profile deferred", 
 			})
 		})
 
-		ginkgo.Context("[slow][disruptive][node] the worker node", func() {
-			ginkgo.It("[restart] should be applied", ginkgo.Label("restart"), func(ctx context.Context) {
+		ginkgo.Context("the worker node", ginkgo.Label("slow", "disruptive", "node"), func() {
+			ginkgo.It("should be applied", ginkgo.Label("restart"), func(ctx context.Context) {
 				tunedImmediate := tunedObjVMLatency
 
 				verifications := extractVerifications(tunedImmediate)
@@ -290,7 +290,7 @@ var _ = ginkgo.Describe("[deferred][slow][disruptive][flaky] Profile deferred", 
 				}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
 			})
 
-			ginkgo.It("[restart][revert] should be reverted once applied and the node state should be restored", ginkgo.Label("restart", "revert"), func(ctx context.Context) {
+			ginkgo.It("should be reverted once applied and the node state should be restored", ginkgo.Label("restart", "revert"), func(ctx context.Context) {
 				tunedImmediate := tunedObjSHMMNI
 
 				verifications := extractVerifications(tunedImmediate)
@@ -428,7 +428,7 @@ var _ = ginkgo.Describe("[deferred][slow][disruptive][flaky] Profile deferred", 
 					return nil
 				}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
 
-				checkNontargetWorkerNodesAreUnaffected(ctx, workerNodes, targetNode.Name)
+				checkNonTargetWorkerNodesAreUnaffected(ctx, workerNodes, targetNode.Name)
 			})
 		})
 	})
