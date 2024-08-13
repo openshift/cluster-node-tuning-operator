@@ -195,7 +195,7 @@ func checkAppliedConditionStaysOKForNode(ctx context.Context, nodeName, expected
 	}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
 }
 
-func checkNontargetWorkerNodesAreUnaffected(ctx context.Context, workerNodes []corev1.Node, targetNodeName string) {
+func checkNonTargetWorkerNodesAreUnaffected(ctx context.Context, workerNodes []corev1.Node, targetNodeName string) {
 	ginkgo.GinkgoHelper()
 
 	// all the other nodes should be fine as well. For them the state should be settled now, so we just check once
