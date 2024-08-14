@@ -251,11 +251,9 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 })
 
 func updateKubeletConfigOverrideAnnotations(profileAnnotations map[string]string, annotations string) map[string]string {
-	if _, ok := profileAnnotations["performance.openshift.io/ignore-cgroups-version"]; !ok {
-		profileAnnotations = map[string]string{
-			"kubeletconfig.experimental": annotations}
-	} else {
-		profileAnnotations["kubeletconfig.experimental"] = annotations
+	if profileAnnotations == nil {
+		profileAnnotations = map[string]string{}
 	}
+	profileAnnotations["kubeletconfig.experimental"] = annotations
 	return profileAnnotations
 }
