@@ -20,11 +20,12 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util/wait"
 )
 
-var _ = ginkgo.Describe("[deferred][restart][slow][disruptive][flaky] Profile deferred", ginkgo.Label("deferred", "restart", "slow", "disruptive", "flaky"), func() {
+var _ = ginkgo.Describe("Profile deferred", ginkgo.Label("deferred", "slow", "disruptive", "flaky"), func() {
 	ginkgo.Context("when restarting", func() {
 		var (
 			createdTuneds []string
 			targetNode    *corev1.Node
+			workerNodes   []corev1.Node
 
 			dirPath            string
 			tunedPathSHMMNI    string
@@ -34,12 +35,13 @@ var _ = ginkgo.Describe("[deferred][restart][slow][disruptive][flaky] Profile de
 		)
 
 		ginkgo.BeforeEach(func() {
+			var err error
 			ginkgo.By("getting a list of worker nodes")
-			nodes, err := util.GetNodesByRole(cs, "worker")
+			workerNodes, err = util.GetNodesByRole(cs, "worker")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			gomega.Expect(len(nodes)).NotTo(gomega.BeZero(), "number of worker nodes is 0")
+			gomega.Expect(workerNodes).ToNot(gomega.BeEmpty(), "number of worker nodes is 0")
 
-			targetNode = &nodes[0]
+			targetNode = &workerNodes[0]
 			ginkgo.By(fmt.Sprintf("using node %q as reference", targetNode.Name))
 
 			createdTuneds = []string{}
@@ -61,10 +63,15 @@ var _ = ginkgo.Describe("[deferred][restart][slow][disruptive][flaky] Profile de
 				ginkgo.By(fmt.Sprintf("cluster changes rollback: %q", createdTuned))
 				util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", createdTuned)
 			}
+
+			if len(createdTuneds) == 0 {
+				return
+			}
+			checkNonTargetWorkerNodesAreUnaffected(context.TODO(), workerNodes, targetNode.Name)
 		})
 
-		ginkgo.Context("[slow][pod]the tuned daemon", func() {
-			ginkgo.It("should not be applied", func(ctx context.Context) {
+		ginkgo.Context("the tuned daemon", ginkgo.Label("slow", "pod"), func() {
+			ginkgo.It("should not be applied", ginkgo.Label("reload"), func(ctx context.Context) {
 				ginkgo.By(fmt.Sprintf("getting the tuned pod running on %q", targetNode.Name))
 				targetTunedPod, err := util.GetTunedForNode(cs, targetNode)
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -75,8 +82,8 @@ var _ = ginkgo.Describe("[deferred][restart][slow][disruptive][flaky] Profile de
 				verifData := util.MustExtractVerificationOutputAndCommand(cs, targetNode, tunedImmediate)
 				gomega.Expect(verifData.OutputCurrent).ToNot(gomega.Equal(verifData.OutputExpected), "current output %q already matches expected %q", verifData.OutputCurrent, verifData.OutputExpected)
 
-				tunedMutated := setDeferred(tunedImmediate.DeepCopy())
-				ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.HasDeferredUpdateAnnotation(tunedMutated.Annotations)))
+				tunedMutated := setDeferred(tunedImmediate.DeepCopy(), ntoutil.DeferAlways)
+				ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.GetDeferredUpdateAnnotation(tunedMutated.Annotations)))
 
 				_, err = cs.Tuneds(ntoconfig.WatchNamespace()).Create(ctx, tunedMutated, metav1.CreateOptions{})
 				gomega.Expect(err).ToNot(gomega.HaveOccurred())
@@ -163,10 +170,10 @@ var _ = ginkgo.Describe("[deferred][restart][slow][disruptive][flaky] Profile de
 					}
 					for _, condition := range curProf.Status.Conditions {
 						if condition.Type == tunedv1.TunedProfileApplied && condition.Status != corev1.ConditionFalse && condition.Reason != "Deferred" {
-							return fmt.Errorf("Profile deferred=%v %s applied", ntoutil.HasDeferredUpdateAnnotation(curProf.Annotations), curProf.Name)
+							return fmt.Errorf("Profile deferred=%v %s applied", ntoutil.GetDeferredUpdateAnnotation(curProf.Annotations), curProf.Name)
 						}
 						if condition.Type == tunedv1.TunedDegraded && condition.Status != corev1.ConditionTrue && condition.Reason != "TunedDeferredUpdate" {
-							return fmt.Errorf("Profile deferred=%v %s not degraded", ntoutil.HasDeferredUpdateAnnotation(curProf.Annotations), curProf.Name)
+							return fmt.Errorf("Profile deferred=%v %s not degraded", ntoutil.GetDeferredUpdateAnnotation(curProf.Annotations), curProf.Name)
 						}
 					}
 
@@ -184,8 +191,8 @@ var _ = ginkgo.Describe("[deferred][restart][slow][disruptive][flaky] Profile de
 			})
 		})
 
-		ginkgo.Context("[slow][disruptive][node] the worker node", func() {
-			ginkgo.It("should be applied", func(ctx context.Context) {
+		ginkgo.Context("the worker node", ginkgo.Label("slow", "disruptive", "node"), func() {
+			ginkgo.It("should be applied", ginkgo.Label("restart"), func(ctx context.Context) {
 				tunedImmediate := tunedObjVMLatency
 
 				verifications := extractVerifications(tunedImmediate)
@@ -196,8 +203,8 @@ var _ = ginkgo.Describe("[deferred][restart][slow][disruptive][flaky] Profile de
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				ginkgo.By(fmt.Sprintf("got the tuned pod running on %q: %s/%s %s", targetNode.Name, targetTunedPod.Namespace, targetTunedPod.Name, targetTunedPod.UID))
 
-				tunedMutated := setDeferred(tunedImmediate.DeepCopy())
-				ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.HasDeferredUpdateAnnotation(tunedMutated.Annotations)))
+				tunedMutated := setDeferred(tunedImmediate.DeepCopy(), ntoutil.DeferAlways)
+				ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.GetDeferredUpdateAnnotation(tunedMutated.Annotations)))
 
 				_, err = cs.Tuneds(ntoconfig.WatchNamespace()).Create(ctx, tunedMutated, metav1.CreateOptions{})
 				gomega.Expect(err).ToNot(gomega.HaveOccurred())
@@ -283,7 +290,7 @@ var _ = ginkgo.Describe("[deferred][restart][slow][disruptive][flaky] Profile de
 				}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
 			})
 
-			ginkgo.It("should be reverted once applied and the node state should be restored", func(ctx context.Context) {
+			ginkgo.It("should be reverted once applied and the node state should be restored", ginkgo.Label("restart", "revert"), func(ctx context.Context) {
 				tunedImmediate := tunedObjSHMMNI
 
 				verifications := extractVerifications(tunedImmediate)
@@ -297,8 +304,8 @@ var _ = ginkgo.Describe("[deferred][restart][slow][disruptive][flaky] Profile de
 				verifData := util.MustExtractVerificationOutputAndCommand(cs, targetNode, tunedImmediate)
 				gomega.Expect(verifData.OutputCurrent).ToNot(gomega.Equal(verifData.OutputExpected), "verification output current %q matches expected %q", verifData.OutputCurrent, verifData.OutputExpected)
 
-				tunedMutated := setDeferred(tunedImmediate.DeepCopy())
-				ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.HasDeferredUpdateAnnotation(tunedMutated.Annotations)))
+				tunedMutated := setDeferred(tunedImmediate.DeepCopy(), ntoutil.DeferAlways)
+				ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.GetDeferredUpdateAnnotation(tunedMutated.Annotations)))
 
 				_, err = cs.Tuneds(ntoconfig.WatchNamespace()).Create(ctx, tunedMutated, metav1.CreateOptions{})
 				gomega.Expect(err).ToNot(gomega.HaveOccurred())
@@ -383,10 +390,11 @@ var _ = ginkgo.Describe("[deferred][restart][slow][disruptive][flaky] Profile de
 					return nil
 				}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
 
-				ginkgo.By(fmt.Sprintf("cluster changes rollback: %q", tunedPathSHMMNI))
+				ginkgo.By(fmt.Sprintf("doing cluster changes rollback: %q", tunedPathSHMMNI))
 				_, _, err = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", tunedPathSHMMNI)
 				gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
+				ginkgo.By(fmt.Sprintf("checking target node after rollback: %q", targetNode.Name))
 				_, createdTuneds, _ = popleft(createdTuneds)
 				gomega.Eventually(func() error {
 					curProf, err := cs.Profiles(ntoconfig.WatchNamespace()).Get(ctx, targetNode.Name, metav1.GetOptions{})
@@ -394,6 +402,7 @@ var _ = ginkgo.Describe("[deferred][restart][slow][disruptive][flaky] Profile de
 						return err
 					}
 					ginkgo.By(fmt.Sprintf("checking profile for target node %q matches expectations about %q", curProf.Name, expectedProfile))
+					gomega.Expect(curProf.Name).To(gomega.Equal(expectedProfile), "checking profile for worker node %q matches expectations %q", curProf.Name, expectedProfile)
 
 					if len(curProf.Status.Conditions) == 0 {
 						return fmt.Errorf("missing status conditions")
@@ -418,6 +427,8 @@ var _ = ginkgo.Describe("[deferred][restart][slow][disruptive][flaky] Profile de
 					}
 					return nil
 				}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
+
+				checkNonTargetWorkerNodesAreUnaffected(ctx, workerNodes, targetNode.Name)
 			})
 		})
 	})

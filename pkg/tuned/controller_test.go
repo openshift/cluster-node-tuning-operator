@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 )
 
 func TestRecommendFileRoundTrip(t *testing.T) {
@@ -295,7 +296,7 @@ func fullChange() Change {
 		provider:           "test-provider",
 		reapplySysctl:      true,
 		recommendedProfile: "test-profile",
-		deferred:           true,
+		deferredMode:       util.DeferAlways,
 		message:            "test-message",
 	}
 }
