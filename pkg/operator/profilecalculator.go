@@ -154,19 +154,21 @@ func (pc *ProfileCalculator) nodeChangeHandler(nodeName string) (bool, error) {
 //
 // Returns
 // * the tuned daemon profile name
+// * the list of all TunedProfiles out of which the tuned profile was calculated
 // * MachineConfig labels if the profile was selected by machineConfigLabels
 // * whether to run the Tuned daemon in debug mode on node nodeName
 // * an error if any
-func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[string]string, tunedv1.OperandConfig, error) {
+func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, []tunedv1.TunedProfile, map[string]string, tunedv1.OperandConfig, error) {
 	var operand tunedv1.OperandConfig
 
 	klog.V(3).Infof("calculateProfile(%s)", nodeName)
 	tunedList, err := pc.listers.TunedResources.List(labels.Everything())
 
 	if err != nil {
-		return "", nil, operand, fmt.Errorf("failed to list Tuned: %v", err)
+		return "", nil, nil, operand, fmt.Errorf("failed to list Tuned: %v", err)
 	}
 
+	profilesAll := tunedProfiles(tunedList)
 	recommendAll := tunedRecommend(tunedList)
 	recommendProfile := func(nodeName string, iStart int) (int, string, map[string]string, tunedv1.OperandConfig, error) {
 		var i int
@@ -221,10 +223,10 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[stri
 		// in the "recommend" section to select the default profile for the tuned daemon.
 		_, err = pc.listers.TunedResources.Get(tunedv1.TunedDefaultResourceName)
 		if err != nil {
-			return defaultProfile, nil, operand, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
+			return defaultProfile, nil, nil, operand, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
 		}
 
-		return defaultProfile, nil, operand, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
+		return defaultProfile, nil, nil, operand, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
 	}
 
 	// Make sure we do not have multiple matching profiles with the same priority.  If so, report a warning.
@@ -260,29 +262,30 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (string, map[stri
 		}
 	}
 
-	return tunedProfileName, mcLabels, operand, err
+	return tunedProfileName, profilesAll, mcLabels, operand, err
 }
 
 // calculateProfileHyperShift calculates a tuned profile for Node nodeName.
 //
 // Returns
 // * the tuned daemon profile name
+// * the list of all TunedProfiles out of which the tuned profile was calculated
 // * the NodePool name for this Node
 // * whether to run the Tuned daemon in debug mode on node nodeName
 // * an error if any
-func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (string, string, tunedv1.OperandConfig, error) {
+func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (string, []tunedv1.TunedProfile, string, tunedv1.OperandConfig, error) {
 	var operand tunedv1.OperandConfig
 
 	klog.V(3).Infof("calculateProfileHyperShift(%s)", nodeName)
 
 	node, err := pc.listers.Nodes.Get(nodeName)
 	if err != nil {
-		return "", "", operand, err
+		return "", nil, "", operand, err
 	}
 
 	nodePoolName, err := pc.getNodePoolNameForNode(node)
 	if err != nil {
-		return "", "", operand, err
+		return "", nil, "", operand, err
 	}
 
 	// In HyperShift, we only consider the default profile and
@@ -292,14 +295,15 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (string
 			hypershiftNodePoolNameLabel: nodePoolName,
 		}))
 	if err != nil {
-		return "", "", operand, fmt.Errorf("failed to list Tuneds in NodePool %s: %v", nodePoolName, err)
+		return "", nil, "", operand, fmt.Errorf("failed to list Tuneds in NodePool %s: %v", nodePoolName, err)
 	}
 	defaultTuned, err := pc.listers.TunedResources.Get(tunedv1.TunedDefaultResourceName)
 	if err != nil {
-		return defaultProfile, "", operand, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
+		return defaultProfile, nil, "", operand, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
 	}
 	tunedList = append(tunedList, defaultTuned)
 
+	profilesAll := tunedProfiles(tunedList)
 	recommendAll := tunedRecommend(tunedList)
 	recommendProfile := func(nodeName string, iStart int) (int, string, string, tunedv1.OperandConfig, error) {
 		var i int
@@ -328,7 +332,7 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (string
 	iStop, tunedProfileName, nodePoolName, operand, err := recommendProfile(nodeName, 0)
 
 	if iStop == len(recommendAll) {
-		return defaultProfile, "", operand, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
+		return defaultProfile, profilesAll, "", operand, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
 	}
 
 	// Make sure we do not have multiple matching profiles with the same priority.  If so, report a warning.
@@ -364,7 +368,7 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (string
 		}
 	}
 
-	return tunedProfileName, nodePoolName, operand, err
+	return tunedProfileName, profilesAll, nodePoolName, operand, err
 }
 
 // profileMatches returns true, if Node 'nodeName' fulfills all the necessary
@@ -624,6 +628,44 @@ func (pc *ProfileCalculator) getNodePoolNameForNode(node *corev1.Node) (string, 
 	nodePoolName := node.GetLabels()[hypershiftNodePoolLabel]
 	klog.V(3).Infof("calculated nodePoolName: %s for node %s", nodePoolName, node.Name)
 	return nodePoolName, nil
+}
+
+// tunedProfiles returns a name-sorted TunedProfile slice out of
+// a slice of Tuned objects.
+func tunedProfiles(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedProfile {
+	tunedProfiles := []tunedv1.TunedProfile{}
+	m := map[string]tunedv1.TunedProfile{}
+
+	for _, tuned := range tunedSlice {
+		if tuned.Spec.Profile == nil {
+			continue
+		}
+		for _, v := range tuned.Spec.Profile {
+			if v.Name == nil || v.Data == nil {
+				continue
+			}
+			if existingProfile, found := m[*v.Name]; found {
+				if *v.Data == *existingProfile.Data {
+					klog.Infof("duplicate profiles names %s but they have the same contents", *v.Name)
+				} else {
+					klog.Errorf("ERROR: duplicate profiles named %s with different contents found in Tuned CR %q", *v.Name, tuned.Name)
+				}
+			}
+			m[*v.Name] = v
+		}
+	}
+	for _, tunedProfile := range m {
+		tunedProfiles = append(tunedProfiles, tunedProfile)
+	}
+
+	// The order of Tuned resources is variable and so is the order of profiles
+	// within the resource itself.  Sort the rendered profiles by their names for
+	// simpler change detection.
+	sort.Slice(tunedProfiles, func(i, j int) bool {
+		return *tunedProfiles[i].Name < *tunedProfiles[j].Name
+	})
+
+	return tunedProfiles
 }
 
 // tunedRecommend returns a priority-sorted TunedRecommend slice out of
