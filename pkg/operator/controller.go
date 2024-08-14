@@ -646,7 +646,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 			}
 
 			klog.V(2).Infof("syncProfile(): Profile %s not found, creating one [%s]", profileMf.Name, computed.TunedProfileName)
-			profileMf.Annotations = util.ToggleDeferredUpdateAnnotation(profileMf.Annotations, computed.Deferred)
+			profileMf.Annotations = updateDeferredAnnotation(profileMf.Annotations, computed.Deferred)
 			profileMf.Spec.Config.TunedProfile = computed.TunedProfileName
 			profileMf.Spec.Config.Debug = computed.Operand.Debug
 			profileMf.Spec.Config.TuneDConfig = computed.Operand.TuneDConfig
@@ -707,14 +707,14 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		}
 	}
 
-	anns := util.ToggleDeferredUpdateAnnotation(profile.Annotations, computed.Deferred)
+	anns := updateDeferredAnnotation(profile.Annotations, computed.Deferred)
 
 	// Minimize updates
 	if profile.Spec.Config.TunedProfile == computed.TunedProfileName &&
 		profile.Spec.Config.Debug == computed.Operand.Debug &&
 		reflect.DeepEqual(profile.Spec.Config.TuneDConfig, computed.Operand.TuneDConfig) &&
 		reflect.DeepEqual(profile.Spec.Profile, computed.AllProfiles) &&
-		util.HasDeferredUpdateAnnotation(profile.Annotations) == util.HasDeferredUpdateAnnotation(anns) &&
+		util.GetDeferredUpdateAnnotation(profile.Annotations) == util.GetDeferredUpdateAnnotation(anns) &&
 		profile.Spec.Config.ProviderName == providerName {
 		klog.V(2).Infof("syncProfile(): no need to update Profile %s", nodeName)
 		return nil
@@ -733,9 +733,16 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	if err != nil {
 		return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
 	}
-	klog.Infof("updated profile %s [%s] (deferred=%v)", profile.Name, computed.TunedProfileName, util.HasDeferredUpdateAnnotation(profile.Annotations))
+	klog.Infof("updated profile %s [%s] (deferred=%v)", profile.Name, computed.TunedProfileName, util.GetDeferredUpdateAnnotation(profile.Annotations))
 
 	return nil
+}
+
+func updateDeferredAnnotation(anns map[string]string, mode util.DeferMode) map[string]string {
+	if util.IsDeferredUpdate(mode) {
+		return util.SetDeferredUpdateAnnotation(anns, mode)
+	}
+	return util.DeleteDeferredUpdateAnnotation(anns)
 }
 
 func (c *Controller) getProviderName(nodeName string) (string, error) {

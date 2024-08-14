@@ -23,6 +23,10 @@ import (
 )
 
 const (
+	defaultWorkerProfile = "openshift-node"
+)
+
+const (
 	verifyCommandAnnotation = "verificationCommand"
 	verifyOutputAnnotation  = "verificationOutput"
 
@@ -34,6 +38,9 @@ const (
 	tunedSHMMNI    = "../testing_manifests/deferred/tuned-basic-00.yaml"
 	tunedCPUEnergy = "../testing_manifests/deferred/tuned-basic-10.yaml"
 	tunedVMLatency = "../testing_manifests/deferred/tuned-basic-20.yaml"
+
+	tunedVMLatInplaceBootstrap = "../testing_manifests/deferred/tuned-basic-updates-00.yaml"
+	tunedVMLatInplaceUpdate    = "../testing_manifests/deferred/tuned-basic-updates-10.yaml"
 )
 
 var (
@@ -118,14 +125,14 @@ func prepend(strs []string, s string) []string {
 	return append([]string{s}, strs...)
 }
 
-func setDeferred(obj *tunedv1.Tuned) *tunedv1.Tuned {
+func setDeferred(obj *tunedv1.Tuned, mode ntoutil.DeferMode) *tunedv1.Tuned {
 	if obj == nil {
 		return obj
 	}
 	if obj.Annotations == nil {
 		obj.Annotations = make(map[string]string)
 	}
-	obj.Annotations = ntoutil.ToggleDeferredUpdateAnnotation(obj.Annotations, true)
+	obj.Annotations = ntoutil.SetDeferredUpdateAnnotation(obj.Annotations, mode)
 	return obj
 }
 
@@ -186,4 +193,41 @@ func checkAppliedConditionStaysOKForNode(ctx context.Context, nodeName, expected
 		}
 		return err
 	}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
+}
+
+func checkNonTargetWorkerNodesAreUnaffected(ctx context.Context, workerNodes []corev1.Node, targetNodeName string) {
+	ginkgo.GinkgoHelper()
+
+	// all the other nodes should be fine as well. For them the state should be settled now, so we just check once
+	// why: because of bugs, we had once allegedly unaffected nodes stuck in deferred updates (obvious bug), let's
+	// be prudent and add a check this never happens again. Has sky fell yet?
+	for _, workerNode := range workerNodes {
+		if workerNode.Name == targetNodeName {
+			continue // checked previously, if we got this far it's OK
+		}
+
+		ginkgo.By(fmt.Sprintf("checking non-target worker node after rollback: %q", workerNode.Name))
+
+		gomega.Eventually(func() error {
+			wrkNodeProf, err := cs.Profiles(ntoconfig.WatchNamespace()).Get(ctx, workerNode.Name, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+
+			ginkgo.By(fmt.Sprintf("checking profile for target node %q matches expectations about %q", wrkNodeProf.Name, defaultWorkerProfile))
+			if wrkNodeProf.Spec.Config.TunedProfile != defaultWorkerProfile {
+				return fmt.Errorf("checking profile for worker node %q matches expectations %q", wrkNodeProf.Name, defaultWorkerProfile)
+			}
+
+			ginkgo.By(fmt.Sprintf("checking condition for target node %q matches expectations about %q", wrkNodeProf.Name, defaultWorkerProfile))
+			if len(wrkNodeProf.Status.Conditions) == 0 {
+				return fmt.Errorf("missing status conditions")
+			}
+			cond := findCondition(wrkNodeProf.Status.Conditions, tunedv1.TunedProfileApplied)
+			if cond == nil {
+				return fmt.Errorf("missing status applied condition")
+			}
+			return checkAppliedConditionOK(cond)
+		}).WithPolling(10. * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
+	}
 }

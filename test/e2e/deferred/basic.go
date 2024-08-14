@@ -19,7 +19,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 )
 
-var _ = ginkgo.Describe("[deferred][profile-status] Profile deferred", ginkgo.Label("deferred", "profile-status"), func() {
+var _ = ginkgo.Describe("Profile deferred", ginkgo.Label("deferred", "profile-status"), func() {
 	ginkgo.Context("when applied", func() {
 		var (
 			createdTuneds     []string
@@ -85,8 +85,8 @@ var _ = ginkgo.Describe("[deferred][profile-status] Profile deferred", ginkgo.La
 			verifData := util.MustExtractVerificationOutputAndCommand(cs, targetNode, tuned)
 			gomega.Expect(verifData.OutputCurrent).ToNot(gomega.Equal(verifData.OutputExpected), "current output %q already matches expected %q", verifData.OutputCurrent, verifData.OutputExpected)
 
-			tunedMutated := setDeferred(tuned.DeepCopy())
-			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.HasDeferredUpdateAnnotation(tunedMutated.Annotations)))
+			tunedMutated := setDeferred(tuned.DeepCopy(), ntoutil.DeferAlways)
+			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.GetDeferredUpdateAnnotation(tunedMutated.Annotations)))
 
 			_, err = cs.Tuneds(ntoconfig.WatchNamespace()).Create(ctx, tunedMutated, metav1.CreateOptions{})
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
@@ -138,10 +138,10 @@ var _ = ginkgo.Describe("[deferred][profile-status] Profile deferred", ginkgo.La
 				}
 				for _, condition := range curProf.Status.Conditions {
 					if condition.Type == tunedv1.TunedProfileApplied && condition.Status != corev1.ConditionFalse && condition.Reason != "Deferred" {
-						return fmt.Errorf("Profile deferred=%v %s applied", ntoutil.HasDeferredUpdateAnnotation(curProf.Annotations), curProf.Name)
+						return fmt.Errorf("Profile deferred=%v %s applied", ntoutil.GetDeferredUpdateAnnotation(curProf.Annotations), curProf.Name)
 					}
 					if condition.Type == tunedv1.TunedDegraded && condition.Status != corev1.ConditionTrue && condition.Reason != "TunedDeferredUpdate" {
-						return fmt.Errorf("Profile deferred=%v %s not degraded", ntoutil.HasDeferredUpdateAnnotation(curProf.Annotations), curProf.Name)
+						return fmt.Errorf("Profile deferred=%v %s not degraded", ntoutil.GetDeferredUpdateAnnotation(curProf.Annotations), curProf.Name)
 					}
 				}
 				ginkgo.By(fmt.Sprintf("checking real node conditions for profile %q are not changed from pristine state", curProf.Name))
@@ -174,8 +174,8 @@ var _ = ginkgo.Describe("[deferred][profile-status] Profile deferred", ginkgo.La
 			verifData := util.MustExtractVerificationOutputAndCommand(cs, targetNode, tuned)
 			gomega.Expect(verifData.OutputCurrent).ToNot(gomega.Equal(verifData.OutputExpected), "current output %q already matches expected %q", verifData.OutputCurrent, verifData.OutputExpected)
 
-			tunedMutated := setDeferred(tuned.DeepCopy())
-			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.HasDeferredUpdateAnnotation(tunedMutated.Annotations)))
+			tunedMutated := setDeferred(tuned.DeepCopy(), ntoutil.DeferAlways)
+			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.GetDeferredUpdateAnnotation(tunedMutated.Annotations)))
 
 			_, err = cs.Tuneds(ntoconfig.WatchNamespace()).Create(ctx, tunedMutated, metav1.CreateOptions{})
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
@@ -266,8 +266,8 @@ var _ = ginkgo.Describe("[deferred][profile-status] Profile deferred", ginkgo.La
 			tunedDeferred, err := util.LoadTuned(tunedPathSHMMNI)
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
-			tunedMutated := setDeferred(tunedDeferred.DeepCopy())
-			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.HasDeferredUpdateAnnotation(tunedMutated.Annotations)))
+			tunedMutated := setDeferred(tunedDeferred.DeepCopy(), ntoutil.DeferAlways)
+			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.GetDeferredUpdateAnnotation(tunedMutated.Annotations)))
 
 			_, err = cs.Tuneds(ntoconfig.WatchNamespace()).Create(ctx, tunedMutated, metav1.CreateOptions{})
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
@@ -316,8 +316,8 @@ var _ = ginkgo.Describe("[deferred][profile-status] Profile deferred", ginkgo.La
 			}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
 
 			tunedDeferred2 := tunedObjVMLatency
-			tunedMutated2 := setDeferred(tunedDeferred2.DeepCopy())
-			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated2.Name, ntoutil.HasDeferredUpdateAnnotation(tunedMutated2.Annotations)))
+			tunedMutated2 := setDeferred(tunedDeferred2.DeepCopy(), ntoutil.DeferAlways)
+			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated2.Name, ntoutil.GetDeferredUpdateAnnotation(tunedMutated2.Annotations)))
 
 			_, err = cs.Tuneds(ntoconfig.WatchNamespace()).Create(ctx, tunedMutated2, metav1.CreateOptions{})
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
@@ -362,8 +362,8 @@ var _ = ginkgo.Describe("[deferred][profile-status] Profile deferred", ginkgo.La
 
 		ginkgo.It("should be overridden by a immediate update by edit", func(ctx context.Context) {
 			tunedImmediate := tunedObjVMLatency
-			tunedMutated := setDeferred(tunedImmediate.DeepCopy())
-			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.HasDeferredUpdateAnnotation(tunedMutated.Annotations)))
+			tunedMutated := setDeferred(tunedImmediate.DeepCopy(), ntoutil.DeferAlways)
+			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.GetDeferredUpdateAnnotation(tunedMutated.Annotations)))
 
 			_, err := cs.Tuneds(ntoconfig.WatchNamespace()).Create(ctx, tunedMutated, metav1.CreateOptions{})
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
@@ -416,7 +416,7 @@ var _ = ginkgo.Describe("[deferred][profile-status] Profile deferred", ginkgo.La
 				curTuned = curTuned.DeepCopy()
 
 				ginkgo.By(fmt.Sprintf("removing the deferred annotation from Tuned %q", tunedImmediate.Name))
-				curTuned.Annotations = ntoutil.ToggleDeferredUpdateAnnotation(curTuned.Annotations, false)
+				curTuned.Annotations = ntoutil.DeleteDeferredUpdateAnnotation(curTuned.Annotations)
 
 				_, err = cs.Tuneds(ntoconfig.WatchNamespace()).Update(ctx, curTuned, metav1.UpdateOptions{})
 				return err
