@@ -54,7 +54,7 @@ We recommend running some e2e tests to verify the custom image works as expected
 
 By default the build will compile using the architecture the system is currently using.
 
-You can specifying a cross compiling architecture by setting `GOARCH` in your environment:
+You can specify a cross compiling architecture by setting `GOARCH` in your environment:
 
 ```bash
 GOARCH='arm64' make build
