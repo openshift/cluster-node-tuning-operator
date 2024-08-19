@@ -71,6 +71,8 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
+          securityContext:
+            readOnlyRootFilesystem: true
           volumeMounts:
             # Certificates and keys for node-tuning-operator.openshift-cluster-node-tuning-operator.svc
             - name: node-tuning-operator-tls
