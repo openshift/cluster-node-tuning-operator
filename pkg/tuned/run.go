@@ -16,26 +16,27 @@ package tuned
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"k8s.io/klog/v2"
 )
 
-func TunedCreateCmd(debug bool) *exec.Cmd {
+func TunedCreateCmdline(debug bool) (string, []string) {
 	args := []string{"--no-dbus"}
 	if debug {
 		args = append(args, "--debug")
 	}
-	return exec.Command("/usr/sbin/tuned", args...)
+	return "/usr/sbin/tuned", args
 }
 
 func configDaemonMode() (func(), error) {
-	tunedMainCfgFilename := tunedProfilesDirCustom + "/" + tunedMainConfFile
 	daemon_key := "daemon"
 
-	tunedMainCfg, err := iniFileLoad(tunedMainCfgFilename)
+	tunedMainCfg, err := iniFileLoad(tunedMainConfPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read global TuneD configuration file: %w", err)
 	}
@@ -46,13 +47,13 @@ func configDaemonMode() (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	err = iniFileSave(tunedMainCfgFilename, tunedMainCfg)
+	err = iniFileSave(tunedMainConfPath, tunedMainCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write global TuneD configuration file: %w", err)
 	}
 
 	restoreF := func() {
-		tunedMainCfg, err := iniFileLoad(tunedMainCfgFilename)
+		tunedMainCfg, err := iniFileLoad(tunedMainConfPath)
 		if err != nil {
 			klog.Warningf("failed to read global TuneD configuration file: %v", err)
 			return
@@ -62,7 +63,7 @@ func configDaemonMode() (func(), error) {
 			klog.Warningf("failed to set %s key to %v value: %v", daemon_key, daemon_value, err)
 			return
 		}
-		err = iniFileSave(tunedMainCfgFilename, tunedMainCfg)
+		err = iniFileSave(tunedMainConfPath, tunedMainCfg)
 		if err != nil {
 			klog.Warningf("failed to write global TuneD configuration file: %w", err)
 		}
@@ -71,8 +72,22 @@ func configDaemonMode() (func(), error) {
 	return restoreF, nil
 }
 
-func TunedRunNoDaemon(cmd *exec.Cmd) error {
-	var daemon Daemon
+func TunedRunNoDaemon(timeout time.Duration) error {
+	var (
+		cmd    *exec.Cmd
+		daemon Daemon
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	command, args := TunedCreateCmdline(false)
+	if timeout > 0 {
+		// CommandContext sets Cancel to call the Kill (SIGKILL) method on the command's Process.
+		cmd = exec.CommandContext(ctx, command, args...)
+	} else {
+		cmd = exec.Command(command, args...)
+	}
 
 	restoreFunction, err := configDaemonMode()
 	if err != nil {

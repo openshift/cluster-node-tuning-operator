@@ -17,7 +17,6 @@ import (
 	"k8s.io/klog/v2"
 
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/fsnotify.v1"
 )
@@ -40,7 +39,7 @@ type Server struct {
 // DumpCA writes the root certificate bundle which is used to verify client certificates
 // on incoming requests to 'authCAFile' file.
 func DumpCA(ca string) error {
-	if err := util.Mkdir(authCADir); err != nil {
+	if err := os.MkdirAll(authCADir, os.ModePerm); err != nil {
 		return fmt.Errorf("failed to create directory %q: %v", authCADir, err)
 	}
 
@@ -144,7 +143,7 @@ func RunServer(port int, ctx context.Context) error {
 
 		// In HyperShift the CA is mounted in
 		if !ntoconfig.InHyperShift() {
-			if err := util.Mkdir(authCADir); err != nil {
+			if err := os.MkdirAll(authCADir, os.ModePerm); err != nil {
 				return fmt.Errorf("failed to create directory %q: %v", authCADir, err)
 			}
 		}
