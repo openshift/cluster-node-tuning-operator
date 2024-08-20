@@ -46,7 +46,7 @@ IMAGE_PUSH_CMD=podman push
 DOCKERFILE?=Dockerfile
 REGISTRY?=quay.io
 ORG?=openshift
-TAG=$(shell git rev-parse --abbrev-ref HEAD)
+TAG?=$(shell git rev-parse --abbrev-ref HEAD)
 IMAGE?=$(REGISTRY)/$(ORG)/origin-cluster-node-tuning-operator:$(TAG)
 
 # PAO variables
