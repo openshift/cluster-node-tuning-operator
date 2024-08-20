@@ -49,3 +49,13 @@ can automate this for you:
 It is also possible to opt for a specific revision of [TuneD](https://github.com/redhat-performance/tuned) by specifying: `TUNED_COMMIT=commit-hash`
 
 We recommend running some e2e tests to verify the custom image works as expected.
+
+# Cross Compiling
+
+By default the build will compile using the architecture the system is currently using.
+
+You can specify a cross compiling architecture by setting `GOARCH` in your environment:
+
+```bash
+GOARCH='arm64' make build
+```

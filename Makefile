@@ -2,12 +2,29 @@ PACKAGE=github.com/openshift/cluster-node-tuning-operator
 PACKAGE_BIN=$(lastword $(subst /, ,$(PACKAGE)))
 PACKAGE_MAIN=$(PACKAGE)/cmd/$(PACKAGE_BIN)
 
+# By default we build the same architecture we are running
+# Override this by specifying a different GOARCH in your environment
+HOST_ARCH ?= $(shell uname -m)
+
+# Convert from uname format to GOARCH format
+ifeq ($(HOST_ARCH),aarch64)
+	HOST_ARCH=arm64
+endif
+ifeq ($(HOST_ARCH),x86_64)
+	HOST_ARCH=amd64
+endif
+
+# Define GOARCH as HOST_ARCH if not otherwise defined
+ifndef GOARCH
+	GOARCH=$(HOST_ARCH)
+endif
+
 # Build-specific variables
 OUT_DIR=_output
 GOBINDATA_BIN=$(OUT_DIR)/go-bindata
 BINDATA=pkg/manifests/bindata.go
 ASSETS=$(shell find assets -name \*.yaml)
-GO=GOOS=linux GO111MODULE=on GOFLAGS=-mod=vendor go
+GO=GOARCH=$(GOARCH) GOOS=linux GO111MODULE=on GOFLAGS=-mod=vendor go
 GO_BUILD_RECIPE=$(GO) build -o $(OUT_DIR)/$(PACKAGE_BIN) -ldflags '-X $(PACKAGE)/version.Version=$(REV)' $(PACKAGE_MAIN)
 GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
 REV=$(shell git describe --long --tags --match='v*' --always --dirty)
@@ -24,7 +41,7 @@ API_GO_HEADER_FILE:=$(API_TYPES_DIR)/header.go.txt
 CONTROLLER_GEN_VERSION :=v0.6.0
 
 # Container image-related variables
-IMAGE_BUILD_CMD?=podman build --no-cache
+IMAGE_BUILD_CMD?=podman build --no-cache --arch=$(GOARCH) --build-arg GOARCH=$(GOARCH)
 IMAGE_PUSH_CMD=podman push
 DOCKERFILE?=Dockerfile
 REGISTRY?=quay.io
