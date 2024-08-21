@@ -48,7 +48,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 	chkCmdLine := []string{"cat", "/proc/cmdline"}
 	chkKubeletConfig := []string{"cat", "/rootfs/etc/kubernetes/kubelet.conf"}
-	chkIrqbalance := []string{"cat", "/rootfs/etc/sysconfig/irqbalance"}
 
 	chkCmdLineFn := func(ctx context.Context, node *corev1.Node) (string, error) {
 		out, err := nodes.ExecCommand(ctx, node, chkCmdLine)
