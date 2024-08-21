@@ -17,6 +17,7 @@ package operand
 
 import (
 	"flag"
+	"fmt"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/signals"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/tuned"
@@ -30,6 +31,7 @@ import (
 
 type tunedOpts struct {
 	inCluster bool
+	oneShot   bool
 }
 
 func NewTunedCommand() *cobra.Command {
@@ -56,6 +58,7 @@ func NewTunedCommand() *cobra.Command {
 
 func (t *tunedOpts) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&t.inCluster, "in-cluster", true, "In-cluster operand run.")
+	fs.BoolVar(&t.oneShot, "one-shot", false, "Run TuneD in one-shot mode.")
 }
 
 func addKlogFlags(cmd *cobra.Command) {
@@ -69,10 +72,21 @@ func (t *tunedOpts) Validate() error {
 }
 
 func (t *tunedOpts) Run() error {
-	return tunedOperandRun(t.inCluster)
+	return tunedOperandRun(t.inCluster, t.oneShot)
 }
 
-func tunedOperandRun(inCluster bool) error {
+func tunedOperandRun(inCluster, oneShot bool) error {
 	stopCh := signals.SetupSignalHandler()
-	return tuned.RunOperand(stopCh, version.Version, inCluster)
+
+	if inCluster {
+		if !oneShot {
+			return tuned.RunInCluster(stopCh, version.Version)
+		}
+	} else {
+		if oneShot {
+			return tuned.RunOutOfClusterOneShot(stopCh, version.Version)
+		}
+	}
+
+	return fmt.Errorf("the combination of options --in-cluster=%v and --one-shot=%v is not supported", inCluster, oneShot)
 }

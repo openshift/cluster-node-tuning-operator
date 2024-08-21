@@ -84,12 +84,13 @@ const (
 )
 
 const (
-	systemdServiceIRQBalance  = "irqbalance.service"
-	systemdServiceKubelet     = "kubelet.service"
-	systemdServiceCrio        = "crio.service"
-	systemdServiceTypeOneshot = "oneshot"
-	systemdTargetMultiUser    = "multi-user.target"
-	systemdTrue               = "true"
+	systemdServiceIRQBalance   = "irqbalance.service"
+	systemdServiceKubelet      = "kubelet.service"
+	systemdServiceCrio         = "crio.service"
+	systemdServiceTunedOneShot = "ocp-tuned-one-shot.service"
+	systemdServiceTypeOneshot  = "oneshot"
+	systemdTargetMultiUser     = "multi-user.target"
+	systemdTrue                = "true"
 )
 
 const (
@@ -325,6 +326,18 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, pinningMode *a
 		Contents: &clearIRQBalanceBannedCPUsService,
 		Enabled:  pointer.BoolPtr(true),
 		Name:     getSystemdService(clearIRQBalanceBannedCPUs),
+	})
+
+	// add ocp-tuned-one-shot service
+	ocpTunedOneShotServiceByteContent, err := assets.Configs.ReadFile(filepath.Join("configs", systemdServiceTunedOneShot))
+	if err != nil {
+		return nil, err
+	}
+	ocpTunedOneShotServiceContent := string(ocpTunedOneShotServiceByteContent)
+	ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
+		Contents: &ocpTunedOneShotServiceContent,
+		Enabled:  pointer.Bool(true),
+		Name:     systemdServiceTunedOneShot,
 	})
 
 	if ok, ovsSliceName := MoveOvsIntoOwnSlice(); ok {
