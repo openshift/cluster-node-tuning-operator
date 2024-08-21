@@ -59,3 +59,11 @@ You can specify a cross compiling architecture by setting `GOARCH` in your envir
 ```bash
 GOARCH='arm64' make build
 ```
+
+# Local build failed with error 125: invalid reference format
+
+By default the image tag is generated using the name of the local git branch. This behaviour will cause error 125 if you have a special character in your local git branch name. You should specify a tag manually instead:
+
+```bash
+TAG=my-custom-tag make local-image
+```

@@ -15,7 +15,7 @@ WORKDIR=$(dirname "$(realpath "$0")")/..
 # do not use this script.
 
 ORG=${ORG:-openshift}	# At a minimum, you'll probably want to override this variable.
-TAG=$(git rev-parse --abbrev-ref HEAD)
+TAG=${TAG:-$(git rev-parse --abbrev-ref HEAD)}  # You may need to override this if your git branch contains special characters
 IMAGE=quay.io/${ORG}/origin-cluster-node-tuning-operator:$TAG
 
 nto_prepare_image() {
