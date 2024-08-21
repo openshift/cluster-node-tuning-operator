@@ -9,6 +9,12 @@ INSTALL_PKGS="nmap-ncat procps-ng pciutils"
 cp -r /root/assets/bin/* /usr/local/bin
 mkdir -p /etc/grub.d/ /boot /run/ocp-tuned
 
+# Verify TuneD submodule is not empty
+if [[ -z $(ls /root/assets/tuned/tuned) ]]; then
+    echo "TuneD submodule is an empty folder. Consider initializing the module: 'git submodule update --init --recursive'"
+    exit 1
+fi
+
 source /etc/os-release
 if [[ "${ID}" == "centos" ]]; then
 
