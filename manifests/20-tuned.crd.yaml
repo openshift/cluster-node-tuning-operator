@@ -133,6 +133,9 @@ spec:
                                 for the TuneD daemon: true/false'
                               type: boolean
                           type: object
+                        verbosity:
+                          description: klog logging verbosity
+                          type: integer
                       type: object
                     priority:
                       description: Tuned profile priority. Highest priority is 0.

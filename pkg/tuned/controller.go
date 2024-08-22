@@ -354,6 +354,10 @@ func (c *Controller) sync(key wqKeyKube) error {
 		change.provider = profile.Spec.Config.ProviderName
 		change.recommendedProfile = profile.Spec.Config.TunedProfile
 		change.debug = profile.Spec.Config.Debug
+		err = util.SetLogLevel(profile.Spec.Config.Verbosity)
+		if err != nil {
+			klog.Errorf("failed to set log level %d: %v", profile.Spec.Config.Verbosity, err)
+		}
 		change.reapplySysctl = true
 		if profile.Spec.Config.TuneDConfig.ReapplySysctl != nil {
 			change.reapplySysctl = *profile.Spec.Config.TuneDConfig.ReapplySysctl
