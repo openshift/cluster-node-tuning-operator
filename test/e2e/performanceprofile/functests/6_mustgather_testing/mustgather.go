@@ -12,6 +12,7 @@ import (
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
+	hypershiftutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
@@ -66,7 +67,12 @@ var _ = Describe("[rfe_id: 50649] Performance Addon Operator Must Gather", Label
 				"cluster-scoped-resources/machineconfiguration.openshift.io/kubeletconfigs/performance-performance.yaml",
 				"namespaces/openshift-cluster-node-tuning-operator/tuned.openshift.io/tuneds/openshift-node-performance-performance.yaml",
 			}
-
+			// On a hypershift env, the tuned file name has an indentifier in the end
+			if hypershiftutils.IsHypershiftCluster() {
+				ClusterSpecificFiles = []string{
+					"namespaces/openshift-cluster-node-tuning-operator/tuned.openshift.io/tuneds/openshift-node-performance-performance-*.yaml",
+				}
+			}
 			By(fmt.Sprintf("Checking Folder: %q\n", mgContentFolder))
 			By("Looking for generic files")
 			err := checkfilesExist(ClusterSpecificFiles, mgContentFolder)
@@ -149,9 +155,9 @@ var _ = Describe("[rfe_id: 50649] Performance Addon Operator Must Gather", Label
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		It("Verify machineconfig resources are captured", func() {
+		It("Verify machineconfig resources are captured", Label(string(label.OpenShift)), func() {
 			mcps := &machineconfigv1.MachineConfigPoolList{}
-			err := testclient.Client.List(context.TODO(), mcps)
+			err := testclient.ControlPlaneClient.List(context.TODO(), mcps)
 			Expect(err).ToNot(HaveOccurred())
 			mcpFiles := make([]string, len(mcps.Items))
 			for _, item := range mcps.Items {
@@ -166,8 +172,21 @@ var _ = Describe("[rfe_id: 50649] Performance Addon Operator Must Gather", Label
 func checkfilesExist(listOfFiles []string, path string) error {
 	for _, f := range listOfFiles {
 		file := filepath.Join(path, f)
-		if _, err := os.Stat(file); errors.Is(err, os.ErrNotExist) {
-			return err
+		pattern, err := filepath.Glob(file)
+		if err != nil {
+			// if the pattern itself is malformed.
+			return fmt.Errorf("failed to match pattern for file: %s, error: %w", file, err)
+		}
+		if pattern == nil {
+			// When no files matched the pattern.
+			return fmt.Errorf("no files matched the pattern for file: %s, error: %w", file, err)
+		}
+		if _, err = os.Stat(pattern[0]); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("file does not exist: %s, error: %w", pattern[0], err)
+			}
+			// Return the original error if it's not os.ErrNotExist.
+			return fmt.Errorf("failed to stat file: %s, error: %w", pattern[0], err)
 		}
 	}
 	return nil
