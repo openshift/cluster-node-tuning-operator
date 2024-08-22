@@ -41,6 +41,8 @@ const (
 
 	tunedVMLatInplaceBootstrap = "../testing_manifests/deferred/tuned-basic-updates-00.yaml"
 	tunedVMLatInplaceUpdate    = "../testing_manifests/deferred/tuned-basic-updates-10.yaml"
+
+	tunedMatchLabelLater = "match-later"
 )
 
 var (
