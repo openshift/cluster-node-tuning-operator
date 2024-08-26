@@ -73,6 +73,7 @@ var _ = ginkgo.Describe("Profile deferred", ginkgo.Label("deferred", "profile-st
 				ginkgo.By(fmt.Sprintf("cluster changes rollback: %q", createdTuned))
 				util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", createdTuned)
 			}
+			util.ExecAndLogCommand("oc", "label", "node", targetNode.Name, tunedMatchLabelLater+"-")
 		})
 
 		ginkgo.It("should not trigger any actual change", func(ctx context.Context) {
@@ -457,6 +458,104 @@ var _ = ginkgo.Describe("Profile deferred", ginkgo.Label("deferred", "profile-st
 					if out != verif.output {
 						return fmt.Errorf("got: %s; expected: %s", out, verif.output)
 					}
+				}
+				return nil
+			}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
+		})
+
+		ginkgo.It("should apply defer-on-update immediately after node is labelled", func(ctx context.Context) {
+			tunedPath := filepath.Join(dirPath, tunedSHMMNI)
+			ginkgo.By(fmt.Sprintf("loading tuned data from %s (basepath=%s)", tunedPath, dirPath))
+
+			tuned, err := util.LoadTuned(tunedPath)
+			gomega.Expect(err).ToNot(gomega.HaveOccurred())
+
+			verifData := util.MustExtractVerificationOutputAndCommand(cs, targetNode, tuned)
+			gomega.Expect(verifData.OutputCurrent).ToNot(gomega.Equal(verifData.OutputExpected), "current output %q already matches expected %q", verifData.OutputCurrent, verifData.OutputExpected)
+
+			tunedMutated := setDeferred(tuned.DeepCopy(), ntoutil.DeferUpdate)
+
+			gomega.Expect(tuned.Spec.Recommend).ToNot(gomega.BeEmpty(), "tuned %q has empty recommendations", tuned.Name)
+			gomega.Expect(tuned.Spec.Recommend[0].Match).ToNot(gomega.BeEmpty(), "tuned %q has empty recommendation matchers", tuned.Name)
+
+			// Change the recommendation to use non-role label to test a scenario where the Tuned is created first (and processed by NTO)
+			// and only later a node is changed to consume it. This results in a flow where no change is detected on the Tuned level (it is already)
+			// on the disk, but an update must be triggered.
+			nodeLabel := tunedMatchLabelLater
+			tunedMutated.Spec.Recommend[0].Match[0].Label = &nodeLabel
+
+			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.GetDeferredUpdateAnnotation(tunedMutated.Annotations)))
+			_, err = cs.Tuneds(ntoconfig.WatchNamespace()).Create(ctx, tunedMutated, metav1.CreateOptions{})
+			gomega.Expect(err).ToNot(gomega.HaveOccurred())
+
+			createdTuneds = prepend(createdTuneds, tunedPath) // we need the path, not the name
+			ginkgo.By(fmt.Sprintf("create tuneds: %v", createdTuneds))
+
+			gomega.Expect(tuned.Spec.Recommend[0].Profile).ToNot(gomega.BeNil(), "tuned %q has empty recommended tuned profile", tuned.Name)
+			expectedProfile := *tuned.Spec.Recommend[0].Profile
+
+			ginkgo.By(fmt.Sprintf("labelling node %q with %q", targetNode.Name, nodeLabel))
+
+			gomega.Expect(targetNode.Labels).ToNot(gomega.HaveKey(nodeLabel), "node %q has label %q too early", targetNode.Name, nodeLabel)
+			targetNode.Labels[nodeLabel] = ""
+			_, err = cs.CoreV1Interface.Nodes().Update(ctx, targetNode, metav1.UpdateOptions{})
+			gomega.Expect(err).ToNot(gomega.HaveOccurred())
+
+			ginkgo.By(fmt.Sprintf("expecting Tuned Profile %q to be picked up", expectedProfile))
+
+			gomega.Eventually(func() error {
+				curProf, err := cs.Profiles(ntoconfig.WatchNamespace()).Get(ctx, targetNode.Name, metav1.GetOptions{})
+				if err != nil {
+					return err
+				}
+				ginkgo.By(fmt.Sprintf("checking profile for target node %q matches expectations about %q", curProf.Name, expectedProfile))
+
+				if len(curProf.Status.Conditions) == 0 {
+					return fmt.Errorf("missing status conditions")
+				}
+				cond := findCondition(curProf.Status.Conditions, tunedv1.TunedProfileApplied)
+				if cond == nil {
+					return fmt.Errorf("missing status applied condition")
+				}
+				err = checkAppliedConditionOK(cond)
+				if err != nil {
+					util.Logf("profile for target node %q does not match expectations about %q: %v", curProf.Name, expectedProfile, err)
+				}
+				recommended, err := getRecommendedProfile(verifData.TargetTunedPod)
+				if err != nil {
+					return err
+				}
+				if recommended != expectedProfile {
+					return fmt.Errorf("recommended profile is %q expected %q", recommended, expectedProfile)
+				}
+				return err
+			}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
+
+			gomega.Eventually(func() error {
+				curProf, err := cs.Profiles(ntoconfig.WatchNamespace()).Get(ctx, targetNode.Name, metav1.GetOptions{})
+				if err != nil {
+					return err
+				}
+				ginkgo.By(fmt.Sprintf("checking conditions for profile %q: %#v", curProf.Name, curProf.Status.Conditions))
+				if len(curProf.Status.Conditions) == 0 {
+					return fmt.Errorf("missing status conditions")
+				}
+				for _, condition := range curProf.Status.Conditions {
+					if condition.Type == tunedv1.TunedProfileApplied && condition.Status != corev1.ConditionTrue {
+						return fmt.Errorf("Profile deferred=%v %s not applied", ntoutil.GetDeferredUpdateAnnotation(curProf.Annotations), curProf.Name)
+					}
+					if condition.Type == tunedv1.TunedDegraded && condition.Status != corev1.ConditionFalse {
+						return fmt.Errorf("Profile deferred=%v %s degraded", ntoutil.GetDeferredUpdateAnnotation(curProf.Annotations), curProf.Name)
+					}
+				}
+				ginkgo.By(fmt.Sprintf("checking configuration from profile %q was applied", curProf.Name))
+				out, err := util.ExecCmdInPod(verifData.TargetTunedPod, verifData.CommandArgs...)
+				if err != nil {
+					return err
+				}
+				out = strings.TrimSpace(out)
+				if out != verifData.OutputExpected {
+					return fmt.Errorf("got: %s; expected: %s", out, verifData.OutputExpected)
 				}
 				return nil
 			}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
