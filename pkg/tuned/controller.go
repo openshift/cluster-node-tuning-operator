@@ -1025,6 +1025,7 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 			// Cache the value written to tunedRecommendFile.
 			c.daemon.recommendedProfile = change.recommendedProfile
 			klog.V(1).Infof("recommended TuneD profile updated from %q to %q [inplaceUpdate=%v nodeRestart=%v]", prevRecommended, change.recommendedProfile, inplaceUpdate, change.nodeRestart)
+			changeRecommend = true
 
 			if change.deferredMode == util.DeferUpdate && !inplaceUpdate && c.daemon.recoveredRecommendedProfile == change.recommendedProfile {
 				klog.V(1).Infof("recommended TuneD profile changed; skip TuneD reload [deferred=%v recoveredRecommended=%v]", change.deferredMode, c.daemon.recoveredRecommendedProfile)
