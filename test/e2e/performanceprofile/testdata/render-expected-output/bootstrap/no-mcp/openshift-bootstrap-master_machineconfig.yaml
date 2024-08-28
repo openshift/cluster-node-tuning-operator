@@ -207,6 +207,7 @@ spec:
               --entrypoint '["/usr/bin/cluster-node-tuning-operator","ocp-tuned","--in-cluster=false","--one-shot=true","-v=1"]' \
               $NTO_IMAGE
           Environment=PODMAN_SYSTEMD_UNIT=%n
+          EnvironmentFile=/etc/mco/proxy.env
           EnvironmentFile=-/var/lib/ocp-tuned/image.env
           ExecStop=/usr/bin/podman stop -t 20 --ignore openshift-tuned
           ExecStopPost=/usr/bin/podman rm -f --ignore openshift-tuned
