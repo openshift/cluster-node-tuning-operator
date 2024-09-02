@@ -20,24 +20,25 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/cpuset"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/systemd"
 )
 
@@ -53,11 +54,12 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 		workerRTNode            *corev1.Node
 		workerRTNodes           []corev1.Node
 		profile, initialProfile *performancev2.PerformanceProfile
-		performanceMCP          string
+		poolName                string
 		ovsSliceCgroup          string
 		ctx                     context.Context = context.Background()
 		ovsSystemdServices      []string
 		isCgroupV2              bool
+		err                     error
 	)
 
 	BeforeAll(func() {
@@ -74,10 +76,18 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 		profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 
-		performanceMCP, err = mcps.GetByProfile(profile)
-		Expect(err).ToNot(HaveOccurred())
+		if !hypershift.IsHypershiftCluster() {
+			poolName, err = mcps.GetByProfile(profile)
+			Expect(err).ToNot(HaveOccurred())
+		} else {
+			hostedClusterName, err := hypershift.GetHostedClusterName()
+			Expect(err).ToNot(HaveOccurred(), "Unable to fetch hosted cluster name")
+			np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
+			Expect(err).ToNot(HaveOccurred())
+			poolName = client.ObjectKeyFromObject(np).String()
+		}
 
-		isCgroupV2, err = cgroup.IsVersion2(ctx, testclient.Client)
+		isCgroupV2, err = cgroup.IsVersion2(ctx, testclient.DataPlaneClient)
 		Expect(err).ToNot(HaveOccurred())
 
 		ovsSystemdServices = ovsSystemdServicesOnOvsSlice(ctx, workerRTNode)
@@ -85,7 +95,6 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 	})
 
 	BeforeEach(func() {
-		var err error
 		By(fmt.Sprintf("Checking the profile %s with cpus %s", profile.Name, cpuSpecToString(profile.Spec.CPU)))
 
 		Expect(profile.Spec.CPU.Isolated).NotTo(BeNil())
@@ -111,6 +120,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				ovnKubenodepod, err := ovnCnfNodePod(ctx, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				containerIds, err := ovnPodContainers(&ovnKubenodepod)
+				Expect(err).ToNot(HaveOccurred())
 				for _, ctn := range containerIds {
 					var containerCgroupPath string
 					pid, err := nodes.ContainerPid(ctx, workerRTNode, ctn)
@@ -119,16 +129,19 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					out, err := nodes.ExecCommand(context.TODO(), workerRTNode, cmd)
 					Expect(err).ToNot(HaveOccurred())
 					cgroupPathOfPid, err := cgroup.PidParser(out)
+					Expect(err).ToNot(HaveOccurred())
 					if isCgroupV2 {
 						containerCgroupPath = filepath.Join(cgroupRoot, cgroupPathOfPid)
 					} else {
 						controller := filepath.Join(cgroupRoot, "/cpuset")
 						containerCgroupPath = filepath.Join(controller, cgroupPathOfPid)
 					}
-					cmd = []string{"cat", fmt.Sprintf("%s", filepath.Join(containerCgroupPath, "/cpuset.cpus"))}
+					cmd = []string{"cat", filepath.Join(containerCgroupPath, "/cpuset.cpus")}
 					out, err = nodes.ExecCommand(ctx, workerRTNode, cmd)
+					Expect(err).ToNot(HaveOccurred())
 					cpus := testutils.ToString(out)
 					containerCpuset, err := cpuset.Parse(cpus)
+					Expect(err).ToNot(HaveOccurred())
 					Expect(containerCpuset).To(Equal(onlineCPUSet), "Burstable pod containers cpuset.cpus do not match total online cpus")
 				}
 
@@ -141,12 +154,10 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				initialProfile = profile.DeepCopy()
 			})
 			It("[test_id:64099] Activation file doesn't get deleted", func() {
-				performanceMCP, err := mcps.GetByProfile(profile)
-				Expect(err).ToNot(HaveOccurred())
 				policy := "best-effort"
 				// Need to make some changes to pp , causing system reboot
 				// and check if activation files is modified or deleted
-				profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+				profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 				Expect(err).ToNot(HaveOccurred(), "Unable to fetch latest performance profile")
 				currentPolicy := profile.Spec.NUMA.TopologyPolicy
 				if *currentPolicy == "best-effort" {
@@ -157,10 +168,13 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				}
 				By("Updating the performance profile")
 				profiles.UpdateWithRetry(profile)
-				By("Applying changes in performance profile and waiting until mcp will start updating")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-				By("Waiting for MCP being updated")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+				profilesupdate.WaitForTuningUpdating(ctx, profile)
+
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.PostUpdateSync(ctx, profile)
+
 				By("Checking Activation file")
 				cmd := []string{"ls", activation_file}
 				for _, node := range workerRTNodes {
@@ -176,22 +190,14 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				Expect(err).ToNot(HaveOccurred())
 				currentSpec, _ := json.Marshal(profile.Spec)
 				spec, _ := json.Marshal(initialProfile.Spec)
-				performanceMCP, err := mcps.GetByProfile(profile)
-				Expect(err).ToNot(HaveOccurred())
-				// revert only if the profile changes.
 				if !bytes.Equal(currentSpec, spec) {
-					Expect(testclient.Client.Patch(context.TODO(), profile,
-						client.RawPatch(
-							types.JSONPatchType,
-							[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-						),
-					)).ToNot(HaveOccurred())
+					profiles.UpdateWithRetry(initialProfile)
 
-					By("Applying changes in performance profile and waiting until mcp will start updating")
-					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-					By("Waiting when mcp finishes updates")
-					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, profile)
 				}
 			})
 		})
@@ -311,7 +317,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				},
 				}
 				testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
-				err = testclient.Client.Create(ctx, testpod)
+				err = testclient.DataPlaneClient.Create(ctx, testpod)
 				Expect(err).ToNot(HaveOccurred())
 				testpod, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
@@ -319,6 +325,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 
 				cmd := []string{"taskset", "-pc", "1"}
 				outputb, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod, "", cmd)
+				Expect(err).ToNot(HaveOccurred())
 				testpodCpus := bytes.Split(outputb, []byte(":"))
 				testlog.Infof("%v pod is using cpus %v", testpod.Name, string(testpodCpus[1]))
 
@@ -333,6 +340,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				ovnContainers, err := ovnPodContainers(&ovnPod)
 				Expect(err).ToNot(HaveOccurred())
 				containerPid, err := nodes.ContainerPid(ctx, workerRTNode, ovnContainers[0])
+				Expect(err).ToNot(HaveOccurred())
 				// we need to wait as process affinity can change
 				time.Sleep(30 * time.Second)
 				ctnCpuset := taskSet(ctx, containerPid, workerRTNode)
@@ -367,7 +375,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				}
 
 				testpod1.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
-				err = testclient.Client.Create(ctx, testpod1)
+				err = testclient.DataPlaneClient.Create(ctx, testpod1)
 				Expect(err).ToNot(HaveOccurred())
 				testpod1, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testpod1), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
@@ -387,7 +395,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					},
 				}
 				testpod2.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
-				err = testclient.Client.Create(ctx, testpod2)
+				err = testclient.DataPlaneClient.Create(ctx, testpod2)
 				Expect(err).ToNot(HaveOccurred())
 				testpod2, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testpod2), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
@@ -446,13 +454,13 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				testNode := make(map[string]string)
 				testNode["kubernetes.io/hostname"] = workerRTNode.Name
 				dp.Spec.Template.Spec.NodeSelector = testNode
-				err := testclient.Client.Create(ctx, dp)
+				err := testclient.DataPlaneClient.Create(ctx, dp)
 				Expect(err).ToNot(HaveOccurred(), "Unable to create Deployment")
 
 				defer func() {
 					// delete deployment
 					testlog.Infof("Deleting Deployment %v", dp.Name)
-					err := testclient.Client.Delete(ctx, dp)
+					err := testclient.DataPlaneClient.Delete(ctx, dp)
 					Expect(err).ToNot(HaveOccurred())
 				}()
 				ovnPod, err := ovnCnfNodePod(ctx, workerRTNode)
@@ -494,10 +502,12 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 
 				By("Updating the performance profile")
 				profiles.UpdateWithRetry(profile)
-				By("Applying changes in performance profile and waiting until mcp will start updating")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-				By("Waiting for MCP being updated")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+				profilesupdate.WaitForTuningUpdating(ctx, profile)
+
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.PostUpdateSync(ctx, profile)
 
 				// After reboot we want the deployment to be ready before moving forward
 				desiredStatus := appsv1.DeploymentStatus{
@@ -558,7 +568,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				defer func() {
 					By("Delete Deployment")
 					testlog.Infof("Deleting Deployment %v", dp.Name)
-					err := testclient.Client.Delete(ctx, dp)
+					err := testclient.DataPlaneClient.Delete(ctx, dp)
 					Expect(err).ToNot(HaveOccurred())
 				}()
 
@@ -677,22 +687,15 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				Expect(err).ToNot(HaveOccurred())
 				currentSpec, _ := json.Marshal(profile.Spec)
 				spec, _ := json.Marshal(initialProfile.Spec)
-				performanceMCP, err := mcps.GetByProfile(profile)
-				Expect(err).ToNot(HaveOccurred())
 				// revert only if the profile changes.
 				if !bytes.Equal(currentSpec, spec) {
-					Expect(testclient.Client.Patch(context.TODO(), profile,
-						client.RawPatch(
-							types.JSONPatchType,
-							[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-						),
-					)).ToNot(HaveOccurred())
+					profiles.UpdateWithRetry(initialProfile)
 
-					By("Applying changes in performance profile and waiting until mcp will start updating")
-					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+					profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
-					By("Waiting when mcp finishes updates")
-					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, initialProfile)
 				}
 			})
 		})
@@ -736,12 +739,12 @@ func checkCpuCount(ctx context.Context, workerNode *corev1.Node) {
 // deleteTestPod removes guaranteed pod
 func deleteTestPod(ctx context.Context, testpod *corev1.Pod) {
 	// it possible that the pod already was deleted as part of the test, in this case we want to skip teardown
-	err := testclient.Client.Get(ctx, client.ObjectKeyFromObject(testpod), testpod)
+	err := testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(testpod), testpod)
 	if errors.IsNotFound(err) {
 		return
 	}
 
-	err = testclient.Client.Delete(ctx, testpod)
+	err = testclient.DataPlaneClient.Delete(ctx, testpod)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = pods.WaitForDeletion(ctx, testpod, pods.DefaultDeletionTimeout*time.Second)
@@ -755,7 +758,7 @@ func ovnCnfNodePod(ctx context.Context, workerNode *corev1.Node) (corev1.Pod, er
 	options := &client.ListOptions{
 		Namespace: "openshift-ovn-kubernetes",
 	}
-	err := testclient.Client.List(ctx, ovnpods, options)
+	err := testclient.DataPlaneClient.List(ctx, ovnpods, options)
 	if err != nil {
 		return ovnKubeNodePod, err
 	}
