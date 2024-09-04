@@ -24,16 +24,23 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 )
 
 var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ordered, Label(string(label.ExperimentalAnnotations)), func() {
-	var initialProfile, profile *performancev2.PerformanceProfile
-	var workerRTNodes []corev1.Node
-	var performanceMCP string
+
+	var (
+		initialProfile, profile *performancev2.PerformanceProfile
+		workerRTNodes           []corev1.Node
+		poolName                string
+		ctx                     context.Context = context.Background()
+	)
 
 	testutils.CustomBeforeAll(func() {
 		workerRTNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
@@ -45,33 +52,36 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 		profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 
-		performanceMCP, err = mcps.GetByProfile(profile)
-		Expect(err).ToNot(HaveOccurred())
+		if !hypershift.IsHypershiftCluster() {
+			poolName, err = mcps.GetByProfile(profile)
+			Expect(err).ToNot(HaveOccurred())
+			for _, mcpName := range []string{testutils.RoleWorker, poolName} {
+				mcps.WaitForCondition(mcpName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			}
+		} else {
+			hostedClusterName, err := hypershift.GetHostedClusterName()
+			np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
+			Expect(err).ToNot(HaveOccurred())
+			poolName = client.ObjectKeyFromObject(np).String()
+		}
 
 		initialProfile = profile.DeepCopy()
-		// Verify that worker and performance MCP have updated state equals to true
-		for _, mcpName := range []string{testutils.RoleWorker, performanceMCP} {
-			mcps.WaitForCondition(mcpName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
-		}
 
 	})
 	Context("Additional kubelet arguments", Label(string(label.Tier2)), func() {
 		It("[test_id:45488]Test performance profile annotation for changing multiple kubelet settings", func() {
 			sysctls := "{\"allowedUnsafeSysctls\":[\"net.core.somaxconn\",\"kernel.msg*\"],\"systemReserved\":{\"memory\":\"300Mi\"},\"kubeReserved\":{\"memory\":\"768Mi\"},\"imageMinimumGCAge\":\"3m\"}"
 			profile.Annotations = updateKubeletConfigOverrideAnnotations(profile.Annotations, sysctls)
-			annotations, err := json.Marshal(profile.Annotations)
-			Expect(err).ToNot(HaveOccurred())
 
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			Expect(testclient.Client.Patch(context.TODO(), profile,
-				client.RawPatch(
-					types.JSONPatchType,
-					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/metadata/annotations", "value": %s }]`, annotations)),
-				),
-			)).ToNot(HaveOccurred())
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-			By("Waiting when mcp finishes updates")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			By("updating Performance profile")
+			profiles.UpdateWithRetry(profile)
+
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(ctx, profile)
+
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.PostUpdateSync(ctx, profile)
+
 			for _, node := range workerRTNodes {
 				kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), &node)
 				Expect(err).ToNot(HaveOccurred())
@@ -92,19 +102,16 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			It("[test_id:45493]Should not override performance-addon-operator values", func() {
 				paoValues := "{\"cpuManagerPolicy\":\"static\",\"cpuManagerReconcilePeriod\":\"5s\"}"
 				profile.Annotations = updateKubeletConfigOverrideAnnotations(profile.Annotations, paoValues)
-				annotations, err := json.Marshal(profile.Annotations)
-				Expect(err).ToNot(HaveOccurred())
 
-				By("Applying changes in performance profile and waiting until mcp will start updating")
-				Expect(testclient.Client.Patch(context.TODO(), profile,
-					client.RawPatch(
-						types.JSONPatchType,
-						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/metadata/annotations", "value": %s }]`, annotations)),
-					),
-				)).ToNot(HaveOccurred())
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-				By("Waiting when mcp finishes updates")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				By("updating Performance profile")
+				profiles.UpdateWithRetry(profile)
+
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+				profilesupdate.WaitForTuningUpdating(ctx, profile)
+
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.PostUpdateSync(ctx, profile)
+
 				for _, node := range workerRTNodes {
 					kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), &node)
 					Expect(err).ToNot(HaveOccurred())
@@ -119,20 +126,15 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			// Verify that Allocatable = Node capacity - (kubereserved + systemReserved + EvictionMemory)
 			reservedMemory := "{\"systemReserved\":{\"memory\":\"300Mi\"},\"kubeReserved\":{\"memory\":\"768Mi\"}}"
 			profile.Annotations = updateKubeletConfigOverrideAnnotations(profile.Annotations, reservedMemory)
-			annotations, err := json.Marshal(profile.Annotations)
-			Expect(err).ToNot(HaveOccurred())
 
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			Expect(testclient.Client.Patch(context.TODO(), profile,
-				client.RawPatch(
-					types.JSONPatchType,
-					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/metadata/annotations", "value": %s }]`, annotations)),
-				),
-			)).ToNot(HaveOccurred())
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+			By("updating Performance profile")
+			profiles.UpdateWithRetry(profile)
 
-			By("Waiting when mcp finishes updates")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(ctx, profile)
+
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.PostUpdateSync(ctx, profile)
 
 			var kubeletConfig machineconfigv1.KubeletConfig
 
@@ -142,7 +144,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 					Name:      components.GetComponentName(profile.Name, components.ComponentNamePrefix),
 					Namespace: metav1.NamespaceNone,
 				}
-				err := testclient.Client.Get(context.TODO(), configKey, &kubeletConfig)
+				err := testclient.ControlPlaneClient.Get(context.TODO(), configKey, &kubeletConfig)
 				if err != nil {
 					klog.Warningf("Failed to get the KubeletConfig %q", configKey.Name)
 				}
@@ -177,21 +179,21 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			} else {
 				paoParameters = "{\"topologyManagerPolicy\":\"single-numa-node\"}"
 			}
-			profile.Annotations = updateKubeletConfigOverrideAnnotations(profile.Annotations, paoParameters)
-			annotations, err := json.Marshal(profile.Annotations)
+			// when topology manager policy is set using
+			// kubelet.experimental annotation, this is disregarded
+			// as PAO overrides and no reboot occurs.
+			// In the case of standard cluster reboot does occur which could be a bug
+			if !hypershift.IsHypershiftCluster() {
+				profile.Annotations = updateKubeletConfigOverrideAnnotations(profile.Annotations, paoParameters)
+				By("updating Performance profile")
+				profiles.UpdateWithRetry(profile)
 
-			Expect(err).ToNot(HaveOccurred())
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+				profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			Expect(testclient.Client.Patch(context.TODO(), profile,
-				client.RawPatch(
-					types.JSONPatchType,
-					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/metadata/annotations", "value": %s }]`, annotations)),
-				),
-			)).ToNot(HaveOccurred())
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-			By("Waiting when mcp finishes updates")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.PostUpdateSync(ctx, profile)
+			}
 			for _, node := range workerRTNodes {
 				kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), &node)
 				Expect(err).ToNot(HaveOccurred())
@@ -201,13 +203,8 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 
 		It("[test_id:45489] Verify settings are reverted to default profile", func() {
 			By("Reverting the Profile")
-			Expect(testclient.Client.Patch(context.TODO(), profile,
-				client.RawPatch(
-					types.JSONPatchType,
-					[]byte(fmt.Sprintf(`[{ "op": "remove", "path": "/metadata/annotations/kubeletconfig.experimental"}]`)),
-				),
-			)).ToNot(HaveOccurred())
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			profiles.UpdateWithRetry(initialProfile)
+
 			kubeletArguments := []string{"/bin/bash", "-c", "ps -ef | grep kubelet | grep config"}
 			for _, node := range workerRTNodes {
 				kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), &node)
@@ -232,18 +229,14 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			spec, _ := json.Marshal(initialProfile.Spec)
 			// revert only if the profile changes.
 			if !equality.Semantic.DeepEqual(currentSpec, spec) {
-				Expect(testclient.Client.Patch(context.TODO(), profile,
-					client.RawPatch(
-						types.JSONPatchType,
-						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-					),
-				)).ToNot(HaveOccurred())
+				profiles.UpdateWithRetry(initialProfile)
 
-				By("Applying changes in performance profile and waiting until mcp will start updating")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
-				By("Waiting when mcp finishes updates")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.PostUpdateSync(ctx, initialProfile)
+
 			}
 		})
 
