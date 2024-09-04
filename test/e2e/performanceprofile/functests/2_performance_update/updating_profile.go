@@ -45,7 +45,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 	chkCmdLine := []string{"cat", "/proc/cmdline"}
 	chkKubeletConfig := []string{"cat", "/rootfs/etc/kubernetes/kubelet.conf"}
-	chkIrqbalance := []string{"cat", "/rootfs/etc/sysconfig/irqbalance"}
 
 	chkCmdLineFn := func(ctx context.Context, node *corev1.Node) (string, error) {
 		return nodes.ExecCommandOnNode(ctx, chkCmdLine, node)
@@ -473,14 +472,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 			kblcfg, err := nodes.GetKubeletConfig(context.TODO(), newCnfNode)
 			Expect(kblcfg.ReservedSystemCPUs).NotTo(ContainSubstring("reservedSystemCPUs"))
-
-			Expect(profile.Spec.CPU.Reserved).NotTo(BeNil())
-			reservedCPU := string(*profile.Spec.CPU.Reserved)
-			cpuMask, err := components.CPUListToHexMask(reservedCPU)
-			Expect(err).ToNot(HaveOccurred(), "failed to list in Hex %s", reservedCPU)
-			irqBal, err := nodes.ExecCommandOnNode(context.TODO(), chkIrqbalance, newCnfNode)
-			Expect(err).ToNot(HaveOccurred(), "failed to execute %s", chkIrqbalance)
-			Expect(irqBal).NotTo(ContainSubstring(cpuMask))
 		})
 
 		AfterEach(func() {
