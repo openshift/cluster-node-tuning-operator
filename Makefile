@@ -253,7 +253,7 @@ pao-functests-update-only: $(BINDATA)
 pao-functests-update-only-hypershift: $(BINDATA)
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
-	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config" -p "-v -r --fail-fast --flake-attempts=2 --timeout=5h --junit-report=report.xml" -m "Running Functional Tests"
+	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/2_performance_update" -p "-v -r --fail-fast --flake-attempts=2 --timeout=5h --junit-report=report.xml" -m "Running Functional Tests"
 
 .PHONY: pao-functests-performance-workloadhints
 pao-functests-performance-workloadhints: cluster-label-worker-cnf pao-functests-performance-workloadhints-only
