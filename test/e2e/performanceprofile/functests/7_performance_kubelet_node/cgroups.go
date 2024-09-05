@@ -440,9 +440,8 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 
 			It("[test_id:64103] ovs process affinity still excludes guaranteed pods after reboot", func() {
 				checkCpuCount(context.TODO(), workerRTNode)
-				var dp *appsv1.Deployment
+				var dp *appsv1.Deployment = newDeployment()
 				// create a deployment to deploy gu pods
-				dp = newDeployment()
 				testNode := make(map[string]string)
 				testNode["kubernetes.io/hostname"] = workerRTNode.Name
 				dp.Spec.Template.Spec.NodeSelector = testNode
@@ -454,7 +453,27 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					testlog.Infof("Deleting Deployment %v", dp.Name)
 					err := testclient.Client.Delete(ctx, dp)
 					Expect(err).ToNot(HaveOccurred())
+					// once deployment is deleted
+					// wait till the ovs process affinity is reverted back
+					pidList, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
+					Expect(err).ToNot(HaveOccurred())
+					cpumaskList, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
+					Expect(err).ToNot(HaveOccurred())
+					Eventually(func() bool {
+						for _, cpumask := range cpumaskList {
+							testlog.Warningf("ovs services cpu mask is %s instead of %s", cpumask.String(), onlineCPUSet.String())
+							// since cpuset.CPUSet contains map in its struct field we can't compare
+							// the structs directly. After the deployment is deleted, the cpu mask
+							// of ovs services should contain all cpus , which is generally 0-N (where
+							// N is total number of cpus, this should be easy to compare.
+							if cpumask.String() != onlineCPUSet.String() {
+								return false
+							}
+						}
+						return true
+					}, 2*time.Minute, 10*time.Second).Should(BeTrue())
 				}()
+
 				ovnPod, err := ovnCnfNodePod(ctx, workerRTNode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get ovnPod")
 				ovnContainerids, err := ovnPodContainers(&ovnPod)
@@ -546,8 +565,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				}
 
 				// create deployment with 2 replicas and each pod have 2 cpus
-				var dp *appsv1.Deployment
-				dp = newDeployment()
+				var dp *appsv1.Deployment = newDeployment()
 				testNode := make(map[string]string)
 				testNode["kubernetes.io/hostname"] = workerRTNode.Name
 				dp.Spec.Template.Spec.NodeSelector = testNode
@@ -560,6 +578,25 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					testlog.Infof("Deleting Deployment %v", dp.Name)
 					err := testclient.Client.Delete(ctx, dp)
 					Expect(err).ToNot(HaveOccurred())
+					// once deployment is deleted
+					// wait till the ovs process affinity is reverted back
+					pidList, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
+					Expect(err).ToNot(HaveOccurred())
+					cpumaskList, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
+					Expect(err).ToNot(HaveOccurred())
+					Eventually(func() bool {
+						for _, cpumask := range cpumaskList {
+							testlog.Warningf("ovs services cpu mask is %s instead of %s", cpumask.String(), onlineCPUSet.String())
+							// since cpuset.CPUSet contains map in its struct field we can't compare
+							// the structs directly. After the deployment is delete, the cpu mask
+							// of ovs services should contain all cpus , which is generally 0-N (where
+							// N is total number of cpus, this should be easy to compare.
+							if cpumask.String() != onlineCPUSet.String() {
+								return false
+							}
+						}
+						return true
+					}, 2*time.Minute, 10*time.Second).Should(BeTrue())
 				}()
 
 				testlog.Info("Get the pods list form the deployment")
