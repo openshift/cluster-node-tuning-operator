@@ -21,3 +21,5 @@ spec:
     - label: node-role.kubernetes.io/worker
     priority: 15
     profile: test-vmlat-inplace
+    operand:
+      verbosity: 4

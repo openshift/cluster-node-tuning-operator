@@ -357,6 +357,8 @@ func (c *Controller) sync(key wqKeyKube) error {
 		err = util.SetLogLevel(profile.Spec.Config.Verbosity)
 		if err != nil {
 			klog.Errorf("failed to set log level %d: %v", profile.Spec.Config.Verbosity, err)
+		} else {
+			klog.Infof("set log level %d", profile.Spec.Config.Verbosity)
 		}
 		change.reapplySysctl = true
 		if profile.Spec.Config.TuneDConfig.ReapplySysctl != nil {
@@ -1727,7 +1729,7 @@ func RunInCluster(stopCh <-chan struct{}, version string) error {
 	c.daemon.profileFingerprintUnpacked = profileFP
 	// We should *never* recover `c.daemon.recommendedProfile`.
 	// NTO operand supervises the TuneD daemon, so we must trigger
-	// a TuneD restart. Currently, the main trigger for the tuned
+	// a TuneD restart. Currently, the main reason to trigger a tuned
 	// reload to be triggered is when the current recommended profile
 	// is different from the change.recommended profile (see changeSyncerTuneD).
 	// Hence, we MUST NOT recover the recommended profile name
