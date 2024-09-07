@@ -1031,7 +1031,6 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 			// Cache the value written to tunedRecommendFile.
 			c.daemon.recommendedProfile = change.recommendedProfile
 			klog.V(1).Infof("recommended TuneD profile updated from %q to %q [inplaceUpdate=%v nodeRestart=%v]", prevRecommended, change.recommendedProfile, inplaceUpdate, change.nodeRestart)
-			changeRecommend = true
 
 			if change.deferredMode == util.DeferUpdate && !inplaceUpdate && c.daemon.recoveredRecommendedProfile == change.recommendedProfile {
 				klog.V(1).Infof("recommended TuneD profile changed; skip TuneD reload [deferred=%v recoveredRecommended=%v]", change.deferredMode, c.daemon.recoveredRecommendedProfile)
@@ -1039,11 +1038,11 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 				c.daemon.recoveredRecommendedProfile = ""
 			} else {
 				klog.V(1).Infof("recommended TuneD profile changed; trigger TuneD reload [deferred=%v]", change.deferredMode)
-				reload = true
+				changeRecommend = true
 			}
 		} else if util.IsImmediateUpdate(change.deferredMode) && (c.daemon.status&scDeferred != 0) {
 			klog.V(1).Infof("detected deferred update changed to immediate after object update")
-			reload = true
+			changeRecommend = true
 		} else {
 			klog.V(1).Infof("recommended profile (%s) matches current configuration", c.daemon.recommendedProfile)
 			// We do not need to reload the TuneD daemon, however, someone may have tampered with the k8s Profile status for this node.
@@ -1743,10 +1742,10 @@ func RunInCluster(stopCh <-chan struct{}, version string) error {
 	deferredFP, isNodeReboot, err := c.recoverAndClearDeferredUpdate()
 	if err != nil {
 		klog.ErrorS(err, "unable to recover the pending update")
+	} else if deferredFP == "" {
+		klog.Infof("starting: no pending deferred update")
 	} else if !isNodeReboot {
 		klog.Infof("starting: does not seem a node reboot, but a daemon restart. Ignoring pending deferred updates (if any)")
-	} else if deferredFP == "" {
-		klog.Infof("starting: node reboot, but no pending deferred update")
 	} else {
 		klog.Infof("starting: recovered and cleared pending deferred update %q for %s (fingerprint=%q)", recommended, restartReason(isNodeReboot), deferredFP)
 		c.pendingChange = &Change{
