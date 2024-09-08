@@ -617,7 +617,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					RealTime:              pointer.Bool(true),
 				}
 				EventuallyWithOffset(1, func() string {
-					err := testclient.DataPlaneClient.Update(context.TODO(), profile)
+					err := testclient.ControlPlaneClient.Update(context.TODO(), profile)
 					if err != nil {
 						statusErr, _ := err.(*errors.StatusError)
 						return statusErr.Status().Message
