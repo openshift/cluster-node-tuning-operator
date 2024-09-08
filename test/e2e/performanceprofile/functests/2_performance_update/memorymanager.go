@@ -10,24 +10,25 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/events"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -50,8 +51,9 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 	var (
 		workerRTNodes           []corev1.Node
 		profile, initialProfile *performancev2.PerformanceProfile
-		performanceMCP          string
+		resourcePool            string
 		err                     error
+		ctx                     context.Context = context.Background()
 	)
 
 	Context("Group Both Numa Nodes with restricted topology", Ordered, Label(string(label.Tier2)), func() {
@@ -64,10 +66,18 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			workerRTNodes = getUpdatedNodes()
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
-			performanceMCP, err = mcps.GetByProfile(profile)
-			Expect(err).ToNot(HaveOccurred())
 			// Save the original performance profile
 			initialProfile = profile.DeepCopy()
+
+			if !hypershift.IsHypershiftCluster() {
+				resourcePool, err = mcps.GetByProfile(profile)
+				Expect(err).ToNot(HaveOccurred())
+			} else {
+				hostedClusterName, err := hypershift.GetHostedClusterName()
+				np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
+				Expect(err).ToNot(HaveOccurred())
+				resourcePool = client.ObjectKeyFromObject(np).String()
+			}
 
 			for _, node := range workerRTNodes {
 				numaInfo, err := nodes.GetNumaNodes(context.TODO(), &node)
@@ -117,14 +127,16 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			profile.Spec.NUMA = &performancev2.NUMA{
 				TopologyPolicy: &policy,
 			}
+
 			By("Updating Performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+			testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+			profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-			By("Waiting for MCP being updated")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			testlog.Infof("Waiting when %s finishes updates", resourcePool)
+			profilesupdate.PostUpdateSync(ctx, profile)
+
 		})
 
 		// Automates OCPBUGS-75
@@ -137,7 +149,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			guPod := true
 			testPod := mm1.createPodTemplate(profile, guPod, &workerRTNodes[0])
 			By("creating test pod")
-			err = testclient.Client.Create(context.TODO(), testPod)
+			err = testclient.DataPlaneClient.Create(context.TODO(), testPod)
 			Expect(err).ToNot(HaveOccurred(), "Failed to create test pod")
 			testPod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testPod), corev1.PodConditionType(corev1.PodFailed), corev1.ConditionFalse, 2*time.Minute)
 			// Even though number of hugepage requests can be satisfied by 2 numa nodes together
@@ -198,18 +210,13 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			spec, _ := json.Marshal(initialProfile.Spec)
 			// revert only if the profile changes.
 			if !equality.Semantic.DeepEqual(currentSpec, spec) {
-				Expect(testclient.Client.Patch(context.TODO(), profile,
-					client.RawPatch(
-						types.JSONPatchType,
-						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-					),
-				)).ToNot(HaveOccurred())
+				profiles.UpdateWithRetry(initialProfile)
 
-				By("Applying changes in performance profile and waiting until mcp will start updating")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
-				By("Waiting when mcp finishes updates")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				testlog.Infof("Waiting when %s finishes updates", resourcePool)
+				profilesupdate.PostUpdateSync(ctx, initialProfile)
 			}
 		})
 	})
@@ -225,11 +232,25 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			workerRTNodes = getUpdatedNodes()
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred(), "unable to get performance profile")
-			performanceMCP, err = mcps.GetByProfile(profile)
-			Expect(err).ToNot(HaveOccurred(), "unable to fetch mcp")
+			if !hypershift.IsHypershiftCluster() {
+				resourcePool, err = mcps.GetByProfile(profile)
+				Expect(err).ToNot(HaveOccurred())
+			} else {
+				hostedClusterName, err := hypershift.GetHostedClusterName()
+				np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
+				Expect(err).ToNot(HaveOccurred())
+				resourcePool = client.ObjectKeyFromObject(np).String()
+			}
+
+			for _, node := range workerRTNodes {
+				numaInfo, err := nodes.GetNumaNodes(context.TODO(), &node)
+				Expect(err).ToNot(HaveOccurred())
+				if len(numaInfo) < 2 {
+					Skip(fmt.Sprintf("This test need 2 Numa nodes. The number of numa nodes on node %s < 2", node.Name))
+				}
+			}
 			// Save the original performance profile
 			initialProfile = profile.DeepCopy()
-
 			for _, node := range workerRTNodes {
 				numaInfo, err := nodes.GetNumaNodes(context.TODO(), &node)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get numa information from the node")
@@ -310,11 +331,11 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			By("Updating Performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+			testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+			profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-			By("Waiting for MCP being updated")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			testlog.Infof("Waiting when %s finishes updates", resourcePool)
+			profilesupdate.PostUpdateSync(ctx, profile)
 		})
 
 		It("[test_id:60696] Verify Guaranteed Pod has right numa affinity", func() {
@@ -373,7 +394,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			mm2.noOfhpgs = "10Mi"
 			testPod2 := mm2.createPodTemplate(profile, true, targetNode)
 			By("creating test pod")
-			err = testclient.Client.Create(context.TODO(), testPod2)
+			err = testclient.DataPlaneClient.Create(context.TODO(), testPod2)
 			Expect(err).ToNot(HaveOccurred(), "failed to create testpod2")
 			testPod2, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testPod2), corev1.PodConditionType(corev1.PodFailed), corev1.ConditionTrue, 2*time.Minute)
 			Expect(err).To(HaveOccurred(), "testpod2 did not go in to failed condition")
@@ -392,18 +413,14 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			spec, _ := json.Marshal(initialProfile.Spec)
 			// revert only if the profile changes.
 			if !equality.Semantic.DeepEqual(currentSpec, spec) {
-				Expect(testclient.Client.Patch(context.TODO(), profile,
-					client.RawPatch(
-						types.JSONPatchType,
-						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-					),
-				)).ToNot(HaveOccurred())
+				By("updating Performance profile")
+				profiles.UpdateWithRetry(initialProfile)
 
-				By("Applying changes in performance profile and waiting until mcp will start updating")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
-				By("Waiting when mcp finishes updates")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				testlog.Infof("Waiting when %s finishes updates", resourcePool)
+				profilesupdate.PostUpdateSync(ctx, initialProfile)
 			}
 		})
 	})
@@ -418,9 +435,15 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			workerRTNodes = getUpdatedNodes()
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
-			performanceMCP, err = mcps.GetByProfile(profile)
-			Expect(err).ToNot(HaveOccurred())
-
+			if !hypershift.IsHypershiftCluster() {
+				resourcePool, err = mcps.GetByProfile(profile)
+				Expect(err).ToNot(HaveOccurred())
+			} else {
+				hostedClusterName, err := hypershift.GetHostedClusterName()
+				np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
+				Expect(err).ToNot(HaveOccurred())
+				resourcePool = client.ObjectKeyFromObject(np).String()
+			}
 			// Save the original performance profile
 			initialProfile = profile.DeepCopy()
 
@@ -474,11 +497,11 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			By("Updating Performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+			testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+			profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-			By("Waiting for MCP being updated")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			testlog.Infof("Waiting when %s finishes updates", resourcePool)
+			profilesupdate.PostUpdateSync(ctx, profile)
 		})
 
 		It("[test_id:60698] Reject Guaranted pod requesting resources from 2 numa nodes together", func() {
@@ -490,7 +513,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			guPod := true
 			testPod := mm1.createPodTemplate(profile, guPod, &workerRTNodes[0])
 			By("creating test pod")
-			err = testclient.Client.Create(context.TODO(), testPod)
+			err = testclient.DataPlaneClient.Create(context.TODO(), testPod)
 			Expect(err).ToNot(HaveOccurred(), "failed to create testpod")
 			testPod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testPod), corev1.PodConditionType(corev1.PodFailed), corev1.ConditionFalse, 2*time.Minute)
 			err := checkPodEvent(testPod, "TopologyAffinityError")
@@ -506,18 +529,14 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			spec, _ := json.Marshal(initialProfile.Spec)
 			// revert only if the profile changes.
 			if !equality.Semantic.DeepEqual(currentSpec, spec) {
-				Expect(testclient.Client.Patch(context.TODO(), profile,
-					client.RawPatch(
-						types.JSONPatchType,
-						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-					),
-				)).ToNot(HaveOccurred())
+				By("updating Performance profile")
+				profiles.UpdateWithRetry(initialProfile)
 
-				By("Applying changes in performance profile and waiting until mcp will start updating")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
-				By("Waiting when mcp finishes updates")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				testlog.Infof("Waiting when %s finishes updates", resourcePool)
+				profilesupdate.PostUpdateSync(ctx, initialProfile)
 			}
 		})
 	})
@@ -533,8 +552,15 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			workerRTNodes = getUpdatedNodes()
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred(), "failed to fetch performance profile")
-			performanceMCP, err = mcps.GetByProfile(profile)
-			Expect(err).ToNot(HaveOccurred(), "failed to fetch mcp")
+			if !hypershift.IsHypershiftCluster() {
+				resourcePool, err = mcps.GetByProfile(profile)
+				Expect(err).ToNot(HaveOccurred())
+			} else {
+				hostedClusterName, err := hypershift.GetHostedClusterName()
+				np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
+				Expect(err).ToNot(HaveOccurred())
+				resourcePool = client.ObjectKeyFromObject(np).String()
+			}
 			// Save the original performance profile
 			initialProfile = profile.DeepCopy()
 
@@ -613,11 +639,11 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			By("Updating Performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+			testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+			profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-			By("Waiting for MCP being updated")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			testlog.Infof("Waiting when %s finishes updates", resourcePool)
+			profilesupdate.PostUpdateSync(ctx, profile)
 		})
 
 		It("[test_id:37150] Verify Guaranteed Pod has right numa affinity", func() {
@@ -664,25 +690,21 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			spec, _ := json.Marshal(initialProfile.Spec)
 			// revert only if the profile changes.
 			if !equality.Semantic.DeepEqual(currentSpec, spec) {
-				Expect(testclient.Client.Patch(context.TODO(), profile,
-					client.RawPatch(
-						types.JSONPatchType,
-						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-					),
-				)).ToNot(HaveOccurred())
+				By("updating Performance profile")
+				profiles.UpdateWithRetry(initialProfile)
 
-				By("Applying changes in performance profile and waiting until mcp will start updating")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
-				By("Waiting when mcp finishes updates")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				testlog.Infof("Waiting when %s finishes updates", resourcePool)
+				profilesupdate.PostUpdateSync(ctx, initialProfile)
 			}
 		})
 	})
 })
 
 func checkPodEvent(testpod *corev1.Pod, podEventReason string) error {
-	podEvents, err := events.GetEventsForObject(testclient.Client, testpod.Namespace, testpod.Name, string(testpod.UID))
+	podEvents, err := events.GetEventsForObject(testclient.DataPlaneClient, testpod.Namespace, testpod.Name, string(testpod.UID))
 	if err != nil {
 		testlog.Error(err)
 		return err
@@ -746,18 +768,18 @@ func (mm MMPod) createPodTemplate(profile *performancev2.PerformanceProfile, gu 
 
 // removePod Delete test pod
 func (mm MMPod) removePod(ctx context.Context, testPod *corev1.Pod) error {
-	err := testclient.Client.Get(ctx, client.ObjectKeyFromObject(testPod), testPod)
+	err := testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(testPod), testPod)
 	if errors.IsNotFound(err) {
 		return err
 	}
-	err = testclient.Client.Delete(ctx, testPod)
+	err = testclient.DataPlaneClient.Delete(ctx, testPod)
 	err = pods.WaitForDeletion(ctx, testPod, pods.DefaultDeletionTimeout*time.Second)
 	return err
 }
 
 // InitializePod initialize pods which we want to be in running state
 func initializePod(ctx context.Context, testPod *corev1.Pod) error {
-	err := testclient.Client.Create(context.TODO(), testPod)
+	err := testclient.DataPlaneClient.Create(context.TODO(), testPod)
 	if err != nil {
 		testlog.Errorf("Failed to create test pod %v", testPod)
 	}
@@ -784,7 +806,7 @@ func GetMemoryNodes(ctx context.Context, testPod *corev1.Pod, targetNode *corev1
 	out, err := nodes.ExecCommand(context.TODO(), targetNode, cmd)
 	containerCgroup, err = cgroup.PidParser(out)
 	fmt.Println("Container Cgroup = ", containerCgroup)
-	cgroupv2, err := cgroup.IsVersion2(context.TODO(), testclient.Client)
+	cgroupv2, err := cgroup.IsVersion2(context.TODO(), testclient.DataPlaneClient)
 	if err != nil {
 		return "", err
 	}
