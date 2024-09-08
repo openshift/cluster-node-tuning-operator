@@ -90,22 +90,24 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		})
 		When("workloadHint RealTime is disabled", func() {
 			It("should update kernel arguments and tuned accordingly to realTime Hint enabled by default", func() {
+				currentWorkloadHints := profile.Spec.WorkloadHints
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = nil
 
 				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
 					Enabled: pointer.Bool(false),
 				}
+				// If current workload hints already contains the changes skip updating
+				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
+					By("Updating the performance profile")
+					profiles.UpdateWithRetry(profile)
 
-				By("Updating the performance profile")
-				profiles.UpdateWithRetry(profile)
+					testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
-				profilesupdate.WaitForTuningUpdating(ctx, profile)
-
-				testlog.Infof("Waiting when %s finishes updates", resourcePool)
-				profilesupdate.PostUpdateSync(ctx, profile)
-
+					testlog.Infof("Waiting when %s finishes updates", resourcePool)
+					profilesupdate.PostUpdateSync(ctx, profile)
+				}
 				stalldEnabled, rtKernel := true, false
 				noHzParam := fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
 				sysctlMap := map[string]string{
@@ -145,6 +147,8 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 		When("RealTime Workload with RealTime Kernel set to false", func() {
 			It("[test_id:50991][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
+
+				currentWorkloadHints := profile.Spec.WorkloadHints
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption: pointer.Bool(false),
@@ -154,15 +158,17 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					Enabled: pointer.Bool(false),
 				}
 
-				By("Updating the performance profile")
-				profiles.UpdateWithRetry(profile)
+				// If current workload hints already contains the changes skip updating
+				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
+					By("Updating the performance profile")
+					profiles.UpdateWithRetry(profile)
 
-				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
-				profilesupdate.WaitForTuningUpdating(ctx, profile)
+					testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-				testlog.Infof("Waiting when %s finishes updates", resourcePool)
-				profilesupdate.WaitForTuningUpdated(ctx, profile)
-
+					testlog.Infof("Waiting when %s finishes updates", resourcePool)
+					profilesupdate.WaitForTuningUpdated(ctx, profile)
+				}
 				stalldEnabled, rtKernel := true, false
 				noHzParam := fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
 				sysctlMap := map[string]string{
@@ -201,6 +207,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		})
 		When("HighPower Consumption workload enabled", func() {
 			It("[test_id:50992][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
+				currentWorkloadHints := profile.Spec.WorkloadHints
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption: pointer.Bool(true),
@@ -211,15 +218,17 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					Enabled: pointer.Bool(false),
 				}
 
-				By("Updating the performance profile")
-				profiles.UpdateWithRetry(profile)
+				// If current workload hints already contains the changes skip updating
+				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
+					By("Updating the performance profile")
+					profiles.UpdateWithRetry(profile)
 
-				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
-				profilesupdate.WaitForTuningUpdating(ctx, profile)
+					testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-				testlog.Infof("Waiting when %s finishes updates", resourcePool)
-				profilesupdate.WaitForTuningUpdated(ctx, profile)
-
+					testlog.Infof("Waiting when %s finishes updates", resourcePool)
+					profilesupdate.WaitForTuningUpdated(ctx, profile)
+				}
 				stalldEnabled, rtKernel := false, false
 				sysctlMap := map[string]string{
 					"kernel.hung_task_timeout_secs": "600",
