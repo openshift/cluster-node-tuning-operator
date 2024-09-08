@@ -146,7 +146,6 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		When("RealTime Workload with RealTime Kernel set to false", func() {
 			It("[test_id:50991][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
 				By("Modifying profile")
-
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption: pointer.Bool(false),
 					RealTime:             pointer.Bool(true),
@@ -816,7 +815,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 		AfterEach(func() {
 			currentProfile := &performancev2.PerformanceProfile{}
-			if err := testclient.DataPlaneClient.Get(context.TODO(), client.ObjectKeyFromObject(initialProfile), currentProfile); err != nil {
+			if err := testclient.ControlPlaneClient.Get(context.TODO(), client.ObjectKeyFromObject(initialProfile), currentProfile); err != nil {
 				klog.Errorf("failed to get performance profile %q", initialProfile.Name)
 				return
 			}
