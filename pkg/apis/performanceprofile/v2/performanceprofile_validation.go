@@ -249,15 +249,8 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuArchitecture(nodes corev1
 	var allErrs field.ErrorList
 	// First check if the node list has valid elements
 	if len(nodes.Items) == 0 {
-		allErrs = append(allErrs,
-			field.Invalid(
-				field.NewPath("spec.nodeSelector"),
-				r.Spec.NodeSelector,
-				"Failed to detect any nodes, unable to validate architecture",
-			),
-		)
-
-		// If we failed to detect any nodes we cannot do anything more here
+		// We are unable to validate this if we have no nodes
+		// But no nodes is still a valid profile so skip this validation
 		return allErrs
 	}
 
@@ -304,15 +297,8 @@ func (r *PerformanceProfile) validateAllNodesAreSameCpuCapacity(nodes corev1.Nod
 	var allErrs field.ErrorList
 	// First check if the node list has valid elements
 	if len(nodes.Items) == 0 {
-		allErrs = append(allErrs,
-			field.Invalid(
-				field.NewPath("spec.nodeSelector"),
-				r.Spec.NodeSelector,
-				"Failed to detect any nodes, unable to validate cpu capacity",
-			),
-		)
-
-		// If we failed to detect any nodes we cannot do anything more here
+		// We are unable to validate this if we have no nodes
+		// But no nodes is still a valid profile so skip this validation
 		return allErrs
 	}
 
@@ -362,25 +348,20 @@ func (r *PerformanceProfile) validateHugePages(nodes corev1.NodeList) field.Erro
 		return allErrs
 	}
 
-	// First check if the node list has valid elements
-	if len(nodes.Items) == 0 {
-		allErrs = append(allErrs,
-			field.Invalid(
-				field.NewPath("spec.nodeSelector"),
-				r.Spec.NodeSelector,
-				"Failed to detect any nodes, unable to validate hugepages",
-			),
-		)
+	// We can only partially validate this if we have no nodes
+	// We can check that the value used is legitimate but we cannot check
+	// whether it is supposed to be x86 or aarch64
+	x86 := false
+	aarch64 := false
+	combinedHugepagesSizes := append(x86ValidHugepagesSizes, aarch64ValidHugepagesSizes...)
 
-		// If we failed to detect any nodes we cannot do anything more here
-		return allErrs
+	if len(nodes.Items) > 0 {
+		// `validateHugePages` implicitly relies on `validateAllNodesAreSameCpuArchitecture` to have already been run
+		// Under that assumption we can return any node from the list since they should all be the same architecture
+		// However it is simple and easy to just return the first node
+		x86 = isX86(nodes.Items[0])
+		aarch64 = isAarch64(nodes.Items[0])
 	}
-
-	// `validateHugePages` implicitly relies on `validateAllNodesAreSameCpuArchitecture` to have already been run
-	// Under that assumption we can return any node from the list since they should all be the same architecture
-	// However it is simple and easy to just return the first node
-	x86 := isX86(nodes.Items[0])
-	aarch64 := isAarch64(nodes.Items[0])
 
 	if r.Spec.HugePages.DefaultHugePagesSize != nil {
 		defaultSize := *r.Spec.HugePages.DefaultHugePagesSize
@@ -405,13 +386,13 @@ func (r *PerformanceProfile) validateHugePages(nodes corev1.NodeList) field.Erro
 					fmt.Sprintf("%s %v", errMsg, aarch64ValidHugepagesSizes),
 				),
 			)
-		} else if !x86 && !aarch64 {
+		} else if !x86 && !aarch64 && !slices.Contains(combinedHugepagesSizes, string(defaultSize)) {
 			allErrs = append(
 				allErrs,
 				field.Invalid(
 					field.NewPath(errField),
 					r.Spec.HugePages.DefaultHugePagesSize,
-					"Failed to detect architecture, unable to validate default hugepage size",
+					fmt.Sprintf("%s %v", errMsg, combinedHugepagesSizes),
 				),
 			)
 		}
@@ -438,13 +419,13 @@ func (r *PerformanceProfile) validateHugePages(nodes corev1.NodeList) field.Erro
 					fmt.Sprintf("%s %v", errMsg, aarch64ValidHugepagesSizes),
 				),
 			)
-		} else if !x86 && !aarch64 {
+		} else if !x86 && !aarch64 && !slices.Contains(combinedHugepagesSizes, string(page.Size)) {
 			allErrs = append(
 				allErrs,
 				field.Invalid(
 					field.NewPath(errField),
-					r.Spec.HugePages.Pages,
-					"Failed to detect architecture, unable to validate hugepage size",
+					r.Spec.HugePages.DefaultHugePagesSize,
+					fmt.Sprintf("%s %v", errMsg, combinedHugepagesSizes),
 				),
 			)
 		}
@@ -616,11 +597,6 @@ func (r *PerformanceProfile) getNodesList() (corev1.NodeList, error) {
 
 	if err != nil {
 		return corev1.NodeList{}, err
-	}
-
-	// If we have no nodes then consider this an error
-	if len(nodes.Items) == 0 {
-		return corev1.NodeList{}, fmt.Errorf("no nodes found with selector %s", selector)
 	}
 
 	return *nodes, nil
