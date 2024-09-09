@@ -67,7 +67,10 @@ var _ = ginkgo.Describe("Profile deferred", ginkgo.Label("deferred", "slow", "di
 			if len(createdTuneds) == 0 {
 				return
 			}
-			checkNonTargetWorkerNodesAreUnaffected(context.TODO(), workerNodes, targetNode.Name)
+
+			ctx := context.Background()
+			checkNonTargetWorkerNodesAreUnaffected(ctx, workerNodes, targetNode.Name)
+			checkWorkerNodeIsDefaultState(ctx, targetNode)
 		})
 
 		ginkgo.Context("the tuned daemon", ginkgo.Label("slow", "pod"), func() {
@@ -81,6 +84,8 @@ var _ = ginkgo.Describe("Profile deferred", ginkgo.Label("deferred", "slow", "di
 
 				verifData := util.MustExtractVerificationOutputAndCommand(cs, targetNode, tunedImmediate)
 				gomega.Expect(verifData.OutputCurrent).ToNot(gomega.Equal(verifData.OutputExpected), "current output %q already matches expected %q", verifData.OutputCurrent, verifData.OutputExpected)
+
+				checkCurrentProfileIsDefaultForWorker(ctx, targetNode.Name, verifData.TargetTunedPod)
 
 				tunedMutated := setDeferred(tunedImmediate.DeepCopy(), ntoutil.DeferAlways)
 				ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tunedMutated.Name, ntoutil.GetDeferredUpdateAnnotation(tunedMutated.Annotations)))
@@ -396,37 +401,8 @@ var _ = ginkgo.Describe("Profile deferred", ginkgo.Label("deferred", "slow", "di
 
 				ginkgo.By(fmt.Sprintf("checking target node after rollback: %q", targetNode.Name))
 				_, createdTuneds, _ = popleft(createdTuneds)
-				gomega.Eventually(func() error {
-					curProf, err := cs.Profiles(ntoconfig.WatchNamespace()).Get(ctx, targetNode.Name, metav1.GetOptions{})
-					if err != nil {
-						return err
-					}
-					ginkgo.By(fmt.Sprintf("checking profile for target node %q matches expectations about %q", curProf.Name, expectedProfile))
-					gomega.Expect(curProf.Name).To(gomega.Equal(expectedProfile), "checking profile for worker node %q matches expectations %q", curProf.Name, expectedProfile)
 
-					if len(curProf.Status.Conditions) == 0 {
-						return fmt.Errorf("missing status conditions")
-					}
-					cond := findCondition(curProf.Status.Conditions, tunedv1.TunedProfileApplied)
-					if cond == nil {
-						return fmt.Errorf("missing status applied condition")
-					}
-					err = checkAppliedConditionOK(cond)
-					if err != nil {
-						util.Logf("profile for target node %q does not match expectations about %q: %v", curProf.Name, expectedProfile, err)
-					}
-
-					ginkgo.By(fmt.Sprintf("checking real node conditions are restored pristine: %v -> %s", verifData.CommandArgs, verifData.OutputCurrent))
-					out, err := util.ExecCmdInPod(targetTunedPod, verifData.CommandArgs...)
-					if err != nil {
-						return err
-					}
-					out = strings.TrimSpace(out)
-					if out != verifData.OutputCurrent {
-						return fmt.Errorf("got: %s; expected: %s", out, verifData.OutputCurrent)
-					}
-					return nil
-				}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
+				checkWorkerNodeIsDefaultState(ctx, targetNode)
 
 				checkNonTargetWorkerNodesAreUnaffected(ctx, workerNodes, targetNode.Name)
 			})

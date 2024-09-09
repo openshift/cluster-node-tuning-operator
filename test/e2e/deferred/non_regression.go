@@ -51,6 +51,8 @@ var _ = ginkgo.Describe("Profile non-deferred", ginkgo.Label("deferred", "non-re
 				ginkgo.By(fmt.Sprintf("cluster changes rollback: %q", createdTuned))
 				util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", createdTuned)
 			}
+
+			checkWorkerNodeIsDefaultState(context.Background(), targetNode)
 		})
 
 		ginkgo.It("should trigger changes", func(ctx context.Context) {

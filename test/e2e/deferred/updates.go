@@ -74,6 +74,8 @@ var _ = ginkgo.Describe("Profile deferred", ginkgo.Label("deferred", "inplace-up
 				ginkgo.By(fmt.Sprintf("cluster changes rollback: %q", createdTuned))
 				util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", createdTuned)
 			}
+
+			checkWorkerNodeIsDefaultState(context.Background(), targetNode)
 		})
 
 		ginkgo.It("should trigger changes when applied fist, then deferred when edited", func(ctx context.Context) {
