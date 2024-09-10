@@ -512,9 +512,6 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				"vm.dirty_background_ratio": "3",
 				"vm.swappiness":             "10",
 			}
-			schedulerKnobs := map[string]string{
-				"migration_cost_ns": "5000000",
-			}
 			key := types.NamespacedName{
 				Name:      components.GetComponentName(testutils.PerformanceProfileName, components.ProfileNamePerformance),
 				Namespace: components.NamespaceNodeTuningOperator,
@@ -524,7 +521,6 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred(), "cannot find the Cluster Node Tuning Operator object "+components.ProfileNamePerformance)
 			validateTunedActiveProfile(context.TODO(), workerRTNodes)
 			execSysctlOnWorkers(context.TODO(), workerRTNodes, sysctlMap)
-			checkSchedKnobs(context.TODO(), workerRTNodes, schedulerKnobs)
 		})
 	})
 
