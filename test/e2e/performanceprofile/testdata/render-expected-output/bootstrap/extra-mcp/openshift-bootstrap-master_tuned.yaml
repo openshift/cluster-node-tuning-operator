@@ -51,7 +51,10 @@ spec:
       tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded}
       intel_iommu=on iommu=pt\n\n\ncmdline_isolation=+isolcpus=managed_irq,${isolated_cores}\n\n\n\ncmdline_realtime=+nohz_full=${isolated_cores}
       tsc=reliable nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11\n\n\n\n\n\n\n
-      \n\n\n\n\ncmdline_pstate=+intel_pstate=${automatic_pstate}\n\n\n[rtentsk]\n\n\n"
+      \n\n\n\n\ncmdline_pstate=+intel_pstate=${automatic_pstate}\n\n\n# In case a
+      smartpqi device is present, make sure the interrupt affinity\n# can be managed
+      by userspace services. This driver does not obey\n# the isolcpus=managed_irq
+      hint and is causing interference.\n# See: https://issues.redhat.com/browse/OCPBUGS-25860\ncmdline_smartpqi=+${f:regex_search_ternary:${f:exec:/usr/sbin/lsmod}:\\bsmartpqi\\b:smartpqi.disable_managed_interrupts=1:}\n\n[rtentsk]\n\n\n"
     name: openshift-node-performance-openshift-bootstrap-master
   - data: "[main]\nsummary=Real time profile to override unsupported settings\n\n[sysctl]\n#Real
       time kernel doesn't support the following kernel parameters.\n#The openshift-node-performance
