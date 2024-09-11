@@ -1032,8 +1032,15 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 			c.daemon.recommendedProfile = change.recommendedProfile
 			klog.V(1).Infof("recommended TuneD profile updated from %q to %q [inplaceUpdate=%v nodeRestart=%v]", prevRecommended, change.recommendedProfile, inplaceUpdate, change.nodeRestart)
 
-			if change.deferredMode == util.DeferUpdate && !inplaceUpdate && c.daemon.recoveredRecommendedProfile == change.recommendedProfile {
-				klog.V(1).Infof("recommended TuneD profile changed; skip TuneD reload [deferred=%v recoveredRecommended=%v]", change.deferredMode, c.daemon.recoveredRecommendedProfile)
+			// If we get this far, it's either because we detected a node restart or the recommended profile changed.
+			// If it's a node restart, we just process the change. If it's the latter -- TuneD profile switch, i.e. not an in-place update -- we need further
+			// logic to distinguish between the "update" and "always" DeferMode.
+			// For the "update" DeferMode, we only defer profile edits. If we are re-processing a profile which we already applied, then we must
+			// not reload tuned, otherwise we're missing the point of deferred updates.
+			// See the test "Profile deferred when applied should trigger changes when applied first, then deferred when edited, if tuned restart should be kept deferred"
+			// See the commit 3655f22656d4a3aa9f471099305dcd78a9c80320
+			if !inplaceUpdate && change.deferredMode == util.DeferUpdate && c.daemon.recoveredRecommendedProfile == change.recommendedProfile {
+				klog.V(1).Infof("reprocessing profile already in effect; this seems a daemon reload. Skip TuneD reload [deferred=%v recoveredRecommended=%v]", change.deferredMode, c.daemon.recoveredRecommendedProfile)
 				// Reset because we need only once the first time we process the TuneD k8s object. Let's avoid stale data.
 				c.daemon.recoveredRecommendedProfile = ""
 			} else {
@@ -1042,7 +1049,7 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 			}
 		} else if util.IsImmediateUpdate(change.deferredMode) && (c.daemon.status&scDeferred != 0) {
 			klog.V(1).Infof("detected deferred update changed to immediate after object update")
-			changeRecommend = true
+			reload = true
 		} else {
 			klog.V(1).Infof("recommended profile (%s) matches current configuration", c.daemon.recommendedProfile)
 			// We do not need to reload the TuneD daemon, however, someone may have tampered with the k8s Profile status for this node.
