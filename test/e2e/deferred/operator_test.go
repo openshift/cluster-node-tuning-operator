@@ -233,3 +233,56 @@ func checkNonTargetWorkerNodesAreUnaffected(ctx context.Context, workerNodes []c
 		}).WithPolling(10. * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
 	}
 }
+
+func checkCurrentProfileIsDefaultForWorker(ctx context.Context, targetNodeName string, targetTunedPod *corev1.Pod) {
+	ginkgo.GinkgoHelper()
+
+	gomega.Eventually(func() error {
+		curProf, err := cs.Profiles(ntoconfig.WatchNamespace()).Get(ctx, targetNodeName, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		ginkgo.By(fmt.Sprintf("checking profile for target node %q matches expectations about %q", curProf.Name, defaultWorkerProfile))
+
+		if len(curProf.Status.Conditions) == 0 {
+			return fmt.Errorf("missing status conditions")
+		}
+		cond := findCondition(curProf.Status.Conditions, tunedv1.TunedProfileApplied)
+		if cond == nil {
+			return fmt.Errorf("missing status applied condition")
+		}
+		err = checkAppliedConditionOK(cond)
+		if err != nil {
+			util.Logf("profile for target node %q does not match expectations about %q: %v", curProf.Name, defaultWorkerProfile, err)
+		}
+		recommended, err := getRecommendedProfile(targetTunedPod)
+		if err != nil {
+			return err
+		}
+		if recommended != defaultWorkerProfile {
+			return fmt.Errorf("recommended profile is %q expected %q", recommended, defaultWorkerProfile)
+		}
+		return err
+	}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
+}
+
+func checkWorkerNodeIsDefaultState(ctx context.Context, targetNode *corev1.Node) {
+	ginkgo.GinkgoHelper()
+
+	var targetTunedPod *corev1.Pod
+	gomega.Eventually(func() error {
+		tunedPod, err := util.GetTunedForNode(cs, targetNode)
+		if err != nil {
+			return err
+		}
+		if tunedPod.Status.Phase != corev1.PodRunning {
+			return fmt.Errorf("pod %s/%s phase %v not running", tunedPod.Namespace, tunedPod.Name, tunedPod.Status.Phase)
+		}
+		targetTunedPod = tunedPod
+		return nil
+	}).WithPolling(10 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.Succeed())
+
+	checkCurrentProfileIsDefaultForWorker(context.Background(), targetNode.Name, targetTunedPod)
+
+	ginkgo.By(fmt.Sprintf("node %q seems to match default worker state", targetNode.Name))
+}

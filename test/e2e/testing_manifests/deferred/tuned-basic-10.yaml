@@ -22,3 +22,5 @@ spec:
     - label: node-role.kubernetes.io/worker
     priority: 15
     profile: test-cpu-energy
+    operand:
+      verbosity: 4
