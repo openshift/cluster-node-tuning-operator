@@ -13,7 +13,7 @@ COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_o
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/gather-sysinfo /usr/bin/
 
 ENV ASSETS_DIR=/root/assets
-COPY assets $ASSETS_DIR
+COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/assets $ASSETS_DIR
 
 COPY hack/dockerfile_install_support.sh /tmp
 RUN /bin/bash /tmp/dockerfile_install_support.sh
