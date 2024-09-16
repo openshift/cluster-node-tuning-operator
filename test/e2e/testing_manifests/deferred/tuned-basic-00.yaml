@@ -20,3 +20,5 @@ spec:
     - label: node-role.kubernetes.io/worker
     priority: 20
     profile: test-shmmni
+    operand:
+      verbosity: 4

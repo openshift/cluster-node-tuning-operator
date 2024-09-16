@@ -357,6 +357,8 @@ func (c *Controller) sync(key wqKeyKube) error {
 		err = util.SetLogLevel(profile.Spec.Config.Verbosity)
 		if err != nil {
 			klog.Errorf("failed to set log level %d: %v", profile.Spec.Config.Verbosity, err)
+		} else {
+			klog.Infof("set log level %d", profile.Spec.Config.Verbosity)
 		}
 		change.reapplySysctl = true
 		if profile.Spec.Config.TuneDConfig.ReapplySysctl != nil {
@@ -1029,15 +1031,21 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 			// Cache the value written to tunedRecommendFile.
 			c.daemon.recommendedProfile = change.recommendedProfile
 			klog.V(1).Infof("recommended TuneD profile updated from %q to %q [inplaceUpdate=%v nodeRestart=%v]", prevRecommended, change.recommendedProfile, inplaceUpdate, change.nodeRestart)
-			changeRecommend = true
 
-			if change.deferredMode == util.DeferUpdate && !inplaceUpdate && c.daemon.recoveredRecommendedProfile == change.recommendedProfile {
-				klog.V(1).Infof("recommended TuneD profile changed; skip TuneD reload [deferred=%v recoveredRecommended=%v]", change.deferredMode, c.daemon.recoveredRecommendedProfile)
+			// If we get this far, it's either because we detected a node restart or the recommended profile changed.
+			// If it's a node restart, we just process the change. If it's the latter -- TuneD profile switch, i.e. not an in-place update -- we need further
+			// logic to distinguish between the "update" and "always" DeferMode.
+			// For the "update" DeferMode, we only defer profile edits. If we are re-processing a profile which we already applied, then we must
+			// not reload tuned, otherwise we're missing the point of deferred updates.
+			// See the test "Profile deferred when applied should trigger changes when applied first, then deferred when edited, if tuned restart should be kept deferred"
+			// See the commit 3655f22656d4a3aa9f471099305dcd78a9c80320
+			if !inplaceUpdate && change.deferredMode == util.DeferUpdate && c.daemon.recoveredRecommendedProfile == change.recommendedProfile {
+				klog.V(1).Infof("reprocessing profile already in effect; this seems a daemon reload. Skip TuneD reload [deferred=%v recoveredRecommended=%v]", change.deferredMode, c.daemon.recoveredRecommendedProfile)
 				// Reset because we need only once the first time we process the TuneD k8s object. Let's avoid stale data.
 				c.daemon.recoveredRecommendedProfile = ""
 			} else {
 				klog.V(1).Infof("recommended TuneD profile changed; trigger TuneD reload [deferred=%v]", change.deferredMode)
-				reload = true
+				changeRecommend = true
 			}
 		} else if util.IsImmediateUpdate(change.deferredMode) && (c.daemon.status&scDeferred != 0) {
 			klog.V(1).Infof("detected deferred update changed to immediate after object update")
@@ -1727,7 +1735,7 @@ func RunInCluster(stopCh <-chan struct{}, version string) error {
 	c.daemon.profileFingerprintUnpacked = profileFP
 	// We should *never* recover `c.daemon.recommendedProfile`.
 	// NTO operand supervises the TuneD daemon, so we must trigger
-	// a TuneD restart. Currently, the main trigger for the tuned
+	// a TuneD restart. Currently, the main reason to trigger a tuned
 	// reload to be triggered is when the current recommended profile
 	// is different from the change.recommended profile (see changeSyncerTuneD).
 	// Hence, we MUST NOT recover the recommended profile name
@@ -1741,10 +1749,10 @@ func RunInCluster(stopCh <-chan struct{}, version string) error {
 	deferredFP, isNodeReboot, err := c.recoverAndClearDeferredUpdate()
 	if err != nil {
 		klog.ErrorS(err, "unable to recover the pending update")
+	} else if deferredFP == "" {
+		klog.Infof("starting: no pending deferred update")
 	} else if !isNodeReboot {
 		klog.Infof("starting: does not seem a node reboot, but a daemon restart. Ignoring pending deferred updates (if any)")
-	} else if deferredFP == "" {
-		klog.Infof("starting: node reboot, but no pending deferred update")
 	} else {
 		klog.Infof("starting: recovered and cleared pending deferred update %q for %s (fingerprint=%q)", recommended, restartReason(isNodeReboot), deferredFP)
 		c.pendingChange = &Change{
