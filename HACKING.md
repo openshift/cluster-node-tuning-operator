@@ -54,10 +54,21 @@ We recommend running some e2e tests to verify the custom image works as expected
 
 By default the build will compile using the architecture the system is currently using.
 
-You can specify a cross compiling architecture by setting `GOARCH` in your environment:
+You can specify a cross compiling architecture by setting `GOARCH` in your environment.
+
+For example, to cross-compile for the aarch64 architecture, use the following:
 
 ```bash
-GOARCH='arm64' make build
+GOARCH=arm64 make build
+```
+
+For QEMU user mode emulation, make sure you have the appropriate static binaries installed.  For aarch64 builds above
+on Fedora, the package is qemu-user-static-aarch64.
+
+To cross-compile for x86_64 architecture (e.g. from Apple's M hardware), use the following:
+
+```bash
+GOARCH=amd64 make build
 ```
 
 # Local build failed with error 125: invalid reference format

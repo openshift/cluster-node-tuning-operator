@@ -1,7 +1,7 @@
 #!/bin/bash
 
 set -e
-WORKDIR=$(dirname "$(realpath "$0")")/..
+WORKDIR=$(realpath "${0%/*}/..")
 
 # Example invocation
 # ~~~~~~~~~~~~~~~~~~
@@ -16,7 +16,7 @@ WORKDIR=$(dirname "$(realpath "$0")")/..
 
 ORG=${ORG:-openshift}	# At a minimum, you'll probably want to override this variable.
 TAG=${TAG:-$(git rev-parse --abbrev-ref HEAD)}  # You may need to override this if your git branch contains special characters
-IMAGE=quay.io/${ORG}/origin-cluster-node-tuning-operator:$TAG
+IMAGE=${IMAGE:-quay.io/${ORG}/origin-cluster-node-tuning-operator:$TAG}
 
 nto_prepare_image() {
   make -C $WORKDIR update-tuned-submodule TUNED_COMMIT=${TUNED_COMMIT:-HEAD}

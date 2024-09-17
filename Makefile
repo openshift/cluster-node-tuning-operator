@@ -48,6 +48,7 @@ REGISTRY?=quay.io
 ORG?=openshift
 TAG?=$(shell git rev-parse --abbrev-ref HEAD)
 IMAGE?=$(REGISTRY)/$(ORG)/origin-cluster-node-tuning-operator:$(TAG)
+IMAGE_BUILD_EXTRA_OPTS?=
 
 # PAO variables
 CLUSTER ?= "ci"
