@@ -52,7 +52,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 	var (
 		workerRTNodes           []corev1.Node
 		profile, initialProfile *performancev2.PerformanceProfile
-		resourcePool            string
+		poolName                string
 		err                     error
 		ctx                     context.Context = context.Background()
 	)
@@ -62,22 +62,23 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		if discovery.Enabled() && testutils.ProfileNotFound {
 			Skip("Discovery mode enabled, performance profile not found")
 		}
-
+		var err error
 		workerRTNodes = getUpdatedNodes()
 		profile, err = profiles.GetByNodeLabels(nodeLabel)
 		Expect(err).ToNot(HaveOccurred())
 		klog.Infof("using profile: %q", profile.Name)
 		if !hypershift.IsHypershiftCluster() {
-			resourcePool, err = mcps.GetByProfile(profile)
+			poolName, err = mcps.GetByProfile(profile)
 			Expect(err).ToNot(HaveOccurred())
-			for _, mcpName := range []string{testutils.RoleWorker, resourcePool} {
+			for _, mcpName := range []string{testutils.RoleWorker, poolName} {
 				mcps.WaitForCondition(mcpName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 			}
 		} else {
 			hostedClusterName, err := hypershift.GetHostedClusterName()
+			Expect(err).ToNot(HaveOccurred(), "unable to fetch hosted cluster name")
 			np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
 			Expect(err).ToNot(HaveOccurred())
-			resourcePool = client.ObjectKeyFromObject(np).String()
+			poolName = client.ObjectKeyFromObject(np).String()
 		}
 
 	})
@@ -102,10 +103,10 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					By("Updating the performance profile")
 					profiles.UpdateWithRetry(profile)
 
-					testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-					testlog.Infof("Waiting when %s finishes updates", resourcePool)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
 					profilesupdate.PostUpdateSync(ctx, profile)
 				}
 				stalldEnabled, rtKernel := true, false
@@ -163,11 +164,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					By("Updating the performance profile")
 					profiles.UpdateWithRetry(profile)
 
-					testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-					testlog.Infof("Waiting when %s finishes updates", resourcePool)
-					profilesupdate.WaitForTuningUpdated(ctx, profile)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, profile)
 				}
 				stalldEnabled, rtKernel := true, false
 				noHzParam := fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
@@ -223,11 +224,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					By("Updating the performance profile")
 					profiles.UpdateWithRetry(profile)
 
-					testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-					testlog.Infof("Waiting when %s finishes updates", resourcePool)
-					profilesupdate.WaitForTuningUpdated(ctx, profile)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, profile)
 				}
 				stalldEnabled, rtKernel := false, false
 				sysctlMap := map[string]string{
@@ -279,11 +280,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					By("Updating the performance profile")
 					profiles.UpdateWithRetry(profile)
 
-					testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-					testlog.Infof("Waiting when %s finishes updates", resourcePool)
-					profilesupdate.WaitForTuningUpdated(ctx, profile)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, profile)
 
 				}
 				stalldEnabled, rtKernel := true, true
@@ -337,11 +338,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					By("Patching the performance profile with workload hints")
 					profiles.UpdateWithRetry(profile)
 
-					testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-					testlog.Infof("Waiting when %s finishes updates", resourcePool)
-					profilesupdate.WaitForTuningUpdated(ctx, profile)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, profile)
 
 				}
 
@@ -387,11 +388,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					By("Patching the performance profile with workload hints")
 					profiles.UpdateWithRetry(profile)
 
-					testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-					testlog.Infof("Waiting when %s finishes updates", resourcePool)
-					profilesupdate.WaitForTuningUpdated(ctx, profile)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, profile)
 
 				}
 				stalldEnabled, rtKernel := true, true
@@ -446,11 +447,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				By("Patching the performance profile with workload hints")
 				profiles.UpdateWithRetry(profile)
 
-				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 				profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-				testlog.Infof("Waiting when %s finishes updates", resourcePool)
-				profilesupdate.WaitForTuningUpdated(ctx, profile)
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.PostUpdateSync(ctx, profile)
 
 				stalldEnabled, rtKernel = true, true
 				noHzParam = fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
@@ -510,11 +511,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					By("Patching the performance profile with workload hints")
 					profiles.UpdateWithRetry(profile)
 
-					testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-					testlog.Infof("Waiting when %s finishes updates", resourcePool)
-					profilesupdate.WaitForTuningUpdated(ctx, profile)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, profile)
 				}
 				stalldEnabled, rtKernel := true, true
 				noHzParam := fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
@@ -565,11 +566,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				By("Updating the performance profile")
 				profiles.UpdateWithRetry(profile)
 
-				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 				profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-				testlog.Infof("Waiting when %s finishes updates", resourcePool)
-				profilesupdate.WaitForTuningUpdated(ctx, profile)
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.PostUpdateSync(ctx, profile)
 
 				stalldEnabled, rtKernel = true, true
 				noHzParam = fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
@@ -627,8 +628,8 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 			})
 
 			It("[test_id:54185] Verify sysfs parameters of guaranteed pod with powersave annotations", func() {
-
-				var fullPath string = ""
+				var fullPath string
+				var err error
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware.
 				checkHardwareCapability(context.TODO(), workerRTNodes)
@@ -642,11 +643,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					By("Updating the performance profile")
 					profiles.UpdateWithRetry(profile)
 
-					testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-					testlog.Infof("Waiting when %s finishes updates", resourcePool)
-					profilesupdate.WaitForTuningUpdated(ctx, profile)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, profile)
 
 				}
 
@@ -684,9 +685,12 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 				containerCgroup := ""
 				pid, err := nodes.ContainerPid(context.TODO(), &workerRTNodes[0], containerID)
+				Expect(err).ToNot(HaveOccurred(), "Unable to fetch pid of container process")
 				cmd := []string{"cat", fmt.Sprintf("/rootfs/proc/%s/cgroup", pid)}
 				out, err := nodes.ExecCommand(context.TODO(), &workerRTNodes[0], cmd)
+				Expect(err).ToNot(HaveOccurred(), "unable to fetch cgroup path")
 				containerCgroup, err = cgroup.PidParser(out)
+				Expect(err).ToNot(HaveOccurred())
 				cgroupv2, err := cgroup.IsVersion2(context.TODO(), testclient.DataPlaneClient)
 				Expect(err).ToNot(HaveOccurred())
 				if cgroupv2 {
@@ -702,6 +706,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				Expect(err).ToNot(HaveOccurred())
 				output := testutils.ToString(out)
 				cpus, err := cpuset.Parse(output)
+				Expect(err).ToNot(HaveOccurred(), "unable to parse string %s", cpus)
 				targetCpus := cpus.List()
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), targetCpus, &workerRTNodes[0], "0", "schedutil")
 				Expect(err).ToNot(HaveOccurred())
@@ -718,13 +723,15 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					}
 				}
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), otherCpus, &workerRTNodes[0], "0", "performance")
+				Expect(err).ToNot(HaveOccurred())
 				deleteTestPod(context.TODO(), testpod)
 				//Verify after the pod is deleted the cpus assigned to container have default powersave settings
 				By("Verify after pod is delete cpus assigned to container have default powersave settings")
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), targetCpus, &workerRTNodes[0], "0", "performance")
+				Expect(err).ToNot(HaveOccurred())
 			})
 
-			It("[test_id:54186] Verify sysfs paramters of guaranteed pod with performance annotiations", func() {
+			It("[test_id:54186] Verify sysfs parameters of guaranteed pod with performance annotiations", func() {
 
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware
@@ -740,11 +747,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					By("Updating the performance profile")
 					profiles.UpdateWithRetry(profile)
 
-					testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-					testlog.Infof("Waiting when %s finishes updates", resourcePool)
-					profilesupdate.WaitForTuningUpdated(ctx, profile)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, profile)
 				}
 				annotations := map[string]string{
 					"cpu-load-balancing.crio.io": "disable",
@@ -836,11 +843,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 			By("Restoring the old performance profile")
 			profiles.UpdateWithRetry(initialProfile)
 
-			testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 			profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
-			testlog.Infof("Waiting when %s finishes updates", resourcePool)
-			profilesupdate.WaitForTuningUpdated(ctx, initialProfile)
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.PostUpdateSync(ctx, profile)
 
 		})
 	})
