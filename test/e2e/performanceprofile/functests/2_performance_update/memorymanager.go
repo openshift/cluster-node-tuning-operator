@@ -49,7 +49,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 	var (
 		workerRTNodes           []corev1.Node
 		profile, initialProfile *performancev2.PerformanceProfile
-		poolName            string
+		poolName                string
 		err                     error
 		ctx                     context.Context = context.Background()
 	)
@@ -129,10 +129,10 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			By("Updating Performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", poolName)
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 			profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-			testlog.Infof("Waiting when %s finishes updates", poolName)
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
 			profilesupdate.PostUpdateSync(ctx, profile)
 
 		})
@@ -211,10 +211,10 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			if !equality.Semantic.DeepEqual(currentSpec, spec) {
 				profiles.UpdateWithRetry(initialProfile)
 
-				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", poolName)
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
-				testlog.Infof("Waiting when %s finishes updates", poolName)
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
 				profilesupdate.PostUpdateSync(ctx, initialProfile)
 			}
 		})
@@ -331,10 +331,10 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			By("Updating Performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", poolName)
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 			profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-			testlog.Infof("Waiting when %s finishes updates", poolName)
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
 			profilesupdate.PostUpdateSync(ctx, profile)
 		})
 
@@ -347,7 +347,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			// so number of cpus will be total number of available cpus on numazone0 + 2
 			// which can be satisfied by cpus of numa zone 1 only.
 			mm1.cpu = fmt.Sprintf("%d", len(available_node0_cpus)+2)
-			// we are requesting 14Mi hugepages which again can be satisifed by numa zone 1
+			// we are requesting 14Mi hugepages which again can be satisfied by numa zone 1
 			// since numa zone 0 has only 10Mi hugepages
 			mm1.noOfhpgs = "14Mi"
 			testPod := mm1.createPodTemplate(profile, true, targetNode)
@@ -376,7 +376,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			mm1.cpu = fmt.Sprintf("%d", len(available_node0_cpus)+2)
 			// Reduce the cpus taken for testPod1 from availablecpus on numa zone1
 			availableCpusOnZone1 = availableCpusOnZone1 - 2
-			// we are requesting 14Mi hugepages which again can be satisifed by numa zone 1
+			// we are requesting 14Mi hugepages which again can be satisfed by numa zone 1
 			// since numa zone 0 has only 10Mi hugepages
 			mm1.noOfhpgs = "14Mi"
 			testPod1 := mm1.createPodTemplate(profile, true, targetNode)
@@ -416,10 +416,10 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 				By("updating Performance profile")
 				profiles.UpdateWithRetry(initialProfile)
 
-				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", poolName)
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
-				testlog.Infof("Waiting when %s finishes updates", poolName)
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
 				profilesupdate.PostUpdateSync(ctx, initialProfile)
 			}
 		})
@@ -499,14 +499,14 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			By("Updating Performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", poolName)
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 			profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-			testlog.Infof("Waiting when %s finishes updates", poolName)
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
 			profilesupdate.PostUpdateSync(ctx, profile)
 		})
 
-		It("[test_id:60698] Reject Guaranted pod requesting resources from 2 numa nodes together", func() {
+		It("[test_id:60698] Reject Guaranteed pod requesting resources from 2 numa nodes together", func() {
 			var mm1 MMPod
 			mm1.memory = "200Mi"
 			mm1.cpu = "2"
@@ -534,10 +534,10 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 				By("updating Performance profile")
 				profiles.UpdateWithRetry(initialProfile)
 
-				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", poolName)
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
-				testlog.Infof("Waiting when %s finishes updates", poolName)
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
 				profilesupdate.PostUpdateSync(ctx, initialProfile)
 			}
 		})
@@ -643,10 +643,10 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			By("Updating Performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", poolName)
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 			profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-			testlog.Infof("Waiting when %s finishes updates", poolName)
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
 			profilesupdate.PostUpdateSync(ctx, profile)
 		})
 
@@ -657,7 +657,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			targetNode := &workerRTNodes[0]
 			mm1.cpu = fmt.Sprintf("%d", len(available_node0_cpus)-2)
 			mm1.hpgSize = "2M"
-			// we are requesting 8Mi hugepages which again can be satisifed by numa zone 0
+			// we are requesting 8Mi hugepages which again can be satisfied by numa zone 0
 			mm1.noOfhpgs = "8Mi"
 			testPod1 := mm1.createPodTemplate(profile, true, targetNode)
 			// Initialize test pod, check if the pod uses Numa node 0
@@ -697,10 +697,10 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 				By("updating Performance profile")
 				profiles.UpdateWithRetry(initialProfile)
 
-				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", poolName)
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
 				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
-				testlog.Infof("Waiting when %s finishes updates", poolName)
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
 				profilesupdate.PostUpdateSync(ctx, initialProfile)
 			}
 		})
