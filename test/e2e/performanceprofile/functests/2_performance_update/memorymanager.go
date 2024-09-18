@@ -43,15 +43,13 @@ type MMPod struct {
 	namespace                     string
 	cpu, memory, noOfhpgs, medium string
 	hpgSize                       performancev2.HugePageSize
-	nodeSelector                  map[string]string
-	runtimeclass                  string
 }
 
 var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(string(label.MemoryManager)), func() {
 	var (
 		workerRTNodes           []corev1.Node
 		profile, initialProfile *performancev2.PerformanceProfile
-		resourcePool            string
+		poolName            string
 		err                     error
 		ctx                     context.Context = context.Background()
 	)
@@ -70,13 +68,14 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			initialProfile = profile.DeepCopy()
 
 			if !hypershift.IsHypershiftCluster() {
-				resourcePool, err = mcps.GetByProfile(profile)
+				poolName, err = mcps.GetByProfile(profile)
 				Expect(err).ToNot(HaveOccurred())
 			} else {
 				hostedClusterName, err := hypershift.GetHostedClusterName()
+				Expect(err).ToNot(HaveOccurred(), "unable to fetch hosted clustername")
 				np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
 				Expect(err).ToNot(HaveOccurred())
-				resourcePool = client.ObjectKeyFromObject(np).String()
+				poolName = client.ObjectKeyFromObject(np).String()
 			}
 
 			for _, node := range workerRTNodes {
@@ -127,14 +126,13 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			profile.Spec.NUMA = &performancev2.NUMA{
 				TopologyPolicy: &policy,
 			}
-
 			By("Updating Performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+			testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", poolName)
 			profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-			testlog.Infof("Waiting when %s finishes updates", resourcePool)
+			testlog.Infof("Waiting when %s finishes updates", poolName)
 			profilesupdate.PostUpdateSync(ctx, profile)
 
 		})
@@ -197,6 +195,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			err := initializePod(context.TODO(), testPod) // "0-1", targetNode)
 			Expect(err).ToNot(HaveOccurred(), "Unable to initialize pod")
 			numaZone, err := GetMemoryNodes(context.TODO(), testPod, targetNode)
+			Expect(err).ToNot(HaveOccurred(), "Unable to fetch numa zone")
 			// Expect both numa nodes to be used by pod
 			Expect(numaZone).To(Equal("0-1"), "Pod's numa affinity is %s instead of %s", numaZone, "0-1")
 			Expect(mm2.removePod(context.TODO(), testPod)).ToNot(HaveOccurred(), "Failed to remove test pod")
@@ -212,10 +211,10 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			if !equality.Semantic.DeepEqual(currentSpec, spec) {
 				profiles.UpdateWithRetry(initialProfile)
 
-				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", poolName)
 				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
-				testlog.Infof("Waiting when %s finishes updates", resourcePool)
+				testlog.Infof("Waiting when %s finishes updates", poolName)
 				profilesupdate.PostUpdateSync(ctx, initialProfile)
 			}
 		})
@@ -233,13 +232,14 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred(), "unable to get performance profile")
 			if !hypershift.IsHypershiftCluster() {
-				resourcePool, err = mcps.GetByProfile(profile)
+				poolName, err = mcps.GetByProfile(profile)
 				Expect(err).ToNot(HaveOccurred())
 			} else {
 				hostedClusterName, err := hypershift.GetHostedClusterName()
+				Expect(err).ToNot(HaveOccurred(), "Unable to fetch hosted cluster name")
 				np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
 				Expect(err).ToNot(HaveOccurred())
-				resourcePool = client.ObjectKeyFromObject(np).String()
+				poolName = client.ObjectKeyFromObject(np).String()
 			}
 
 			for _, node := range workerRTNodes {
@@ -331,10 +331,10 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			By("Updating Performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+			testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", poolName)
 			profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-			testlog.Infof("Waiting when %s finishes updates", resourcePool)
+			testlog.Infof("Waiting when %s finishes updates", poolName)
 			profilesupdate.PostUpdateSync(ctx, profile)
 		})
 
@@ -416,10 +416,10 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 				By("updating Performance profile")
 				profiles.UpdateWithRetry(initialProfile)
 
-				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", poolName)
 				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
-				testlog.Infof("Waiting when %s finishes updates", resourcePool)
+				testlog.Infof("Waiting when %s finishes updates", poolName)
 				profilesupdate.PostUpdateSync(ctx, initialProfile)
 			}
 		})
@@ -428,6 +428,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 	Context("Group Both Numa Nodes with single-numa-node topology", Ordered, Label(string(label.Tier2)), func() {
 		var numaCoreSiblings map[int]map[int][]int
 		var reserved, isolated []string
+		var err error
 		// Number of hugepages of size 2M
 		const hpCount = 20
 		testutils.CustomBeforeAll(func() {
@@ -436,13 +437,14 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
 			if !hypershift.IsHypershiftCluster() {
-				resourcePool, err = mcps.GetByProfile(profile)
+				poolName, err = mcps.GetByProfile(profile)
 				Expect(err).ToNot(HaveOccurred())
 			} else {
 				hostedClusterName, err := hypershift.GetHostedClusterName()
+				Expect(err).ToNot(HaveOccurred(), "unable to fetch hosted clustername")
 				np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
 				Expect(err).ToNot(HaveOccurred())
-				resourcePool = client.ObjectKeyFromObject(np).String()
+				poolName = client.ObjectKeyFromObject(np).String()
 			}
 			// Save the original performance profile
 			initialProfile = profile.DeepCopy()
@@ -497,10 +499,10 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			By("Updating Performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+			testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", poolName)
 			profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-			testlog.Infof("Waiting when %s finishes updates", resourcePool)
+			testlog.Infof("Waiting when %s finishes updates", poolName)
 			profilesupdate.PostUpdateSync(ctx, profile)
 		})
 
@@ -532,10 +534,10 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 				By("updating Performance profile")
 				profiles.UpdateWithRetry(initialProfile)
 
-				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", poolName)
 				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
-				testlog.Infof("Waiting when %s finishes updates", resourcePool)
+				testlog.Infof("Waiting when %s finishes updates", poolName)
 				profilesupdate.PostUpdateSync(ctx, initialProfile)
 			}
 		})
@@ -546,6 +548,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 		var reserved, isolated, available_node0_cpus, available_node1_cpus []string
 		var numaZone0HugepagesCount int = 10
 		var numaZone1HugepagesCount int = 10
+		var err error
 		numaZone := make(map[int]map[int][]string)
 		testutils.CustomBeforeAll(func() {
 			var policy = "single-numa-node"
@@ -553,13 +556,14 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred(), "failed to fetch performance profile")
 			if !hypershift.IsHypershiftCluster() {
-				resourcePool, err = mcps.GetByProfile(profile)
+				poolName, err = mcps.GetByProfile(profile)
 				Expect(err).ToNot(HaveOccurred())
 			} else {
 				hostedClusterName, err := hypershift.GetHostedClusterName()
+				Expect(err).ToNot(HaveOccurred(), "unable to fetch hosted clustername")
 				np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
 				Expect(err).ToNot(HaveOccurred())
-				resourcePool = client.ObjectKeyFromObject(np).String()
+				poolName = client.ObjectKeyFromObject(np).String()
 			}
 			// Save the original performance profile
 			initialProfile = profile.DeepCopy()
@@ -639,10 +643,10 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			By("Updating Performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+			testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", poolName)
 			profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-			testlog.Infof("Waiting when %s finishes updates", resourcePool)
+			testlog.Infof("Waiting when %s finishes updates", poolName)
 			profilesupdate.PostUpdateSync(ctx, profile)
 		})
 
@@ -693,10 +697,10 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 				By("updating Performance profile")
 				profiles.UpdateWithRetry(initialProfile)
 
-				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", resourcePool)
+				testlog.Infof("Applying changes in performance profile and waiting until %s will start updating", poolName)
 				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
-				testlog.Infof("Waiting when %s finishes updates", resourcePool)
+				testlog.Infof("Waiting when %s finishes updates", poolName)
 				profilesupdate.PostUpdateSync(ctx, initialProfile)
 			}
 		})
