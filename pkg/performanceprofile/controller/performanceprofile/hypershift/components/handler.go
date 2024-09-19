@@ -154,7 +154,10 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if kcMutated != nil {
-		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.KubeletConfig, profile.Name, hypershiftconsts.ConfigKey, map[string]string{hypershiftconsts.NTOGeneratedMachineConfigLabel: "true"})
+		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.KubeletConfig, profile.Name, hypershiftconsts.ConfigKey, map[string]string{
+			hypershiftconsts.NTOGeneratedMachineConfigLabel: "true",
+			hypershiftconsts.KubeletConfigConfigMapLabel:    "true",
+		})
 		if err != nil {
 			return err
 		}
