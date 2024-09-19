@@ -19,6 +19,17 @@ var cpuListToMask = []listToMask{
 	{"1,3-7", "000000fa"},
 	{"0-127", "ffffffff,ffffffff,ffffffff,ffffffff"},
 	{"0-255", "ffffffff,ffffffff,ffffffff,ffffffff,ffffffff,ffffffff,ffffffff,ffffffff"},
+	{"0,1,256,257", "00000003,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000003"},
+}
+
+var cpuListToHexMask = []listToMask{
+	{"0", "1"},
+	{"2-3", "c"},
+	{"3,4,53-55,61-63", "e0e0000000000018"},
+	{"1,3-7", "fa"},
+	{"0-127", "ffffffffffffffffffffffffffffffff"},
+	{"0-255", "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"},
+	{"0,1,256,257", "30000000000000000000000000000000000000000000000000000000000000003"},
 }
 
 func intersectHelper(cpuListA, cpuListB string) ([]int, error) {
@@ -31,6 +42,14 @@ func intersectHelper(cpuListA, cpuListB string) ([]int, error) {
 
 var _ = Describe("Components utils", func() {
 	Context("Convert CPU list to CPU mask", func() {
+		It("should generate a valid hex CPU mask from CPU list", func() {
+			for _, cpuEntry := range cpuListToHexMask {
+				cpuMask, err := CPUListToHexMask(cpuEntry.cpuList)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(cpuMask).Should(Equal(cpuEntry.cpuMask))
+			}
+		})
+
 		It("should generate a valid CPU mask from CPU list", func() {
 			for _, cpuEntry := range cpuListToMask {
 				cpuMask, err := CPUListToMaskList(cpuEntry.cpuList)
