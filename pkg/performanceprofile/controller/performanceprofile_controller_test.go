@@ -27,6 +27,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/tuned"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift"
 	hcpcomponents "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/components"
+	hypershiftconsts "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/consts"
 	hcpstatus "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/status"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/status"
 	testutils "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/utils/testing"
@@ -1211,13 +1212,13 @@ func adaptObjectsForHypershift(instance client.Object, initObjects ...runtime.Ob
 	for _, obj := range initObjects {
 		switch obj.(type) {
 		case *tunedv1.Tuned:
-			cm, err := hcpcomponents.EncapsulateObjInConfigMap(scheme.Scheme, profileCM, obj.(client.Object), performanceProfileName, "tuning", "hypershift.openshift.io/tuned-config")
+			cm, err := hcpcomponents.EncapsulateObjInConfigMap(scheme.Scheme, profileCM, obj.(client.Object), performanceProfileName, hypershiftconsts.TuningKey, map[string]string{hypershiftconsts.ControllerGeneratedTunedConfigMapLabel: "true"})
 			if err != nil {
 				klog.Fatal(err)
 			}
 			mngClusterObjects = append(mngClusterObjects, cm)
 		case *mcov1.MachineConfig, *mcov1.KubeletConfig:
-			cm, err := hcpcomponents.EncapsulateObjInConfigMap(scheme.Scheme, profileCM, obj.(client.Object), performanceProfileName, "config", "hypershift.openshift.io/nto-generated-machine-config")
+			cm, err := hcpcomponents.EncapsulateObjInConfigMap(scheme.Scheme, profileCM, obj.(client.Object), performanceProfileName, hypershiftconsts.ConfigKey, map[string]string{hypershiftconsts.NTOGeneratedMachineConfigLabel: "true"})
 			if err != nil {
 				klog.Fatal(err)
 			}

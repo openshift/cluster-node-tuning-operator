@@ -143,7 +143,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if mcMutated != nil {
-		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.MachineConfig, profile.Name, hypershiftconsts.ConfigKey, hypershiftconsts.NTOGeneratedMachineConfigLabel)
+		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.MachineConfig, profile.Name, hypershiftconsts.ConfigKey, map[string]string{hypershiftconsts.NTOGeneratedMachineConfigLabel: "true"})
 		if err != nil {
 			return err
 		}
@@ -154,7 +154,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if kcMutated != nil {
-		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.KubeletConfig, profile.Name, hypershiftconsts.ConfigKey, hypershiftconsts.NTOGeneratedMachineConfigLabel)
+		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.KubeletConfig, profile.Name, hypershiftconsts.ConfigKey, map[string]string{hypershiftconsts.NTOGeneratedMachineConfigLabel: "true"})
 		if err != nil {
 			return err
 		}
@@ -165,7 +165,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if performanceTunedMutated != nil {
-		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.Tuned, profile.Name, hypershiftconsts.TuningKey, hypershiftconsts.ControllerGeneratedTunedConfigMapLabel)
+		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.Tuned, profile.Name, hypershiftconsts.TuningKey, map[string]string{hypershiftconsts.ControllerGeneratedTunedConfigMapLabel: "true"})
 		if err != nil {
 			return err
 		}
@@ -231,7 +231,7 @@ func (h *handler) getContainerRuntimeName(ctx context.Context, profile *performa
 	return ctrcfgs[0].Spec.ContainerRuntimeConfig.DefaultRuntime, nil
 }
 
-func EncapsulateObjInConfigMap(scheme *runtime.Scheme, instance *corev1.ConfigMap, object client.Object, profileName, dataKey, objectLabel string) (*corev1.ConfigMap, error) {
+func EncapsulateObjInConfigMap(scheme *runtime.Scheme, instance *corev1.ConfigMap, object client.Object, profileName, dataKey string, objectLabels map[string]string) (*corev1.ConfigMap, error) {
 	encodedObj, err := hypershift.EncodeManifest(object, scheme)
 	if err != nil {
 		return nil, err
@@ -247,7 +247,9 @@ func EncapsulateObjInConfigMap(scheme *runtime.Scheme, instance *corev1.ConfigMa
 	if err != nil {
 		return nil, err
 	}
-	cm.Labels[objectLabel] = "true"
+	for v, k := range objectLabels {
+		cm.Labels[v] = k
+	}
 	cm.Data = map[string]string{
 		dataKey: string(encodedObj),
 	}
