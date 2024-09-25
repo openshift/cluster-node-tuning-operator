@@ -652,8 +652,9 @@ func switchTunedHome() error {
 		return fmt.Errorf("failed to create directory %q: %v", ocpTunedHomeHost, err)
 	}
 
-	// Delete the container's home directory.
-	if err := util.Delete(ocpTunedHome); err != nil {
+	// Delete the container's home directory.  We need a recursive delete, because some cross-compiling environments
+	// populate the directory with hidden cache directories.
+	if err := os.RemoveAll(ocpTunedHome); err != nil {
 		return fmt.Errorf("failed to delete: %q: %v", ocpTunedHome, err)
 	}
 
