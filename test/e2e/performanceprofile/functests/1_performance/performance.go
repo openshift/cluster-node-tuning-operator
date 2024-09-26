@@ -31,7 +31,6 @@ import (
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
-	componentprofile "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
@@ -578,7 +577,13 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				},
 			}
 
-			machineConfigSelector := componentprofile.GetMachineConfigLabel(secondProfile)
+			// Create LabelSelectorRequirement
+			req := metav1.LabelSelectorRequirement{
+				Key:      components.MachineConfigRoleLabelKey,
+				Operator: metav1.LabelSelectorOpIn,
+				Values:   []string{"worker", newRole},
+			}
+
 			secondMCP = &mcov1.MachineConfigPool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "second-mcp",
@@ -588,7 +593,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				},
 				Spec: mcov1.MachineConfigPoolSpec{
 					MachineConfigSelector: &metav1.LabelSelector{
-						MatchLabels: machineConfigSelector,
+						MatchExpressions: []metav1.LabelSelectorRequirement{req},
 					},
 					NodeSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
