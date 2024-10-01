@@ -24,6 +24,10 @@ const (
 	//to label a ConfigMap that holds encoded performance-profile status object
 	NTOGeneratedPerformanceProfileStatusConfigMapLabel = "hypershift.openshift.io/nto-generated-performance-profile-status"
 
+	// KubeletConfigConfigMapLabel uses
+	// to label a ConfigMap that holds a KubeletConfig object
+	KubeletConfigConfigMapLabel = "hypershift.openshift.io/kubeletconfig-config"
+
 	// TuningKey is the key under ConfigMap.Data on which encoded
 	// tuned and performance-profile objects are stored.
 	TuningKey = "tuning"
