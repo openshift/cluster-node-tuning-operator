@@ -31,11 +31,14 @@ import (
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 )
 
 type checkFunction func(context.Context, *corev1.Node) (string, error)
@@ -43,7 +46,7 @@ type checkFunction func(context.Context, *corev1.Node) (string, error)
 var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance profile", func() {
 	var workerRTNodes []corev1.Node
 	var profile, initialProfile *performancev2.PerformanceProfile
-	var performanceMCP string
+	var poolName string
 	var err error
 
 	chkCmdLine := []string{"cat", "/proc/cmdline"}
@@ -93,13 +96,23 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		profile, err = profiles.GetByNodeLabels(nodeLabel)
 		Expect(err).ToNot(HaveOccurred())
 		klog.Infof("using profile: %q", profile.Name)
-		performanceMCP, err = mcps.GetByProfile(profile)
-		Expect(err).ToNot(HaveOccurred())
-		klog.Infof("using performanceMCP: %q", performanceMCP)
+		if hypershift.IsHypershiftCluster() {
+			hostedClusterName, err := hypershift.GetHostedClusterName()
+			Expect(err).ToNot(HaveOccurred())
+			np, err := nodepools.GetByClusterName(context.TODO(), testclient.ControlPlaneClient, hostedClusterName)
+			Expect(err).ToNot(HaveOccurred())
+			poolName = client.ObjectKeyFromObject(np).String()
+			err = nodepools.WaitForConfigToBeReady(context.TODO(), testclient.ControlPlaneClient, np.Name, np.Namespace)
+			Expect(err).ToNot(HaveOccurred())
+		} else {
+			poolName, err = mcps.GetByProfile(profile)
+			Expect(err).ToNot(HaveOccurred())
+			klog.Infof("using performanceMCP: %q", poolName)
 
-		// Verify that worker and performance MCP have updated state equals to true
-		for _, mcpName := range []string{testutils.RoleWorker, performanceMCP} {
-			mcps.WaitForCondition(mcpName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			// Verify that worker and performance MCP have updated state equals to true
+			for _, mcpName := range []string{testutils.RoleWorker, poolName} {
+				mcps.WaitForCondition(mcpName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			}
 		}
 	})
 
@@ -157,23 +170,13 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Enabled: pointer.Bool(true),
 			}
 
-			By("Verifying that mcp is ready for update")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			By("Updating the performance profile")
+			profiles.UpdateWithRetry(profile)
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
 
-			spec, err := json.Marshal(profile.Spec)
-			Expect(err).ToNot(HaveOccurred())
-
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			Expect(testclient.Client.Patch(context.TODO(), profile,
-				client.RawPatch(
-					types.JSONPatchType,
-					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-				),
-			)).ToNot(HaveOccurred())
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-
-			By("Waiting when mcp finishes updates")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.PostUpdateSync(context.TODO(), profile)
 
 			for _, node := range workerRTNodes {
 				for i := 0; i < 2; i++ {
@@ -201,17 +204,14 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			if skipTests {
 				return
 			}
-			// return initial configuration
-			spec, err := json.Marshal(initialProfile.Spec)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(testclient.Client.Patch(context.TODO(), profile,
-				client.RawPatch(
-					types.JSONPatchType,
-					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-				),
-			)).ToNot(HaveOccurred())
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			By("Updating the performance profile")
+			profiles.UpdateWithRetry(initialProfile)
+
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
+
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.PostUpdateSync(context.TODO(), profile)
 		})
 	})
 
@@ -262,23 +262,13 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				profile.Spec.AdditionalKernelArgs = append(profile.Spec.AdditionalKernelArgs[1:], "new-argument=test")
 			}
 
-			By("Verifying that mcp is ready for update")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			By("Updating the performance profile")
+			profiles.UpdateWithRetry(profile)
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
 
-			spec, err := json.Marshal(profile.Spec)
-			Expect(err).ToNot(HaveOccurred())
-
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			Expect(testclient.Client.Patch(context.TODO(), profile,
-				client.RawPatch(
-					types.JSONPatchType,
-					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-				),
-			)).ToNot(HaveOccurred())
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-
-			By("Waiting when mcp finishes updates")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.PostUpdateSync(context.TODO(), profile)
 		})
 
 		DescribeTable("Verify that profile parameters were updated", func(ctx context.Context, cmdFn checkFunction, parameter []string, shouldContain bool, useRegex bool) {
@@ -347,30 +337,20 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:22764] verify that by default RT kernel is disabled", func() {
-			conditionUpdating := machineconfigv1.MachineConfigPoolUpdating
-
 			if profile.Spec.RealTimeKernel == nil || *profile.Spec.RealTimeKernel.Enabled == true {
 				Skip("Skipping test - This test expects RT Kernel to be disabled. Found it to be enabled or nil.")
 			}
-
-			By("Applying changes in performance profile")
 			profile.Spec.RealTimeKernel = nil
-			spec, err := json.Marshal(profile.Spec)
-			Expect(err).ToNot(HaveOccurred())
+			By("Updating the performance profile")
+			profiles.UpdateWithRetry(profile)
 
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			Expect(testclient.Client.Patch(context.TODO(), profile,
-				client.RawPatch(
-					types.JSONPatchType,
-					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-				),
-			)).ToNot(HaveOccurred())
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
+
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.PostUpdateSync(context.TODO(), profile)
 
 			Expect(profile.Spec.RealTimeKernel).To(BeNil(), "real time kernel setting expected in profile spec but missing")
-			By("Checking that the updating MCP status will consistently stay false")
-			Consistently(func() corev1.ConditionStatus {
-				return mcps.GetConditionStatus(performanceMCP, conditionUpdating)
-			}, 30, 5).Should(Equal(corev1.ConditionFalse))
 
 			for _, node := range workerRTNodes {
 				err := nodes.HasPreemptRTKernel(context.TODO(), &node)
@@ -380,20 +360,20 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		AfterAll(func() {
 			// return initial configuration
-			spec, err := json.Marshal(initialProfile.Spec)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(testclient.Client.Patch(context.TODO(), profile,
-				client.RawPatch(
-					types.JSONPatchType,
-					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-				),
-			)).ToNot(HaveOccurred())
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			By("Updating the performance profile")
+			profiles.UpdateWithRetry(initialProfile)
+
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
+
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.PostUpdateSync(context.TODO(), profile)
 		})
 	})
 
-	Context("Updating of nodeSelector parameter and node labels", Label(string(label.Tier2)), func() {
+	// TODO - This test case is highly specific to MCP.
+	// We should workout on ideas for a similar test applicable to the Hypershift environment.
+	Context("Updating of nodeSelector parameter and node labels", Label(string(label.Tier2), string(label.OpenShift)), func() {
 		var mcp *machineconfigv1.MachineConfigPool
 		var newCnfNode *corev1.Node
 		newRole := "worker-test"
@@ -405,6 +385,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		var oldMcpSelector, oldNodeSelector map[string]string
 
 		BeforeEach(func() {
+			if hypershift.IsHypershiftCluster() {
+				Skip("Test Cases very much specific to MCP")
+			}
 			// initialize on every run
 			labelsDeletion = false
 			//fetch the latest profile
@@ -433,7 +416,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			nodeLabel = newNodeSelector
 			newCnfNode.Labels[newLabel] = ""
 
-			Expect(testclient.Client.Update(context.TODO(), newCnfNode)).ToNot(HaveOccurred())
+			Expect(testclient.ControlPlaneClient.Update(context.TODO(), newCnfNode)).ToNot(HaveOccurred())
 
 			//Remove the MCP Selector if exists
 			if profile.Spec.MachineConfigPoolSelector != nil {
@@ -448,7 +431,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 			By("Creating new MachineConfigPool")
 			mcp = mcps.New(newRole, newNodeSelector)
-			err = testclient.Client.Create(context.TODO(), mcp)
+			err = testclient.ControlPlaneClient.Create(context.TODO(), mcp)
 			Expect(err).ToNot(HaveOccurred())
 
 			By("Updating Node Selector performance profile")
@@ -537,10 +520,10 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				return updatedNodeSelector
 			}, 2*time.Minute, 15*time.Second).Should(Equal(nodeSelector))
 
-			performanceMCP, err = mcps.GetByProfile(updatedProfile)
+			poolName, err = mcps.GetByProfile(updatedProfile)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(testclient.Client.Delete(context.TODO(), mcp)).ToNot(HaveOccurred())
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			mcps.WaitForCondition(poolName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 
 			// revert node label to have the expected value
 			nodeLabel = testutils.NodeSelectorLabels
@@ -562,10 +545,10 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				)).ToNot(HaveOccurred())
 
 				By("Applying changes in performance profile and waiting until mcp will start updating")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+				mcps.WaitForCondition(poolName, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
 
 				By("Waiting when mcp finishes updates")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				mcps.WaitForCondition(poolName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 			}
 		})
 
@@ -614,11 +597,11 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			By("Updating the performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
 
-			By("Waiting for MCP being updated")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.PostUpdateSync(context.TODO(), profile)
 
 			workerRTNodes = getUpdatedNodes()
 			//Check offlined cpus are setting correctly
@@ -644,7 +627,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				sort.Ints(cores)
 				// Select the last core id
 				higherCoreIds := cores[len(cores)-1]
-				// Get cpu siblings from the selected cores and delete the selected cores  from the map
+				// Get cpu siblings from the selected cores and delete the selected cores from the map
 				cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaTopology, higherCoreIds)
 				offline = append(offline, cpusiblings...)
 			}
@@ -683,11 +666,11 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			By("Updating the performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
 
-			By("Waiting for MCP being updated")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.PostUpdateSync(context.TODO(), profile)
 
 			workerRTNodes = getUpdatedNodes()
 			// Check offlined cpus are setting correctly
@@ -748,11 +731,11 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			By("Updating the performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
 
-			By("Waiting for MCP being updated")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.PostUpdateSync(context.TODO(), profile)
 
 			workerRTNodes = getUpdatedNodes()
 			//Check offlined cpus are setting correctly
@@ -823,11 +806,11 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			By("Updating the performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
 
-			By("Waiting for MCP being updated")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.PostUpdateSync(context.TODO(), profile)
 
 			workerRTNodes = getUpdatedNodes()
 			//Check offlined cpus are setting correctly
@@ -886,13 +869,20 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			}
 			By("Updating the performance profile")
 			EventuallyWithOffset(1, func() string {
-				err := testclient.Client.Update(context.TODO(), profile)
+				err := testclient.ControlPlaneClient.Update(context.TODO(), profile)
 				if err != nil {
 					statusErr, _ := err.(*errors.StatusError)
 					return statusErr.Status().Message
 				}
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+				profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
+
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.PostUpdateSync(context.TODO(), profile)
+
 				return fmt.Sprint("Profile applied successfully")
-			}, time.Minute, 5*time.Second).Should(ContainSubstring("isolated and offlined cpus overlap"))
+			}, 10*time.Minute, 5*time.Second).Should(ContainSubstring("isolated and offlined cpus overlap"))
+
 		})
 
 		It("[test_id:50970]Offline CPUID's from multiple numa nodes", func() {
@@ -940,11 +930,11 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			By("Updating the performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
 
-			By("Waiting for MCP being updated")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.PostUpdateSync(context.TODO(), profile)
 
 			workerRTNodes = getUpdatedNodes()
 			//Check offlined cpus are setting correctly
@@ -967,20 +957,14 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			spec, _ := json.Marshal(initialProfile.Spec)
 			// revert only if the profile changes.
 			if !bytes.Equal(currentSpec, spec) {
-				spec, err := json.Marshal(initialProfile.Spec)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(testclient.Client.Patch(context.TODO(), profile,
-					client.RawPatch(
-						types.JSONPatchType,
-						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-					),
-				)).ToNot(HaveOccurred())
+				By("Updating the performance profile")
+				profiles.UpdateWithRetry(initialProfile)
 
-				By("Applying changes in performance profile and waiting until mcp will start updating")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+				profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
 
-				By("Waiting when mcp finishes updates")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.PostUpdateSync(context.TODO(), profile)
 			}
 
 			findcmd := `find /sys/devices/system/cpu/cpu* -type f -name online -exec cat {} \;`
@@ -1022,11 +1006,11 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			By("Reverting the Profile")
 			profiles.UpdateWithRetry(initialProfile)
 
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
 
-			By("Waiting when mcp finishes updates")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.PostUpdateSync(context.TODO(), profile)
 		})
 
 		It("[test_id:56006]Verify systemd unit file gets updated when the reserved cpus are modified", func() {
@@ -1080,11 +1064,11 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			By("Updating the performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
 
-			By("Waiting for MCP being updated")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.PostUpdateSync(context.TODO(), profile)
 
 			//Check RPS Mask after profile is updated with New reserved Cpus
 			expectedRPSCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
@@ -1135,11 +1119,11 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			By("Updating the performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
 
-			By("Waiting for MCP being updated")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.PostUpdateSync(context.TODO(), profile)
 
 			for _, node := range workerRTNodes {
 				// Verify the systemd RPS services were not created
@@ -1150,15 +1134,19 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 	})
 
-	Context("ContainerRuntimeConfig", Ordered, Label(string(label.Tier2)), func() {
+	// TODO - Need specific container runtime utility for Hypershift
+	Context("ContainerRuntimeConfig", Ordered, Label(string(label.Tier2), string(label.OpenShift)), func() {
 		var ctrcfg *machineconfigv1.ContainerRuntimeConfig
 		const ContainerRuntimeConfigName = "ctrcfg-test"
 		mcp := &machineconfigv1.MachineConfigPool{}
 		BeforeAll(func() {
-			key := types.NamespacedName{
-				Name: performanceMCP,
+			if hypershift.IsHypershiftCluster() {
+				Skip("Need utility for container runtime on hypershift")
 			}
-			Expect(testclient.Client.Get(context.TODO(), key, mcp)).ToNot(HaveOccurred(), "cannot get MCP %q", performanceMCP)
+			key := types.NamespacedName{
+				Name: poolName,
+			}
+			Expect(testclient.ControlPlaneClient.Get(context.TODO(), key, mcp)).ToNot(HaveOccurred(), "cannot get MCP %q", poolName)
 			By("checking if ContainerRuntimeConfig object already exists")
 			ctrcfg, err = getContainerRuntimeConfigFrom(context.TODO(), profile, mcp)
 			Expect(err).ToNot(HaveOccurred(), "failed to get ContainerRuntimeConfig from profile %q mcp %q", profile.Name, mcp.Name)
@@ -1190,16 +1178,16 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 					DeferCleanup(func() {
 						Expect(testclient.Client.Delete(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to delete ctfcfg %#v", ctrcfg)
-						By(fmt.Sprintf("waiting for mcp %q transition to UPDATING state", performanceMCP))
-						mcps.WaitForConditionFunc(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue, getMCPConditionStatus)
-						By(fmt.Sprintf("waiting for mcp %q transition to UPDATED state", performanceMCP))
-						mcps.WaitForConditionFunc(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue, getMCPConditionStatus)
+						By(fmt.Sprintf("waiting for mcp %q transition to UPDATING state", poolName))
+						mcps.WaitForConditionFunc(poolName, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue, getMCPConditionStatus)
+						By(fmt.Sprintf("waiting for mcp %q transition to UPDATED state", poolName))
+						mcps.WaitForConditionFunc(poolName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue, getMCPConditionStatus)
 					})
 
-					By(fmt.Sprintf("waiting for mcp %q transition to UPDATING state", performanceMCP))
-					mcps.WaitForConditionFunc(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue, getMCPConditionStatus)
-					By(fmt.Sprintf("waiting for mcp %q transition to UPDATED state", performanceMCP))
-					mcps.WaitForConditionFunc(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue, getMCPConditionStatus)
+					By(fmt.Sprintf("waiting for mcp %q transition to UPDATING state", poolName))
+					mcps.WaitForConditionFunc(poolName, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue, getMCPConditionStatus)
+					By(fmt.Sprintf("waiting for mcp %q transition to UPDATED state", poolName))
+					mcps.WaitForConditionFunc(poolName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue, getMCPConditionStatus)
 				}
 				Expect(ctrcfg.Spec.ContainerRuntimeConfig.DefaultRuntime == machineconfigv1.ContainerRuntimeDefaultRuntimeCrun).To(BeTrue())
 				cmd := []string{"cat", "/rootfs/etc/crio/crio.conf.d/99-runtimes.conf"}
@@ -1325,7 +1313,7 @@ func newContainerRuntimeConfig(name string, profile *performancev2.PerformancePr
 
 func getContainerRuntimeConfigFrom(ctx context.Context, profile *performancev2.PerformanceProfile, mcp *machineconfigv1.MachineConfigPool) (*machineconfigv1.ContainerRuntimeConfig, error) {
 	ctrcfgList := &machineconfigv1.ContainerRuntimeConfigList{}
-	if err := testclient.Client.List(ctx, ctrcfgList); err != nil {
+	if err := testclient.ControlPlaneClient.List(ctx, ctrcfgList); err != nil {
 		return nil, err
 	}
 
