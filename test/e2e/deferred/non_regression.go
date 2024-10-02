@@ -18,7 +18,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 )
 
-var _ = ginkgo.Describe("[deferred][non-regression] Profile non-deferred", ginkgo.Label("deferred", "non-regression"), func() {
+var _ = ginkgo.Describe("Profile non-deferred", ginkgo.Label("deferred", "non-regression"), func() {
 	ginkgo.Context("when applied", func() {
 		var (
 			createdTuneds []string
@@ -51,12 +51,14 @@ var _ = ginkgo.Describe("[deferred][non-regression] Profile non-deferred", ginkg
 				ginkgo.By(fmt.Sprintf("cluster changes rollback: %q", createdTuned))
 				util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", createdTuned)
 			}
+
+			checkWorkerNodeIsDefaultState(context.Background(), targetNode)
 		})
 
 		ginkgo.It("should trigger changes", func(ctx context.Context) {
 			tuned, err := util.LoadTuned(tunedPathVMLatency)
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
-			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tuned.Name, ntoutil.HasDeferredUpdateAnnotation(tuned.Annotations)))
+			ginkgo.By(fmt.Sprintf("creating tuned object %s deferred=%v", tuned.Name, ntoutil.GetDeferredUpdateAnnotation(tuned.Annotations)))
 
 			verifications := extractVerifications(tuned)
 			gomega.Expect(len(verifications)).To(gomega.Equal(1), "unexpected verification count, check annotations")

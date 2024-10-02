@@ -23,3 +23,5 @@ spec:
     - label: node-role.kubernetes.io/worker
     priority: 15
     profile: test-vm-latency
+    operand:
+      verbosity: 4
