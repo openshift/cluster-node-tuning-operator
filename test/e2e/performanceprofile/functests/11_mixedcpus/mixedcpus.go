@@ -33,14 +33,17 @@ import (
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/deployments"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/namespaces"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	testprofiles "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 )
 
 const (
@@ -58,12 +61,28 @@ const (
 )
 
 var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
+	var poolName string
+	var profile *performancev2.PerformanceProfile
 	ctx := context.Background()
 	BeforeAll(func() {
 		if discovery.Enabled() && testutils.ProfileNotFound {
 			Skip("discovery mode enabled, performance profile not found")
 		}
-		teardown := setup(ctx)
+		if hypershift.IsHypershiftCluster() {
+			hostedClusterName, err := hypershift.GetHostedClusterName()
+			Expect(err).ToNot(HaveOccurred())
+			np, err := nodepools.GetByClusterName(context.TODO(), testclient.ControlPlaneClient, hostedClusterName)
+			Expect(err).ToNot(HaveOccurred())
+			poolName := client.ObjectKeyFromObject(np).String()
+			By(fmt.Sprintf("using Nodepool: %q", poolName))
+			err = nodepools.WaitForConfigToBeReady(context.TODO(), testclient.ControlPlaneClient, np.Name, np.Namespace)
+			Expect(err).ToNot(HaveOccurred())
+		} else {
+			poolName, err := mcps.GetByProfile(profile)
+			Expect(err).ToNot(HaveOccurred())
+			By(fmt.Sprintf("using performanceMCP: %q", poolName))
+		}
+		teardown := setup(ctx, poolName)
 		DeferCleanup(teardown, ctx)
 	})
 
@@ -135,12 +154,12 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 			Expect(err).ToNot(HaveOccurred())
 			// create test namespace
 			ns := getTestingNamespace()
-			Expect(testclient.Client.Create(ctx, &ns)).ToNot(HaveOccurred())
+			Expect(testclient.ControlPlaneClient.Create(ctx, &ns)).ToNot(HaveOccurred())
 			DeferCleanup(func() {
-				Expect(testclient.Client.Delete(ctx, &ns)).ToNot(HaveOccurred())
+				Expect(testclient.ControlPlaneClient.Delete(ctx, &ns)).ToNot(HaveOccurred())
 				Expect(namespaces.WaitForDeletion(testutils.NamespaceTesting, 5*time.Minute)).ToNot(HaveOccurred())
 			})
-			getter, err = cgroup.BuildGetter(ctx, testclient.Client, testclient.K8sClient)
+			getter, err = cgroup.BuildGetter(ctx, testclient.ControlPlaneClient, testclient.K8sClient)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -505,7 +524,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 	})
 })
 
-func setup(ctx context.Context) func(ctx2 context.Context) {
+func setup(ctx context.Context, poolName string) func(ctx2 context.Context) {
 	var updateNeeded bool
 	profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 	Expect(err).ToNot(HaveOccurred())
@@ -546,12 +565,14 @@ func setup(ctx context.Context) func(ctx2 context.Context) {
 			By(fmt.Sprintf("skipping teardown - no changes to profile %q were applied", profile.Name))
 		}
 	}
+	By("Updating the performance profile")
 	testprofiles.UpdateWithRetry(profile)
-	mcp, err := mcps.GetByProfile(profile)
-	Expect(err).ToNot(HaveOccurred())
 
-	mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-	mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+	By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+	profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
+
+	By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+	profilesupdate.PostUpdateSync(context.TODO(), profile)
 
 	teardown := func(ctx2 context.Context) {
 		By(fmt.Sprintf("executing teardown - revert profile %q back to its intial state", profile.Name))
@@ -560,8 +581,10 @@ func setup(ctx context.Context) func(ctx2 context.Context) {
 
 		// do not wait if nothing has changed
 		if initialProfile.ResourceVersion != profile.ResourceVersion {
-			mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-			mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.PostUpdateSync(context.TODO(), profile)
 		}
 	}
 	return teardown
