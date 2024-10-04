@@ -9,10 +9,12 @@ import (
 	"strings"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/cpuset"
 	"k8s.io/utils/pointer"
@@ -29,9 +31,11 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/controller"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/deployments"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/events"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
@@ -589,7 +593,121 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			Entry("[test_id:46538] HT aware scheduling on SNO cluster", context.TODO(), false, true, false),
 			Entry("[test_id:46539] HT aware scheduling on SNO cluster and Workload Partitioning enabled", context.TODO(), false, true, true),
 		)
+	})
 
+	// Automates OCPBUGS-34812: cgroupsv2: failed to write on cpuset.cpus.exclusive
+	Context("Cgroupsv2", func() {
+		It("[test_id:75327] cpus from deleted cgroup can be reassigned to new cgroup", Label(string(label.Tier0)), func() {
+			// we need system with more than 10 cpus to execute this test
+			if len(onlineCPUSet.List()) < 10 {
+				Skip("Requires system with  more than 10 cpus")
+			}
+			if !cgroupV2 {
+				Skip("Requires CgroupV2")
+			}
+			// create deployment with 2 replicas and each pod having cpu load balancing disabled
+			// and runtime class. This is required as the cpu id's used by the container are
+			// written to cpuset.cpus.exclusive
+			const DeploymentName = "test-deployment"
+			var numberofReplicas int32 = 2
+			var dp *appsv1.Deployment
+			annotations := map[string]string{
+				"cpu-load-balancing.crio.io": "disable",
+			}
+			p := pods.GetTestPod()
+			p.Spec.NodeSelector = testutils.NodeSelectorLabels
+			p.ObjectMeta = metav1.ObjectMeta{
+				Labels: map[string]string{
+					"app": DeploymentName,
+				},
+			}
+			runtimeClass := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+			p.Spec.RuntimeClassName = &runtimeClass
+			p.Spec.Containers[0].Image = images.Test()
+			p.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceMemory: resource.MustParse("200Mi"),
+					corev1.ResourceCPU:    resource.MustParse("2"),
+				},
+			}
+
+			// Adding a unique label to the deployment
+			deploymentLabels := map[string]string{
+				"app": DeploymentName,
+			}
+			// we delete the deployment either way
+			defer func() {
+				err := testclient.DataPlaneClient.Get(ctx, client.ObjectKey{Name: dp.Name, Namespace: testutils.NamespaceTesting}, dp)
+				if err == nil {
+					// deployment exists, delete it
+					testlog.Infof("Deleting Deployment %v", dp.Name)
+					err := testclient.Client.Delete(ctx, dp)
+					Expect(err).ToNot(HaveOccurred())
+				}
+				testlog.Infof("Deployment %v is deleted %v", dp.Name)
+			}()
+			// we create and delete deployment in loop to create deployments in
+			// quick succession to verify pre-start hook is able to write to
+			// cpuset.cpus.exclusive
+			for i := 0; i < 5; i++ {
+				testlog.Infof("%d Create deployment %s with 2 Guaranteed pods requesting 2 cpus", i, DeploymentName)
+				dp = deployments.Make(DeploymentName, testutils.NamespaceTesting,
+					deployments.WithPodTemplate(p),
+					deployments.WithNodeSelector(testutils.NodeSelectorLabels))
+				dp.Spec.Template.Annotations = annotations
+				dp.Spec.Template.Labels = deploymentLabels // Add labels to the pod template
+				dp.Spec.Replicas = &numberofReplicas
+
+				Expect(testclient.DataPlaneClient.Create(ctx, dp)).ToNot(HaveOccurred())
+				podList := &corev1.PodList{}
+				listOptions := &client.ListOptions{Namespace: testutils.NamespaceTesting, LabelSelector: labels.SelectorFromSet(deploymentLabels)}
+				Eventually(func() bool {
+					if err := testclient.DataPlaneClient.List(context.TODO(), podList, listOptions); err != nil {
+						return false
+					}
+					for _, pod := range podList.Items {
+						Expect(pod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
+						if isPodReady(&pod) || pod.Status.Phase == corev1.PodRunning {
+							continue
+						}
+						for _, containerStatus := range pod.Status.ContainerStatuses {
+							if containerStatus.State.Waiting == nil {
+								continue
+							}
+							// we want to test container Pending state first so that we do not skip the condition
+							// since we are creating and deleting the deployments, it's possible for this condition
+							// to be skipped if one of the pods is not in pending state
+							if containerStatus.State.Waiting.Reason == "RunContainerError" && strings.Contains(containerStatus.State.Waiting.Message, "failed to run pre-start hook for container") {
+								testlog.Warningf("container %s failed to start with error: %s", pod.Spec.Containers[0].Name, containerStatus.State.Waiting.Message)
+								return false
+							}
+						}
+					}
+					if len(podList.Items) < int(numberofReplicas) {
+						testlog.Warningf("Required number of pods is %d", numberofReplicas)
+						return false
+					}
+					for _, s := range podList.Items[0].Status.ContainerStatuses {
+						if !s.Ready {
+							testlog.Warningf("container status is %q", s.Name)
+							return false
+						}
+					}
+					// if we are here all the pods in the deployment are in ready state
+					return true
+				}, 10*time.Second, 5*time.Second).Should(BeTrue())
+				// delete deployment
+				// since the deployment is called in loop, all the pods are given some time
+				// before we delete them because we want to preserve the current pod state
+				// for some time to allow us to capture the container status messages before
+				// we start deleting the pod
+				testlog.Info("we wait for 5 seconds before deployment is deleted")
+				time.Sleep(5 * time.Second)
+				testlog.Infof("Deleting Deployment %v", dp.Name)
+				err := testclient.Client.Delete(ctx, dp)
+				Expect(err).ToNot(HaveOccurred())
+			}
+		})
 	})
 	Context("Crio Annotations", func() {
 		var testpod *corev1.Pod
@@ -1045,4 +1163,14 @@ func busyCpuImageEnv() string {
 		qeImageRegistry = "quay.io/ocp-edge-qe/"
 	}
 	return fmt.Sprintf("%s%s", qeImageRegistry, busyCpusImage)
+}
+
+// isPodReady checks if the pod is in ready state
+func isPodReady(pod *corev1.Pod) bool {
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }
