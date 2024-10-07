@@ -23,11 +23,11 @@ const expectedMatchSelector = `
 `
 
 var (
-	cmdlineCPUsPartitioning          = "+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded} intel_iommu=on iommu=pt"
+	cmdlineCPUsPartitioning          = "+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded} ${iommu}"
 	cmdlineWithStaticIsolation       = "+isolcpus=domain,managed_irq,${isolated_cores}"
 	cmdlineWithoutStaticIsolation    = "+isolcpus=managed_irq,${isolated_cores}"
-	cmdlineRealtime                  = "+nohz_full=${isolated_cores} tsc=reliable nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11"
-	cmdlineHighPowerConsumption      = "+processor.max_cstate=1 intel_idle.max_cstate=0"
+	cmdlineRealtime                  = "+nohz_full=${isolated_cores} nosoftlockup skew_tick=1 rcutree.kthread_prio=11 ${realtime_args}"
+	cmdlineHighPowerConsumption      = "${hpc_cstate}"
 	cmdlineIdlePoll                  = "+idle=poll"
 	cmdlineHugepages                 = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4"
 	cmdlineAdditionalArgs            = "+audit=0 processor.max_cstate=1 idle=poll intel_idle.max_cstate=0"
@@ -162,7 +162,6 @@ var _ = Describe("Tuned", func() {
 					bootLoader, err := tunedData.GetSection("bootloader")
 					Expect(err).ToNot(HaveOccurred())
 					Expect(bootLoader.Key("cmdline_power_performance").String()).To(Equal(cmdlineHighPowerConsumption))
-					Expect(bootLoader.Key("cmdline_pstate").String()).To(Equal(cmdlineAutomaticPstate))
 				})
 			})
 
@@ -215,8 +214,6 @@ var _ = Describe("Tuned", func() {
 				bootLoaderSection, err := tunedData.GetSection("bootloader")
 				Expect(err).ToNot(HaveOccurred())
 				Expect(bootLoaderSection.Key("cmdline_pstate").String()).ToNot(Equal(cmdlinePerPodPowerManagementHint))
-				Expect(bootLoaderSection.Key("cmdline_pstate").String()).To(Equal(cmdlineAutomaticPstate))
-
 			})
 		})
 
@@ -228,10 +225,8 @@ var _ = Describe("Tuned", func() {
 				cpuSection, err := tunedData.GetSection("cpu")
 				Expect(err).ToNot(HaveOccurred())
 				Expect(cpuSection.Key("enabled").String()).ToNot(Equal("false"))
-				bootLoaderSection, err := tunedData.GetSection("bootloader")
+				_, err = tunedData.GetSection("bootloader")
 				Expect(err).ToNot(HaveOccurred())
-				Expect(bootLoaderSection.Key("cmdline_pstate").String()).ToNot(Equal(cmdlinePerPodPowerManagementHint))
-				Expect(bootLoaderSection.Key("cmdline_pstate").String()).To(Equal(cmdlineAutomaticPstate))
 			})
 		})
 
@@ -242,10 +237,8 @@ var _ = Describe("Tuned", func() {
 				cpuSection, err := tunedData.GetSection("cpu")
 				Expect(err).ToNot(HaveOccurred())
 				Expect(cpuSection.Key("enabled").String()).To(Equal("false"))
-				bootLoader, err := tunedData.GetSection("bootloader")
+				_, err = tunedData.GetSection("bootloader")
 				Expect(err).ToNot(HaveOccurred())
-				Expect(bootLoader.Key("cmdline_pstate").String()).To(Equal(cmdlinePerPodPowerManagementHint))
-				Expect(bootLoader.Key("cmdline_pstate").String()).ToNot(Equal(cmdlineAutomaticPstate))
 			})
 		})
 
