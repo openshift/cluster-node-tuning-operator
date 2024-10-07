@@ -258,8 +258,8 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 			Data: &AmdX86ProfileData,
 		},
 		{
-			Name: &ArmAarch64ProfileData,
-			Data: &ArmAarch64ProfileName,
+			Name: &ArmAarch64ProfileName,
+			Data: &ArmAarch64ProfileData,
 		},
 		{
 			Name: &IntelX86ProfileName,
