@@ -311,6 +311,19 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				cpuManagerCpusetBeforeRestart, err := nodes.CpuManagerCpuSet(ctx, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				testlog.Infof("pre kubelet restart default cpuset: %v", cpuManagerCpusetBeforeRestart.String())
+				By("store inode of the file")
+				inodeCmd := []string{
+					"chroot",
+					"/rootfs",
+					"/bin/bash",
+					"-c",
+					"ls -i /var/lib/kubelet/cpu_manager_state | awk '{print $1}'",
+				}
+				out, err := nodes.ExecCommand(ctx, workerRTNode, inodeCmd)
+				Expect(err).ToNot(HaveOccurred())
+				oldInode := testutils.ToString(out)
+				testlog.Infof("old inode number %d", oldInode)
+
 				kubeletRestartCmd := []string{
 					"chroot",
 					"/rootfs",
@@ -318,7 +331,6 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 					"-c",
 					"systemctl restart kubelet",
 				}
-
 				_, _ = nodes.ExecCommand(ctx, workerRTNode, kubeletRestartCmd)
 				nodes.WaitForReadyOrFail("post kubelet restart", workerRTNode.Name, 20*time.Minute, 3*time.Second)
 				// giving kubelet more time to stabilize and initialize itself before
@@ -330,6 +342,15 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				By("check that test pod is running before checking the state file again")
 				Expect(testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(testpod), testpod)).To(Succeed())
 				testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+
+				By("check if file has been removed and recreated")
+				out, err = nodes.ExecCommand(ctx, workerRTNode, inodeCmd)
+				Expect(err).ToNot(HaveOccurred())
+				newInode := testutils.ToString(out)
+				testlog.Infof("new inode number %d", newInode)
+				if newInode != oldInode {
+					testlog.Infof("state file is not expected to be deleted")
+				}
 
 				By("fetch Default cpuset from cpu manager state after restart")
 				cpuManagerCpusetAfterRestart, err := nodes.CpuManagerCpuSet(ctx, workerRTNode)
