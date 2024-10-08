@@ -23,20 +23,20 @@ const expectedMatchSelector = `
 `
 
 var (
-	cmdlineCPUsPartitioning          = "+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded} ${iommu}"
-	cmdlineWithStaticIsolation       = "+isolcpus=domain,managed_irq,${isolated_cores}"
-	cmdlineWithoutStaticIsolation    = "+isolcpus=managed_irq,${isolated_cores}"
-	cmdlineRealtime                  = "+nohz_full=${isolated_cores} nosoftlockup skew_tick=1 rcutree.kthread_prio=11 ${realtime_args}"
-	cmdlineHighPowerConsumption      = "${hpc_cstate}"
-	cmdlineIdlePoll                  = "+idle=poll"
-	cmdlineHugepages                 = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4"
-	cmdlineAdditionalArgs            = "+audit=0 processor.max_cstate=1 idle=poll intel_idle.max_cstate=0"
-	cmdlineDummy2MHugePages          = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=0"
-	cmdlineMultipleHugePages         = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=128"
-	cmdlineIntelPstateActive         = "+intel_pstate=active"
-	cmdlineIntelPstateAutomatic      = "+intel_pstate=${f:intel_recommended_pstate}"
-	cmdlineAmdPstateActive           = "+amd_pstate=active"
-	cmdlineAmdPstateAutomatic        = "+amd_pstate=guided"
+	cmdlineCPUsPartitioning       = "+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded} ${iommu}"
+	cmdlineWithStaticIsolation    = "+isolcpus=domain,managed_irq,${isolated_cores}"
+	cmdlineWithoutStaticIsolation = "+isolcpus=managed_irq,${isolated_cores}"
+	cmdlineRealtime               = "+nohz_full=${isolated_cores} nosoftlockup skew_tick=1 rcutree.kthread_prio=11 ${realtime_args}"
+	cmdlineHighPowerConsumption   = "${hpc_cstate}"
+	cmdlineIdlePoll               = "+idle=poll"
+	cmdlineHugepages              = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4"
+	cmdlineAdditionalArgs         = "+audit=0 processor.max_cstate=1 idle=poll intel_idle.max_cstate=0"
+	cmdlineDummy2MHugePages       = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=0"
+	cmdlineMultipleHugePages      = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=128"
+	cmdlineIntelPstateActive      = "+intel_pstate=active"
+	cmdlineIntelPstateAutomatic   = "+intel_pstate=${f:intel_recommended_pstate}"
+	cmdlineAmdPstateActive        = "+amd_pstate=active"
+	cmdlineAmdPstateAutomatic     = "+amd_pstate=guided"
 )
 
 var _ = Describe("Tuned", func() {
@@ -59,19 +59,19 @@ var _ = Describe("Tuned", func() {
 		Expect(err).ToNot(HaveOccurred())
 		var profileIndex int
 		// The index order here should match how they are defined in tuned.go
-		switch(profileName){
-			case components.ProfileNamePerformance:
-				profileIndex = 0
-			case components.ProfileNamePerformanceRT:
-				profileIndex = 1
-			case components.ProfileNameAmdX86:
-				profileIndex = 2
-			case components.ProfileNameArmAarch64:
-				profileIndex = 3
-			case components.ProfileNameIntelX86:
-				profileIndex = 4
-			default:
-				profileIndex = 0
+		switch profileName {
+		case components.ProfileNamePerformance:
+			profileIndex = 0
+		case components.ProfileNamePerformanceRT:
+			profileIndex = 1
+		case components.ProfileNameAmdX86:
+			profileIndex = 2
+		case components.ProfileNameArmAarch64:
+			profileIndex = 3
+		case components.ProfileNameIntelX86:
+			profileIndex = 4
+		default:
+			profileIndex = 0
 		}
 		tunedData := []byte(*tuned.Spec.Profile[profileIndex].Data)
 		cfg, err := ini.Load(tunedData)
@@ -540,8 +540,8 @@ var _ = Describe("Tuned", func() {
 		})
 	})
 
-	Context("with amd x86 performance profile", func(){
-		When("perPodPowerManagement Hint is false and realTime hint is false", func () {
+	Context("with amd x86 performance profile", func() {
+		When("perPodPowerManagement Hint is false and realTime hint is false", func() {
 			It("should contain amd_pstate set to automatic", func() {
 				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.Bool(false)
 				tunedData := getTunedStructuredData(profile, components.ProfileNameAmdX86)
@@ -551,7 +551,7 @@ var _ = Describe("Tuned", func() {
 				Expect(variablesSection.Key("default_pstate").String()).To(Equal(cmdlineAmdPstateAutomatic))
 			})
 		})
-		When("perPodPowerManagement Hint is false and realTime hint is true", func () {
+		When("perPodPowerManagement Hint is false and realTime hint is true", func() {
 			It("should contain amd_pstate set to automatic", func() {
 				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.Bool(false)
 				profile.Spec.WorkloadHints.RealTime = pointer.Bool(true)
@@ -574,13 +574,13 @@ var _ = Describe("Tuned", func() {
 		})
 	})
 
-	Context("with arm aarch64 performance profile", func(){
-		When("regardless of perPodPowerManagement hint", func () {
-			It("should not set pstate", func () {
+	Context("with arm aarch64 performance profile", func() {
+		When("regardless of perPodPowerManagement hint", func() {
+			It("should not set pstate", func() {
 				tunedData := getTunedStructuredData(profile, components.ProfileNameArmAarch64)
 				variablesSection, err := tunedData.GetSection("variables")
 				Expect(err).ToNot(HaveOccurred())
-				Expect(variablesSection.Key("cmdline_pstate").String()).To(Equal(""))		
+				Expect(variablesSection.Key("cmdline_pstate").String()).To(Equal(""))
 			})
 			It("should set iommu passthrough", func() {
 				tunedData := getTunedStructuredData(profile, components.ProfileNameArmAarch64)
@@ -591,8 +591,8 @@ var _ = Describe("Tuned", func() {
 		})
 	})
 
-	Context("with intel x86 performance profile", func(){
-		When("perPodPowerManagement Hint is false and realTime hint is false", func () {
+	Context("with intel x86 performance profile", func() {
+		When("perPodPowerManagement Hint is false and realTime hint is false", func() {
 			It("should contain intel_pstate set to automatic", func() {
 				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.Bool(false)
 				tunedData := getTunedStructuredData(profile, components.ProfileNameIntelX86)
@@ -602,7 +602,7 @@ var _ = Describe("Tuned", func() {
 				Expect(variablesSection.Key("default_pstate").String()).To(Equal(cmdlineIntelPstateAutomatic))
 			})
 		})
-		When("perPodPowerManagement Hint is false and realTime hint is true", func () {
+		When("perPodPowerManagement Hint is false and realTime hint is true", func() {
 			It("should contain intel_pstate set to automatic", func() {
 				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.Bool(false)
 				profile.Spec.WorkloadHints.RealTime = pointer.Bool(true)
