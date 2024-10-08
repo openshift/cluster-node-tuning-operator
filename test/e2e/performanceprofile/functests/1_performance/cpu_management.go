@@ -305,7 +305,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		AfterEach(func() {
 			deleteTestPod(context.TODO(), testpod)
 		})
-		When("kubelet is restart", func() {
+		FWhen("kubelet is restart", func() {
 			It("[test_id: 73501] defaultCpuset should not change", func() {
 				By("fetch Default cpu set from cpu manager state file before restart")
 				cpuManagerCpusetBeforeRestart, err := nodes.CpuManagerCpuSet(ctx, workerRTNode)
