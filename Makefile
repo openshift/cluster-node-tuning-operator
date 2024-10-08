@@ -274,7 +274,7 @@ pao-functests-mixedcpus: $(BINDATA)
 pao-functests-hypershift: $(BINDATA)
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
-	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/1_performance ./test/e2e/performanceprofile/functests/3_performance_status ./test/e2e/performanceprofile/functests/6_mustgather_testing" -p "-vv --label-filter="!openshift" -r --fail-fast --flake-attempts=2 --timeout=2h --junit-report=report.xml" -m "Running Functional Tests over Hypershift"
+	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/1_performance ./test/e2e/performanceprofile/functests/3_performance_status ./test/e2e/performanceprofile/functests/6_mustgather_testing ./test/e2e/performanceprofile/functests/7_performance_kubelet_node" -p "-vv --label-filter="!openshift" -r --fail-fast --flake-attempts=2 --timeout=2h --junit-report=report.xml" -m "Running Functional Tests over Hypershift"
 
 .PHONY: cluster-clean-pao
 cluster-clean-pao:
