@@ -320,12 +320,16 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				}
 
 				_, _ = nodes.ExecCommand(ctx, workerRTNode, kubeletRestartCmd)
-				nodes.WaitForReadyOrFail("post kubele restart", workerRTNode.Name, 20*time.Minute, 3*time.Second)
+				nodes.WaitForReadyOrFail("post kubelet restart", workerRTNode.Name, 20*time.Minute, 3*time.Second)
 				// giving kubelet more time to stabilize and initialize itself before
 				testlog.Infof("post restart: entering cooldown time: %v", restartCooldownTime)
 				time.Sleep(restartCooldownTime)
 
 				testlog.Infof("post restart: finished cooldown time: %v", restartCooldownTime)
+
+				By("check that test pod is running before checking the state file again")
+				Expect(testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(testpod), testpod)).To(Succeed())
+				testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 
 				By("fetch Default cpuset from cpu manager state after restart")
 				cpuManagerCpusetAfterRestart, err := nodes.CpuManagerCpuSet(ctx, workerRTNode)
