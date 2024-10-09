@@ -574,8 +574,8 @@ func addContent(ignitionConfig *igntypes.Config, content []byte, dst string, mod
 
 func renderCrioConfigSnippet(profile *performancev2.PerformanceProfile, src string, opts *components.MachineConfigOptions) ([]byte, error) {
 	templateArgs := map[string]string{
-		templateRuntimePath: "/bin/runc",
-		templateRuntimeRoot: "/run/runc",
+		templateRuntimePath: "/usr/bin/crun",
+		templateRuntimeRoot: "/run/crun",
 	}
 
 	if profile.Spec.CPU.Reserved != nil {
@@ -587,9 +587,9 @@ func renderCrioConfigSnippet(profile *performancev2.PerformanceProfile, src stri
 		templateArgs[templateCrioSharedCPUsAnnotation] = "cpu-shared.crio.io"
 	}
 
-	if opts.DefaultRuntime == machineconfigv1.ContainerRuntimeDefaultRuntimeCrun {
-		templateArgs[templateRuntimePath] = "/usr/bin/crun"
-		templateArgs[templateRuntimeRoot] = "/run/crun"
+	if opts.DefaultRuntime == machineconfigv1.ContainerRuntimeDefaultRuntimeRunc {
+		templateArgs[templateRuntimePath] = "/bin/runc"
+		templateArgs[templateRuntimeRoot] = "/run/runc"
 	}
 
 	profileTemplate, err := template.ParseFS(assets.Configs, src)

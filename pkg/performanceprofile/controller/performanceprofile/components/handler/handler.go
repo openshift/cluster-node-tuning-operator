@@ -178,7 +178,7 @@ func (h *handler) getContainerRuntimeName(ctx context.Context, profile *performa
 	}
 
 	if len(ctrcfgList.Items) == 0 {
-		return mcov1.ContainerRuntimeDefaultRuntimeRunc, nil
+		return mcov1.ContainerRuntimeDefaultRuntimeCrun, nil
 	}
 
 	var ctrcfgs []*mcov1.ContainerRuntimeConfig
@@ -196,7 +196,7 @@ func (h *handler) getContainerRuntimeName(ctx context.Context, profile *performa
 
 	if len(ctrcfgs) == 0 {
 		klog.V(1).Infof("no ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q; using default container runtime", mcpSetLabels.String(), profile.Name)
-		return mcov1.ContainerRuntimeDefaultRuntimeRunc, nil
+		return mcov1.ContainerRuntimeDefaultRuntimeCrun, nil
 	}
 
 	if len(ctrcfgs) > 1 {
