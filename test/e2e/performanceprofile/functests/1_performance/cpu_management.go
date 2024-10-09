@@ -351,7 +351,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				if newInode != oldInode {
 					testlog.Infof("state file is not expected to be deleted")
 				}
-
+				time.Sleep(60 * time.Minute)
 				By("fetch Default cpuset from cpu manager state after restart")
 				cpuManagerCpusetAfterRestart, err := nodes.CpuManagerCpuSet(ctx, workerRTNode)
 				Expect(cpuManagerCpusetBeforeRestart).To(Equal(cpuManagerCpusetAfterRestart))
