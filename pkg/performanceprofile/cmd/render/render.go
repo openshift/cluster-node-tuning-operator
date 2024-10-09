@@ -404,7 +404,7 @@ func getContainerRuntimeName(profile *performancev2.PerformanceProfile, mcp *mcf
 
 	if len(matchingCtrConfigs) == 0 {
 		klog.Infof("no ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q; using default container runtime", mcpLabels.String(), profile.Name)
-		return mcfgv1.ContainerRuntimeDefaultRuntimeRunc, nil
+		return mcfgv1.ContainerRuntimeDefaultRuntimeCrun, nil
 	}
 
 	if len(matchingCtrConfigs) > 1 {
