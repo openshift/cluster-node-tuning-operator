@@ -282,7 +282,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 	Describe("Verification of cpu_manager_state file", Label(string(label.Tier0)), func() {
 		var testpod *corev1.Pod
 		BeforeEach(func() {
-			testpod = pods.GetTestPod()
+			testpod = pods.GetTestPodWithTag("testcpudefset")
 			cpuRequest := 2
 			testpod.Namespace = testutils.NamespaceTesting
 			testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
@@ -320,16 +320,17 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				}
 
 				_, _ = nodes.ExecCommand(ctx, workerRTNode, kubeletRestartCmd)
-				nodes.WaitForReadyOrFail("post kubele restart", workerRTNode.Name, 20*time.Minute, 3*time.Second)
+				nodes.WaitForReadyOrFail("post kubelet restart", workerRTNode.Name, 20*time.Minute, 3*time.Second)
+
 				// giving kubelet more time to stabilize and initialize itself before
 				testlog.Infof("post restart: entering cooldown time: %v", restartCooldownTime)
 				time.Sleep(restartCooldownTime)
-
 				testlog.Infof("post restart: finished cooldown time: %v", restartCooldownTime)
 
 				By("fetch Default cpuset from cpu manager state after restart")
 				cpuManagerCpusetAfterRestart, err := nodes.CpuManagerCpuSet(ctx, workerRTNode)
-				Expect(cpuManagerCpusetBeforeRestart).To(Equal(cpuManagerCpusetAfterRestart))
+				ok := cpuManagerCpusetBeforeRestart.Equals(cpuManagerCpusetAfterRestart)
+				Expect(ok).To(BeTrue(), "default cpusets differ: before=%s after=%s", cpuManagerCpusetBeforeRestart.String(), cpuManagerCpusetAfterRestart.String())
 			})
 		})
 	})

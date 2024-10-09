@@ -32,17 +32,22 @@ const DefaultDeletionTimeout = 120
 
 // GetTestPod returns pod with the busybox image
 func GetTestPod() *corev1.Pod {
+	return GetTestPodWithTag("test")
+}
+
+// GetTestPod returns pod with the busybox image
+func GetTestPodWithTag(tag string) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: "test-",
+			GenerateName: tag + "-",
 			Labels: map[string]string{
-				"test": "",
+				tag: "",
 			},
 		},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
 				{
-					Name:    "test",
+					Name:    tag + "-cnt",
 					Image:   images.Test(),
 					Command: []string{"sleep", "10h"},
 				},
