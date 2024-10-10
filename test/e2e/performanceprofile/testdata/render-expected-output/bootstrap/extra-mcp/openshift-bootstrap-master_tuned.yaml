@@ -18,8 +18,8 @@ spec:
       The second line will be evaluated based on whether the real time kernel is enabled\n#
       This has two possible results:\n#     openshift-node,cpu-partitioning\n#     openshift-node,cpu-partitioning,openshift-node-performance-rt-<PerformanceProfile
       name>\ninclude=openshift-node-performance-${f:lscpu_check:Vendor ID\\:\\s*GenuineIntel:intel:Vendor
-      ID\\:\\s*AuthenticAMD:amd:Vendor ID\\:\\s*ARM:arm}-${f:lscpu_check:Architecture\\:\\s*x86_64:x86:Architecture\\:\\s*aarch64:aarch64};\n
-      \ openshift-node,cpu-partitioning${f:regex_search_ternary:${f:exec:uname:-r}:rt:,openshift-node-performance-rt-openshift-bootstrap-master:};\n\n#
+      ID\\:\\s*AuthenticAMD:amd:Vendor ID\\:\\s*ARM:arm}-${f:lscpu_check:Architecture\\:\\s*x86_64:x86:Architecture\\:\\s*aarch64:aarch64}-openshift-bootstrap-master;\n
+      \ openshift-node,cpu-partitioning${f:regex_search_ternary:${f:exec:uname:-r}:rt:,openshift-node-performance-rt-openshift-bootstrap-master:}\n\n#
       Inheritance of base profiles legend:\n# cpu-partitioning -> network-latency
       -> latency-performance\n# https://github.com/redhat-performance/tuned/blob/master/profiles/latency-performance/tuned.conf\n#
       https://github.com/redhat-performance/tuned/blob/master/profiles/network-latency/tuned.conf\n#
@@ -86,8 +86,7 @@ spec:
 
       realtime_args=+tsc=reliable nmi_watchdog=0 mce=off
     name: openshift-node-performance-amd-x86-openshift-bootstrap-master
-  - data: openshift-node-performance-arm-aarch64-openshift-bootstrap-master
-    name: |
+  - data: |
       [main]
       summary=Platform specific tuning for aarch64
 
@@ -101,6 +100,7 @@ spec:
       cmdline_pstate=
       # No cstate for ARM
       hpc_cstate=
+    name: openshift-node-performance-arm-aarch64-openshift-bootstrap-master
   - data: |
       [main]
       summary=Platform specific tuning for Intel x86
