@@ -328,7 +328,7 @@ func (r *PerformanceProfileReconciler) tunedProfileToPerformanceProfileForHypers
 		return nil
 	}
 	if len(cmList.Items) == 0 {
-		klog.Errorf("no performance profile ConfigMap found that matches label %s", hypershiftconsts.NodePoolNameLabel)
+		klog.V(4).InfoS("no performance profile ConfigMap found that matches label", "label", hypershiftconsts.NodePoolNameLabel)
 		return nil
 	}
 	if len(cmList.Items) > 1 {
