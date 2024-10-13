@@ -77,6 +77,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		workerRTNode = &workerRTNodes[0]
 
 		onlineCPUSet, err = nodes.GetOnlineCPUsSet(ctx, workerRTNode)
+		Expect(err).ToNot(HaveOccurred())
 		cpuID := onlineCPUSet.UnsortedList()[0]
 		smtLevel = nodes.GetSMTLevel(ctx, cpuID, workerRTNode)
 		getter, err = cgroup.BuildGetter(ctx, testclient.DataPlaneClient, testclient.K8sClient)
