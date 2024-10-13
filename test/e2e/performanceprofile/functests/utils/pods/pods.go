@@ -148,7 +148,7 @@ func ExecCommandOnPod(c *kubernetes.Clientset, pod *corev1.Pod, containerName st
 			Stdin:     false,
 			Stdout:    true,
 			Stderr:    true,
-			TTY:       true,
+			TTY:       false,
 		}, scheme.ParameterCodec)
 
 	cfg, err := config.GetConfig()
@@ -164,7 +164,7 @@ func ExecCommandOnPod(c *kubernetes.Clientset, pod *corev1.Pod, containerName st
 	err = exec.StreamWithContext(context.TODO(), remotecommand.StreamOptions{
 		Stdout: &outputBuf,
 		Stderr: &errorBuf,
-		Tty:    true,
+		Tty:    false,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to run command %v: output %q; error %q; %w", command, outputBuf.String(), errorBuf.String(), err)
