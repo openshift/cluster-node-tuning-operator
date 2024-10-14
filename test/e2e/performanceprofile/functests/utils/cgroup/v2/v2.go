@@ -53,7 +53,7 @@ func (cm *ControllersManager) Cpu(ctx context.Context, pod *corev1.Pod, containe
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve cgroup config for pod. pod=%q, container=%q; %w", client.ObjectKeyFromObject(pod).String(), containerName, err)
 	}
-	output := strings.Split(string(b), "\r\n")
+	output := strings.Split(string(b), "\n")
 	quotaAndPeriod := strings.Split(output[0], " ")
 	cfg.Quota = quotaAndPeriod[0]
 	cfg.Period = quotaAndPeriod[1]
@@ -74,7 +74,7 @@ func stat(k8sclient *kubernetes.Clientset, pod *corev1.Pod, containerName, child
 		return nil, fmt.Errorf("failed to retrieve cgroup config for pod. pod=%q, container=%q; %w", client.ObjectKeyFromObject(pod).String(), containerName, err)
 	}
 	output := strings.TrimSpace(string(statBytes))
-	interfacevalues := strings.Split(output, "\r\n")
+	interfacevalues := strings.Split(output, "\n")
 	// cpu.stat always contains 3 stats usage_usec, user_usec, system_usec
 	// only when cpu controller is enabled other stats like nr_periods etc are enabled
 	// this is not applicable for v1 as controllers are preenabled by default
