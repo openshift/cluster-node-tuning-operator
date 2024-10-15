@@ -4,6 +4,7 @@ After=firstboot-osupdate.target systemd-sysctl.service network.target polkit.ser
 # Requires is necessary to start this unit before kubelet-dependencies.target
 Requires=kubelet-dependencies.target
 Before=kubelet-dependencies.target
+After=clear-irqbalance-banned-cpus.service
 ConditionPathExists=/var/lib/ocp-tuned/image.env
 
 [Service]
