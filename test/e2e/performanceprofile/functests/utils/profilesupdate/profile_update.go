@@ -8,9 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	mcv1 "github.com/openshift/api/machineconfiguration/v1"
@@ -24,7 +22,6 @@ import (
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 )
 
@@ -111,8 +108,6 @@ func WaitForTuningUpdating(ctx context.Context, profile *performancev2.Performan
 
 // WaitForTuningUpdated is waiting for the cluster to come back from tuning configuration
 // done by PerformanceProfile application.
-// This is a lower lever function and should not be used directly.
-// Use PostUpdateSync instead
 func WaitForTuningUpdated(ctx context.Context, profile *performancev2.PerformanceProfile) {
 	GinkgoHelper()
 	// In case we are on OCP, we can query the MCP to determine if the update has completed.
@@ -132,39 +127,4 @@ func WaitForTuningUpdated(ctx context.Context, profile *performancev2.Performanc
 	testlog.Infof("wait for node pool %q transition into config ready state", client.ObjectKeyFromObject(np).String())
 	err = nodepools.WaitForConfigToBeReady(ctx, testclient.ControlPlaneClient, np.Name, np.Namespace)
 	Expect(err).ToNot(HaveOccurred())
-}
-
-// EnforceNodeLabels make sure to enforce that one of the worker nodes
-// has the labels that are needed for the test to run properly.
-// This is useful on a Hypershift platform when the nodes get recreated
-// after tuning updates and the labels (besides the default one) are gone.
-func EnforceNodeLabels() {
-	GinkgoHelper()
-	workers, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
-	Expect(err).ToNot(HaveOccurred())
-	if len(workers) != 0 {
-		return
-	}
-	testlog.Infof("no worker nodes found with labels %s\n", testutils.NodeSelectorLabels)
-	nodesList := &corev1.NodeList{}
-	Expect(testclient.DataPlaneClient.List(context.TODO(), nodesList)).To(Succeed())
-	// choose one arbitrary
-	node := &nodesList.Items[0]
-	testlog.Infof("labeling node %s with labels %s\n", node.Name, labels.SelectorFromValidatedSet(testutils.NodeSelectorLabels).String())
-	Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		err := testclient.DataPlaneClient.Get(context.TODO(), client.ObjectKeyFromObject(node), node)
-		if err != nil {
-			return err
-		}
-		node.Labels = labels.Merge(node.Labels, testutils.NodeSelectorLabels)
-		return testclient.DataPlaneClient.Update(context.TODO(), node)
-	})).To(Succeed())
-	testlog.Infof("node %s labels are: %v\n", node.Name, node.Labels)
-}
-
-// PostUpdateSync is performing operations that are needed
-// after PerformanceProfile updated. It must be called after WaitForTuningUpdating
-func PostUpdateSync(ctx context.Context, profile *performancev2.PerformanceProfile) {
-	WaitForTuningUpdated(ctx, profile)
-	EnforceNodeLabels()
 }
