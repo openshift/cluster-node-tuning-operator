@@ -214,7 +214,8 @@ spec:
               --security-opt label=disable \
               --log-driver=none \
               --volume /var/lib/kubelet:/var/lib/kubelet:rslave,ro \
-              --volume /var/lib/ocp-tuned:/var/lib/ocp-tuned:rslave \
+              --volume /var/lib/ocp-tuned:/host/var/lib/ocp-tuned:rslave \
+              --volume /var/lib/tuned:/host/var/lib/tuned:rslave \
               --volume /etc/modprobe.d:/etc/modprobe.d:rslave \
               --volume /etc/sysconfig:/etc/sysconfig:rslave \
               --volume /etc/sysctl.d:/etc/sysctl.d:rslave,ro \
