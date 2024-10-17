@@ -662,12 +662,7 @@ func switchTunedHome() error {
 		return fmt.Errorf("failed to link %q -> %q: %v", ocpTunedHome, ocpTunedHomeHost, err)
 	}
 
-	err := os.Chdir(ocpTunedHome)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return os.Chdir(ocpTunedHome)
 }
 
 func prepareOpenShiftTunedDir() error {
