@@ -12,8 +12,9 @@ ConditionPathExists=/var/lib/ocp-tuned/image.env
 # is strongly discouraged by "man systemd.service" and results in
 # failed dependency for the kubelet service.
 Type=oneshot
-# Restart=no is the default as of systemd 252, but be explicit.
-Restart=no
+Restart=on-failure
+# Time to wait between restart attempts.
+RestartSec=5s
 ExecReload=/bin/pkill --signal HUP --pidfile /run/tuned/tuned.pid
 ExecStartPre=/bin/bash -c " \
   mkdir -p /run/tuned "
