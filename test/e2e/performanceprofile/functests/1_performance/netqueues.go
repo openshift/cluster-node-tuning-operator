@@ -55,11 +55,16 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 
 		tunedPaoProfile := fmt.Sprintf("openshift-node-performance-%s", performanceProfileName)
 		//Verify the tuned profile is created on the worker-cnf nodes:
-		tunedCmd := []string{"tuned-adm", "profile_info", tunedPaoProfile}
+		// direct the error to /dev/null on purpose because tuneD always shows the following error:
+		// "Cannot talk to TuneD daemon via DBus. Is TuneD daemon running?"
+		// Which causes the test to fail, but it's a false-positive
+		tunedCmd := []string{"/bin/sh", "-c", fmt.Sprintf("tuned-adm profile_info %s 2>/dev/null | grep ^openshift-", tunedPaoProfile)}
 		for _, node := range workerRTNodes {
 			tunedPod := nodes.TunedForNode(&node, RunningOnSingleNode)
-			_, err := pods.WaitForPodOutput(context.TODO(), testclient.K8sClient, tunedPod, tunedCmd)
+			out, err := pods.WaitForPodOutput(context.TODO(), testclient.K8sClient, tunedPod, tunedCmd)
 			Expect(err).ToNot(HaveOccurred())
+			profileNameFromTuned := testutils.ToString(out)
+			Expect(profileNameFromTuned).To(Equal(tunedPaoProfile), "tuned profile created by PerformanceProfile %s does not exist under tuned", performanceProfileName)
 		}
 
 		tunedConfPath = filepath.Join(tunedprofilesDirectory, tunedPaoProfile, "tuned.conf")

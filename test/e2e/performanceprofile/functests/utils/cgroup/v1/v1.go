@@ -54,7 +54,7 @@ func (cm *ControllersManager) Cpu(ctx context.Context, pod *corev1.Pod, containe
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve cgroup config for pod. pod=%q, container=%q; %w", client.ObjectKeyFromObject(pod).String(), containerName, err)
 	}
-	output := strings.Split(string(b), "\r\n")
+	output := strings.Split(string(b), "\n")
 	cfg.Quota = output[0]
 	cfg.Period = output[1]
 	cfg.Stat, err = stat(cm.k8sClient, pod, containerName, childName)
@@ -77,7 +77,7 @@ func stat(k8sclient *kubernetes.Clientset, pod *corev1.Pod, containerName, child
 		return nil, fmt.Errorf("failed to retrieve cgroup config for pod. pod=%q, container=%q; %w", client.ObjectKeyFromObject(pod).String(), containerName, err)
 	}
 	output := strings.TrimSpace(string(statBytes))
-	interfacevalues := strings.Split(output, "\r\n")
+	interfacevalues := strings.Split(output, "\n")
 	for _, v := range interfacevalues {
 		values := strings.Split(v, " ")
 		cpuStat[values[0]] = values[1]
