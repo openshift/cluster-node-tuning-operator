@@ -838,7 +838,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 
 				profile.Name = "without-numa"
 				profile.ResourceVersion = ""
-				profile.Spec.NodeSelector = map[string]string{"withoutNUMA/withoutNUMA": "withoutNUMA"}
+				profile.Spec.NodeSelector = map[string]string{"withoutnuma/withoutnuma": "withoutnuma"}
 				profile.Spec.NUMA = nil
 				profile.Spec.MachineConfigPoolSelector = nil
 				profile.Spec.MachineConfigLabel = nil
