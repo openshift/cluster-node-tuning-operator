@@ -23,18 +23,20 @@ const expectedMatchSelector = `
 `
 
 var (
-	cmdlineCPUsPartitioning          = "+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded} intel_iommu=on iommu=pt"
-	cmdlineWithStaticIsolation       = "+isolcpus=domain,managed_irq,${isolated_cores}"
-	cmdlineWithoutStaticIsolation    = "+isolcpus=managed_irq,${isolated_cores}"
-	cmdlineRealtime                  = "+nohz_full=${isolated_cores} tsc=reliable nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11"
-	cmdlineHighPowerConsumption      = "+processor.max_cstate=1 intel_idle.max_cstate=0"
-	cmdlineIdlePoll                  = "+idle=poll"
-	cmdlineHugepages                 = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4"
-	cmdlineAdditionalArgs            = "+audit=0 processor.max_cstate=1 idle=poll intel_idle.max_cstate=0"
-	cmdlineDummy2MHugePages          = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=0"
-	cmdlineMultipleHugePages         = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=128"
-	cmdlinePerPodPowerManagementHint = "+intel_pstate=passive"
-	cmdlineAutomaticPstate           = "+intel_pstate=${automatic_pstate}"
+	cmdlineCPUsPartitioning       = "+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded}"
+	cmdlineWithStaticIsolation    = "+isolcpus=domain,managed_irq,${isolated_cores}"
+	cmdlineWithoutStaticIsolation = "+isolcpus=managed_irq,${isolated_cores}"
+	cmdlineRealtime               = "+nohz_full=${isolated_cores} nosoftlockup skew_tick=1 rcutree.kthread_prio=11"
+	cmdlineHighPowerConsumption   = "${high_power_consumption_cstate}"
+	cmdlineIdlePoll               = "+idle=poll"
+	cmdlineHugepages              = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4"
+	cmdlineAdditionalArgs         = "+audit=0 processor.max_cstate=1 idle=poll intel_idle.max_cstate=0"
+	cmdlineDummy2MHugePages       = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=0"
+	cmdlineMultipleHugePages      = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=128"
+	cmdlineIntelPstateActive      = "intel_pstate=active"
+	cmdlineIntelPstateAutomatic   = "intel_pstate=${f:intel_recommended_pstate}"
+	cmdlineAmdPstateActive        = "amd_pstate=active"
+	cmdlineAmdPstateAutomatic     = "amd_pstate=guided"
 )
 
 var _ = Describe("Tuned", func() {
@@ -52,11 +54,29 @@ var _ = Describe("Tuned", func() {
 		return string(y)
 	}
 
-	getTunedStructuredData := func(profile *performancev2.PerformanceProfile) *ini.File {
+	getTunedStructuredData := func(profile *performancev2.PerformanceProfile, profileName string) *ini.File {
 		tuned, err := NewNodePerformance(profile)
 		Expect(err).ToNot(HaveOccurred())
-		tunedData := []byte(*tuned.Spec.Profile[0].Data)
+		var profileIndex int
+		// The index order here should match how they are defined in tuned.go
+		switch profileName {
+		case components.ProfileNamePerformance:
+			profileIndex = 0
+		case components.ProfileNamePerformanceRT:
+			profileIndex = 1
+		case components.ProfileNameAmdX86:
+			profileIndex = 2
+		case components.ProfileNameArmAarch64:
+			profileIndex = 3
+		case components.ProfileNameIntelX86:
+			profileIndex = 4
+		default:
+			profileIndex = 0
+		}
+		tunedData := []byte(*tuned.Spec.Profile[profileIndex].Data)
 		cfg, err := ini.Load(tunedData)
+		print(cfg)
+		print(err)
 		Expect(err).ToNot(HaveOccurred())
 		return cfg
 	}
@@ -64,7 +84,7 @@ var _ = Describe("Tuned", func() {
 	Context("with worker performance profile", func() {
 		It("should generate yaml with expected parameters", func() {
 			manifest := getTunedManifest(profile)
-			tunedData := getTunedStructuredData(profile)
+			tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 			isolated, err := tunedData.GetSection("variables")
 			Expect(err).ToNot(HaveOccurred())
 
@@ -104,7 +124,7 @@ var _ = Describe("Tuned", func() {
 
 		Context("default profile default tuned", func() {
 			It("should [cpu] section in tuned", func() {
-				tunedData := getTunedStructuredData(profile)
+				tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 				cpuSection, err := tunedData.GetSection("cpu")
 				Expect(err).ToNot(HaveOccurred())
 				Expect((cpuSection.Key("force_latency").String())).To(Equal("cstate.id:1|3"))
@@ -117,7 +137,7 @@ var _ = Describe("Tuned", func() {
 		When("realtime hint disabled", func() {
 			It("should not contain realtime related parameters", func() {
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{RealTime: pointer.Bool(false)}
-				tunedData := getTunedStructuredData(profile)
+				tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 				service, err := tunedData.GetSection("service")
 				Expect(err).ToNot(HaveOccurred())
 				Expect(service.Key("service.stalld").String()).To(Equal("stop,disable"))
@@ -140,7 +160,7 @@ var _ = Describe("Tuned", func() {
 		When("realtime hint enabled", func() {
 			It("should contain realtime related parameters", func() {
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{RealTime: pointer.Bool(true)}
-				tunedData := getTunedStructuredData(profile)
+				tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 				service, err := tunedData.GetSection("service")
 				Expect(err).ToNot(HaveOccurred())
 				Expect(service.Key("service.stalld").String()).To(Equal("start,enable"))
@@ -158,11 +178,10 @@ var _ = Describe("Tuned", func() {
 			When("default realtime workload settings", func() {
 				It("should contain high power consumption related parameters", func() {
 					profile.Spec.WorkloadHints = &performancev2.WorkloadHints{HighPowerConsumption: pointer.Bool(true)}
-					tunedData := getTunedStructuredData(profile)
+					tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 					bootLoader, err := tunedData.GetSection("bootloader")
 					Expect(err).ToNot(HaveOccurred())
 					Expect(bootLoader.Key("cmdline_power_performance").String()).To(Equal(cmdlineHighPowerConsumption))
-					Expect(bootLoader.Key("cmdline_pstate").String()).To(Equal(cmdlineAutomaticPstate))
 				})
 			})
 
@@ -172,7 +191,7 @@ var _ = Describe("Tuned", func() {
 						HighPowerConsumption: pointer.Bool(true),
 						RealTime:             pointer.Bool(true),
 					}
-					tunedData := getTunedStructuredData(profile)
+					tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 					bootLoader, err := tunedData.GetSection("bootloader")
 					Expect(err).ToNot(HaveOccurred())
 					Expect(bootLoader.Key("cmdline_idle_poll").String()).To(Equal(cmdlineIdlePoll))
@@ -185,7 +204,7 @@ var _ = Describe("Tuned", func() {
 						HighPowerConsumption: pointer.Bool(true),
 						RealTime:             pointer.Bool(false),
 					}
-					tunedData := getTunedStructuredData(profile)
+					tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 					bootLoader, err := tunedData.GetSection("bootloader")
 					Expect(err).ToNot(HaveOccurred())
 					Expect(bootLoader.Key("cmdline_idle_poll").String()).ToNot(Equal(cmdlineIdlePoll))
@@ -208,50 +227,43 @@ var _ = Describe("Tuned", func() {
 			It("should not contain perPodPowerManagement related parameters", func() {
 				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.Bool(false)
 				profile.Spec.WorkloadHints.RealTime = pointer.Bool(false)
-				tunedData := getTunedStructuredData(profile)
+				tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 				cpuSection, err := tunedData.GetSection("cpu")
 				Expect(err).ToNot(HaveOccurred())
 				Expect(cpuSection.Key("enabled").String()).ToNot(Equal("false"))
-				bootLoaderSection, err := tunedData.GetSection("bootloader")
+				_, err = tunedData.GetSection("bootloader")
 				Expect(err).ToNot(HaveOccurred())
-				Expect(bootLoaderSection.Key("cmdline_pstate").String()).ToNot(Equal(cmdlinePerPodPowerManagementHint))
-				Expect(bootLoaderSection.Key("cmdline_pstate").String()).To(Equal(cmdlineAutomaticPstate))
-
 			})
 		})
 
 		When("perPodPowerManagement Hint is false realTime Hint true", func() {
-			It("should not contain perPodPowerManagement related parameters but intel_pstate to automatic mode", func() {
+			It("should not contain perPodPowerManagement related parameters", func() {
 				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.Bool(false)
 				profile.Spec.WorkloadHints.RealTime = pointer.Bool(true)
-				tunedData := getTunedStructuredData(profile)
+				tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 				cpuSection, err := tunedData.GetSection("cpu")
 				Expect(err).ToNot(HaveOccurred())
 				Expect(cpuSection.Key("enabled").String()).ToNot(Equal("false"))
-				bootLoaderSection, err := tunedData.GetSection("bootloader")
+				_, err = tunedData.GetSection("bootloader")
 				Expect(err).ToNot(HaveOccurred())
-				Expect(bootLoaderSection.Key("cmdline_pstate").String()).ToNot(Equal(cmdlinePerPodPowerManagementHint))
-				Expect(bootLoaderSection.Key("cmdline_pstate").String()).To(Equal(cmdlineAutomaticPstate))
 			})
 		})
 
 		When("perPodPowerManagement Hint to true", func() {
 			It("should contain perPodPowerManagement related parameters", func() {
 				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.Bool(true)
-				tunedData := getTunedStructuredData(profile)
+				tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 				cpuSection, err := tunedData.GetSection("cpu")
 				Expect(err).ToNot(HaveOccurred())
 				Expect(cpuSection.Key("enabled").String()).To(Equal("false"))
-				bootLoader, err := tunedData.GetSection("bootloader")
+				_, err = tunedData.GetSection("bootloader")
 				Expect(err).ToNot(HaveOccurred())
-				Expect(bootLoader.Key("cmdline_pstate").String()).To(Equal(cmdlinePerPodPowerManagementHint))
-				Expect(bootLoader.Key("cmdline_pstate").String()).ToNot(Equal(cmdlineAutomaticPstate))
 			})
 		})
 
 		It("should generate yaml with expected parameters for Isolated balancing disabled", func() {
 			profile.Spec.CPU.BalanceIsolated = pointer.Bool(false)
-			tunedData := getTunedStructuredData(profile)
+			tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 			bootLoader, err := tunedData.GetSection("bootloader")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(bootLoader.Key("cmdline_isolation").String()).To(Equal(cmdlineWithStaticIsolation))
@@ -259,7 +271,7 @@ var _ = Describe("Tuned", func() {
 
 		It("should generate yaml with expected parameters for Isolated balancing enabled", func() {
 			profile.Spec.CPU.BalanceIsolated = pointer.Bool(true)
-			tunedData := getTunedStructuredData(profile)
+			tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 			bootLoader, err := tunedData.GetSection("bootloader")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(bootLoader.Key("cmdline_isolation").String()).To(Equal(cmdlineWithoutStaticIsolation))
@@ -268,7 +280,7 @@ var _ = Describe("Tuned", func() {
 		// This tests checking Additional arguments is an example of how additional kernel args could look like
 		// they have been selected randomly with no concrete purpose
 		It("should contain additional additional parameters", func() {
-			tunedData := getTunedStructuredData(profile)
+			tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 			bootLoader, err := tunedData.GetSection("bootloader")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(bootLoader.Key("cmdline_additionalArg").String()).To(Equal(cmdlineAdditionalArgs))
@@ -276,7 +288,7 @@ var _ = Describe("Tuned", func() {
 
 		It("should not contain additional additional parameters", func() {
 			profile.Spec.AdditionalKernelArgs = nil
-			tunedData := getTunedStructuredData(profile)
+			tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 			bootLoader, err := tunedData.GetSection("bootloader")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(bootLoader.Key("cmdline_additionalArg").String()).ToNot(Equal(cmdlineAdditionalArgs))
@@ -302,7 +314,7 @@ var _ = Describe("Tuned", func() {
 						Node:  pointer.Int32(0),
 					})
 
-					tunedData := getTunedStructuredData(profile)
+					tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 					bootLoader, err := tunedData.GetSection("bootloader")
 					Expect(err).ToNot(HaveOccurred())
 					Expect(bootLoader.Key("cmdline_hugepages").String()).To(Equal(cmdlineDummy2MHugePages))
@@ -316,7 +328,7 @@ var _ = Describe("Tuned", func() {
 						Count: 128,
 					})
 
-					tunedData := getTunedStructuredData(profile)
+					tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 					bootLoader, err := tunedData.GetSection("bootloader")
 					Expect(err).ToNot(HaveOccurred())
 					Expect(bootLoader.Key("cmdline_hugepages").String()).ToNot(Equal(cmdlineDummy2MHugePages))
@@ -326,7 +338,7 @@ var _ = Describe("Tuned", func() {
 
 			Context("without requested 2M hugepages", func() {
 				It("should not append dummy 2M huge pages kernel arguments", func() {
-					tunedData := getTunedStructuredData(profile)
+					tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 					bootLoader, err := tunedData.GetSection("bootloader")
 					Expect(err).ToNot(HaveOccurred())
 					Expect(bootLoader.Key("cmdline_hugepages").String()).ToNot(Equal(cmdlineDummy2MHugePages))
@@ -345,7 +357,7 @@ var _ = Describe("Tuned", func() {
 						Count: 128,
 					})
 
-					tunedData := getTunedStructuredData(profile)
+					tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 					bootLoader, err := tunedData.GetSection("bootloader")
 					Expect(err).ToNot(HaveOccurred())
 					Expect(bootLoader.Key("cmdline_hugepages").String()).ToNot(Equal(cmdlineDummy2MHugePages))
@@ -365,7 +377,7 @@ var _ = Describe("Tuned", func() {
 						Node:  pointer.Int32(0),
 					})
 
-					tunedData := getTunedStructuredData(profile)
+					tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 					bootLoader, err := tunedData.GetSection("bootloader")
 					Expect(err).ToNot(HaveOccurred())
 					Expect(bootLoader.Key("cmdline_hugepages").String()).ToNot(Equal(cmdlineDummy2MHugePages))
@@ -524,6 +536,85 @@ var _ = Describe("Tuned", func() {
 					manifest := getTunedManifest(profile)
 					Expect(len(manifest)).ToNot(Equal(0))
 				})
+			})
+		})
+	})
+
+	Context("with amd x86 performance profile", func() {
+		When("perPodPowerManagement Hint is false and realTime hint is false", func() {
+			It("should contain amd_pstate set to automatic", func() {
+				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.Bool(false)
+				tunedData := getTunedStructuredData(profile, components.ProfileNameAmdX86)
+				bootloaderSection, err := tunedData.GetSection("bootloader")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(bootloaderSection.Key("cmdline_pstate").String()).To(Equal(cmdlineAmdPstateAutomatic))
+			})
+		})
+		When("perPodPowerManagement Hint is false and realTime hint is true", func() {
+			It("should contain amd_pstate set to automatic", func() {
+				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.Bool(false)
+				profile.Spec.WorkloadHints.RealTime = pointer.Bool(true)
+				tunedData := getTunedStructuredData(profile, components.ProfileNameAmdX86)
+				bootloaderSection, err := tunedData.GetSection("bootloader")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(bootloaderSection.Key("cmdline_pstate").String()).To(Equal(cmdlineAmdPstateAutomatic))
+			})
+		})
+		When("perPodPowerManagement Hint is true", func() {
+			It("should contain amd_pstate set to active", func() {
+				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.Bool(true)
+				tunedData := getTunedStructuredData(profile, components.ProfileNameAmdX86)
+				bootloaderSection, err := tunedData.GetSection("bootloader")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(bootloaderSection.Key("cmdline_pstate").String()).To(Equal(cmdlineAmdPstateActive))
+			})
+		})
+	})
+
+	Context("with arm aarch64 performance profile", func() {
+		When("regardless of perPodPowerManagement hint", func() {
+			It("should not set pstate", func() {
+				tunedData := getTunedStructuredData(profile, components.ProfileNameArmAarch64)
+				bootloaderSection, err := tunedData.GetSection("bootloader")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(bootloaderSection.Key("cmdline_pstate").String()).To(Equal(""))
+			})
+			It("should set iommu passthrough", func() {
+				tunedData := getTunedStructuredData(profile, components.ProfileNameArmAarch64)
+				bootloaderSection, err := tunedData.GetSection("bootloader")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(bootloaderSection.Key("cmdline_iommu_arm").String()).To(Equal("iommu.passthrough=1"))
+			})
+		})
+	})
+
+	Context("with intel x86 performance profile", func() {
+		When("perPodPowerManagement Hint is false and realTime hint is false", func() {
+			It("should contain intel_pstate set to automatic", func() {
+				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.Bool(false)
+				tunedData := getTunedStructuredData(profile, components.ProfileNameIntelX86)
+				bootloaderSection, err := tunedData.GetSection("bootloader")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(bootloaderSection.Key("cmdline_pstate").String()).To(Equal(cmdlineIntelPstateAutomatic))
+			})
+		})
+		When("perPodPowerManagement Hint is false and realTime hint is true", func() {
+			It("should contain intel_pstate set to automatic", func() {
+				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.Bool(false)
+				profile.Spec.WorkloadHints.RealTime = pointer.Bool(true)
+				tunedData := getTunedStructuredData(profile, components.ProfileNameIntelX86)
+				bootloaderSection, err := tunedData.GetSection("bootloader")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(bootloaderSection.Key("cmdline_pstate").String()).To(Equal(cmdlineIntelPstateAutomatic))
+			})
+		})
+		When("perPodPowerManagement Hint is true", func() {
+			It("should contain intel_pstate set to active", func() {
+				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.Bool(true)
+				tunedData := getTunedStructuredData(profile, components.ProfileNameIntelX86)
+				bootloaderSection, err := tunedData.GetSection("bootloader")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(bootloaderSection.Key("cmdline_pstate").String()).To(Equal(cmdlineIntelPstateActive))
 			})
 		})
 	})
