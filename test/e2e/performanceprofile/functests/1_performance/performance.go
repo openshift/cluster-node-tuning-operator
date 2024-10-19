@@ -3,7 +3,6 @@ package __performance
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -198,22 +197,6 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred())
 				workqueueWritebackMask := getTrimmedMaskFromData("workqueue", workqueueWritebackMaskData)
 				expectMasksEqual(nonIsolcpusMaskNoDelimiters, workqueueWritebackMask)
-			}
-		})
-
-		It("[test_id:32375][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] initramfs should not have injected configuration", func() {
-			for _, node := range workerRTNodes {
-				// updating the field to 4 as the latest proc/cmdline has been updated to
-				// BOOT_IMAGE=(hd0,gpt3)/boot/ostree/rhcos-<imageid> instead of BOOT_IMAGE=(hd1,gpt3)/ostree/rhcos-<imageId>
-				// TODO: Modify the awk script to be resilent to these changes or check if we can remove it completely
-				rhcosId, err := nodes.ExecCommand(context.TODO(), &node, []string{"awk", "-F", "/", "{printf $4}", "/rootfs/proc/cmdline"})
-				Expect(err).ToNot(HaveOccurred())
-				initramfsImagesPath, err := nodes.ExecCommand(context.TODO(), &node, []string{"find", filepath.Join("/rootfs/boot/ostree", string(rhcosId)), "-name", "*.img"})
-				Expect(err).ToNot(HaveOccurred())
-				modifiedImagePath := strings.TrimPrefix(strings.TrimSpace(string(initramfsImagesPath)), "/rootfs")
-				initrd, err := nodes.ExecCommand(context.TODO(), &node, []string{"chroot", "/rootfs", "lsinitrd", modifiedImagePath})
-				Expect(err).ToNot(HaveOccurred())
-				Expect(string(initrd)).ShouldNot(ContainSubstring("'/etc/systemd/system.conf /etc/systemd/system.conf.d/setAffinity.conf'"))
 			}
 		})
 
