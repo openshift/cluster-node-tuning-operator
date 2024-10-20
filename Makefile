@@ -24,7 +24,7 @@ OUT_DIR=_output
 GOBINDATA_BIN=$(OUT_DIR)/go-bindata
 BINDATA=pkg/manifests/bindata.go
 ASSETS=$(shell find assets -name \*.yaml)
-GO=GOARCH=$(GOARCH) GOOS=linux GO111MODULE=on GOFLAGS=-mod=vendor go
+GO=GOARCH=$(GOARCH) GO111MODULE=on GOFLAGS=-mod=vendor go
 GO_BUILD_RECIPE=$(GO) build -o $(OUT_DIR)/$(PACKAGE_BIN) -ldflags '-X $(PACKAGE)/version.Version=$(REV)' $(PACKAGE_MAIN)
 GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
 REV=$(shell git describe --long --tags --match='v*' --always --dirty)
