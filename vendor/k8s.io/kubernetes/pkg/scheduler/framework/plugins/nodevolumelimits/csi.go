@@ -22,6 +22,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/rand"
 	corelisters "k8s.io/client-go/listers/core/v1"
@@ -33,6 +34,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/names"
+	"k8s.io/kubernetes/pkg/scheduler/util"
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
 )
 
@@ -72,13 +74,40 @@ func (pl *CSILimits) Name() string {
 	return CSIName
 }
 
-// EventsToRegister returns the possible events that may make a Pod
+// EventsToRegister returns the possible events that may make a Pod.
 // failed by this plugin schedulable.
-func (pl *CSILimits) EventsToRegister() []framework.ClusterEventWithHint {
+func (pl *CSILimits) EventsToRegister(_ context.Context) ([]framework.ClusterEventWithHint, error) {
 	return []framework.ClusterEventWithHint{
+		// We don't register any `QueueingHintFn` intentionally
+		// because any new CSINode could make pods that were rejected by CSI volumes schedulable.
 		{Event: framework.ClusterEvent{Resource: framework.CSINode, ActionType: framework.Add}},
-		{Event: framework.ClusterEvent{Resource: framework.Pod, ActionType: framework.Delete}},
+		{Event: framework.ClusterEvent{Resource: framework.Pod, ActionType: framework.Delete}, QueueingHintFn: pl.isSchedulableAfterPodDeleted},
+		{Event: framework.ClusterEvent{Resource: framework.PersistentVolumeClaim, ActionType: framework.Add}},
+	}, nil
+}
+
+func (pl *CSILimits) isSchedulableAfterPodDeleted(logger klog.Logger, pod *v1.Pod, oldObj, newObj interface{}) (framework.QueueingHint, error) {
+	deletedPod, _, err := util.As[*v1.Pod](oldObj, newObj)
+	if err != nil {
+		return framework.Queue, fmt.Errorf("unexpected objects in isSchedulableAfterPodDeleted: %w", err)
 	}
+
+	if len(deletedPod.Spec.Volumes) == 0 {
+		return framework.QueueSkip, nil
+	}
+
+	if deletedPod.Spec.NodeName == "" {
+		return framework.QueueSkip, nil
+	}
+
+	for _, vol := range deletedPod.Spec.Volumes {
+		if vol.PersistentVolumeClaim != nil || vol.Ephemeral != nil || pl.translator.IsInlineMigratable(&vol) {
+			return framework.Queue, nil
+		}
+	}
+
+	logger.V(5).Info("The deleted pod does not impact the scheduling of the unscheduled pod", "deletedPod", klog.KObj(pod), "pod", klog.KObj(deletedPod))
+	return framework.QueueSkip, nil
 }
 
 // PreFilter invoked at the prefilter extension point
@@ -121,6 +150,10 @@ func (pl *CSILimits) Filter(ctx context.Context, _ *framework.CycleState, pod *v
 
 	newVolumes := make(map[string]string)
 	if err := pl.filterAttachableVolumes(logger, pod, csiNode, true /* new pod */, newVolumes); err != nil {
+		if apierrors.IsNotFound(err) {
+			// PVC is not found. This Pod will never be schedulable until PVC is created.
+			return framework.NewStatus(framework.UnschedulableAndUnresolvable, err.Error())
+		}
 		return framework.AsStatus(err)
 	}
 
@@ -210,7 +243,7 @@ func (pl *CSILimits) filterAttachableVolumes(
 				// The PVC is required to proceed with
 				// scheduling of a new pod because it cannot
 				// run without it. Bail out immediately.
-				return fmt.Errorf("looking up PVC %s/%s: %v", pod.Namespace, pvcName, err)
+				return fmt.Errorf("looking up PVC %s/%s: %w", pod.Namespace, pvcName, err)
 			}
 			// If the PVC is invalid, we don't count the volume because
 			// there's no guarantee that it belongs to the running predicate.

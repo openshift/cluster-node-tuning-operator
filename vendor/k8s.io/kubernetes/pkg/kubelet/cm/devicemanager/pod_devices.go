@@ -163,7 +163,7 @@ func (pdev *podDevices) removeContainerAllocatedResources(podUID, contName strin
 	}
 }
 
-// Returns all of devices allocated to the pods being tracked, keyed by resourceName.
+// Returns all devices allocated to the pods being tracked, keyed by resourceName.
 func (pdev *podDevices) devices() map[string]sets.Set[string] {
 	ret := make(map[string]sets.Set[string])
 	pdev.RLock()
@@ -181,6 +181,22 @@ func (pdev *podDevices) devices() map[string]sets.Set[string] {
 		}
 	}
 	return ret
+}
+
+// Returns podUID and containerName for a device
+func (pdev *podDevices) getPodAndContainerForDevice(deviceID string) (string, string) {
+	pdev.RLock()
+	defer pdev.RUnlock()
+	for podUID, containerDevices := range pdev.devs {
+		for containerName, resources := range containerDevices {
+			for _, devices := range resources {
+				if devices.deviceIds.Devices().Has(deviceID) {
+					return podUID, containerName
+				}
+			}
+		}
+	}
+	return "", ""
 }
 
 // Turns podDevices to checkpointData.
