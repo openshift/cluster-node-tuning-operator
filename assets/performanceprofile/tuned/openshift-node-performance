@@ -140,6 +140,8 @@ initrd_add_dir=
 
 # overrides cpu-partitioning cmdline
 cmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded}
+
+# No default value but will be composed conditionally based on platform
 cmdline_iommu=
 
 {{if .StaticIsolation}}
@@ -153,11 +155,13 @@ cmdline_realtime=+nohz_full=${isolated_cores} nosoftlockup skew_tick=1 rcutree.k
 {{end}}
 
 {{if .HighPowerConsumption}}
-cmdline_power_performance=${high_power_consumption_cstate}
+# No default value but will be composed conditionally based on platform
+cmdline_power_performance=
 {{end}}
 
 {{if and .HighPowerConsumption .RealTimeHint}}
-cmdline_idle_poll=+idle=poll
+# No default value but will be composed conditionally based on platform
+cmdline_idle_poll=
 {{end}}
 
 {{if .DefaultHugepagesSize}}

@@ -23,20 +23,22 @@ const expectedMatchSelector = `
 `
 
 var (
-	cmdlineCPUsPartitioning       = "+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded}"
-	cmdlineWithStaticIsolation    = "+isolcpus=domain,managed_irq,${isolated_cores}"
-	cmdlineWithoutStaticIsolation = "+isolcpus=managed_irq,${isolated_cores}"
-	cmdlineRealtime               = "+nohz_full=${isolated_cores} nosoftlockup skew_tick=1 rcutree.kthread_prio=11"
-	cmdlineHighPowerConsumption   = "${high_power_consumption_cstate}"
-	cmdlineIdlePoll               = "+idle=poll"
-	cmdlineHugepages              = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4"
-	cmdlineAdditionalArgs         = "+audit=0 processor.max_cstate=1 idle=poll intel_idle.max_cstate=0"
-	cmdlineDummy2MHugePages       = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=0"
-	cmdlineMultipleHugePages      = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=128"
-	cmdlineIntelPstateActive      = "intel_pstate=active"
-	cmdlineIntelPstateAutomatic   = "intel_pstate=${f:intel_recommended_pstate}"
-	cmdlineAmdPstateActive        = "amd_pstate=active"
-	cmdlineAmdPstateAutomatic     = "amd_pstate=guided"
+	cmdlineAdditionalArgs            = "+audit=0 processor.max_cstate=1 idle=poll intel_idle.max_cstate=0"
+	cmdlineAmdHighPowerConsumption   = "processor.max_cstate=1"
+	cmdlineAmdPstateActive           = "amd_pstate=active"
+	cmdlineAmdPstateAutomatic        = "amd_pstate=guided"
+	cmdlineCPUsPartitioning          = "+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded}"
+	cmdlineDummy2MHugePages          = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=0"
+	cmdlineHighPowerConsumption      = "${high_power_consumption_cstate}"
+	cmdlineHugepages                 = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4"
+	cmdlineIdlePoll                  = "idle=poll"
+	cmdlineIntelHighPowerConsumption = "processor.max_cstate=1 intel_idle.max_cstate=0"
+	cmdlineIntelPstateActive         = "intel_pstate=active"
+	cmdlineIntelPstateAutomatic      = "intel_pstate=${f:intel_recommended_pstate}"
+	cmdlineMultipleHugePages         = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=128"
+	cmdlineRealtime                  = "+nohz_full=${isolated_cores} nosoftlockup skew_tick=1 rcutree.kthread_prio=11"
+	cmdlineWithoutStaticIsolation    = "+isolcpus=managed_irq,${isolated_cores}"
+	cmdlineWithStaticIsolation       = "+isolcpus=domain,managed_irq,${isolated_cores}"
 )
 
 var _ = Describe("Tuned", func() {
@@ -176,12 +178,12 @@ var _ = Describe("Tuned", func() {
 
 		Context("high power consumption hint enabled", func() {
 			When("default realtime workload settings", func() {
-				It("should contain high power consumption related parameters", func() {
+				It("should not contain high power consumption related parameters", func() {
 					profile.Spec.WorkloadHints = &performancev2.WorkloadHints{HighPowerConsumption: pointer.Bool(true)}
 					tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 					bootLoader, err := tunedData.GetSection("bootloader")
 					Expect(err).ToNot(HaveOccurred())
-					Expect(bootLoader.Key("cmdline_power_performance").String()).To(Equal(cmdlineHighPowerConsumption))
+					Expect(bootLoader.Key("cmdline_power_performance").String()).To(Equal(""))
 				})
 			})
 
@@ -194,20 +196,7 @@ var _ = Describe("Tuned", func() {
 					tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 					bootLoader, err := tunedData.GetSection("bootloader")
 					Expect(err).ToNot(HaveOccurred())
-					Expect(bootLoader.Key("cmdline_idle_poll").String()).To(Equal(cmdlineIdlePoll))
-				})
-			})
-
-			When("realtime workload disabled", func() {
-				It("should contain idle=poll cmdline", func() {
-					profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-						HighPowerConsumption: pointer.Bool(true),
-						RealTime:             pointer.Bool(false),
-					}
-					tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
-					bootLoader, err := tunedData.GetSection("bootloader")
-					Expect(err).ToNot(HaveOccurred())
-					Expect(bootLoader.Key("cmdline_idle_poll").String()).ToNot(Equal(cmdlineIdlePoll))
+					Expect(bootLoader.Key("cmdline_idle_poll").String()).To(Equal(""))
 				})
 			})
 
@@ -569,6 +558,39 @@ var _ = Describe("Tuned", func() {
 				Expect(bootloaderSection.Key("cmdline_pstate").String()).To(Equal(cmdlineAmdPstateActive))
 			})
 		})
+		When("realtime workload enabled and high power consumption is enabled", func() {
+			It("should contain idle=poll cmdline", func() {
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+					HighPowerConsumption: pointer.Bool(true),
+					RealTime:             pointer.Bool(true),
+				}
+				tunedData := getTunedStructuredData(profile, components.ProfileNameAmdX86)
+				bootloaderSection, err := tunedData.GetSection("bootloader")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(bootloaderSection.Key("cmdline_idle_poll_amd").String()).To(Equal(cmdlineIdlePoll))
+			})
+		})
+		When("realtime workload disabled and high power consumption is disabled", func() {
+			It("should not contain idle=poll cmdline", func() {
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+					HighPowerConsumption: pointer.Bool(true),
+					RealTime:             pointer.Bool(false),
+				}
+				tunedData := getTunedStructuredData(profile, components.ProfileNameAmdX86)
+				bootloaderSection, err := tunedData.GetSection("bootloader")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(bootloaderSection.Key("cmdline_idle_poll_amd").String()).To(Equal(""))
+			})
+		})
+		When("high power consumption is enabled", func() {
+			It("should contain high power consumption related parameters", func() {
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{HighPowerConsumption: pointer.Bool(true)}
+				tunedData := getTunedStructuredData(profile, components.ProfileNameAmdX86)
+				bootLoader, err := tunedData.GetSection("bootloader")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(bootLoader.Key("cmdline_power_performance_amd").String()).To(Equal(cmdlineAmdHighPowerConsumption))
+			})
+		})
 	})
 
 	Context("with arm aarch64 performance profile", func() {
@@ -615,6 +637,39 @@ var _ = Describe("Tuned", func() {
 				bootloaderSection, err := tunedData.GetSection("bootloader")
 				Expect(err).ToNot(HaveOccurred())
 				Expect(bootloaderSection.Key("cmdline_pstate").String()).To(Equal(cmdlineIntelPstateActive))
+			})
+		})
+		When("realtime workload enabled and high power consumption is enabled", func() {
+			It("should contain idle=poll cmdline", func() {
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+					HighPowerConsumption: pointer.Bool(true),
+					RealTime:             pointer.Bool(true),
+				}
+				tunedData := getTunedStructuredData(profile, components.ProfileNameIntelX86)
+				bootloaderSection, err := tunedData.GetSection("bootloader")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(bootloaderSection.Key("cmdline_idle_poll_intel").String()).To(Equal(cmdlineIdlePoll))
+			})
+		})
+		When("realtime workload disabled and high power consumption is disabled", func() {
+			It("should not contain idle=poll cmdline", func() {
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
+					HighPowerConsumption: pointer.Bool(true),
+					RealTime:             pointer.Bool(false),
+				}
+				tunedData := getTunedStructuredData(profile, components.ProfileNameIntelX86)
+				bootloaderSection, err := tunedData.GetSection("bootloader")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(bootloaderSection.Key("cmdline_idle_poll_intel").String()).To(Equal(""))
+			})
+		})
+		When("high power consumption is enabled", func() {
+			It("should contain high power consumption related parameters", func() {
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{HighPowerConsumption: pointer.Bool(true)}
+				tunedData := getTunedStructuredData(profile, components.ProfileNameIntelX86)
+				bootLoader, err := tunedData.GetSection("bootloader")
+				Expect(err).ToNot(HaveOccurred())
+				Expect(bootLoader.Key("cmdline_power_performance_intel").String()).To(Equal(cmdlineIntelHighPowerConsumption))
 			})
 		})
 	})
