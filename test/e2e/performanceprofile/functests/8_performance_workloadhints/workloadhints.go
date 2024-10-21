@@ -2,7 +2,6 @@ package __performance_workloadhints
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"reflect"
@@ -32,12 +31,15 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 	utilstuned "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 )
@@ -47,30 +49,38 @@ const (
 )
 
 var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific PerformanceProfile API", Label(string(label.WorkloadHints)), func() {
-	var workerRTNodes []corev1.Node
-	var profile, initialProfile *performancev2.PerformanceProfile
-	var performanceMCP string
-	var err error
+	var (
+		workerRTNodes           []corev1.Node
+		profile, initialProfile *performancev2.PerformanceProfile
+		poolName                string
+		err                     error
+		ctx                     context.Context = context.Background()
+	)
 
 	nodeLabel := testutils.NodeSelectorLabels
-
 	BeforeEach(func() {
 		if discovery.Enabled() && testutils.ProfileNotFound {
 			Skip("Discovery mode enabled, performance profile not found")
 		}
-
+		var err error
 		workerRTNodes = getUpdatedNodes()
 		profile, err = profiles.GetByNodeLabels(nodeLabel)
 		Expect(err).ToNot(HaveOccurred())
 		klog.Infof("using profile: %q", profile.Name)
-		performanceMCP, err = mcps.GetByProfile(profile)
-		Expect(err).ToNot(HaveOccurred())
-		klog.Infof("using performanceMCP: %q", performanceMCP)
-
-		// Verify that worker and performance MCP have updated state equals to true
-		for _, mcpName := range []string{testutils.RoleWorker, performanceMCP} {
-			mcps.WaitForCondition(mcpName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+		if !hypershift.IsHypershiftCluster() {
+			poolName, err = mcps.GetByProfile(profile)
+			Expect(err).ToNot(HaveOccurred())
+			for _, mcpName := range []string{testutils.RoleWorker, poolName} {
+				mcps.WaitForCondition(mcpName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			}
+		} else {
+			hostedClusterName, err := hypershift.GetHostedClusterName()
+			Expect(err).ToNot(HaveOccurred(), "unable to fetch hosted cluster name")
+			np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
+			Expect(err).ToNot(HaveOccurred())
+			poolName = client.ObjectKeyFromObject(np).String()
 		}
+
 	})
 
 	Context("WorkloadHints", Label(string(label.Tier3)), func() {
@@ -81,22 +91,24 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		})
 		When("workloadHint RealTime is disabled", func() {
 			It("should update kernel arguments and tuned accordingly to realTime Hint enabled by default", func() {
+				currentWorkloadHints := profile.Spec.WorkloadHints
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = nil
 
 				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
 					Enabled: pointer.Bool(false),
 				}
+				// If current workload hints already contains the changes skip updating
+				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
+					By("Updating the performance profile")
+					profiles.UpdateWithRetry(profile)
 
-				By("Updating the performance profile")
-				profiles.UpdateWithRetry(profile)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-				By("Applying changes in performance profile and waiting until mcp will start updating")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-
-				By("Waiting for MCP being updated")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
-
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, profile)
+				}
 				stalldEnabled, rtKernel := true, false
 				noHzParam := fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
 				sysctlMap := map[string]string{
@@ -136,8 +148,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 		When("RealTime Workload with RealTime Kernel set to false", func() {
 			It("[test_id:50991][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
-				By("Modifying profile")
 
+				currentWorkloadHints := profile.Spec.WorkloadHints
+				By("Modifying profile")
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption: pointer.Bool(false),
 					RealTime:             pointer.Bool(true),
@@ -146,15 +159,17 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					Enabled: pointer.Bool(false),
 				}
 
-				By("Updating the performance profile")
-				profiles.UpdateWithRetry(profile)
+				// If current workload hints already contains the changes skip updating
+				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
+					By("Updating the performance profile")
+					profiles.UpdateWithRetry(profile)
 
-				By("Applying changes in performance profile and waiting until mcp will start updating")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-				By("Waiting for MCP being updated")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
-
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, profile)
+				}
 				stalldEnabled, rtKernel := true, false
 				noHzParam := fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
 				sysctlMap := map[string]string{
@@ -193,6 +208,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		})
 		When("HighPower Consumption workload enabled", func() {
 			It("[test_id:50992][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
+				currentWorkloadHints := profile.Spec.WorkloadHints
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption: pointer.Bool(true),
@@ -203,15 +219,17 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					Enabled: pointer.Bool(false),
 				}
 
-				By("Updating the performance profile")
-				profiles.UpdateWithRetry(profile)
+				// If current workload hints already contains the changes skip updating
+				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
+					By("Updating the performance profile")
+					profiles.UpdateWithRetry(profile)
 
-				By("Applying changes in performance profile and waiting until mcp will start updating")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-				By("Waiting for MCP being updated")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
-
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, profile)
+				}
 				stalldEnabled, rtKernel := false, false
 				sysctlMap := map[string]string{
 					"kernel.hung_task_timeout_secs": "600",
@@ -259,22 +277,15 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				// If current workload hints already contains the changes
 				// skip mcp wait
 				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
-					By("Patching the performance profile with workload hints")
-					workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
-					Expect(err).ToNot(HaveOccurred())
+					By("Updating the performance profile")
+					profiles.UpdateWithRetry(profile)
 
-					Expect(testclient.Client.Patch(context.TODO(), profile,
-						client.RawPatch(
-							types.JSONPatchType,
-							[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec/workloadHints", "value": %s }]`, workloadHints)),
-						),
-					)).ToNot(HaveOccurred())
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-					By("Applying changes in performance profile and waiting until mcp will start updating")
-					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, profile)
 
-					By("Waiting when mcp finishes updates")
-					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 				}
 				stalldEnabled, rtKernel := true, true
 				noHzParam := fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
@@ -325,20 +336,14 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				}
 				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
 					By("Patching the performance profile with workload hints")
-					workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
-					Expect(err).ToNot(HaveOccurred())
-					Expect(testclient.Client.Patch(context.TODO(), profile,
-						client.RawPatch(
-							types.JSONPatchType,
-							[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec/workloadHints", "value": %s }]`, workloadHints)),
-						),
-					)).ToNot(HaveOccurred())
+					profiles.UpdateWithRetry(profile)
 
-					By("Applying changes in performance profile and waiting until mcp will start updating")
-					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-					By("Waiting when mcp finishes updates")
-					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, profile)
+
 				}
 
 				By("Verifying node kernel arguments")
@@ -353,7 +358,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					Namespace: components.NamespaceNodeTuningOperator,
 				}
 				tuned := &tunedv1.Tuned{}
-				err = testclient.Client.Get(context.TODO(), key, tuned)
+				err = testclient.DataPlaneClient.Get(context.TODO(), key, tuned)
 				Expect(err).ToNot(HaveOccurred(), "cannot find the Cluster Node Tuning Operator object")
 				tunedData := getTunedStructuredData(profile)
 				cpuSection, err := tunedData.GetSection("cpu")
@@ -381,21 +386,14 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				}
 				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
 					By("Patching the performance profile with workload hints")
-					spec, err := json.Marshal(profile.Spec)
-					Expect(err).ToNot(HaveOccurred())
+					profiles.UpdateWithRetry(profile)
 
-					Expect(testclient.Client.Patch(context.TODO(), profile,
-						client.RawPatch(
-							types.JSONPatchType,
-							[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-						),
-					)).ToNot(HaveOccurred())
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-					By("Applying changes in performance profile and waiting until mcp will start updating")
-					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, profile)
 
-					By("Waiting when mcp finishes updates")
-					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 				}
 				stalldEnabled, rtKernel := true, true
 				noHzParam := fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
@@ -447,21 +445,13 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				}
 
 				By("Patching the performance profile with workload hints")
-				newspec, err := json.Marshal(profile.Spec)
-				Expect(err).ToNot(HaveOccurred())
+				profiles.UpdateWithRetry(profile)
 
-				Expect(testclient.Client.Patch(context.TODO(), profile,
-					client.RawPatch(
-						types.JSONPatchType,
-						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, newspec)),
-					),
-				)).ToNot(HaveOccurred())
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+				profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-				By("Applying changes in performance profile and waiting until mcp will start updating")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-
-				By("Waiting when mcp finishes updates")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.PostUpdateSync(ctx, profile)
 
 				stalldEnabled, rtKernel = true, true
 				noHzParam = fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
@@ -519,21 +509,13 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				}
 				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
 					By("Patching the performance profile with workload hints")
-					spec, err := json.Marshal(profile.Spec)
-					Expect(err).ToNot(HaveOccurred())
+					profiles.UpdateWithRetry(profile)
 
-					Expect(testclient.Client.Patch(context.TODO(), profile,
-						client.RawPatch(
-							types.JSONPatchType,
-							[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-						),
-					)).ToNot(HaveOccurred())
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-					By("Applying changes in performance profile and waiting until mcp will start updating")
-					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-
-					By("Waiting when mcp finishes updates")
-					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, profile)
 				}
 				stalldEnabled, rtKernel := true, true
 				noHzParam := fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
@@ -581,23 +563,14 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 						Enabled: pointer.Bool(true),
 					}
 				}
+				By("Updating the performance profile")
+				profiles.UpdateWithRetry(profile)
 
-				By("Patching the performance profile with workload hints")
-				newspec, err := json.Marshal(profile.Spec)
-				Expect(err).ToNot(HaveOccurred())
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+				profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-				Expect(testclient.Client.Patch(context.TODO(), profile,
-					client.RawPatch(
-						types.JSONPatchType,
-						[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, newspec)),
-					),
-				)).ToNot(HaveOccurred())
-
-				By("Applying changes in performance profile and waiting until mcp will start updating")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-
-				By("Waiting when mcp finishes updates")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.PostUpdateSync(ctx, profile)
 
 				stalldEnabled, rtKernel = true, true
 				noHzParam = fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
@@ -645,7 +618,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					RealTime:              pointer.Bool(true),
 				}
 				EventuallyWithOffset(1, func() string {
-					err := testclient.Client.Update(context.TODO(), profile)
+					err := testclient.ControlPlaneClient.Update(context.TODO(), profile)
 					if err != nil {
 						statusErr, _ := err.(*errors.StatusError)
 						return statusErr.Status().Message
@@ -655,8 +628,8 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 			})
 
 			It("[test_id:54185] Verify sysfs parameters of guaranteed pod with powersave annotations", func() {
-
-				var fullPath string = ""
+				var fullPath string
+				var err error
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware.
 				checkHardwareCapability(context.TODO(), workerRTNodes)
@@ -667,21 +640,15 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					RealTime:              pointer.Bool(true),
 				}
 				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
-					By("Patching the performance profile with workload hints")
-					workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
-					Expect(err).ToNot(HaveOccurred())
+					By("Updating the performance profile")
+					profiles.UpdateWithRetry(profile)
 
-					Expect(testclient.Client.Patch(context.TODO(), profile,
-						client.RawPatch(
-							types.JSONPatchType,
-							[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec/workloadHints", "value": %s }]`, workloadHints)),
-						),
-					)).ToNot(HaveOccurred())
-					By("Applying changes in performance profile and waiting until mcp will start updating")
-					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-					By("Waiting when mcp finishes updates")
-					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, profile)
+
 				}
 
 				annotations := map[string]string{
@@ -706,7 +673,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				testpod.Spec.RuntimeClassName = &runtimeClass
 
 				By("creating test pod")
-				err = testclient.Client.Create(context.TODO(), testpod)
+				err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
 				Expect(err).ToNot(HaveOccurred())
 				testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
@@ -718,10 +685,13 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 				containerCgroup := ""
 				pid, err := nodes.ContainerPid(context.TODO(), &workerRTNodes[0], containerID)
+				Expect(err).ToNot(HaveOccurred(), "Unable to fetch pid of container process")
 				cmd := []string{"cat", fmt.Sprintf("/rootfs/proc/%s/cgroup", pid)}
 				out, err := nodes.ExecCommand(context.TODO(), &workerRTNodes[0], cmd)
+				Expect(err).ToNot(HaveOccurred(), "unable to fetch cgroup path")
 				containerCgroup, err = cgroup.PidParser(out)
-				cgroupv2, err := cgroup.IsVersion2(context.TODO(), testclient.Client)
+				Expect(err).ToNot(HaveOccurred())
+				cgroupv2, err := cgroup.IsVersion2(context.TODO(), testclient.DataPlaneClient)
 				Expect(err).ToNot(HaveOccurred())
 				if cgroupv2 {
 					fullPath = filepath.Join(cgroupRoot, containerCgroup)
@@ -736,6 +706,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				Expect(err).ToNot(HaveOccurred())
 				output := testutils.ToString(out)
 				cpus, err := cpuset.Parse(output)
+				Expect(err).ToNot(HaveOccurred(), "unable to parse string %s", cpus)
 				targetCpus := cpus.List()
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), targetCpus, &workerRTNodes[0], "0", "schedutil")
 				Expect(err).ToNot(HaveOccurred())
@@ -752,13 +723,15 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					}
 				}
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), otherCpus, &workerRTNodes[0], "0", "performance")
+				Expect(err).ToNot(HaveOccurred())
 				deleteTestPod(context.TODO(), testpod)
 				//Verify after the pod is deleted the cpus assigned to container have default powersave settings
 				By("Verify after pod is delete cpus assigned to container have default powersave settings")
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), targetCpus, &workerRTNodes[0], "0", "performance")
+				Expect(err).ToNot(HaveOccurred())
 			})
 
-			It("[test_id:54186] Verify sysfs paramters of guaranteed pod with performance annotiations", func() {
+			It("[test_id:54186] Verify sysfs parameters of guaranteed pod with performance annotiations", func() {
 
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware
@@ -771,21 +744,14 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					RealTime:              pointer.Bool(true),
 				}
 				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
-					By("Patching the performance profile with workload hints")
-					workloadHints, err := json.Marshal(profile.Spec.WorkloadHints)
-					Expect(err).ToNot(HaveOccurred())
+					By("Updating the performance profile")
+					profiles.UpdateWithRetry(profile)
 
-					Expect(testclient.Client.Patch(context.TODO(), profile,
-						client.RawPatch(
-							types.JSONPatchType,
-							[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec/workloadHints", "value": %s }]`, workloadHints)),
-						),
-					)).ToNot(HaveOccurred())
-					By("Applying changes in performance profile and waiting until mcp will start updating")
-					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
-					By("Waiting when mcp finishes updates")
-					mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.PostUpdateSync(ctx, profile)
 				}
 				annotations := map[string]string{
 					"cpu-load-balancing.crio.io": "disable",
@@ -812,7 +778,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				testpod.Spec.RuntimeClassName = &runtimeClass
 
 				By("creating test pod")
-				err = testclient.Client.Create(context.TODO(), testpod)
+				err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
 				Expect(err).ToNot(HaveOccurred())
 				testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
@@ -826,7 +792,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				cmd := []string{"cat", fmt.Sprintf("/rootfs/proc/%s/cgroup", pid)}
 				out, err := nodes.ExecCommand(context.TODO(), &workerRTNodes[0], cmd)
 				containerCgroup, err = cgroup.PidParser(out)
-				cgroupv2, err := cgroup.IsVersion2(context.TODO(), testclient.Client)
+				cgroupv2, err := cgroup.IsVersion2(context.TODO(), testclient.DataPlaneClient)
 				Expect(err).ToNot(HaveOccurred())
 				if cgroupv2 {
 					fullPath = filepath.Join(cgroupRoot, containerCgroup)
@@ -865,7 +831,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 		AfterEach(func() {
 			currentProfile := &performancev2.PerformanceProfile{}
-			if err := testclient.Client.Get(context.TODO(), client.ObjectKeyFromObject(initialProfile), currentProfile); err != nil {
+			if err := testclient.ControlPlaneClient.Get(context.TODO(), client.ObjectKeyFromObject(initialProfile), currentProfile); err != nil {
 				klog.Errorf("failed to get performance profile %q", initialProfile.Name)
 				return
 			}
@@ -875,21 +841,13 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 			}
 
 			By("Restoring the old performance profile")
-			spec, err := json.Marshal(initialProfile.Spec)
-			Expect(err).ToNot(HaveOccurred())
+			profiles.UpdateWithRetry(initialProfile)
 
-			Expect(testclient.Client.Patch(context.TODO(), profile,
-				client.RawPatch(
-					types.JSONPatchType,
-					[]byte(fmt.Sprintf(`[{ "op": "replace", "path": "/spec", "value": %s }]`, spec)),
-				),
-			)).ToNot(HaveOccurred())
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
-			By("Applying changes in performance profile and waiting until mcp will start updating")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-
-			By("Waiting when mcp finishes updates")
-			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.PostUpdateSync(ctx, profile)
 
 		})
 	})
@@ -926,12 +884,12 @@ func getTunedStructuredData(profile *performancev2.PerformanceProfile) *ini.File
 // deleteTestPod removes guaranteed pod
 func deleteTestPod(ctx context.Context, testpod *corev1.Pod) {
 	// it possible that the pod already was deleted as part of the test, in this case we want to skip teardown
-	err := testclient.Client.Get(ctx, client.ObjectKeyFromObject(testpod), testpod)
+	err := testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(testpod), testpod)
 	if errors.IsNotFound(err) {
 		return
 	}
 
-	err = testclient.Client.Delete(ctx, testpod)
+	err = testclient.DataPlaneClient.Delete(ctx, testpod)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = pods.WaitForDeletion(ctx, testpod, pods.DefaultDeletionTimeout*time.Second)
