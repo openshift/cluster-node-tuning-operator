@@ -131,7 +131,10 @@ type HardwareTuning struct {
 	ReservedCpuFreq *CPUfrequency `json:"reservedCpuFreq,omitempty"`
 }
 
-// HugePageSize defines size of huge pages, can be 2M or 1G.
+// HugePageSize defines size of huge pages
+// The allowed values for this depend on CPU architecture
+// For x86/amd64, the valid values are 2M and 1G
+// For aarch64, the valid values are 2M, 32M, and 512M
 type HugePageSize string
 
 // HugePages defines a set of huge pages that we want to allocate at boot.

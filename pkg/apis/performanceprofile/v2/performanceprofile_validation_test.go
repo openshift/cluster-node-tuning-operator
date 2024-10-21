@@ -5,7 +5,11 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
 )
@@ -42,6 +46,50 @@ const (
 	//NetDeviceModelID defines a net device model ID for the test profile
 	NetDeviceModelID = "0x1000"
 )
+
+// This type is used to define the inputs for the validator client
+type NodeSpecifications struct {
+	architecture string
+	cpuCapacity  int64
+	name         string
+}
+
+// Get a fake node object with a specified architecture and cpu capacity
+func GetFakeNode(specs NodeSpecifications) corev1.Node {
+	Expect(specs.architecture).To(BeElementOf([2]string{amd64, aarch64}))
+	return corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            specs.name,
+			ResourceVersion: "1.0",
+			Labels: map[string]string{
+				"nodekey": "nodeValue",
+			},
+		},
+		Status: corev1.NodeStatus{
+			Capacity: corev1.ResourceList{
+				corev1.ResourceCPU: *resource.NewMilliQuantity(specs.cpuCapacity, resource.DecimalSI),
+			},
+			NodeInfo: corev1.NodeSystemInfo{
+				Architecture: specs.architecture,
+			},
+		},
+	}
+}
+
+func GetFakeValidatorClient(nodeSpecs []NodeSpecifications) client.Client {
+	// Create all the nodes first from the provided specifications
+	nodes := []corev1.Node{}
+	for _, node := range nodeSpecs {
+		nodes = append(nodes, GetFakeNode(node))
+	}
+
+	// Convert the slice of nodes into a NodeList object
+	nodeList := corev1.NodeList{}
+	nodeList.Items = nodes
+
+	// Build the client with the new NodeList included
+	return fake.NewClientBuilder().WithLists(&nodeList).Build()
+}
 
 // NewPerformanceProfile returns new performance profile object that used for tests
 func NewPerformanceProfile(name string) *PerformanceProfile {
@@ -323,30 +371,243 @@ var _ = Describe("PerformanceProfile", func() {
 		})
 	})
 
+	Describe("The getNodesList helper function", func() {
+		It("should pass when at least one node is detected", func() {
+			// Get client with one node to test this case
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			// There should be a non-empty node list and no error present
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+			Expect(nodes.Items).ToNot(BeEmpty())
+		})
+		It("should pass when zero nodes is detected", func() {
+			// Get client with no nodes to test this case
+			nodeSpecs := []NodeSpecifications{}
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			// There should be an empty node list and error present
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+			Expect(nodes.Items).To(BeEmpty())
+		})
+	})
+
+	Describe("Same CPU Architecture validation", func() {
+		It("should pass when both nodes are the same architecture (x86)", func() {
+			// Get client with two x86 nodes
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node1"})
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node2"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+
+			errors := profile.validateAllNodesAreSameCpuArchitecture(nodes)
+			Expect(errors).To(BeEmpty())
+		})
+		It("should pass when both nodes are the same architecture (aarch64)", func() {
+			// Get client with two aarch64 nodes
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: aarch64, cpuCapacity: 1000, name: "node1"})
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: aarch64, cpuCapacity: 1000, name: "node2"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+
+			errors := profile.validateAllNodesAreSameCpuArchitecture(nodes)
+			Expect(errors).To(BeEmpty())
+		})
+		It("should fail when nodes are the different architecture", func() {
+			// Get client with two different nodes: one x86 and one aarch64
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node1"})
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: aarch64, cpuCapacity: 1000, name: "node2"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+
+			errors := profile.validateAllNodesAreSameCpuArchitecture(nodes)
+			Expect(errors).ToNot(BeEmpty())
+		})
+		It("should pass when no nodes are detected", func() {
+			// Get client with zero nodes
+			nodeSpecs := []NodeSpecifications{}
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+			Expect(nodes.Items).To(BeEmpty())
+
+			errors := profile.validateAllNodesAreSameCpuArchitecture(nodes)
+			Expect(errors).To(BeNil())
+		})
+	})
+
+	Describe("Same CPU Capacity validation", func() {
+		It("should pass when both nodes are the same capacity", func() {
+			// Get client with two nodes with the same cpu capacity
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node1"})
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node2"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+
+			errors := profile.validateAllNodesAreSameCpuCapacity(nodes)
+			Expect(errors).To(BeEmpty())
+		})
+		It("should fail when nodes are the different capacity", func() {
+			// Get client with two nodes with different cpu capacity
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node1"})
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 2000, name: "node2"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+
+			errors := profile.validateAllNodesAreSameCpuCapacity(nodes)
+			Expect(errors).ToNot(BeEmpty())
+		})
+		It("should pass when no nodes are detected", func() {
+			// Get client with zero nodes
+			nodeSpecs := []NodeSpecifications{}
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+			Expect(nodes.Items).To(BeEmpty())
+
+			errors := profile.validateAllNodesAreSameCpuCapacity(nodes)
+			Expect(errors).To(BeNil())
+		})
+	})
+
 	Describe("Hugepages validation", func() {
-		It("should reject on incorrect default hugepages size", func() {
+		It("should reject on incorrect default hugepages size (x86)", func() {
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+
 			incorrectDefaultSize := HugePageSize("!#@")
 			profile.Spec.HugePages.DefaultHugePagesSize = &incorrectDefaultSize
 
-			errors := profile.validateHugePages()
+			errors := profile.validateHugePages(nodes)
 			Expect(errors).NotTo(BeEmpty(), "should have validation error when default huge pages size has invalid value")
 			Expect(errors[0].Error()).To(ContainSubstring("hugepages default size should be equal"))
 		})
 
-		It("should reject hugepages allocation with unexpected page size", func() {
+		It("should reject on incorrect default hugepages size (aarch64)", func() {
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: aarch64, cpuCapacity: 1000, name: "node"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+
+			incorrectDefaultSize := HugePageSize("!#@")
+			profile.Spec.HugePages.DefaultHugePagesSize = &incorrectDefaultSize
+
+			errors := profile.validateHugePages(nodes)
+			Expect(errors).NotTo(BeEmpty(), "should have validation error when default huge pages size has invalid value")
+			Expect(errors[0].Error()).To(ContainSubstring("hugepages default size should be equal"))
+		})
+
+		It("should reject hugepages allocation with unexpected page size (x86)", func() {
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+
 			profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 				Count: 128,
 				Node:  pointer.Int32(0),
 				Size:  "14M",
 			})
-			errors := profile.validateHugePages()
+			errors := profile.validateHugePages(nodes)
 			Expect(errors).NotTo(BeEmpty(), "should have validation error when page with invalid format presents")
-			Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page size should be equal to %q or %q", hugepagesSize1G, hugepagesSize2M)))
+			Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page size should be equal to one of %v", x86ValidHugepagesSizes)))
+		})
+
+		It("should reject hugepages allocation with unexpected page size (aarch64)", func() {
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: aarch64, cpuCapacity: 1000, name: "node"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+
+			defaultSize := HugePageSize(hugepagesSize2M)
+			profile.Spec.HugePages.DefaultHugePagesSize = &defaultSize
+
+			profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
+				Count: 128,
+				Node:  pointer.Int32(0),
+				Size:  "14M",
+			})
+			errors := profile.validateHugePages(nodes)
+			Expect(errors).NotTo(BeEmpty(), "should have validation error when page with invalid format presents")
+			Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page size should be equal to one of %v", aarch64ValidHugepagesSizes)))
+		})
+
+		It("should pass when no nodes are detected with a valid hugepage size", func() {
+			// Get client with zero nodes
+			nodeSpecs := []NodeSpecifications{}
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+			Expect(nodes.Items).To(BeEmpty())
+
+			errors := profile.validateHugePages(nodes)
+			Expect(errors).To(BeNil())
+		})
+
+		It("should fail when no nodes are detected with a invalid hugepage size", func() {
+			// Get client with zero nodes
+			nodeSpecs := []NodeSpecifications{}
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			defaultSize := HugePageSize(hugepagesSize2M)
+			profile.Spec.HugePages.DefaultHugePagesSize = &defaultSize
+
+			profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
+				Count: 128,
+				Node:  pointer.Int32(0),
+				Size:  "14M",
+			})
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+			Expect(nodes.Items).To(BeEmpty())
+
+			errors := profile.validateHugePages(nodes)
+			Expect(errors).ToNot(BeEmpty())
+			Expect(errors[0].Error()).To(ContainSubstring(("the page size should be equal to one of")))
 		})
 
 		When("pages have duplication", func() {
 			Context("with specified NUMA node", func() {
-				It("should raise the validation error", func() {
+				It("should raise the validation error (x86)", func() {
+					nodeSpecs := []NodeSpecifications{}
+					nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node"})
+					validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+					nodes, err := profile.getNodesList()
+					Expect(err).To(BeNil())
+
 					profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 						Count: 128,
 						Size:  hugepagesSize1G,
@@ -357,26 +618,40 @@ var _ = Describe("PerformanceProfile", func() {
 						Size:  hugepagesSize1G,
 						Node:  pointer.Int32(0),
 					})
-					errors := profile.validateHugePages()
+					errors := profile.validateHugePages(nodes)
 					Expect(errors).NotTo(BeEmpty())
 					Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page with the size %q and with specified NUMA node 0, has duplication", hugepagesSize1G)))
 				})
 			})
 
 			Context("without specified NUMA node", func() {
-				It("should raise the validation error", func() {
+				It("should raise the validation error (x86)", func() {
+					nodeSpecs := []NodeSpecifications{}
+					nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node"})
+					validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+					nodes, err := profile.getNodesList()
+					Expect(err).To(BeNil())
+
 					profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 						Count: 128,
 						Size:  hugepagesSize1G,
 					})
-					errors := profile.validateHugePages()
+					errors := profile.validateHugePages(nodes)
 					Expect(errors).NotTo(BeEmpty())
 					Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page with the size %q and without the specified NUMA node, has duplication", hugepagesSize1G)))
 				})
 			})
 
 			Context("with not sequentially duplication blocks", func() {
-				It("should raise the validation error", func() {
+				It("should raise the validation error (x86)", func() {
+					nodeSpecs := []NodeSpecifications{}
+					nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node"})
+					validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+					nodes, err := profile.getNodesList()
+					Expect(err).To(BeNil())
+
 					profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 						Count: 128,
 						Size:  hugepagesSize2M,
@@ -385,7 +660,7 @@ var _ = Describe("PerformanceProfile", func() {
 						Count: 128,
 						Size:  hugepagesSize1G,
 					})
-					errors := profile.validateHugePages()
+					errors := profile.validateHugePages(nodes)
 					Expect(errors).NotTo(BeEmpty())
 					Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page with the size %q and without the specified NUMA node, has duplication", hugepagesSize1G)))
 				})
@@ -463,7 +738,11 @@ var _ = Describe("PerformanceProfile", func() {
 	})
 
 	Describe("validation of validateFields function", func() {
-		It("should check all fields", func() {
+		It("should check all fields (x86)", func() {
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
 			// config all specs to rise an error in every func inside validateFields()
 			reservedCPUs := CPUSet("")
 			isolatedCPUs := CPUSet("0-6")
@@ -498,7 +777,7 @@ var _ = Describe("PerformanceProfile", func() {
 
 			errorMsgs["reserved CPUs can not be empty"] = member
 			errorMsgs["you should provide only 1 MachineConfigLabel"] = member
-			errorMsgs[`hugepages default size should be equal to "1G" or "2M"`] = member
+			errorMsgs[fmt.Sprintf("hugepages default size should be equal to one of %v", x86ValidHugepagesSizes)] = member
 			errorMsgs["device name cannot be empty"] = member
 			errorMsgs[fmt.Sprintf("device vendor ID %s has an invalid format. Vendor ID should be represented as 0x<4 hexadecimal digits> (16 bit representation)", invalidVendor)] = member
 			errorMsgs[fmt.Sprintf("device model ID %s has an invalid format. Model ID should be represented as 0x<4 hexadecimal digits> (16 bit representation)", invalidDevice)] = member
