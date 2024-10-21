@@ -19,3 +19,7 @@ cmdline_realtime_amd=tsc=reliable nmi_watchdog=0 mce=off
 {{if .HighPowerConsumption}}
 cmdline_power_performance_amd=processor.max_cstate=1
 {{end}}
+
+{{if and .HighPowerConsumption .RealTimeHint}}
+cmdline_idle_poll_amd=idle=poll
+{{end}}
