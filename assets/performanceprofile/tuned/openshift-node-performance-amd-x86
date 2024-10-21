@@ -5,9 +5,9 @@ summary=Platform specific tuning for AMD x86
 cmdline_iommu_amd=amd_iommu=on iommu=pt
 
 {{if .PerPodPowerManagement}}
-cmdline_pstate=amd_pstate=active
-{{else if .HardwareTuning}}
 cmdline_pstate=amd_pstate=passive
+{{else if .HardwareTuning}}
+cmdline_pstate=amd_pstate=active
 {{else}}
 cmdline_pstate=amd_pstate=guided
 {{end}}

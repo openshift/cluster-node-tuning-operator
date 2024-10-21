@@ -27,14 +27,15 @@ var (
 	cmdlineAmdHighPowerConsumption   = "processor.max_cstate=1"
 	cmdlineAmdPstateActive           = "amd_pstate=active"
 	cmdlineAmdPstateAutomatic        = "amd_pstate=guided"
+	cmdlineAmdPstatePassive          = "amd_pstate=passive"
 	cmdlineCPUsPartitioning          = "+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded}"
 	cmdlineDummy2MHugePages          = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=0"
-	cmdlineHighPowerConsumption      = "${high_power_consumption_cstate}"
 	cmdlineHugepages                 = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4"
 	cmdlineIdlePoll                  = "idle=poll"
 	cmdlineIntelHighPowerConsumption = "processor.max_cstate=1 intel_idle.max_cstate=0"
 	cmdlineIntelPstateActive         = "intel_pstate=active"
 	cmdlineIntelPstateAutomatic      = "intel_pstate=${f:intel_recommended_pstate}"
+	cmdlineIntelPstatePassive        = "intel_pstate=passive"
 	cmdlineMultipleHugePages         = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=128"
 	cmdlineRealtime                  = "+nohz_full=${isolated_cores} nosoftlockup skew_tick=1 rcutree.kthread_prio=11"
 	cmdlineWithoutStaticIsolation    = "+isolcpus=managed_irq,${isolated_cores}"
@@ -550,12 +551,12 @@ var _ = Describe("Tuned", func() {
 			})
 		})
 		When("perPodPowerManagement Hint is true", func() {
-			It("should contain amd_pstate set to active", func() {
+			It("should contain amd_pstate set to passive", func() {
 				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.Bool(true)
 				tunedData := getTunedStructuredData(profile, components.ProfileNameAmdX86)
 				bootloaderSection, err := tunedData.GetSection("bootloader")
 				Expect(err).ToNot(HaveOccurred())
-				Expect(bootloaderSection.Key("cmdline_pstate").String()).To(Equal(cmdlineAmdPstateActive))
+				Expect(bootloaderSection.Key("cmdline_pstate").String()).To(Equal(cmdlineAmdPstatePassive))
 			})
 		})
 		When("realtime workload enabled and high power consumption is enabled", func() {
@@ -631,12 +632,12 @@ var _ = Describe("Tuned", func() {
 			})
 		})
 		When("perPodPowerManagement Hint is true", func() {
-			It("should contain intel_pstate set to active", func() {
+			It("should contain intel_pstate set to passive", func() {
 				profile.Spec.WorkloadHints.PerPodPowerManagement = pointer.Bool(true)
 				tunedData := getTunedStructuredData(profile, components.ProfileNameIntelX86)
 				bootloaderSection, err := tunedData.GetSection("bootloader")
 				Expect(err).ToNot(HaveOccurred())
-				Expect(bootloaderSection.Key("cmdline_pstate").String()).To(Equal(cmdlineIntelPstateActive))
+				Expect(bootloaderSection.Key("cmdline_pstate").String()).To(Equal(cmdlineIntelPstatePassive))
 			})
 		})
 		When("realtime workload enabled and high power consumption is enabled", func() {

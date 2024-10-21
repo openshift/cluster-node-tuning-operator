@@ -5,9 +5,9 @@ summary=Platform specific tuning for Intel x86
 cmdline_iommu_intel=intel_iommu=on iommu=pt
 
 {{if .PerPodPowerManagement}}
-cmdline_pstate=intel_pstate=active
-{{else if .HardwareTuning}}
 cmdline_pstate=intel_pstate=passive
+{{else if .HardwareTuning}}
+cmdline_pstate=intel_pstate=active
 {{else}}
 cmdline_pstate=intel_pstate=${f:intel_recommended_pstate}
 {{end}}
