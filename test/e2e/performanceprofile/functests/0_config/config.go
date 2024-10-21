@@ -85,7 +85,7 @@ var _ = Describe("[performance][config] Performance configuration", Ordered, fun
 		if !profileAlreadyExists {
 			profilesupdate.WaitForTuningUpdating(context.TODO(), performanceProfile)
 		}
-		profilesupdate.PostUpdateSync(context.TODO(), performanceProfile)
+		profilesupdate.WaitForTuningUpdated(context.TODO(), performanceProfile)
 
 		Expect(testclient.ControlPlaneClient.Get(context.TODO(), client.ObjectKeyFromObject(performanceProfile), performanceProfile))
 		By("Printing the updated profile")
