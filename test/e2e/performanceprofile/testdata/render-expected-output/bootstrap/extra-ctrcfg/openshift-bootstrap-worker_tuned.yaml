@@ -55,7 +55,8 @@ spec:
       Custom (atomic host)\navc_cache_threshold=8192\n\n\n[net]\nnf_conntrack_hashsize=131072\n\n\n[bootloader]\n#
       set empty values to disable RHEL initrd setting in cpu-partitioning\ninitrd_remove_dir=\ninitrd_dst_img=\ninitrd_add_dir=\n\n#
       overrides cpu-partitioning cmdline\ncmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores}
-      tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded}\ncmdline_iommu=\n\n\ncmdline_isolation=+isolcpus=managed_irq,${isolated_cores}\n\n\n\ncmdline_realtime=+nohz_full=${isolated_cores}
+      tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded}\n\n#
+      No default value but will be composed conditionally based on platform\ncmdline_iommu=\n\n\ncmdline_isolation=+isolcpus=managed_irq,${isolated_cores}\n\n\n\ncmdline_realtime=+nohz_full=${isolated_cores}
       nosoftlockup skew_tick=1 rcutree.kthread_prio=11\n\n\n\n\n\n\n \n\n\n\n[rtentsk]\n\n\n"
     name: openshift-node-performance-openshift-bootstrap-worker
   - data: "[main]\nsummary=Real time profile to override unsupported settings\n\n[sysctl]\n#Real
@@ -76,6 +77,8 @@ spec:
 
 
       cmdline_realtime_amd=tsc=reliable nmi_watchdog=0 mce=off
+
+
 
 
 
@@ -104,6 +107,8 @@ spec:
 
 
       cmdline_realtime_intel=tsc=reliable nmi_watchdog=0 mce=off
+
+
 
 
 
