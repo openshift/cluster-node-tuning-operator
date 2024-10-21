@@ -14,8 +14,8 @@ WORKDIR=$(realpath "${0%/*}/..")
 # overriding the custom NTO image.  If you wish to upgrade your cluster,
 # do not use this script.
 
-ORG=${ORG:-openshift}	# At a minimum, you'll probably want to override this variable.
-TAG=${TAG:-$(git rev-parse --abbrev-ref HEAD)}  # You may need to override this if your git branch contains special characters
+ORG=${ORG:-$USER}	# At a minimum, you'll probably want to override this variable.
+TAG=${TAG:-$(git rev-parse --short HEAD)-$(date +%s)}  # You may need to override this if your git branch contains special characters
 IMAGE=${IMAGE:-quay.io/${ORG}/origin-cluster-node-tuning-operator:$TAG}
 
 nto_prepare_image() {
