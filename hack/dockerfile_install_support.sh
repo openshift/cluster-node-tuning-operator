@@ -16,7 +16,16 @@ if [[ "${ID}" == "centos" ]]; then
   BUILD_INSTALL_PKGS="gcc git rpm-build make desktop-file-utils patch dnf-plugins-core"
   dnf install --setopt=tsflags=nodocs -y ${BUILD_INSTALL_PKGS}
   cd /root/assets/tuned/tuned
-  LC_COLLATE=C cat ../patches/*.diff | patch -Np1
+
+  # Check if we have patches before attempting to apply them
+  if [[ -d ../patches ]] && [[ -n $(find ../patches -name \*.diff) ]];
+  then
+    echo "Applying tuned patches..."
+    LC_COLLATE=C cat ../patches/*.diff | patch -Np1
+  else
+    echo "No tuned patches found."
+  fi
+
   dnf build-dep tuned.spec -y
   make rpm PYTHON=/usr/bin/python3
   rm -rf /root/rpmbuild/RPMS/noarch/{tuned-gtk*,tuned-utils*,tuned-profiles-compat*}
