@@ -218,8 +218,8 @@ func (h *handler) getContainerRuntimeName(ctx context.Context, profile *performa
 		}
 	}
 	if len(ctrcfgs) == 0 {
-		klog.V(1).Infof("no ContainerRuntimeConfig found that associated with performance profile %q; using default container runtime %q", profile.Name, mcov1.ContainerRuntimeDefaultRuntimeRunc)
-		return mcov1.ContainerRuntimeDefaultRuntimeRunc, nil
+		klog.V(1).Infof("no ContainerRuntimeConfig found that associated with performance profile %q; using default container runtime %q", profile.Name, mcov1.ContainerRuntimeDefaultRuntimeCrun)
+		return mcov1.ContainerRuntimeDefaultRuntimeCrun, nil
 	}
 	if len(ctrcfgs) > 1 {
 		return "", fmt.Errorf("more than one ContainerRuntimeConfig found that associated with performance profile %q", profile.Name)
