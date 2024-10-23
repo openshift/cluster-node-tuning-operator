@@ -198,8 +198,8 @@ type Controller struct {
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens.
-	wqKube  workqueue.RateLimitingInterface
-	wqTuneD workqueue.RateLimitingInterface
+	wqKube  workqueue.TypedRateLimitingInterface[wqKeyKube]
+	wqTuneD workqueue.TypedRateLimitingInterface[wqKeyTuned]
 
 	listers *ntoclient.Listers
 	clients *ntoclient.Clients
@@ -296,22 +296,14 @@ func newController(nodeName string, stopCh <-chan struct{}) (*Controller, error)
 func (c *Controller) eventProcessorKube() {
 	for {
 		// Wait until there is a new item in the working queue.
-		obj, shutdown := c.wqKube.Get()
+		workqueueKey, shutdown := c.wqKube.Get()
 		if shutdown {
 			return
 		}
 
-		klog.V(2).Infof("got event from workqueue: %#v", obj)
+		klog.V(2).Infof("got event from workqueue: %#v", workqueueKey)
 		func() {
-			defer c.wqKube.Done(obj)
-			var workqueueKey wqKeyKube
-			var ok bool
-
-			if workqueueKey, ok = obj.(wqKeyKube); !ok {
-				c.wqKube.Forget(obj)
-				klog.Errorf("expected wqKeyKube in workqueue but got %#v", obj)
-				return
-			}
+			defer c.wqKube.Done(workqueueKey)
 
 			if err := c.sync(workqueueKey); err != nil {
 				requeued := c.wqKube.NumRequeues(workqueueKey)
@@ -326,12 +318,12 @@ func (c *Controller) eventProcessorKube() {
 				}
 				klog.Errorf("unable to sync(%s/%s) reached max retries (%d): %v", workqueueKey.kind, workqueueKey.name, maxRetries, err)
 				// Dropping the item after maxRetries unsuccessful retries.
-				c.wqKube.Forget(obj)
+				c.wqKube.Forget(workqueueKey)
 				return
 			}
 			klog.V(1).Infof("event from workqueue (%s/%s) successfully processed", workqueueKey.kind, workqueueKey.name)
 			// Successful processing.
-			c.wqKube.Forget(obj)
+			c.wqKube.Forget(workqueueKey)
 		}()
 	}
 }
@@ -1210,22 +1202,14 @@ func (c *Controller) changeSyncer(change Change) (bool, error) {
 func (c *Controller) eventProcessorTuneD() {
 	for {
 		// Wait until there is a new item in the working queue.
-		obj, shutdown := c.wqTuneD.Get()
+		workqueueKey, shutdown := c.wqTuneD.Get()
 		if shutdown {
 			return
 		}
 
-		klog.V(2).Infof("got event from workqueue: %#v", obj)
+		klog.V(2).Infof("got event from workqueue: %#v", workqueueKey)
 		func() {
-			defer c.wqTuneD.Done(obj)
-			var workqueueKey wqKeyTuned
-			var ok bool
-
-			if workqueueKey, ok = obj.(wqKeyTuned); !ok {
-				c.wqTuneD.Forget(obj)
-				klog.Errorf("expected wqKeyTuned in workqueue but got %#v", obj)
-				return
-			}
+			defer c.wqTuneD.Done(workqueueKey)
 
 			if (c.daemon.status & scReloading) != 0 {
 				// Do not do any of the following until TuneD finished with the previous reload:
@@ -1253,12 +1237,12 @@ func (c *Controller) eventProcessorTuneD() {
 				}
 				klog.Errorf("unable to sync(%s/%+v) reached max retries (%d)", workqueueKey.kind, workqueueKey.change, maxRetries)
 				// Dropping the item after maxRetries unsuccessful retries.
-				c.wqTuneD.Forget(obj)
+				c.wqTuneD.Forget(workqueueKey)
 				return
 			}
 			klog.V(1).Infof("event from workqueue (%s/%+v) successfully processed", workqueueKey.kind, workqueueKey.change)
 			// Successful processing.
-			c.wqTuneD.Forget(obj)
+			c.wqTuneD.Forget(workqueueKey)
 		}()
 	}
 }
@@ -1544,8 +1528,8 @@ func (c *Controller) changeWatcher() (err error) {
 
 	// Use less aggressive per-item only exponential rate limiting for both wqKube and wqTuneD.
 	// Start retrying at 100ms with a maximum of 1800s.
-	c.wqKube = workqueue.NewRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(100*time.Millisecond, 1800*time.Second))
-	c.wqTuneD = workqueue.NewRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(100*time.Millisecond, 1800*time.Second))
+	c.wqKube = workqueue.NewTypedRateLimitingQueue(workqueue.NewTypedItemExponentialFailureRateLimiter[wqKeyKube](100*time.Millisecond, 1800*time.Second))
+	c.wqTuneD = workqueue.NewTypedRateLimitingQueue(workqueue.NewTypedItemExponentialFailureRateLimiter[wqKeyTuned](100*time.Millisecond, 1800*time.Second))
 
 	tunedInformerFactory := tunedinformers.NewSharedInformerFactoryWithOptions(
 		c.clients.Tuned,
