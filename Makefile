@@ -37,8 +37,6 @@ API_TYPES_DIR:=pkg/apis
 API_TYPES:=$(shell find $(API_TYPES_DIR) -name \*_types.go)
 API_ZZ_GENERATED:=zz_generated.deepcopy
 API_GO_HEADER_FILE:=$(API_TYPES_DIR)/header.go.txt
-# Pin the older controller-gen version. v0.7.0+ require separate CRD directory as they choke on manifests with "apiVersion: v1".
-CONTROLLER_GEN_VERSION :=v0.6.0
 
 # Container image-related variables
 IMAGE_BUILD_CMD?=podman build --no-cache --arch=$(GOARCH) --build-arg GOARCH=$(GOARCH)
@@ -86,32 +84,7 @@ $(BINDATA): $(GOBINDATA_BIN) $(ASSETS)
 	gofmt -s -w $(BINDATA)
 
 pkg/generated: $(API_TYPES)
-	$(GO) run k8s.io/code-generator/cmd/deepcopy-gen \
-	  --input-dirs $(PACKAGE)/$(API_TYPES_DIR)/tuned/v1,$(PACKAGE)/$(API_TYPES_DIR)/performanceprofile/v1alpha1,$(PACKAGE)/$(API_TYPES_DIR)/performanceprofile/v1,$(PACKAGE)/$(API_TYPES_DIR)/performanceprofile/v2 \
-	  -O $(API_ZZ_GENERATED) \
-	  --go-header-file $(API_GO_HEADER_FILE) \
-	  --bounding-dirs $(PACKAGE)/$(API_TYPES_DIR) \
-	  --output-base tmp
-	$(GO) run k8s.io/code-generator/cmd/client-gen \
-	  --clientset-name versioned \
-	  --input-base '' \
-	  --input $(PACKAGE)/$(API_TYPES_DIR)/tuned/v1 \
-	  --go-header-file $(API_GO_HEADER_FILE) \
-	  --output-package $(PACKAGE)/pkg/generated/clientset \
-	  --output-base tmp
-	$(GO) run k8s.io/code-generator/cmd/lister-gen \
-	  --input-dirs $(PACKAGE)/$(API_TYPES_DIR)/tuned/v1 \
-	  --go-header-file $(API_GO_HEADER_FILE) \
-	  --output-package $(PACKAGE)/pkg/generated/listers \
-	  --output-base tmp
-	$(GO) run k8s.io/code-generator/cmd/informer-gen \
-	  --input-dirs $(PACKAGE)/$(API_TYPES_DIR)/tuned/v1 \
-	  --versioned-clientset-package $(PACKAGE)/pkg/generated/clientset/versioned \
-	  --listers-package $(PACKAGE)/pkg/generated/listers \
-	  --go-header-file $(API_GO_HEADER_FILE) \
-	  --output-package $(PACKAGE)/pkg/generated/informers \
-	  --output-base tmp
-	tar c tmp | tar x --strip-components=4
+	hack/update-codegen.sh
 	touch $@
 
 $(GOBINDATA_BIN):
@@ -129,7 +102,11 @@ test-e2e-local: $(BINDATA) performance-profile-creator-tests gather-sysinfo-test
 	  $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.no-color -ginkgo.fail-fast || exit; \
 	done
 
-update-manifests: ensure-controller-gen ensure-yq ensure-yaml-patch update-codegen-crds update-profile-manifests
+# This target ensures /manifests directory is up-to-date.  It takes advantage of yaml patching functionality of
+# github.com/openshift/build-machinery-go
+update-manifests: ensure-yq ensure-yaml-patch update-profile-manifests
+	hack/update-crds.sh
+	$(foreach p,$(wildcard manifests/*.crd.yaml-patch),$(call patch-crd-yaml-patch,$(basename $(p)).yaml,$(p)))
 
 verify:	verify-gofmt
 
@@ -161,7 +138,6 @@ else
 endif
 	$(GOLANGCI_LINT_BIN) run --verbose --print-resources-usage -c .golangci.yaml
 
-
 vet: $(BINDATA)
 	$(GO) vet ./...
 
@@ -178,13 +154,6 @@ local-image:
 local-image-push:
 	$(IMAGE_PUSH_CMD) $(IMAGE_PUSH_EXTRA_OPTS) $(IMAGE)
 
-# This will generate and patch the CRDs. To update the CRDs, run "make update-codegen-crds".
-# $1 - target name
-# $2 - apis
-# $3 - manifests
-$(call add-crd-gen,tuned,./$(API_TYPES_DIR)/tuned/v1,./manifests)
-$(call add-crd-gen,performanceprofile,$(PAO_CRD_APIS),./manifests)
-
 # This will include additional actions on the update and verify targets to ensure that profile patches are applied.
 # To update the manifests, run "make update-profile-manifests".
 # to manifest files
@@ -194,7 +163,7 @@ $(call add-crd-gen,performanceprofile,$(PAO_CRD_APIS),./manifests)
 # $3 - manifests directory
 $(call add-profile-manifests,manifests,./profile-patches,./manifests)
 
-.PHONY: all build deepcopy crd-schema-gen test-e2e update-manifests verify verify-gofmt clean local-image local-image-push
+.PHONY: all build deepcopy crd-schema-gen test-e2e update-manifests verify verify-gofmt clean local-image local-image-push verify-codegen-crds
 
 # PAO
 

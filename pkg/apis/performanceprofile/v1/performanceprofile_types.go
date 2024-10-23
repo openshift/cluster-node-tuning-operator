@@ -189,7 +189,7 @@ type WorkloadHints struct {
 	// The flag will affect the power consumption but will improve the CPUs latency.
 	// +optional
 	HighPowerConsumption *bool `json:"highPowerConsumption,omitempty"`
-	// RealTime defines if the node should be configured for the real time workload.
+	// RealTime defines if the node should be configured for the real time workload. Defaults to true.
 	// +default=true
 	// +optional
 	RealTime *bool `json:"realTime,omitempty"`

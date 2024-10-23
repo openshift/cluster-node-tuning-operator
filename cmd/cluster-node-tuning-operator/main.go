@@ -126,15 +126,14 @@ func operatorRun() {
 	//    runs, for example operator managing HyperShift hosted clusters.
 	// 2. None namespace: for cluster-wide resources
 	ntoNamespace := config.WatchNamespace()
-	namespaces := []string{
-		ntoNamespace,
-		metav1.NamespaceNone,
+	namespaces := map[string]cache.Config{
+		ntoNamespace:         {},
+		metav1.NamespaceNone: {},
 	}
-
 	restConfig := ctrl.GetConfigOrDie()
 	le := util.GetLeaderElectionConfig(restConfig, enableLeaderElection)
 	mgr, err := ctrl.NewManager(rest.AddUserAgent(restConfig, version.OperatorFilename), ctrl.Options{
-		Cache:                         cache.Options{Namespaces: namespaces},
+		Cache:                         cache.Options{DefaultNamespaces: namespaces},
 		Scheme:                        scheme,
 		LeaderElection:                enableLeaderElection,
 		LeaderElectionID:              config.OperatorLockName,
@@ -206,7 +205,7 @@ func operatorRun() {
 		}
 
 		fOps := func(opts *cluster.Options) {
-			opts.Cache.Namespaces = []string{operatorNamespace}
+			opts.Cache.DefaultNamespaces = map[string]cache.Config{operatorNamespace: {}}
 			opts.Scheme = mgr.GetScheme()
 			opts.MapperProvider = func(c *rest.Config, httpClient *http.Client) (meta.RESTMapper, error) {
 				return mgr.GetRESTMapper(), nil
