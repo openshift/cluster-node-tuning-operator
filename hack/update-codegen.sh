@@ -15,7 +15,7 @@ source "${CODEGEN_PKG}/kube_codegen.sh"
 THIS_PKG=github.com/openshift/cluster-node-tuning-operator
 
 gen_deepcopy() {
-  echo "Generateing deepcopy code for API."
+  echo "Generating deepcopy code for API."
   kube::codegen::gen_helpers \
       --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
       "${SCRIPT_ROOT}/pkg/apis"
