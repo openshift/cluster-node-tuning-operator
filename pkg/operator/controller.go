@@ -69,7 +69,7 @@ type Controller struct {
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens.
-	workqueue workqueue.RateLimitingInterface
+	workqueue workqueue.TypedRateLimitingInterface[wqKey]
 
 	listers *ntoclient.Listers
 	clients *ntoclient.Clients
@@ -110,7 +110,7 @@ func NewController() (*Controller, error) {
 	}
 	controller := &Controller{
 		kubeconfig: kubeconfig,
-		workqueue:  workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		workqueue:  workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[wqKey]()),
 		listers:    listers,
 		clients:    clients,
 		pc:         NewProfileCalculator(listers, clients),
@@ -182,22 +182,14 @@ func NewController() (*Controller, error) {
 func (c *Controller) eventProcessor() {
 	for {
 		// Wait until there is a new item in the working queue
-		obj, shutdown := c.workqueue.Get()
+		workqueueKey, shutdown := c.workqueue.Get()
 		if shutdown {
 			return
 		}
 
 		klog.V(2).Infof("got event from workqueue")
 		func() {
-			defer c.workqueue.Done(obj)
-			var workqueueKey wqKey
-			var ok bool
-
-			if workqueueKey, ok = obj.(wqKey); !ok {
-				c.workqueue.Forget(obj)
-				klog.Errorf("expected wqKey in workqueue but got %#v", obj)
-				return
-			}
+			defer c.workqueue.Done(workqueueKey)
 
 			if err := c.sync(workqueueKey); err != nil {
 				requeued := c.workqueue.NumRequeues(workqueueKey)
@@ -212,12 +204,12 @@ func (c *Controller) eventProcessor() {
 				}
 				klog.Errorf("unable to sync(%s/%s/%s) reached max retries (%d): %v", workqueueKey.kind, workqueueKey.namespace, workqueueKey.name, maxRetries, err)
 				// Dropping the item after maxRetries unsuccessful retries.
-				c.workqueue.Forget(obj)
+				c.workqueue.Forget(workqueueKey)
 				return
 			}
 			klog.V(1).Infof("event from workqueue (%s/%s/%s) successfully processed", workqueueKey.kind, workqueueKey.namespace, workqueueKey.name)
 			// Successful processing.
-			c.workqueue.Forget(obj)
+			c.workqueue.Forget(workqueueKey)
 		}()
 	}
 }
