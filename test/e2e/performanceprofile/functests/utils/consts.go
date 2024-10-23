@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 )
 
 // RoleWorkerCNF contains role name of cnf worker nodes
@@ -44,8 +45,14 @@ func init() {
 
 	NodesSelector = os.Getenv("NODES_SELECTOR")
 
-	NodeSelectorLabels = map[string]string{
-		fmt.Sprintf("%s/%s", LabelRole, RoleWorkerCNF): "",
+	if !hypershift.IsHypershiftCluster() {
+		NodeSelectorLabels = map[string]string{
+			fmt.Sprintf("%s/%s", LabelRole, RoleWorkerCNF): "",
+		}
+	} else {
+		NodeSelectorLabels = map[string]string{
+			fmt.Sprintf("%s/%s", LabelRole, RoleWorker): "",
+		}
 	}
 
 	NTOImage = os.Getenv("NTO_IMAGE")
