@@ -11,8 +11,8 @@ summary=Openshift node optimized for deterministic performance at the cost of in
 # This has two possible results:
 #     openshift-node,cpu-partitioning
 #     openshift-node,cpu-partitioning,openshift-node-performance-rt-<PerformanceProfile name>
-include=openshift-node-performance-${f:lscpu_check:Vendor ID\:\s*GenuineIntel:intel:Vendor ID\:\s*AuthenticAMD:amd:Vendor ID\:\s*ARM:arm}-${f:lscpu_check:Architecture\:\s*x86_64:x86:Architecture\:\s*aarch64:aarch64}-{{.PerformanceProfileName}};
-  openshift-node,cpu-partitioning${f:regex_search_ternary:${f:exec:uname:-r}:rt:,openshift-node-performance-rt-{{.PerformanceProfileName}}:}
+include=openshift-node,cpu-partitioning${f:regex_search_ternary:${f:exec:uname:-r}:rt:,openshift-node-performance-rt-{{.PerformanceProfileName}}:};
+    openshift-node-performance-${f:lscpu_check:Vendor ID\:\s*GenuineIntel:intel:Vendor ID\:\s*AuthenticAMD:amd:Vendor ID\:\s*ARM:arm}-${f:lscpu_check:Architecture\:\s*x86_64:x86:Architecture\:\s*aarch64:aarch64}-{{.PerformanceProfileName}}
 
 # Inheritance of base profiles legend:
 # cpu-partitioning -> network-latency -> latency-performance
@@ -133,6 +133,8 @@ avc_cache_threshold=8192
 {{end}}
 
 [bootloader]
+# !! The names are important for Intel and are referenced in openshift-node-performance-intel-x86
+
 # set empty values to disable RHEL initrd setting in cpu-partitioning
 initrd_remove_dir=
 initrd_dst_img=
@@ -151,7 +153,9 @@ cmdline_isolation=+isolcpus=managed_irq,${isolated_cores}
 {{end}}
 
 {{if .RealTimeHint}}
-cmdline_realtime=+nohz_full=${isolated_cores} nosoftlockup skew_tick=1 rcutree.kthread_prio=11
+cmdline_realtime_nohzfull=+nohz_full=${isolated_cores}
+cmdline_realtime_nosoftlookup=+nosoftlockup
+cmdline_realtime_common=+skew_tick=1 rcutree.kthread_prio=11
 {{end}}
 
 {{if .HighPowerConsumption}}
