@@ -69,7 +69,7 @@ spec:
       summary=Platform specific tuning for AMD x86
 
       [bootloader]
-      cmdline_iommu_amd=amd_iommu=on iommu=pt
+      cmdline_iommu_amd=iommu=pt
 
 
       cmdline_pstate=amd_pstate=guided
