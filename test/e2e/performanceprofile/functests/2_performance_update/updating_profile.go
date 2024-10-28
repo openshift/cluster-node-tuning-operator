@@ -1165,9 +1165,9 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		When("is not given", func() {
-			It("should run high-performance runtimes class with runc as container-runtime", func() {
+			It("should run high-performance runtimes class with crun as container-runtime", func() {
 				if ctrcfg != nil {
-					Skip("runc is not the default runtime configuration")
+					Skip("crun is not the default runtime configuration")
 				}
 				cmd := []string{"cat", "/rootfs/etc/crio/crio.conf.d/99-runtimes.conf"}
 				for i := 0; i < len(workerRTNodes); i++ {
@@ -1175,12 +1175,12 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					Expect(err).ToNot(HaveOccurred(), "cannot get 99-runtimes.conf from %q", workerRTNodes[i].Name)
 					out := testutils.ToString(output)
 					By(fmt.Sprintf("checking node: %q", workerRTNodes[i].Name))
-					Expect(out).To(ContainSubstring("/bin/runc"))
-					Expect(out).To(ContainSubstring("/run/runc"))
+					Expect(out).To(ContainSubstring("/bin/crun"))
+					Expect(out).To(ContainSubstring("/run/crun"))
 				}
 			})
 		})
-		When("updates the default runtime to crun", func() {
+		When("updates the default runtime to runc", func() {
 			It("should run high-performance runtimes class with crun as container-runtime", func() {
 				if ctrcfg == nil {
 					testlog.Infof("ContainerRuntimeConfig not exist")
@@ -1201,14 +1201,14 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					By(fmt.Sprintf("waiting for mcp %q transition to UPDATED state", performanceMCP))
 					mcps.WaitForConditionFunc(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue, getMCPConditionStatus)
 				}
-				Expect(ctrcfg.Spec.ContainerRuntimeConfig.DefaultRuntime == machineconfigv1.ContainerRuntimeDefaultRuntimeCrun).To(BeTrue())
+				Expect(ctrcfg.Spec.ContainerRuntimeConfig.DefaultRuntime == machineconfigv1.ContainerRuntimeDefaultRuntimeRunc).To(BeTrue())
 				cmd := []string{"cat", "/rootfs/etc/crio/crio.conf.d/99-runtimes.conf"}
 				for i := 0; i < len(workerRTNodes); i++ {
 					out, err := nodes.ExecCommand(context.TODO(), &workerRTNodes[i], cmd)
 					Expect(err).ToNot(HaveOccurred(), "cannot get 99-runtimes.conf from %q", workerRTNodes[i].Name)
 					By(fmt.Sprintf("checking node: %q", workerRTNodes[i].Name))
-					Expect(out).To(ContainSubstring("/usr/bin/crun"))
-					Expect(out).To(ContainSubstring("/run/crun"))
+					Expect(out).To(ContainSubstring("/bin/runc"))
+					Expect(out).To(ContainSubstring("/run/runc"))
 				}
 			})
 		})
@@ -1317,7 +1317,7 @@ func newContainerRuntimeConfig(name string, profile *performancev2.PerformancePr
 				MatchLabels: profilecomponent.GetMachineConfigPoolSelector(profile, profileMCP),
 			},
 			ContainerRuntimeConfig: &machineconfigv1.ContainerRuntimeConfiguration{
-				DefaultRuntime: machineconfigv1.ContainerRuntimeDefaultRuntimeCrun,
+				DefaultRuntime: machineconfigv1.ContainerRuntimeDefaultRuntimeRunc,
 			},
 		},
 	}
