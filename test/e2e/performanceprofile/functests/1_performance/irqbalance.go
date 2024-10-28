@@ -59,7 +59,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 
 		initialProfile = profile.DeepCopy()
 
-		profilesupdate.PostUpdateSync(context.TODO(), profile)
+		profilesupdate.WaitForTuningUpdated(context.TODO(), profile)
 
 		Expect(profile.Spec.CPU.Isolated).NotTo(BeNil(), "expected isolated CPUs, found none")
 		isolatedCPUSet, err = cpuset.Parse(string(*profile.Spec.CPU.Isolated))

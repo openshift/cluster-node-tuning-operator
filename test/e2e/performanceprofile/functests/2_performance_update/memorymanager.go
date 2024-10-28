@@ -133,7 +133,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-			profilesupdate.PostUpdateSync(ctx, profile)
+			profilesupdate.WaitForTuningUpdated(ctx, profile)
 
 		})
 
@@ -215,7 +215,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
 				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-				profilesupdate.PostUpdateSync(ctx, initialProfile)
+				profilesupdate.WaitForTuningUpdated(ctx, initialProfile)
 			}
 		})
 	})
@@ -335,7 +335,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-			profilesupdate.PostUpdateSync(ctx, profile)
+			profilesupdate.WaitForTuningUpdated(ctx, profile)
 		})
 
 		It("[test_id:60696] Verify Guaranteed Pod has right numa affinity", func() {
@@ -420,7 +420,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
 				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-				profilesupdate.PostUpdateSync(ctx, initialProfile)
+				profilesupdate.WaitForTuningUpdated(ctx, initialProfile)
 			}
 		})
 	})
@@ -503,7 +503,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-			profilesupdate.PostUpdateSync(ctx, profile)
+			profilesupdate.WaitForTuningUpdated(ctx, profile)
 		})
 
 		It("[test_id:60698] Reject Guaranteed pod requesting resources from 2 numa nodes together", func() {
@@ -538,7 +538,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
 				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-				profilesupdate.PostUpdateSync(ctx, initialProfile)
+				profilesupdate.WaitForTuningUpdated(ctx, initialProfile)
 			}
 		})
 	})
@@ -647,7 +647,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-			profilesupdate.PostUpdateSync(ctx, profile)
+			profilesupdate.WaitForTuningUpdated(ctx, profile)
 		})
 
 		It("[test_id:37150] Verify Guaranteed Pod has right numa affinity", func() {
@@ -701,7 +701,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
 				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-				profilesupdate.PostUpdateSync(ctx, initialProfile)
+				profilesupdate.WaitForTuningUpdated(ctx, initialProfile)
 			}
 		})
 	})
