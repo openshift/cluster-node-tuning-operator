@@ -3,6 +3,7 @@ package node_inspector
 import (
 	"context"
 	"fmt"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -101,6 +102,9 @@ func Delete(ctx context.Context) error {
 		} else {
 			return fmt.Errorf("failed to delete namespace: %v", err)
 		}
+	}
+	if err := namespaces.WaitForDeletion(testutils.NodeInspectorNamespace, 5*time.Minute); err != nil {
+		return fmt.Errorf("timed out waiting for deletion of namespace %s: %v", testutils.NodeInspectorNamespace, err)
 	}
 
 	cr := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s", nodeInspectorName, clusterRoleSuffix)}}
