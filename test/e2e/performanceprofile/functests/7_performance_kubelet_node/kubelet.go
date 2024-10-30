@@ -80,7 +80,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-			profilesupdate.PostUpdateSync(ctx, profile)
+			profilesupdate.WaitForTuningUpdated(ctx, profile)
 
 			for _, node := range workerRTNodes {
 				kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), &node)
@@ -110,7 +110,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 				profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-				profilesupdate.PostUpdateSync(ctx, profile)
+				profilesupdate.WaitForTuningUpdated(ctx, profile)
 
 				for _, node := range workerRTNodes {
 					kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), &node)
@@ -134,7 +134,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-			profilesupdate.PostUpdateSync(ctx, profile)
+			profilesupdate.WaitForTuningUpdated(ctx, profile)
 
 			var kubeletConfig machineconfigv1.KubeletConfig
 
@@ -192,7 +192,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 				profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-				profilesupdate.PostUpdateSync(ctx, profile)
+				profilesupdate.WaitForTuningUpdated(ctx, profile)
 			}
 			for _, node := range workerRTNodes {
 				kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), &node)
@@ -235,7 +235,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
 				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-				profilesupdate.PostUpdateSync(ctx, initialProfile)
+				profilesupdate.WaitForTuningUpdated(ctx, initialProfile)
 
 			}
 		})

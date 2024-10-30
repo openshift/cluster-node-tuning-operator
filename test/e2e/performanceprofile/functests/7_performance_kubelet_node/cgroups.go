@@ -173,7 +173,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-				profilesupdate.PostUpdateSync(ctx, profile)
+				profilesupdate.WaitForTuningUpdated(ctx, profile)
 
 				By("Checking Activation file")
 				cmd := []string{"ls", activation_file}
@@ -197,7 +197,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-					profilesupdate.PostUpdateSync(ctx, profile)
+					profilesupdate.WaitForTuningUpdated(ctx, profile)
 				}
 			})
 		})
@@ -507,7 +507,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-				profilesupdate.PostUpdateSync(ctx, profile)
+				profilesupdate.WaitForTuningUpdated(ctx, profile)
 
 				// After reboot we want the deployment to be ready before moving forward
 				desiredStatus := appsv1.DeploymentStatus{
@@ -695,7 +695,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
 					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-					profilesupdate.PostUpdateSync(ctx, initialProfile)
+					profilesupdate.WaitForTuningUpdated(ctx, initialProfile)
 				}
 			})
 		})
