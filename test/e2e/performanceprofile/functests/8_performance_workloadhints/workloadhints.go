@@ -107,7 +107,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-					profilesupdate.PostUpdateSync(ctx, profile)
+					profilesupdate.WaitForTuningUpdated(ctx, profile)
 				}
 				stalldEnabled, rtKernel := true, false
 				noHzParam := fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
@@ -168,7 +168,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-					profilesupdate.PostUpdateSync(ctx, profile)
+					profilesupdate.WaitForTuningUpdated(ctx, profile)
 				}
 				stalldEnabled, rtKernel := true, false
 				noHzParam := fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
@@ -228,7 +228,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-					profilesupdate.PostUpdateSync(ctx, profile)
+					profilesupdate.WaitForTuningUpdated(ctx, profile)
 				}
 				stalldEnabled, rtKernel := false, false
 				sysctlMap := map[string]string{
@@ -284,7 +284,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-					profilesupdate.PostUpdateSync(ctx, profile)
+					profilesupdate.WaitForTuningUpdated(ctx, profile)
 
 				}
 				stalldEnabled, rtKernel := true, true
@@ -342,7 +342,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-					profilesupdate.PostUpdateSync(ctx, profile)
+					profilesupdate.WaitForTuningUpdated(ctx, profile)
 
 				}
 
@@ -392,7 +392,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-					profilesupdate.PostUpdateSync(ctx, profile)
+					profilesupdate.WaitForTuningUpdated(ctx, profile)
 
 				}
 				stalldEnabled, rtKernel := true, true
@@ -451,7 +451,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-				profilesupdate.PostUpdateSync(ctx, profile)
+				profilesupdate.WaitForTuningUpdated(ctx, profile)
 
 				stalldEnabled, rtKernel = true, true
 				noHzParam = fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
@@ -515,7 +515,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-					profilesupdate.PostUpdateSync(ctx, profile)
+					profilesupdate.WaitForTuningUpdated(ctx, profile)
 				}
 				stalldEnabled, rtKernel := true, true
 				noHzParam := fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
@@ -570,7 +570,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-				profilesupdate.PostUpdateSync(ctx, profile)
+				profilesupdate.WaitForTuningUpdated(ctx, profile)
 
 				stalldEnabled, rtKernel = true, true
 				noHzParam = fmt.Sprintf("nohz_full=%s", *profile.Spec.CPU.Isolated)
@@ -647,7 +647,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-					profilesupdate.PostUpdateSync(ctx, profile)
+					profilesupdate.WaitForTuningUpdated(ctx, profile)
 
 				}
 
@@ -751,7 +751,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					profilesupdate.WaitForTuningUpdating(ctx, profile)
 
 					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-					profilesupdate.PostUpdateSync(ctx, profile)
+					profilesupdate.WaitForTuningUpdated(ctx, profile)
 				}
 				annotations := map[string]string{
 					"cpu-load-balancing.crio.io": "disable",
@@ -847,7 +847,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 			profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
 			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-			profilesupdate.PostUpdateSync(ctx, profile)
+			profilesupdate.WaitForTuningUpdated(ctx, profile)
 
 		})
 	})
