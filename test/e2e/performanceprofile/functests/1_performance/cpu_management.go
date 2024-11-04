@@ -74,6 +74,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		workerRTNode = &workerRTNodes[0]
 
 		onlineCPUSet, err = nodes.GetOnlineCPUsSet(ctx, workerRTNode)
+		Expect(err).ToNot(HaveOccurred())
 		cpuID := onlineCPUSet.UnsortedList()[0]
 		smtLevel = nodes.GetSMTLevel(ctx, cpuID, workerRTNode)
 		getter, err = cgroup.BuildGetter(ctx, testclient.Client, testclient.K8sClient)
@@ -287,6 +288,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		})
 		When("kubelet is restart", func() {
 			It("[test_id: 73501] defaultCpuset should not change", func() {
+				testutils.KnownIssueJira("OCPBUGS-44178")
 				By("fetch Default cpu set from cpu manager state file before restart")
 				cpuManagerCpusetBeforeRestart, err := nodes.CpuManagerCpuSet(ctx, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
