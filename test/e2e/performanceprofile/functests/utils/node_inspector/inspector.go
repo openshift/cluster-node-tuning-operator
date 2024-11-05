@@ -31,8 +31,6 @@ const clusterRoleSuffix = "cr"
 const clusterRoleBindingSuffix = "crb"
 
 var initialized bool
-var namespace *corev1.Namespace = namespaces.NodeInspectorNamespace
-var nodeInspectorName = testutils.NodeInspectorName
 
 // initialize would be used to lazy initialize the node inspector
 func initialize(ctx context.Context) error {
@@ -60,15 +58,15 @@ func initialize(ctx context.Context) error {
 }
 
 func create(ctx context.Context) error {
-	serviceAccountName := fmt.Sprintf("%s-%s", nodeInspectorName, serviceAccountSuffix)
-	sa := createServiceAccount(serviceAccountName, namespace.Name)
+	serviceAccountName := fmt.Sprintf("%s-%s", testutils.NodeInspectorName, serviceAccountSuffix)
+	sa := createServiceAccount(serviceAccountName, testutils.NodeInspectorNamespace)
 	if err := testclient.DataPlaneClient.Create(ctx, sa); err != nil {
 		if !errors.IsAlreadyExists(err) {
 			return err
 		}
 		klog.Warningf("Node Inspector ServiceAccount %s already exists, this is not expected.", serviceAccountName)
 	}
-	clusterRoleName := fmt.Sprintf("%s-%s", nodeInspectorName, clusterRoleSuffix)
+	clusterRoleName := fmt.Sprintf("%s-%s", testutils.NodeInspectorName, clusterRoleSuffix)
 	cr := createClusterRole(clusterRoleName)
 	if err := testclient.DataPlaneClient.Create(ctx, cr); err != nil {
 		if !errors.IsAlreadyExists(err) {
@@ -76,22 +74,22 @@ func create(ctx context.Context) error {
 		}
 		klog.Warningf("Node Inspector ClusterRole %s already exists, this is not expected.", clusterRoleName)
 	}
-	clusterRoleBindingName := fmt.Sprintf("%s-%s", nodeInspectorName, clusterRoleBindingSuffix)
-	rb := createClusterRoleBinding(clusterRoleBindingName, namespace.Name, serviceAccountName, clusterRoleName)
+	clusterRoleBindingName := fmt.Sprintf("%s-%s", testutils.NodeInspectorName, clusterRoleBindingSuffix)
+	rb := createClusterRoleBinding(clusterRoleBindingName, testutils.NodeInspectorNamespace, serviceAccountName, clusterRoleName)
 	if err := testclient.DataPlaneClient.Create(ctx, rb); err != nil {
 		if !errors.IsAlreadyExists(err) {
 			return err
 		}
 		klog.Warningf("Node Inspector ClusterRoleBinding %s already exists, this is not expected.", clusterRoleBindingName)
 	}
-	ds := createDaemonSet(nodeInspectorName, namespace.Name, serviceAccountName, images.Test())
+	ds := createDaemonSet(testutils.NodeInspectorName, testutils.NodeInspectorNamespace, serviceAccountName, images.Test())
 	if err := testclient.DataPlaneClient.Create(ctx, ds); err != nil {
 		if !errors.IsAlreadyExists(err) {
 			return err
 		}
-		klog.Warningf("Node Inspector Daemonset %s already exists, this is not expected.", nodeInspectorName)
+		klog.Warningf("Node Inspector Daemonset %s already exists, this is not expected.", testutils.NodeInspectorName)
 	}
-	if err := daemonset.WaitToBeRunning(testclient.DataPlaneClient, namespace.Name, nodeInspectorName); err != nil {
+	if err := daemonset.WaitToBeRunning(testclient.DataPlaneClient, testutils.NodeInspectorNamespace, testutils.NodeInspectorName); err != nil {
 		return err
 	}
 	initialized = true
@@ -100,10 +98,10 @@ func create(ctx context.Context) error {
 }
 
 func Delete(ctx context.Context) error {
-	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace.Name}}
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: testutils.NodeInspectorNamespace}}
 	if err := testclient.DataPlaneClient.Delete(ctx, ns); err != nil {
 		if errors.IsNotFound(err) {
-			klog.Warningf("Namespace %s not found, nothing to delete", namespace.Name)
+			klog.Warningf("Namespace %s not found, nothing to delete", testutils.NodeInspectorNamespace)
 		} else {
 			return fmt.Errorf("failed to delete namespace: %v", err)
 		}
@@ -112,7 +110,7 @@ func Delete(ctx context.Context) error {
 		return fmt.Errorf("timed out waiting for deletion of namespace %s: %v", testutils.NodeInspectorNamespace, err)
 	}
 
-	cr := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s", nodeInspectorName, clusterRoleSuffix)}}
+	cr := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s", testutils.NodeInspectorName, clusterRoleSuffix)}}
 	if err := testclient.DataPlaneClient.Delete(ctx, cr); err != nil {
 		if errors.IsNotFound(err) {
 			klog.Warningf("ClusterRole %s not found, nothing to delete", cr.Name)
@@ -130,7 +128,7 @@ func isRunning(ctx context.Context) (bool, error) {
 		}
 		return true, nil
 	}
-	return daemonset.IsRunning(testclient.DataPlaneClient, namespace.Name, nodeInspectorName)
+	return daemonset.IsRunning(testclient.DataPlaneClient, testutils.NodeInspectorNamespace, testutils.NodeInspectorName)
 }
 
 // getDaemonPodByNode returns the daemon pod that runs on the specified node
