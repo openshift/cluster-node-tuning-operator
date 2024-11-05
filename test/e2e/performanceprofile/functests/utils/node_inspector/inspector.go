@@ -39,8 +39,14 @@ func initialize(ctx context.Context) error {
 	if initialized {
 		return nil
 	}
-	// Create the test namespace
-	err := testclient.DataPlaneClient.Create(ctx, namespace)
+	// NodeInspectorNamespace is the namespace
+	// used for deploying a DaemonSet that will be used to executing commands on nodes.
+	nodeInspectorNamespace := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testutils.NodeInspectorNamespace,
+		},
+	}
+	err := testclient.DataPlaneClient.Create(ctx, nodeInspectorNamespace)
 	if err != nil && !errors.IsAlreadyExists(err) {
 		return fmt.Errorf("failed to create namespace: %v", err)
 	}
@@ -50,7 +56,6 @@ func initialize(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create Node Inspector resources: %v", err)
 	}
-
 	return nil
 }
 
