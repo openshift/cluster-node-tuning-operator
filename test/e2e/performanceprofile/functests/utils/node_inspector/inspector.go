@@ -13,7 +13,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/klog"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -37,6 +36,7 @@ func initialize(ctx context.Context) error {
 	if initialized {
 		return nil
 	}
+	testlog.Info("initializing node inspector")
 	// NodeInspectorNamespace is the namespace
 	// used for deploying a DaemonSet that will be used to executing commands on nodes.
 	nodeInspectorNamespace := &corev1.Namespace{
@@ -64,7 +64,7 @@ func create(ctx context.Context) error {
 		if !errors.IsAlreadyExists(err) {
 			return err
 		}
-		klog.Warningf("Node Inspector ServiceAccount %s already exists, this is not expected.", serviceAccountName)
+		testlog.Warningf("Node Inspector ServiceAccount %s already exists, this is not expected.", serviceAccountName)
 	}
 	clusterRoleName := fmt.Sprintf("%s-%s", testutils.NodeInspectorName, clusterRoleSuffix)
 	cr := createClusterRole(clusterRoleName)
@@ -72,7 +72,7 @@ func create(ctx context.Context) error {
 		if !errors.IsAlreadyExists(err) {
 			return err
 		}
-		klog.Warningf("Node Inspector ClusterRole %s already exists, this is not expected.", clusterRoleName)
+		testlog.Warningf("Node Inspector ClusterRole %s already exists, this is not expected.", clusterRoleName)
 	}
 	clusterRoleBindingName := fmt.Sprintf("%s-%s", testutils.NodeInspectorName, clusterRoleBindingSuffix)
 	rb := createClusterRoleBinding(clusterRoleBindingName, testutils.NodeInspectorNamespace, serviceAccountName, clusterRoleName)
@@ -80,14 +80,14 @@ func create(ctx context.Context) error {
 		if !errors.IsAlreadyExists(err) {
 			return err
 		}
-		klog.Warningf("Node Inspector ClusterRoleBinding %s already exists, this is not expected.", clusterRoleBindingName)
+		testlog.Warningf("Node Inspector ClusterRoleBinding %s already exists, this is not expected.", clusterRoleBindingName)
 	}
 	ds := createDaemonSet(testutils.NodeInspectorName, testutils.NodeInspectorNamespace, serviceAccountName, images.Test())
 	if err := testclient.DataPlaneClient.Create(ctx, ds); err != nil {
 		if !errors.IsAlreadyExists(err) {
 			return err
 		}
-		klog.Warningf("Node Inspector Daemonset %s already exists, this is not expected.", testutils.NodeInspectorName)
+		testlog.Warningf("Node Inspector Daemonset %s already exists, this is not expected.", testutils.NodeInspectorName)
 	}
 	if err := daemonset.WaitToBeRunning(testclient.DataPlaneClient, testutils.NodeInspectorNamespace, testutils.NodeInspectorName); err != nil {
 		return err
@@ -101,7 +101,7 @@ func Delete(ctx context.Context) error {
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: testutils.NodeInspectorNamespace}}
 	if err := testclient.DataPlaneClient.Delete(ctx, ns); err != nil {
 		if errors.IsNotFound(err) {
-			klog.Warningf("Namespace %s not found, nothing to delete", testutils.NodeInspectorNamespace)
+			testlog.Warningf("Namespace %s not found, nothing to delete", testutils.NodeInspectorNamespace)
 		} else {
 			return fmt.Errorf("failed to delete namespace: %v", err)
 		}
@@ -113,7 +113,7 @@ func Delete(ctx context.Context) error {
 	cr := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("%s-%s", testutils.NodeInspectorName, clusterRoleSuffix)}}
 	if err := testclient.DataPlaneClient.Delete(ctx, cr); err != nil {
 		if errors.IsNotFound(err) {
-			klog.Warningf("ClusterRole %s not found, nothing to delete", cr.Name)
+			testlog.Warningf("ClusterRole %s not found, nothing to delete", cr.Name)
 		} else {
 			return fmt.Errorf("failed to delete ClusterRole: %v", err)
 		}
