@@ -63,7 +63,6 @@ runtime=0
 group.ksoftirqd=0:f:11:*:ksoftirqd.*
 group.rcuc=0:f:11:*:rcuc.*
 group.ktimers=0:f:11:*:ktimers.*
-sched_migration_cost_ns=5000000
 {{if not .GloballyDisableIrqLoadBalancing}}
 default_irq_smp_affinity = ignore
 irq_process=false
