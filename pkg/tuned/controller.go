@@ -81,7 +81,9 @@ const (
 	tunedGracefulExitWait = time.Second * time.Duration(10)
 	ocpTunedHome          = "/var/lib/ocp-tuned"
 	ocpTunedRunDir        = "/run/" + programName
+	ocpTunedPersist       = ocpTunedRunDir + "/persist"
 	ocpTunedProvider      = ocpTunedHome + "/provider"
+	tunedPersistHome      = "/var/lib/tuned"
 	// With the less aggressive rate limiter, retries will happen at 100ms*2^(retry_n-1):
 	// 100ms, 200ms, 400ms, 800ms, 1.6s, 3.2s, 6.4s, 12.8s, 25.6s, 51.2s, 102.4s, 3.4m, 6.8m, 13.7m, 27.3m
 	maxRetries = 15
@@ -92,6 +94,10 @@ const (
 	ocpTunedImageEnv           = ocpTunedHome + "/image.env"
 	tunedProfilesDirCustomHost = ocpTunedHome + "/profiles"
 	tunedRecommendDirHost      = ocpTunedHome + "/recommend.d"
+	// The persistent ocp-tuned TuneD artifacts directory.
+	ocpTunedHomeHost = "/host" + ocpTunedHome
+	// The persistent tuned directory for files such as ksm-masked coming from cpu-partitioning profile.
+	tunedPersistHomeHost = "/host" + tunedPersistHome
 
 	// How do we detect a reboot? The NTO operand owns and uses two separate files to track deferred updates.
 	// 1. /var/lib/... - persistent storage which will survive across reboots. Contains the actual data.
@@ -632,32 +638,11 @@ func providerSync(provider string) (bool, error) {
 	return true, providerExtract(provider)
 }
 
-// switchTunedHome changes "native" container's home directory as defined by the
-// Containerfile to the container's home directory on the host itself.
-func switchTunedHome() error {
-	const (
-		ocpTunedHomeHost = "/host" + ocpTunedHome
-	)
-
-	// Create the container's home directory on the host.
-	if err := os.MkdirAll(ocpTunedHomeHost, os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create directory %q: %v", ocpTunedHomeHost, err)
+func PrepareOpenShiftTunedDir() error {
+	if err := TunedRsyncEtc(); err != nil {
+		return err
 	}
 
-	// Delete the container's home directory.  We need a recursive delete, because some cross-compiling environments
-	// populate the directory with hidden cache directories.
-	if err := os.RemoveAll(ocpTunedHome); err != nil {
-		return fmt.Errorf("failed to delete: %q: %v", ocpTunedHome, err)
-	}
-
-	if err := util.Symlink(ocpTunedHomeHost, ocpTunedHome); err != nil {
-		return fmt.Errorf("failed to link %q -> %q: %v", ocpTunedHome, ocpTunedHomeHost, err)
-	}
-
-	return os.Chdir(ocpTunedHome)
-}
-
-func prepareOpenShiftTunedDir() error {
 	// Create the following directories unless they exist.
 	dirs := []string{
 		tunedRecommendDirHost,
@@ -1680,11 +1665,27 @@ func retryLoop(c *Controller) (err error) {
 func RunInCluster(stopCh <-chan struct{}, version string) error {
 	klog.Infof("starting in-cluster %s %s", programName, version)
 
-	if err := switchTunedHome(); err != nil {
-		return err
+	dirs := []string{
+		ocpTunedHomeHost,
+		tunedPersistHomeHost,
+	}
+	for _, d := range dirs {
+		if err := os.MkdirAll(d, os.ModePerm); err != nil {
+			return fmt.Errorf("failed to create directory %q: %v", d, err)
+		}
 	}
 
-	if err := prepareOpenShiftTunedDir(); err != nil {
+	links := map[string]string{
+		ocpTunedHomeHost:     ocpTunedPersist,
+		tunedPersistHomeHost: tunedPersistHome,
+	}
+	for target, source := range links {
+		if err := util.Symlink(target, source); err != nil {
+			return fmt.Errorf("failed to link %q -> %q: %v", source, target, err)
+		}
+	}
+
+	if err := PrepareOpenShiftTunedDir(); err != nil {
 		return err
 	}
 
@@ -1756,7 +1757,7 @@ func restartReason(isNodeReboot bool) string {
 func RunOutOfClusterOneShot(stopCh <-chan struct{}, version string) error {
 	klog.Infof("starting out-of-cluster %s %s", programName, version)
 
-	if err := prepareOpenShiftTunedDir(); err != nil {
+	if err := PrepareOpenShiftTunedDir(); err != nil {
 		return err
 	}
 

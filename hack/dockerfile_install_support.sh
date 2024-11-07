@@ -52,8 +52,11 @@ else
 fi
 
 # TuneD post-installation steps
-rm -rf /etc/tuned/recommend.d
+rm -rf /etc/tuned/recommend.d /var/lib/tuned
 echo auto > /etc/tuned/profile_mode
 sed -Ei 's|^#?\s*enable_unix_socket\s*=.*$|enable_unix_socket = 1|;s|^#?\s*rollback\s*=.*$|rollback = not_on_exit|;s|^#?\s*profile_dirs\s*=.*$|profile_dirs = /usr/lib/tuned/profiles,/usr/lib/tuned,/var/lib/ocp-tuned/profiles|' \
   /etc/tuned/tuned-main.conf
+mv /etc/tuned /etc/tuned.orig
+ln -s /host/var/lib/ocp-tuned /var/lib/ocp-tuned
+ln -s /host/var/lib/tuned /var/lib/tuned
 touch /etc/sysctl.conf

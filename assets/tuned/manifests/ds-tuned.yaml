@@ -33,6 +33,7 @@ spec:
         name: tuned
         securityContext:
           privileged: true
+          readOnlyRootFilesystem: true
         terminationMessagePath: /dev/termination-log
         terminationMessagePolicy: FallbackToLogsOnError
         volumeMounts:
@@ -57,12 +58,16 @@ spec:
         - mountPath: /etc/systemd
           name: etc-systemd
           mountPropagation: HostToContainer
+        - mountPath: /etc/tuned
+          name: etc-tuned
         - mountPath: /run
           name: run
           mountPropagation: HostToContainer
         - mountPath: /sys
           name: sys
           mountPropagation: HostToContainer
+        - mountPath: /tmp
+          name: tmp
         - mountPath: /lib/modules
           name: lib-modules
           mountPropagation: HostToContainer
@@ -136,6 +141,12 @@ spec:
         hostPath:
           path: /
           type: Directory
+      - name: etc-tuned
+        emptyDir:
+          medium: Memory
+      - name: tmp
+        emptyDir:
+          medium: Memory
       dnsPolicy: ClusterFirst
       nodeSelector:
         kubernetes.io/os: linux

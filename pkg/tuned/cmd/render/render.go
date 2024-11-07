@@ -191,6 +191,36 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 		return e
 	}
 
+	if err := tunedpkg.TunedRsyncEtc(); err != nil {
+		e := fmt.Errorf("unable to prepare /etc/tuned directory: %w", err)
+		klog.Error(e)
+		return e
+	}
+
+	// Not removing the symbolic links and creating the following directories
+	// would cause issues when extracting TuneD profiles when /host directory does not exist,
+	// such as when invoking "render-bootcmd-mc" during installer bootstrap.
+	dirs := []string{
+		"/var/lib/ocp-tuned", // /var/lib/ocp-tuned -> /host/var/lib/ocp-tuned
+		"/var/lib/tuned",     // /var/lib/tuned -> /host/var/lib/tuned
+	}
+	for _, d := range dirs {
+		if err := os.RemoveAll(d); err != nil {
+			klog.Error(err)
+			return err
+		}
+		if err := os.MkdirAll(d, os.ModePerm); err != nil {
+			klog.Error(err)
+			return err
+		}
+	}
+
+	// Make output dir if not present
+	err = os.MkdirAll("/var/lib/tuned", os.ModePerm)
+	if err != nil {
+		return fmt.Errorf("unable to create  %s : %w", outputDir, err)
+	}
+
 	tuneDrecommended := operator.TunedRecommend(tuneD)
 	if len(tuneDrecommended) == 0 {
 		e := fmt.Errorf("unable to get recommended profile")
