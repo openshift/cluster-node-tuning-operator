@@ -23,7 +23,7 @@ RUN INSTALL_PKGS=" \
     dnf install --setopt=tsflags=nodocs -y $INSTALL_PKGS && \
     rm -rf /etc/tuned/recommend.d && \
     echo auto > /etc/tuned/profile_mode && \
-    sed -Ei 's|^#?\s*enable_unix_socket\s*=.*$|enable_unix_socket = 1|;s|^#?\s*rollback\s*=.*$|rollback = not_on_exit|;s|^#?\s*profile_dirs\s*=.*$|profile_dirs = /var/lib/ocp-tuned/profiles,/usr/lib/tuned|' \
+    sed -Ei 's|^#?\s*enable_unix_socket\s*=.*$|enable_unix_socket = 1|;s|^#?\s*rollback\s*=.*$|rollback = not_on_exit|;s|^#?\s*profile_dirs\s*=.*$|profile_dirs = /usr/lib/tuned,/var/lib/ocp-tuned/profiles|' \
       /etc/tuned/tuned-main.conf && \
     touch /etc/sysctl.conf && \
     dnf clean all && \
