@@ -196,6 +196,20 @@ func (h *handler) getContainerRuntimeName(ctx context.Context, profile *performa
 
 	if len(ctrcfgs) == 0 {
 		klog.V(1).Infof("no ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q; using default container runtime", mcpSetLabels.String(), profile.Name)
+
+		// If no ContainerRuntimeConfigs are found, we should check if the default runtime MachineConfig is present in the cluster.
+		// This MachineConfig is created by the Machine Config Operator (MCO) in OCP 4.17 to ensure workloads continue using runc
+		// rather than switching under the hood to crun during an upgrade from 4.17 to 4.18, as crun becomes the default runtime in OCP 4.18.
+
+		machineConfigsList := &mcov1.MachineConfigList{}
+		if err := h.Client.List(ctx, machineConfigsList); err != nil {
+			return "", err
+		}
+		for _, mc := range machineConfigsList.Items {
+			if mc.Name == fmt.Sprintf("99-%s-generated-crio-default-container-runtime", mcp.Name) {
+				return mcov1.ContainerRuntimeDefaultRuntimeRunc, nil
+			}
+		}
 		return mcov1.ContainerRuntimeDefaultRuntimeCrun, nil
 	}
 
