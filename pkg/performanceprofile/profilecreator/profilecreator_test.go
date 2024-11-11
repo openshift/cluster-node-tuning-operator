@@ -1474,6 +1474,12 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Function ensureSameTopo
 			err := ensureSameTopology(&topology1, &topology2)
 			Expect(err).To(HaveOccurred())
 		})
+		It("same cores with different indices should still considered equivalent", func() {
+			topology2.Nodes[0].Cores[0].Index = 1
+			topology2.Nodes[0].Cores[1].Index = 0
+			err := ensureSameTopology(&topology1, &topology2)
+			Expect(err).ToNot(HaveOccurred())
+		})
 	})
 })
 
