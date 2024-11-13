@@ -388,7 +388,16 @@ var _ = Describe("PerformanceProfile", func() {
 			nodeSpecs := []NodeSpecifications{}
 			validatorClient = GetFakeValidatorClient(nodeSpecs)
 
-			// There should be an empty node list and error present
+			// There should be an empty node list and no error present
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+			Expect(nodes.Items).To(BeEmpty())
+		})
+		It("should not crash when validator client is nil", func() {
+			// Some external callers do not have a validator client present
+			// See OCPBUGS-44477 for more information
+
+			// There should be an empty node list and no error
 			nodes, err := profile.getNodesList()
 			Expect(err).To(BeNil())
 			Expect(nodes.Items).To(BeEmpty())

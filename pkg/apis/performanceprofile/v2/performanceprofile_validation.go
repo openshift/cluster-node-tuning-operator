@@ -583,6 +583,14 @@ func (r *PerformanceProfile) getNodesList() (corev1.NodeList, error) {
 	// Get the nodes from the client using the node selector in the profile
 	nodes := &corev1.NodeList{}
 
+	// The validatorClient is initialized via a webhook but not all external callers use a webhook
+	// The external callers that attempt validation would otherwise crash here with a nil pointer dereference
+	// See OCPBUGS-44477 for more information
+	if validatorClient == nil {
+		klog.Warningf("Attempted to fetch node list with a nil validatorClient, returning empty list instead of crashing from a nil pointer dereference")
+		return corev1.NodeList{}, nil
+	}
+
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: r.Spec.NodeSelector,
 	})
