@@ -90,7 +90,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 			initialProfile = profile.DeepCopy()
 		})
 		When("workloadHint RealTime is disabled", func() {
-			It("should update kernel arguments and tuned accordingly to realTime Hint enabled by default", func() {
+			It("should update kernel arguments and tuned accordingly to realTime Hint enabled by default", Label(string(label.Slow)), func() {
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = nil
@@ -147,7 +147,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		})
 
 		When("RealTime Workload with RealTime Kernel set to false", func() {
-			It("[test_id:50991][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
+			It("[test_id:50991][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", Label(string(label.Slow)), func() {
 
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				By("Modifying profile")
@@ -207,7 +207,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 			})
 		})
 		When("HighPower Consumption workload enabled", func() {
-			It("[test_id:50992][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
+			It("[test_id:50992][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", Label(string(label.Slow)), func() {
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
@@ -267,7 +267,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		})
 
 		When("realtime and high power consumption enabled", func() {
-			It("[test_id:50993][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", func() {
+			It("[test_id:50993][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", Label(string(label.Slow)), func() {
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					HighPowerConsumption:  pointer.Bool(true),
@@ -327,7 +327,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		})
 
 		When("perPodPowerManagent enabled", func() {
-			It("[test_id:54177]should update kernel arguments and tuned accordingly", func() {
+			It("[test_id:54177]should update kernel arguments and tuned accordingly", Label(string(label.Slow)), func() {
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					PerPodPowerManagement: pointer.Bool(true),
@@ -366,7 +366,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				Expect(cpuSection.Key("enabled").String()).To(Equal("false"))
 			})
 
-			It("[test_id:54178]Verify System is tuned when updating from HighPowerConsumption to PerPodPowermanagment", func() {
+			It("[test_id:54178]Verify System is tuned when updating from HighPowerConsumption to PerPodPowermanagment", Label(string(label.Slow)), func() {
 
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware.
@@ -489,7 +489,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				wg.Wait()
 			})
 
-			It("[test_id:54179]Verify System is tuned when reverting from PerPodPowerManagement to HighPowerConsumption", func() {
+			It("[test_id:54179]Verify System is tuned when reverting from PerPodPowerManagement to HighPowerConsumption", Label(string(label.Slow)), func() {
 
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware.
@@ -610,7 +610,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				wg.Wait()
 			})
 
-			It("[test_id:54184]Verify enabling both HighPowerConsumption and PerPodPowerManagment fails", func() {
+			It("[test_id:54184]Verify enabling both HighPowerConsumption and PerPodPowerManagment fails", Label(string(label.Tier0)), func() {
 
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					PerPodPowerManagement: pointer.Bool(true),
@@ -627,7 +627,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				}, time.Minute, 5*time.Second).Should(ContainSubstring("HighPowerConsumption and PerPodPowerManagement can not be both enabled"))
 			})
 
-			It("[test_id:54185] Verify sysfs parameters of guaranteed pod with powersave annotations", func() {
+			It("[test_id:54185] Verify sysfs parameters of guaranteed pod with powersave annotations", Label(string(label.Slow)), func() {
 				var fullPath string
 				var err error
 				// This test requires real hardware with powermanagement settings done on BIOS
@@ -731,7 +731,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				Expect(err).ToNot(HaveOccurred())
 			})
 
-			It("[test_id:54186] Verify sysfs parameters of guaranteed pod with performance annotiations", func() {
+			It("[test_id:54186] Verify sysfs parameters of guaranteed pod with performance annotiations", Label(string(label.Slow)), func() {
 
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware
