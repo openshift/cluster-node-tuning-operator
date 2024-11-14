@@ -270,6 +270,11 @@ func (ghwHandler GHWHandler) SortedTopology() (*topology.Info, error) {
 	if err != nil {
 		return nil, fmt.Errorf("can't obtain topology info from GHW snapshot: %v", err)
 	}
+	sortTopology(topologyInfo)
+	return topologyInfo, nil
+}
+
+func sortTopology(topologyInfo *topology.Info) {
 	sort.Slice(topologyInfo.Nodes, func(x, y int) bool {
 		return topologyInfo.Nodes[x].ID < topologyInfo.Nodes[y].ID
 	})
@@ -283,7 +288,6 @@ func (ghwHandler GHWHandler) SortedTopology() (*topology.Info, error) {
 			return node.Cores[i].LogicalProcessors[0] < node.Cores[j].LogicalProcessors[0]
 		})
 	}
-	return topologyInfo, nil
 }
 
 // topologyHTDisabled returns topologyinfo in case Hyperthreading needs to be disabled.
