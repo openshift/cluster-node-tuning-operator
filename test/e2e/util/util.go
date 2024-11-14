@@ -342,13 +342,43 @@ func WaitForClusterOperatorConditionReason(cs *framework.ClientSet, interval, du
 	return nil
 }
 
+// WaitForTunedConditionStatus blocks until Tuned with name 'tuned'
+// is reporting its 'conditionType' with the value of 'conditionStatus'.
+// The execution interval to check the value is 'interval' and retries last
+// for at most the duration 'duration'.
+func WaitForTunedConditionStatus(cs *framework.ClientSet, interval, duration time.Duration, tuned string,
+	conditionType tunedv1.ConditionType, conditionStatus corev1.ConditionStatus) error {
+	var explain error
+
+	startTime := time.Now()
+	if err := wait.PollUntilContextTimeout(context.TODO(), interval, duration, true, func(ctx context.Context) (bool, error) {
+		t, err := cs.Tuneds(ntoconfig.WatchNamespace()).Get(ctx, tuned, metav1.GetOptions{})
+		if err != nil {
+			explain = err
+			return false, nil
+		}
+
+		for _, cond := range t.Status.Conditions {
+			if cond.Type == conditionType &&
+				cond.Status == conditionStatus {
+				return true, nil
+			}
+		}
+		return false, nil
+	}); err != nil {
+		return errors.Wrapf(err, "failed to wait for Tuned/%s condition %s status %s (waited %s): %v",
+			tuned, conditionType, conditionStatus, time.Since(startTime), explain)
+	}
+	return nil
+}
+
 // WaitForProfileConditionStatus blocks until Profile with name `profile`
 // is reporting its `conditionType` with the value of 'conditionStatus',
 // for the TuneD profile `profileExpect`.
 // The execution interval to check the value is 'interval' and retries last
 // for at most the duration 'duration'.
 func WaitForProfileConditionStatus(cs *framework.ClientSet, interval, duration time.Duration, profile string, profileExpect string,
-	conditionType tunedv1.ProfileConditionType, conditionStatus corev1.ConditionStatus) error {
+	conditionType tunedv1.ConditionType, conditionStatus corev1.ConditionStatus) error {
 	var explain error
 
 	startTime := time.Now()

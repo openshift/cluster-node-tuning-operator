@@ -16,12 +16,12 @@ func TestComputeStatusConditions(t *testing.T) {
 		name     string
 		status   Bits
 		stderr   string
-		conds    []tunedv1.ProfileStatusCondition
-		expected []tunedv1.ProfileStatusCondition
+		conds    []tunedv1.StatusCondition
+		expected []tunedv1.StatusCondition
 	}{
 		{
 			name: "nil",
-			expected: []tunedv1.ProfileStatusCondition{
+			expected: []tunedv1.StatusCondition{
 				{
 					Type:   tunedv1.TunedProfileApplied,
 					Status: corev1.ConditionFalse,
@@ -45,7 +45,7 @@ func TestComputeStatusConditions(t *testing.T) {
 		{
 			name:   "only-deferred",
 			status: scDeferred,
-			expected: []tunedv1.ProfileStatusCondition{
+			expected: []tunedv1.StatusCondition{
 				{
 					Type:   tunedv1.TunedProfileApplied,
 					Status: corev1.ConditionFalse,
@@ -70,7 +70,7 @@ func TestComputeStatusConditions(t *testing.T) {
 			name:   "error-deferred",
 			status: scError | scDeferred,
 			stderr: "test-error",
-			expected: []tunedv1.ProfileStatusCondition{
+			expected: []tunedv1.StatusCondition{
 				{
 					Type:   tunedv1.TunedProfileApplied,
 					Status: corev1.ConditionFalse,
@@ -95,7 +95,7 @@ func TestComputeStatusConditions(t *testing.T) {
 			name:   "sysctl-deferred",
 			status: scSysctlOverride | scDeferred,
 			stderr: "test-error",
-			expected: []tunedv1.ProfileStatusCondition{
+			expected: []tunedv1.StatusCondition{
 				{
 					Type:   tunedv1.TunedProfileApplied,
 					Status: corev1.ConditionFalse,
@@ -120,7 +120,7 @@ func TestComputeStatusConditions(t *testing.T) {
 			name:   "warning-deferred",
 			status: scWarn | scDeferred,
 			stderr: "test-error",
-			expected: []tunedv1.ProfileStatusCondition{
+			expected: []tunedv1.StatusCondition{
 				{
 					Type:   tunedv1.TunedProfileApplied,
 					Status: corev1.ConditionFalse,
@@ -152,8 +152,8 @@ func TestComputeStatusConditions(t *testing.T) {
 	}
 }
 
-func clearTimestamps(conds []tunedv1.ProfileStatusCondition) []tunedv1.ProfileStatusCondition {
-	ret := make([]tunedv1.ProfileStatusCondition, 0, len(conds))
+func clearTimestamps(conds []tunedv1.StatusCondition) []tunedv1.StatusCondition {
+	ret := make([]tunedv1.StatusCondition, 0, len(conds))
 	for idx := range conds {
 		cond := conds[idx] // local copy
 		cond.LastTransitionTime = metav1.Time{

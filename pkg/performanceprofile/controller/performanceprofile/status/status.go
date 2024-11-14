@@ -209,7 +209,7 @@ func GetTunedProfilesMessage(profiles []tunedv1.Profile) string {
 	for _, tunedProfile := range profiles {
 		isDegraded := false
 		isApplied := true
-		var tunedDegradedCondition *tunedv1.ProfileStatusCondition
+		var tunedDegradedCondition *tunedv1.StatusCondition
 
 		for i := 0; i < len(tunedProfile.Status.Conditions); i++ {
 			condition := &tunedProfile.Status.Conditions[i]

@@ -115,7 +115,7 @@ spec:
                   description: conditions represents the state of the per-node Profile application
                   type: array
                   items:
-                    description: ProfileStatusCondition represents a partial state of the per-node Profile application.
+                    description: StatusCondition represents a partial state of the per-node Profile application.
                     type: object
                     required:
                       - lastTransitionTime

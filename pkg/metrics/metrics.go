@@ -8,6 +8,7 @@ const (
 	profileCalculatedQuery = "nto_profile_calculated_total"
 	buildInfoQuery         = "nto_build_info"
 	degradedInfoQuery      = "nto_degraded_info"
+	invalidTunedExistQuery = "nto_invalid_tuned_exist_info"
 
 	// MetricsPort is the IP port supplied to the HTTP server used for Prometheus,
 	// and matches what is specified in the corresponding Service and ServiceMonitor.
@@ -42,6 +43,12 @@ var (
 			Help: "Indicates whether the Node Tuning Operator is degraded.",
 		},
 	)
+	invalidTunedExist = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: invalidTunedExistQuery,
+			Help: "Does any invalid/misconfigured custom Tuned resource exist (1) or not (0)?",
+		},
+	)
 )
 
 func init() {
@@ -50,6 +57,7 @@ func init() {
 		profileCalculated,
 		buildInfo,
 		degradedState,
+		invalidTunedExist,
 	)
 }
 
@@ -82,4 +90,14 @@ func Degraded(deg bool) {
 		return
 	}
 	degradedState.Set(0)
+}
+
+// InvalidTunedExist indicates whether any invalid/misconfigured custom Tuned resource
+// exist or not.
+func InvalidTunedExist(enable bool) {
+	if enable {
+		invalidTunedExist.Set(1)
+		return
+	}
+	invalidTunedExist.Set(0)
 }
