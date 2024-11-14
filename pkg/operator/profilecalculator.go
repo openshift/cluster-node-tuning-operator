@@ -182,7 +182,11 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (ComputedProfile,
 		return ComputedProfile{}, fmt.Errorf("failed to list Tuned: %v", err)
 	}
 
-	profilesAll := tunedProfiles(tunedList)
+	profilesAll, err := tunedProfiles(tunedList)
+	if err != nil {
+		return ComputedProfile{}, err
+	}
+
 	recommendAll := TunedRecommend(tunedList)
 	recommendProfile := func(nodeName string, iStart int) (int, RecommendedProfile, error) {
 		var i int
@@ -345,7 +349,11 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (Comput
 	}
 	tunedList = append(tunedList, defaultTuned)
 
-	profilesAll := tunedProfiles(tunedList)
+	profilesAll, err := tunedProfiles(tunedList)
+	if err != nil {
+		return ComputedProfile{}, err
+	}
+
 	recommendAll := TunedRecommend(tunedList)
 	recommendProfile := func(nodeName string, iStart int) (int, HypershiftRecommendedProfile, error) {
 		var i int
@@ -675,6 +683,16 @@ func (pc *ProfileCalculator) tunedsUseNodeLabels(tunedSlice []*tunedv1.Tuned) bo
 	return false
 }
 
+// tunedMatchesPodLabels returns true if Tuned CRs 'tuned' uses Pod labels.
+func (pc *ProfileCalculator) tunedMatchesPodLabels(tuned *tunedv1.Tuned) bool {
+	for _, recommend := range tuned.Spec.Recommend {
+		if pc.tunedUsesPodLabels(recommend.Match) {
+			return true
+		}
+	}
+	return false
+}
+
 // tunedsUsePodLabels returns true if any of the Tuned CRs uses Pod labels.
 func (pc *ProfileCalculator) tunedsUsePodLabels(tunedSlice []*tunedv1.Tuned) bool {
 	for _, recommend := range TunedRecommend(tunedSlice) {
@@ -692,10 +710,12 @@ func (pc *ProfileCalculator) getNodePoolNameForNode(node *corev1.Node) (string, 
 	return nodePoolName, nil
 }
 
-// tunedProfiles returns a name-sorted TunedProfile slice out of
-// a slice of Tuned objects.
-func tunedProfiles(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedProfile {
-	tunedProfiles := []tunedv1.TunedProfile{}
+// tunedProfilesGet returns a TunedProfile map out of Tuned objects.
+// Returns an error when TuneD profiles with the same name and different
+// contents are detected.
+func tunedProfilesGet(tunedSlice []*tunedv1.Tuned) (map[string]tunedv1.TunedProfile, error) {
+	var dups bool // Do we have any duplicate TuneD profiles with different content?
+	tuned2crName := map[string][]string{}
 	m := map[string]tunedv1.TunedProfile{}
 
 	for _, tuned := range tunedSlice {
@@ -708,14 +728,43 @@ func tunedProfiles(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedProfile {
 			}
 			if existingProfile, found := m[*v.Name]; found {
 				if *v.Data == *existingProfile.Data {
-					klog.Infof("duplicate profiles names %s but they have the same contents", *v.Name)
+					klog.Infof("duplicate profiles %s but they have the same contents", *v.Name)
 				} else {
-					klog.Errorf("ERROR: duplicate profiles named %s with different contents found in Tuned CR %q", *v.Name, tuned.Name)
+					// Duplicate profiles "*v.Name" with different content detected in Tuned CR "tuned.Name"
+					// Do not spam the logs with this error, it will be logged elsewhere.
+					dups = true
 				}
 			}
 			m[*v.Name] = v
+			tuned2crName[*v.Name] = append(tuned2crName[*v.Name], tuned.Name)
 		}
 	}
+
+	if dups {
+		duplicates := map[string]string{}
+
+		for k, v := range tuned2crName {
+			if len(v) < 2 {
+				continue
+			}
+			for _, vv := range v {
+				duplicates[vv] = k // Tuned CR name (vv) -> duplicate TuneD profile (k) mapping; ignore multiple duplicates to keep things simple
+			}
+		}
+
+		return m, &DuplicateProfileError{crName: duplicates}
+	}
+
+	return m, nil
+}
+
+// tunedProfiles returns a name-sorted TunedProfile slice out of a slice of
+// Tuned objects.  Returns an error when TuneD profiles with the same name and
+// different contents are detected.
+func tunedProfiles(tunedSlice []*tunedv1.Tuned) ([]tunedv1.TunedProfile, error) {
+	tunedProfiles := []tunedv1.TunedProfile{}
+	m, err := tunedProfilesGet(tunedSlice)
+
 	for _, tunedProfile := range m {
 		tunedProfiles = append(tunedProfiles, tunedProfile)
 	}
@@ -727,7 +776,7 @@ func tunedProfiles(tunedSlice []*tunedv1.Tuned) []tunedv1.TunedProfile {
 		return *tunedProfiles[i].Name < *tunedProfiles[j].Name
 	})
 
-	return tunedProfiles
+	return tunedProfiles, err
 }
 
 type TunedRecommendInfo struct {
