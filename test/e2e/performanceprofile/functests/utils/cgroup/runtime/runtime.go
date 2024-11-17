@@ -31,7 +31,7 @@ func GetContainerRuntimeTypeFor(ctx context.Context, c client.Client, pod *corev
 		"/rootfs",
 		"/bin/bash",
 		"-c",
-		fmt.Sprintf("/bin/awk -F '\"'  '/runtime_path.*/ { print $2 }' %s", CRIORuntimeConfigFile),
+		fmt.Sprintf("/bin/ps aux | grep '%s' | grep -oP '(?<=-r\\s)[^\\s]+'", pod.Name),
 	}
 	output, err := nodes.ExecCommand(ctx, node, cmd)
 	if err != nil {
