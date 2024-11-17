@@ -33,7 +33,7 @@ const (
 	TuningKey = "tuning"
 
 	// ConfigKey is the key under ConfigMap.Data on which encoded
-	// machine-config, kubelet-config and container-runtime-config objects are stored.
+	// machine-config, kubelet-config objects are stored.
 	ConfigKey = "config"
 
 	// PerformanceProfileStatusKey is the key under ConfigMap.Data on which an encoded
