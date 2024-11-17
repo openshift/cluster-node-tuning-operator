@@ -246,16 +246,6 @@ func getLatestKubeletConfigCondition(conditions []mcov1.KubeletConfigCondition) 
 	return latestCondition
 }
 
-func GetLatestContainerRuntimeConfigCondition(conditions []mcov1.ContainerRuntimeConfigCondition) *mcov1.ContainerRuntimeConfigCondition {
-	var latestCondition *mcov1.ContainerRuntimeConfigCondition
-	for i := 0; i < len(conditions); i++ {
-		if latestCondition == nil || latestCondition.LastTransitionTime.Before(&conditions[i].LastTransitionTime) {
-			latestCondition = &conditions[i]
-		}
-	}
-	return latestCondition
-}
-
 func removeUnMatchedTunedProfiles(nodes []corev1.Node, profiles []tunedv1.Profile) []tunedv1.Profile {
 	filteredProfiles := make([]tunedv1.Profile, 0)
 	for _, profile := range profiles {

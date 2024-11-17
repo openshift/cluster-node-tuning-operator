@@ -113,8 +113,6 @@ const (
 	templateOvsSliceDefinitionFile   = "ovs.slice"
 	templateOvsSliceUsageFile        = "01-use-ovs-slice.conf"
 	templateWorkload                 = "Workload"
-	templateRuntimePath              = "RuntimePath"
-	templateRuntimeRoot              = "RuntimeRoot"
 	templateCrioSharedCPUsAnnotation = "CrioSharedCPUsAnnotation"
 )
 
@@ -573,10 +571,7 @@ func addContent(ignitionConfig *igntypes.Config, content []byte, dst string, mod
 }
 
 func renderCrioConfigSnippet(profile *performancev2.PerformanceProfile, src string, opts *components.MachineConfigOptions) ([]byte, error) {
-	templateArgs := map[string]string{
-		templateRuntimePath: "/bin/runc",
-		templateRuntimeRoot: "/run/runc",
-	}
+	templateArgs := map[string]string{}
 
 	if profile.Spec.CPU.Reserved != nil {
 		templateArgs[templateReservedCpus] = string(*profile.Spec.CPU.Reserved)
@@ -585,11 +580,6 @@ func renderCrioConfigSnippet(profile *performancev2.PerformanceProfile, src stri
 	if opts.MixedCPUsEnabled {
 		templateArgs[templateSharedCpus] = string(*profile.Spec.CPU.Shared)
 		templateArgs[templateCrioSharedCPUsAnnotation] = "cpu-shared.crio.io"
-	}
-
-	if opts.DefaultRuntime == machineconfigv1.ContainerRuntimeDefaultRuntimeCrun {
-		templateArgs[templateRuntimePath] = "/usr/bin/crun"
-		templateArgs[templateRuntimeRoot] = "/run/crun"
 	}
 
 	profileTemplate, err := template.ParseFS(assets.Configs, src)
