@@ -611,20 +611,36 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 			})
 
 			It("[test_id:54184]Verify enabling both HighPowerConsumption and PerPodPowerManagment fails", Label(string(label.Tier0)), func() {
-
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					PerPodPowerManagement: pointer.Bool(true),
 					HighPowerConsumption:  pointer.Bool(true),
 					RealTime:              pointer.Bool(true),
 				}
-				EventuallyWithOffset(1, func() string {
-					err := testclient.ControlPlaneClient.Update(context.TODO(), profile)
-					if err != nil {
-						statusErr, _ := err.(*errors.StatusError)
-						return statusErr.Status().Message
-					}
-					return fmt.Sprint("Profile applied successfully")
-				}, time.Minute, 5*time.Second).Should(ContainSubstring("HighPowerConsumption and PerPodPowerManagement can not be both enabled"))
+				if hypershift.IsHypershiftCluster() {
+					hostedClusterName, err := hypershift.GetHostedClusterName()
+					Expect(err).ToNot(HaveOccurred(), "Unable to fetch hosted cluster name")
+					np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
+					Expect(err).ToNot(HaveOccurred())
+					profiles.UpdateWithRetry(profile)
+					EventuallyWithOffset(1, func() string {
+						reason := "ValidationFailed"
+						messages, err := nodepools.NodePoolStatusMessages(ctx, testclient.ControlPlaneClient, np.Name, np.Namespace, reason)
+						if err != nil {
+							statusErr, _ := err.(*errors.StatusError)
+							return statusErr.Status().Message
+						}
+						return messages[0]
+					}, time.Minute, 5*time.Second).Should(ContainSubstring("HighPowerConsumption and PerPodPowerManagement can not be both enabled"))
+				} else {
+					EventuallyWithOffset(1, func() string {
+						err := testclient.ControlPlaneClient.Update(context.TODO(), profile)
+						if err != nil {
+							statusErr, _ := err.(*errors.StatusError)
+							return statusErr.Status().Message
+						}
+						return fmt.Sprint("Profile applied successfully")
+					}, time.Minute, 5*time.Second).Should(ContainSubstring("HighPowerConsumption and PerPodPowerManagement can not be both enabled"))
+				}
 			})
 
 			It("[test_id:54185] Verify sysfs parameters of guaranteed pod with powersave annotations", Label(string(label.Slow)), func() {
