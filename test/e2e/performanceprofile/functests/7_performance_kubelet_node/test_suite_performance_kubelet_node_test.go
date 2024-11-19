@@ -31,7 +31,7 @@ import (
 var _ = BeforeSuite(func() {
 	Expect(testclient.ClientsEnabled).To(BeTrue())
 	// create test namespace
-	err := testclient.Client.Create(context.TODO(), namespaces.TestingNamespace)
+	err := testclient.DataPlaneClient.Create(context.TODO(), namespaces.TestingNamespace)
 	if errors.IsAlreadyExists(err) {
 		testlog.Warning("test namespace already exists, that is unexpected")
 		return
@@ -40,7 +40,7 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = AfterSuite(func() {
-	err := testclient.Client.Delete(context.TODO(), namespaces.TestingNamespace)
+	err := testclient.DataPlaneClient.Delete(context.TODO(), namespaces.TestingNamespace)
 	Expect(err).ToNot(HaveOccurred())
 	err = namespaces.WaitForDeletion(testutils.NamespaceTesting, 5*time.Minute)
 	nodeinspector.Delete(context.TODO())
