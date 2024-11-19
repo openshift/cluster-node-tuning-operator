@@ -47,6 +47,22 @@ func waitForCondition(ctx context.Context, c client.Client, NpName, namespace st
 	})
 }
 
+func NodePoolStatusMessages(ctx context.Context, c client.Client, NpName, namespace string, conditionReason string) ([]string, error) {
+	var messages []string
+	condFunc := func(conds []hypershiftv1beta1.NodePoolCondition) bool {
+		for _, cond := range conds {
+			if cond.Reason == conditionReason {
+				messages = append(messages, cond.Message)
+			}
+		}
+		return len(messages) > 0
+	}
+	if err := waitForCondition(ctx, c, NpName, namespace, condFunc); err != nil {
+		return nil, err
+	}
+	return messages, nil
+}
+
 func GetByClusterName(ctx context.Context, c client.Client, hostedClusterName string) (*hypershiftv1beta1.NodePool, error) {
 	npList := &hypershiftv1beta1.NodePoolList{}
 	if err := c.List(ctx, npList); err != nil {
