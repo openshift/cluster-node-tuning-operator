@@ -3,7 +3,7 @@
 set -euo pipefail
 set -o xtrace
 
-INSTALL_PKGS="nmap-ncat procps-ng pciutils"
+INSTALL_PKGS="nmap-ncat procps-ng pciutils rsync"
 
 # TuneD pre-installation steps
 cp -r /root/assets/bin/* /usr/local/bin
