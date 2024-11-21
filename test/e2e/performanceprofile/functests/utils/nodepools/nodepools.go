@@ -84,15 +84,16 @@ func GetByClusterName(ctx context.Context, c client.Client, hostedClusterName st
 // AttachTuningObject is attaches a tuning object into the nodepool associated with the hosted-cluster
 // The function is idempotent
 func AttachTuningObject(ctx context.Context, cli client.Client, object client.Object) error {
-	hostedClusterName, err := hypershift.GetHostedClusterName()
-	if err != nil {
-		return err
-	}
-	np, err := GetByClusterName(ctx, cli, hostedClusterName)
+	np, err := GetNodePool(ctx, cli)
 	if err != nil {
 		return err
 	}
 
+	return AttachTuningObjectToNodePool(ctx, cli, object, np)
+}
+
+func AttachTuningObjectToNodePool(ctx context.Context, cli client.Client, object client.Object, np *hypershiftv1beta1.NodePool) error {
+	var err error
 	updatedTuningConfig := []corev1.LocalObjectReference{{Name: object.GetName()}}
 	for i := range np.Spec.TuningConfig {
 		tuningConfig := np.Spec.TuningConfig[i]
@@ -108,14 +109,16 @@ func AttachTuningObject(ctx context.Context, cli client.Client, object client.Ob
 }
 
 func DeattachTuningObject(ctx context.Context, cli client.Client, object client.Object) error {
-	hostedClusterName, err := hypershift.GetHostedClusterName()
+	np, err := GetNodePool(ctx, cli)
 	if err != nil {
 		return err
 	}
-	np, err := GetByClusterName(ctx, cli, hostedClusterName)
-	if err != nil {
-		return err
-	}
+
+	return DeattachTuningObjectToNodePool(ctx, cli, object, np)
+}
+
+func DeattachTuningObjectToNodePool(ctx context.Context, cli client.Client, object client.Object, np *hypershiftv1beta1.NodePool) error {
+	var err error
 	for i := range np.Spec.TuningConfig {
 		if np.Spec.TuningConfig[i].Name == object.GetName() {
 			np.Spec.TuningConfig = append(np.Spec.TuningConfig[:i], np.Spec.TuningConfig[i+1:]...)
@@ -126,4 +129,16 @@ func DeattachTuningObject(ctx context.Context, cli client.Client, object client.
 		return err
 	}
 	return nil
+}
+
+func GetNodePool(ctx context.Context, cli client.Client) (*hypershiftv1beta1.NodePool, error) {
+	hostedClusterName, err := hypershift.GetHostedClusterName()
+	if err != nil {
+		return nil, err
+	}
+	np, err := GetByClusterName(ctx, cli, hostedClusterName)
+	if err != nil {
+		return nil, err
+	}
+	return np, nil
 }
