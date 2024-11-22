@@ -741,7 +741,7 @@ func ensureSameTopology(topology1, topology2 *topology.Info) error {
 				return fmt.Errorf("number of threads for CPU %d in NUMA node %d differs: %d vs %d", core1.ID, node1.ID, core1.NumThreads, cores2[j].NumThreads)
 			}
 			if !reflect.DeepEqual(core1.LogicalProcessors, cores2[j].LogicalProcessors) {
-				return fmt.Errorf("logical processors for CPU %d in NUMA node %d differs: %d vs %d", core1.ID, node1.ID, core1.NumThreads, cores2[j].NumThreads)
+				return fmt.Errorf("logical processors for CPU %d in NUMA node %d differs: %d vs %d", core1.ID, node1.ID, core1.LogicalProcessors, cores2[j].LogicalProcessors)
 			}
 		}
 	}
