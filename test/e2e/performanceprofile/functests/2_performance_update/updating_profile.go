@@ -29,6 +29,7 @@ import (
 	profilecomponent "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	manifestsutil "github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/runtime"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
@@ -37,8 +38,10 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 )
 
@@ -1154,64 +1157,76 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		var ctrcfg *machineconfigv1.ContainerRuntimeConfig
 		const ContainerRuntimeConfigName = "ctrcfg-test"
 		mcp := &machineconfigv1.MachineConfigPool{}
+		var testpodTemplate *corev1.Pod
 		BeforeAll(func() {
 			key := types.NamespacedName{
 				Name: poolName,
 			}
-			Expect(testclient.ControlPlaneClient.Get(context.TODO(), key, mcp)).ToNot(HaveOccurred(), "cannot get MCP %q", poolName)
+			Expect(testclient.Client.Get(context.TODO(), key, mcp)).ToNot(HaveOccurred(), "cannot get MCP %q", poolName)
 			By("checking if ContainerRuntimeConfig object already exists")
 			ctrcfg, err = getContainerRuntimeConfigFrom(context.TODO(), profile, mcp)
 			Expect(err).ToNot(HaveOccurred(), "failed to get ContainerRuntimeConfig from profile %q mcp %q", profile.Name, mcp.Name)
+			if ctrcfg != nil {
+				Skip(fmt.Sprintf("ContainerRuntimeConfig %s exist in the cluster and not expected", ctrcfg.Name))
+			}
+			testpodTemplate = pods.GetTestPod()
+			testpodTemplate.Namespace = testutils.NamespaceTesting
+			runtimeClass := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+			testpodTemplate.Spec.RuntimeClassName = &runtimeClass
 		})
-
-		When("is not given", func() {
-			It("should run high-performance runtimes class with runc as container-runtime", func() {
-				if ctrcfg != nil {
-					Skip("runc is not the default runtime configuration")
-				}
-				cmd := []string{"cat", "/rootfs/etc/crio/crio.conf.d/99-runtimes.conf"}
-				for i := 0; i < len(workerRTNodes); i++ {
-					output, err := nodes.ExecCommand(context.TODO(), &workerRTNodes[i], cmd)
-					Expect(err).ToNot(HaveOccurred(), "cannot get 99-runtimes.conf from %q", workerRTNodes[i].Name)
-					out := testutils.ToString(output)
-					By(fmt.Sprintf("checking node: %q", workerRTNodes[i].Name))
-					Expect(out).To(ContainSubstring("/bin/runc"))
-					Expect(out).To(ContainSubstring("/run/runc"))
-				}
-			})
-		})
-		When("updates the default runtime to crun", func() {
-			It("should run high-performance runtimes class with crun as container-runtime", func() {
-				if ctrcfg == nil {
-					testlog.Infof("ContainerRuntimeConfig not exist")
+		DescribeTable("verifies container runtime behavior",
+			func(withCTRCfg bool) {
+				var expectedRuntime string
+				if withCTRCfg {
 					ctrcfg = newContainerRuntimeConfig(ContainerRuntimeConfigName, profile, mcp)
 					By(fmt.Sprintf("creating ContainerRuntimeConfig %q", ctrcfg.Name))
 					Expect(testclient.Client.Create(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to create ctrcfg %#v", ctrcfg)
 
 					DeferCleanup(func() {
-						Expect(testclient.Client.Delete(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to delete ctfcfg %#v", ctrcfg)
-						By(fmt.Sprintf("waiting for mcp %q transition to UPDATING state", poolName))
+						Expect(testclient.Client.Delete(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to delete ctrcfg %#v", ctrcfg)
+						By(fmt.Sprintf("waiting for MCP %q transition to UPDATING state", poolName))
 						mcps.WaitForConditionFunc(poolName, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue, getMCPConditionStatus)
-						By(fmt.Sprintf("waiting for mcp %q transition to UPDATED state", poolName))
+						By(fmt.Sprintf("waiting for MCP %q transition to UPDATED state", poolName))
 						mcps.WaitForConditionFunc(poolName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue, getMCPConditionStatus)
 					})
 
-					By(fmt.Sprintf("waiting for mcp %q transition to UPDATING state", poolName))
+					By(fmt.Sprintf("waiting for MCP %q transition to UPDATING state", poolName))
 					mcps.WaitForConditionFunc(poolName, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue, getMCPConditionStatus)
-					By(fmt.Sprintf("waiting for mcp %q transition to UPDATED state", poolName))
+					By(fmt.Sprintf("waiting for MCP %q transition to UPDATED state", poolName))
 					mcps.WaitForConditionFunc(poolName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue, getMCPConditionStatus)
 				}
-				Expect(ctrcfg.Spec.ContainerRuntimeConfig.DefaultRuntime == machineconfigv1.ContainerRuntimeDefaultRuntimeCrun).To(BeTrue())
-				cmd := []string{"cat", "/rootfs/etc/crio/crio.conf.d/99-runtimes.conf"}
+
 				for i := 0; i < len(workerRTNodes); i++ {
-					out, err := nodes.ExecCommand(context.TODO(), &workerRTNodes[i], cmd)
-					Expect(err).ToNot(HaveOccurred(), "cannot get 99-runtimes.conf from %q", workerRTNodes[i].Name)
-					By(fmt.Sprintf("checking node: %q", workerRTNodes[i].Name))
-					Expect(out).To(ContainSubstring("/usr/bin/crun"))
-					Expect(out).To(ContainSubstring("/run/crun"))
+					By("Determing the default container runtime used in the node")
+					tunedPod, err := tuned.GetPod(context.TODO(), &workerRTNodes[i])
+					Expect(err).ToNot(HaveOccurred())
+					expectedRuntime, err = runtime.GetContainerRuntimeTypeFor(context.TODO(), testclient.Client, tunedPod)
+					Expect(err).ToNot(HaveOccurred())
+					testlog.Infof("Container runtime used for the node: %s", expectedRuntime)
+
+					By("verifying pod using high-performance runtime class handled by the default container runtime aswell")
+					Expect(err).ToNot(HaveOccurred())
+					testpod := testpodTemplate.DeepCopy()
+					testpod.Spec.NodeName = workerRTNodes[i].Name
+					testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNodes[i].Name}
+					By(fmt.Sprintf("creating a test pod using high-performance runtime class on node %s", workerRTNodes[i].Name))
+					Expect(testclient.Client.Create(context.TODO(), testpod)).ToNot(HaveOccurred())
+					DeferCleanup(func() {
+						By(fmt.Sprintf("deleting the test pod from node %s", workerRTNodes[i].Name))
+						Expect(testclient.Client.Delete(context.TODO(), testpod)).ToNot(HaveOccurred())
+						Expect(pods.WaitForDeletion(context.TODO(), testpod, pods.DefaultDeletionTimeout*time.Second)).ToNot(HaveOccurred())
+					})
+					testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+					Expect(err).ToNot(HaveOccurred())
+					runtimeType, err := runtime.GetContainerRuntimeTypeFor(context.TODO(), testclient.Client, testpod)
+					Expect(err).ToNot(HaveOccurred())
+					testlog.Infof("Container runtime used for the test pod: %s", runtimeType)
+					Expect(runtimeType).To(Equal(expectedRuntime))
 				}
-			})
-		})
+			},
+			Entry("test without ContainerRuntimeConfig", false),
+			Entry("create and test with ContainerRuntimeConfig", true),
+		)
 	})
 })
 
@@ -1317,7 +1332,7 @@ func newContainerRuntimeConfig(name string, profile *performancev2.PerformancePr
 				MatchLabels: profilecomponent.GetMachineConfigPoolSelector(profile, profileMCP),
 			},
 			ContainerRuntimeConfig: &machineconfigv1.ContainerRuntimeConfiguration{
-				DefaultRuntime: machineconfigv1.ContainerRuntimeDefaultRuntimeCrun,
+				DefaultRuntime: machineconfigv1.ContainerRuntimeDefaultRuntimeRunc,
 			},
 		},
 	}
