@@ -220,6 +220,7 @@ var _ = Describe("PerformanceProfileCreator: Consuming GHW Snapshot from Must Ga
 			node = newTestNode("worker1")
 			mustGatherDirAbsolutePath, err = filepath.Abs(mustGatherDirPath)
 			Expect(err).ToNot(HaveOccurred())
+			fmt.Printf("abs path is: %s\n", mustGatherDirAbsolutePath)
 			handle, err := NewGHWHandler(mustGatherDirAbsolutePath, node)
 			Expect(err).ToNot(HaveOccurred())
 			cpuInfo, err := handle.CPU()
@@ -254,98 +255,82 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 		BeforeEach(func() {
 			core0 := cpu.ProcessorCore{
 				ID:                0,
-				Index:             0,
 				NumThreads:        2,
 				LogicalProcessors: []int{0, 8},
 			}
 			core1 := cpu.ProcessorCore{
 				ID:                1,
-				Index:             1,
 				NumThreads:        2,
 				LogicalProcessors: []int{1, 9},
 			}
 			core2 := cpu.ProcessorCore{
 				ID:                2,
-				Index:             2,
 				NumThreads:        2,
 				LogicalProcessors: []int{2, 10},
 			}
 			core3 := cpu.ProcessorCore{
 				ID:                3,
-				Index:             3,
 				NumThreads:        2,
 				LogicalProcessors: []int{3, 11},
 			}
 			core4 := cpu.ProcessorCore{
 				ID:                4,
-				Index:             4,
 				NumThreads:        2,
 				LogicalProcessors: []int{4, 12},
 			}
 			core5 := cpu.ProcessorCore{
 				ID:                5,
-				Index:             5,
 				NumThreads:        2,
 				LogicalProcessors: []int{5, 13},
 			}
 			core6 := cpu.ProcessorCore{
 				ID:                6,
-				Index:             6,
 				NumThreads:        2,
 				LogicalProcessors: []int{6, 14},
 			}
 			core7 := cpu.ProcessorCore{
 				ID:                7,
-				Index:             7,
 				NumThreads:        2,
 				LogicalProcessors: []int{7, 15},
 			}
 
 			core8 := cpu.ProcessorCore{
 				ID:                8,
-				Index:             8,
 				NumThreads:        2,
 				LogicalProcessors: []int{16, 24},
 			}
 			core9 := cpu.ProcessorCore{
 				ID:                9,
-				Index:             9,
 				NumThreads:        2,
 				LogicalProcessors: []int{17, 25},
 			}
 			core10 := cpu.ProcessorCore{
 				ID:                10,
-				Index:             10,
 				NumThreads:        2,
 				LogicalProcessors: []int{18, 26},
 			}
 			core11 := cpu.ProcessorCore{
 				ID:                11,
-				Index:             11,
 				NumThreads:        2,
 				LogicalProcessors: []int{19, 27},
 			}
 			core12 := cpu.ProcessorCore{
 				ID:                12,
-				Index:             12,
 				NumThreads:        2,
 				LogicalProcessors: []int{20, 28},
 			}
 			core13 := cpu.ProcessorCore{
 				ID:                13,
-				Index:             13,
 				NumThreads:        2,
 				LogicalProcessors: []int{21, 29},
 			}
 			core14 := cpu.ProcessorCore{
 				ID:                14,
-				Index:             14,
 				NumThreads:        2,
 				LogicalProcessors: []int{22, 30},
 			}
 			core15 := cpu.ProcessorCore{
 				ID:                15,
-				Index:             15,
 				NumThreads:        2,
 				LogicalProcessors: []int{23, 31},
 			}
@@ -1183,51 +1168,51 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Functions getCPUsSplitA
 			{
 				ID: 0,
 				Cores: []*cpu.ProcessorCore{
-					{ID: 0, Index: 0, NumThreads: 2, LogicalProcessors: []int{0, 40}},
-					{ID: 4, Index: 6, NumThreads: 2, LogicalProcessors: []int{2, 42}},
-					{ID: 1, Index: 17, NumThreads: 2, LogicalProcessors: []int{4, 44}},
-					{ID: 3, Index: 18, NumThreads: 2, LogicalProcessors: []int{6, 46}},
-					{ID: 2, Index: 19, NumThreads: 2, LogicalProcessors: []int{8, 48}},
-					{ID: 12, Index: 1, NumThreads: 2, LogicalProcessors: []int{10, 50}},
-					{ID: 8, Index: 2, NumThreads: 2, LogicalProcessors: []int{12, 52}},
-					{ID: 11, Index: 3, NumThreads: 2, LogicalProcessors: []int{14, 54}},
-					{ID: 9, Index: 4, NumThreads: 2, LogicalProcessors: []int{16, 56}},
-					{ID: 10, Index: 5, NumThreads: 2, LogicalProcessors: []int{18, 58}},
-					{ID: 16, Index: 7, NumThreads: 2, LogicalProcessors: []int{20, 60}},
-					{ID: 20, Index: 8, NumThreads: 2, LogicalProcessors: []int{22, 62}},
-					{ID: 17, Index: 9, NumThreads: 2, LogicalProcessors: []int{24, 64}},
-					{ID: 19, Index: 10, NumThreads: 2, LogicalProcessors: []int{26, 66}},
-					{ID: 18, Index: 11, NumThreads: 2, LogicalProcessors: []int{28, 68}},
-					{ID: 28, Index: 12, NumThreads: 2, LogicalProcessors: []int{30, 70}},
-					{ID: 24, Index: 13, NumThreads: 2, LogicalProcessors: []int{32, 72}},
-					{ID: 27, Index: 14, NumThreads: 2, LogicalProcessors: []int{34, 74}},
-					{ID: 25, Index: 15, NumThreads: 2, LogicalProcessors: []int{36, 76}},
-					{ID: 26, Index: 16, NumThreads: 2, LogicalProcessors: []int{38, 78}},
+					{ID: 0, NumThreads: 2, LogicalProcessors: []int{0, 40}},
+					{ID: 4, NumThreads: 2, LogicalProcessors: []int{2, 42}},
+					{ID: 1, NumThreads: 2, LogicalProcessors: []int{4, 44}},
+					{ID: 3, NumThreads: 2, LogicalProcessors: []int{6, 46}},
+					{ID: 2, NumThreads: 2, LogicalProcessors: []int{8, 48}},
+					{ID: 12, NumThreads: 2, LogicalProcessors: []int{10, 50}},
+					{ID: 8, NumThreads: 2, LogicalProcessors: []int{12, 52}},
+					{ID: 11, NumThreads: 2, LogicalProcessors: []int{14, 54}},
+					{ID: 9, NumThreads: 2, LogicalProcessors: []int{16, 56}},
+					{ID: 10, NumThreads: 2, LogicalProcessors: []int{18, 58}},
+					{ID: 16, NumThreads: 2, LogicalProcessors: []int{20, 60}},
+					{ID: 20, NumThreads: 2, LogicalProcessors: []int{22, 62}},
+					{ID: 17, NumThreads: 2, LogicalProcessors: []int{24, 64}},
+					{ID: 19, NumThreads: 2, LogicalProcessors: []int{26, 66}},
+					{ID: 18, NumThreads: 2, LogicalProcessors: []int{28, 68}},
+					{ID: 28, NumThreads: 2, LogicalProcessors: []int{30, 70}},
+					{ID: 24, NumThreads: 2, LogicalProcessors: []int{32, 72}},
+					{ID: 27, NumThreads: 2, LogicalProcessors: []int{34, 74}},
+					{ID: 25, NumThreads: 2, LogicalProcessors: []int{36, 76}},
+					{ID: 26, NumThreads: 2, LogicalProcessors: []int{38, 78}},
 				},
 			},
 			{
 				ID: 1,
 				Cores: []*cpu.ProcessorCore{
-					{ID: 0, Index: 0, NumThreads: 2, LogicalProcessors: []int{1, 41}},
-					{ID: 4, Index: 11, NumThreads: 2, LogicalProcessors: []int{3, 43}},
-					{ID: 1, Index: 17, NumThreads: 2, LogicalProcessors: []int{5, 45}},
-					{ID: 3, Index: 18, NumThreads: 2, LogicalProcessors: []int{7, 47}},
-					{ID: 2, Index: 19, NumThreads: 2, LogicalProcessors: []int{9, 49}},
-					{ID: 12, Index: 1, NumThreads: 2, LogicalProcessors: []int{11, 51}},
-					{ID: 8, Index: 2, NumThreads: 2, LogicalProcessors: []int{13, 53}},
-					{ID: 11, Index: 3, NumThreads: 2, LogicalProcessors: []int{15, 55}},
-					{ID: 9, Index: 4, NumThreads: 2, LogicalProcessors: []int{17, 57}},
-					{ID: 10, Index: 5, NumThreads: 2, LogicalProcessors: []int{19, 59}},
-					{ID: 16, Index: 6, NumThreads: 2, LogicalProcessors: []int{21, 61}},
-					{ID: 20, Index: 7, NumThreads: 2, LogicalProcessors: []int{23, 63}},
-					{ID: 17, Index: 8, NumThreads: 2, LogicalProcessors: []int{25, 65}},
-					{ID: 19, Index: 9, NumThreads: 2, LogicalProcessors: []int{27, 67}},
-					{ID: 18, Index: 10, NumThreads: 2, LogicalProcessors: []int{29, 69}},
-					{ID: 28, Index: 12, NumThreads: 2, LogicalProcessors: []int{31, 71}},
-					{ID: 24, Index: 13, NumThreads: 2, LogicalProcessors: []int{33, 73}},
-					{ID: 27, Index: 14, NumThreads: 2, LogicalProcessors: []int{35, 75}},
-					{ID: 25, Index: 15, NumThreads: 2, LogicalProcessors: []int{37, 77}},
-					{ID: 26, Index: 16, NumThreads: 2, LogicalProcessors: []int{39, 79}},
+					{ID: 0, NumThreads: 2, LogicalProcessors: []int{1, 41}},
+					{ID: 4, NumThreads: 2, LogicalProcessors: []int{3, 43}},
+					{ID: 1, NumThreads: 2, LogicalProcessors: []int{5, 45}},
+					{ID: 3, NumThreads: 2, LogicalProcessors: []int{7, 47}},
+					{ID: 2, NumThreads: 2, LogicalProcessors: []int{9, 49}},
+					{ID: 12, NumThreads: 2, LogicalProcessors: []int{11, 51}},
+					{ID: 8, NumThreads: 2, LogicalProcessors: []int{13, 53}},
+					{ID: 11, NumThreads: 2, LogicalProcessors: []int{15, 55}},
+					{ID: 9, NumThreads: 2, LogicalProcessors: []int{17, 57}},
+					{ID: 10, NumThreads: 2, LogicalProcessors: []int{19, 59}},
+					{ID: 16, NumThreads: 2, LogicalProcessors: []int{21, 61}},
+					{ID: 20, NumThreads: 2, LogicalProcessors: []int{23, 63}},
+					{ID: 17, NumThreads: 2, LogicalProcessors: []int{25, 65}},
+					{ID: 19, NumThreads: 2, LogicalProcessors: []int{27, 67}},
+					{ID: 18, NumThreads: 2, LogicalProcessors: []int{29, 69}},
+					{ID: 28, NumThreads: 2, LogicalProcessors: []int{31, 71}},
+					{ID: 24, NumThreads: 2, LogicalProcessors: []int{33, 73}},
+					{ID: 27, NumThreads: 2, LogicalProcessors: []int{35, 75}},
+					{ID: 25, NumThreads: 2, LogicalProcessors: []int{37, 77}},
+					{ID: 26, NumThreads: 2, LogicalProcessors: []int{39, 79}},
 				},
 			},
 		}
@@ -1236,51 +1221,51 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Functions getCPUsSplitA
 			{
 				ID: 0,
 				Cores: []*cpu.ProcessorCore{
-					{ID: 0, Index: 0, NumThreads: 1, LogicalProcessors: []int{0}},
-					{ID: 4, Index: 6, NumThreads: 1, LogicalProcessors: []int{2}},
-					{ID: 1, Index: 17, NumThreads: 1, LogicalProcessors: []int{4}},
-					{ID: 3, Index: 18, NumThreads: 1, LogicalProcessors: []int{6}},
-					{ID: 2, Index: 19, NumThreads: 1, LogicalProcessors: []int{8}},
-					{ID: 12, Index: 1, NumThreads: 1, LogicalProcessors: []int{10}},
-					{ID: 8, Index: 2, NumThreads: 1, LogicalProcessors: []int{12}},
-					{ID: 11, Index: 3, NumThreads: 1, LogicalProcessors: []int{14}},
-					{ID: 9, Index: 4, NumThreads: 1, LogicalProcessors: []int{16}},
-					{ID: 10, Index: 5, NumThreads: 1, LogicalProcessors: []int{18}},
-					{ID: 16, Index: 7, NumThreads: 1, LogicalProcessors: []int{20}},
-					{ID: 20, Index: 8, NumThreads: 1, LogicalProcessors: []int{22}},
-					{ID: 17, Index: 9, NumThreads: 1, LogicalProcessors: []int{24}},
-					{ID: 19, Index: 10, NumThreads: 1, LogicalProcessors: []int{26}},
-					{ID: 18, Index: 11, NumThreads: 1, LogicalProcessors: []int{28}},
-					{ID: 28, Index: 12, NumThreads: 1, LogicalProcessors: []int{30}},
-					{ID: 24, Index: 13, NumThreads: 1, LogicalProcessors: []int{32}},
-					{ID: 27, Index: 14, NumThreads: 1, LogicalProcessors: []int{34}},
-					{ID: 25, Index: 15, NumThreads: 1, LogicalProcessors: []int{36}},
-					{ID: 26, Index: 16, NumThreads: 1, LogicalProcessors: []int{38}},
+					{ID: 0, NumThreads: 1, LogicalProcessors: []int{0}},
+					{ID: 4, NumThreads: 1, LogicalProcessors: []int{2}},
+					{ID: 1, NumThreads: 1, LogicalProcessors: []int{4}},
+					{ID: 3, NumThreads: 1, LogicalProcessors: []int{6}},
+					{ID: 2, NumThreads: 1, LogicalProcessors: []int{8}},
+					{ID: 12, NumThreads: 1, LogicalProcessors: []int{10}},
+					{ID: 8, NumThreads: 1, LogicalProcessors: []int{12}},
+					{ID: 11, NumThreads: 1, LogicalProcessors: []int{14}},
+					{ID: 9, NumThreads: 1, LogicalProcessors: []int{16}},
+					{ID: 10, NumThreads: 1, LogicalProcessors: []int{18}},
+					{ID: 16, NumThreads: 1, LogicalProcessors: []int{20}},
+					{ID: 20, NumThreads: 1, LogicalProcessors: []int{22}},
+					{ID: 17, NumThreads: 1, LogicalProcessors: []int{24}},
+					{ID: 19, NumThreads: 1, LogicalProcessors: []int{26}},
+					{ID: 18, NumThreads: 1, LogicalProcessors: []int{28}},
+					{ID: 28, NumThreads: 1, LogicalProcessors: []int{30}},
+					{ID: 24, NumThreads: 1, LogicalProcessors: []int{32}},
+					{ID: 27, NumThreads: 1, LogicalProcessors: []int{34}},
+					{ID: 25, NumThreads: 1, LogicalProcessors: []int{36}},
+					{ID: 26, NumThreads: 1, LogicalProcessors: []int{38}},
 				},
 			},
 			{
 				ID: 1,
 				Cores: []*cpu.ProcessorCore{
-					{ID: 0, Index: 0, NumThreads: 1, LogicalProcessors: []int{1}},
-					{ID: 4, Index: 11, NumThreads: 1, LogicalProcessors: []int{3}},
-					{ID: 1, Index: 17, NumThreads: 1, LogicalProcessors: []int{5}},
-					{ID: 3, Index: 18, NumThreads: 1, LogicalProcessors: []int{7}},
-					{ID: 2, Index: 19, NumThreads: 1, LogicalProcessors: []int{9}},
-					{ID: 12, Index: 1, NumThreads: 1, LogicalProcessors: []int{11}},
-					{ID: 8, Index: 2, NumThreads: 1, LogicalProcessors: []int{13}},
-					{ID: 11, Index: 3, NumThreads: 1, LogicalProcessors: []int{15}},
-					{ID: 9, Index: 4, NumThreads: 1, LogicalProcessors: []int{17}},
-					{ID: 10, Index: 5, NumThreads: 1, LogicalProcessors: []int{19}},
-					{ID: 16, Index: 6, NumThreads: 1, LogicalProcessors: []int{21}},
-					{ID: 20, Index: 7, NumThreads: 1, LogicalProcessors: []int{23}},
-					{ID: 17, Index: 8, NumThreads: 1, LogicalProcessors: []int{25}},
-					{ID: 19, Index: 9, NumThreads: 1, LogicalProcessors: []int{27}},
-					{ID: 18, Index: 10, NumThreads: 1, LogicalProcessors: []int{29}},
-					{ID: 28, Index: 12, NumThreads: 1, LogicalProcessors: []int{31}},
-					{ID: 24, Index: 13, NumThreads: 1, LogicalProcessors: []int{33}},
-					{ID: 27, Index: 14, NumThreads: 1, LogicalProcessors: []int{35}},
-					{ID: 25, Index: 15, NumThreads: 1, LogicalProcessors: []int{37}},
-					{ID: 26, Index: 16, NumThreads: 1, LogicalProcessors: []int{39}},
+					{ID: 0, NumThreads: 1, LogicalProcessors: []int{1}},
+					{ID: 4, NumThreads: 1, LogicalProcessors: []int{3}},
+					{ID: 1, NumThreads: 1, LogicalProcessors: []int{5}},
+					{ID: 3, NumThreads: 1, LogicalProcessors: []int{7}},
+					{ID: 2, NumThreads: 1, LogicalProcessors: []int{9}},
+					{ID: 12, NumThreads: 1, LogicalProcessors: []int{11}},
+					{ID: 8, NumThreads: 1, LogicalProcessors: []int{13}},
+					{ID: 11, NumThreads: 1, LogicalProcessors: []int{15}},
+					{ID: 9, NumThreads: 1, LogicalProcessors: []int{17}},
+					{ID: 10, NumThreads: 1, LogicalProcessors: []int{19}},
+					{ID: 16, NumThreads: 1, LogicalProcessors: []int{21}},
+					{ID: 20, NumThreads: 1, LogicalProcessors: []int{23}},
+					{ID: 17, NumThreads: 1, LogicalProcessors: []int{25}},
+					{ID: 19, NumThreads: 1, LogicalProcessors: []int{27}},
+					{ID: 18, NumThreads: 1, LogicalProcessors: []int{29}},
+					{ID: 28, NumThreads: 1, LogicalProcessors: []int{31}},
+					{ID: 24, NumThreads: 1, LogicalProcessors: []int{33}},
+					{ID: 27, NumThreads: 1, LogicalProcessors: []int{35}},
+					{ID: 25, NumThreads: 1, LogicalProcessors: []int{37}},
+					{ID: 26, NumThreads: 1, LogicalProcessors: []int{39}},
 				},
 			},
 		}
@@ -1411,15 +1396,15 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Function ensureSameTopo
 		{
 			ID: 0,
 			Cores: []*cpu.ProcessorCore{
-				{ID: 0, Index: 0, NumThreads: 2, LogicalProcessors: []int{0, 1}},
-				{ID: 1, Index: 1, NumThreads: 2, LogicalProcessors: []int{2, 3}},
+				{ID: 0, NumThreads: 2, LogicalProcessors: []int{0, 1}},
+				{ID: 1, NumThreads: 2, LogicalProcessors: []int{2, 3}},
 			},
 		},
 		{
 			ID: 1,
 			Cores: []*cpu.ProcessorCore{
-				{ID: 2, Index: 2, NumThreads: 2, LogicalProcessors: []int{4, 5}},
-				{ID: 3, Index: 3, NumThreads: 2, LogicalProcessors: []int{6, 7}},
+				{ID: 2, NumThreads: 2, LogicalProcessors: []int{4, 5}},
+				{ID: 3, NumThreads: 2, LogicalProcessors: []int{6, 7}},
 			},
 		},
 	}
@@ -1434,15 +1419,15 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Function ensureSameTopo
 			{
 				ID: 0,
 				Cores: []*cpu.ProcessorCore{
-					{ID: 0, Index: 0, NumThreads: 2, LogicalProcessors: []int{0, 1}},
-					{ID: 1, Index: 1, NumThreads: 2, LogicalProcessors: []int{2, 3}},
+					{ID: 0, NumThreads: 2, LogicalProcessors: []int{0, 1}},
+					{ID: 1, NumThreads: 2, LogicalProcessors: []int{2, 3}},
 				},
 			},
 			{
 				ID: 1,
 				Cores: []*cpu.ProcessorCore{
-					{ID: 2, Index: 2, NumThreads: 2, LogicalProcessors: []int{4, 5}},
-					{ID: 3, Index: 3, NumThreads: 2, LogicalProcessors: []int{6, 7}},
+					{ID: 2, NumThreads: 2, LogicalProcessors: []int{4, 5}},
+					{ID: 3, NumThreads: 2, LogicalProcessors: []int{6, 7}},
 				},
 			},
 		}
@@ -1477,12 +1462,6 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Function ensureSameTopo
 			err := ensureSameTopology(&originTopology, &mutatedTopology)
 			Expect(err).To(HaveOccurred())
 		})
-		It("same cores with different indices should still considered equivalent", func() {
-			mutatedTopology.Nodes[0].Cores[0].Index = 1
-			mutatedTopology.Nodes[0].Cores[1].Index = 0
-			err := ensureSameTopology(&originTopology, &mutatedTopology)
-			Expect(err).ToNot(HaveOccurred())
-		})
 	})
 })
 
@@ -1514,15 +1493,15 @@ var _ = Describe("PerformanceProfileCreator: Test Helper cpuAccumulator", func()
 		{
 			ID: 0,
 			Cores: []*cpu.ProcessorCore{
-				{ID: 0, Index: 0, NumThreads: 2, LogicalProcessors: []int{0, 1}},
-				{ID: 1, Index: 1, NumThreads: 2, LogicalProcessors: []int{2, 3}},
+				{ID: 0, NumThreads: 2, LogicalProcessors: []int{0, 1}},
+				{ID: 1, NumThreads: 2, LogicalProcessors: []int{2, 3}},
 			},
 		},
 		{
 			ID: 1,
 			Cores: []*cpu.ProcessorCore{
-				{ID: 2, Index: 2, NumThreads: 2, LogicalProcessors: []int{4, 5}},
-				{ID: 3, Index: 3, NumThreads: 2, LogicalProcessors: []int{6, 7}},
+				{ID: 2, NumThreads: 2, LogicalProcessors: []int{4, 5}},
+				{ID: 3, NumThreads: 2, LogicalProcessors: []int{6, 7}},
 			},
 		},
 	}
