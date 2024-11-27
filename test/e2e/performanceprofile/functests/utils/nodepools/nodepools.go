@@ -81,6 +81,54 @@ func GetByClusterName(ctx context.Context, c client.Client, hostedClusterName st
 	return np, nil
 }
 
+func AttachConfigObject(ctx context.Context, cli client.Client, object client.Object) error {
+	np, err := GetNodePool(ctx, cli)
+	if err != nil {
+		return err
+	}
+
+	return AttachConfigObjectToNodePool(ctx, cli, object, np)
+}
+
+func AttachConfigObjectToNodePool(ctx context.Context, cli client.Client, object client.Object, np *hypershiftv1beta1.NodePool) error {
+	var err error
+	updatedConfig := []corev1.LocalObjectReference{{Name: object.GetName()}}
+	for i := range np.Spec.Config {
+		Config := np.Spec.Config[i]
+		if Config.Name != object.GetName() {
+			updatedConfig = append(updatedConfig, Config)
+		}
+	}
+	np.Spec.Config = updatedConfig
+	if err = cli.Update(ctx, np); err != nil {
+		return err
+	}
+	return nil
+}
+
+func DeattachConfigObject(ctx context.Context, cli client.Client, object client.Object) error {
+	np, err := GetNodePool(ctx, cli)
+	if err != nil {
+		return err
+	}
+
+	return DeattachConfigObjectFromNodePool(ctx, cli, object, np)
+}
+
+func DeattachConfigObjectFromNodePool(ctx context.Context, cli client.Client, object client.Object, np *hypershiftv1beta1.NodePool) error {
+	var err error
+	for i := range np.Spec.Config {
+		if np.Spec.Config[i].Name == object.GetName() {
+			np.Spec.Config = append(np.Spec.Config[:i], np.Spec.Config[i+1:]...)
+			break
+		}
+	}
+	if err = cli.Update(ctx, np); err != nil {
+		return err
+	}
+	return nil
+}
+
 // AttachTuningObject is attaches a tuning object into the nodepool associated with the hosted-cluster
 // The function is idempotent
 func AttachTuningObject(ctx context.Context, cli client.Client, object client.Object) error {

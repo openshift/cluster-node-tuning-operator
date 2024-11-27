@@ -51,6 +51,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 	var workerRTNodes []corev1.Node
 	var profile, initialProfile *performancev2.PerformanceProfile
 	var poolName string
+	var np *hypershiftv1beta1.NodePool
 	var err error
 
 	chkCmdLine := []string{"cat", "/proc/cmdline"}
@@ -443,7 +444,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 			By("Creating new MachineConfigPool")
 			mcp = mcps.New(newRole, newNodeSelector)
-			err = testclient.ControlPlaneClient.Create(context.TODO(), mcp)
+			err = testclient.Client.Create(context.TODO(), mcp)
 			Expect(err).ToNot(HaveOccurred())
 
 			By("Updating Node Selector performance profile")
@@ -1161,8 +1162,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 	})
 
-	// TODO - Need specific container runtime utility for Hypershift
-	Context("ContainerRuntimeConfig", Ordered, Label(string(label.Tier2), string(label.OpenShift)), func() {
+	Context("ContainerRuntimeConfig", Ordered, Label(string(label.Tier2)), func() {
 		var ctrcfg *machineconfigv1.ContainerRuntimeConfig
 		const ContainerRuntimeConfigName = "ctrcfg-test"
 		mcp := &machineconfigv1.MachineConfigPool{}
@@ -1171,12 +1171,16 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			key := types.NamespacedName{
 				Name: poolName,
 			}
-			Expect(testclient.Client.Get(context.TODO(), key, mcp)).ToNot(HaveOccurred(), "cannot get MCP %q", poolName)
 			By("checking if ContainerRuntimeConfig object already exists")
-			ctrcfg, err = getContainerRuntimeConfigFrom(context.TODO(), profile, mcp)
-			Expect(err).ToNot(HaveOccurred(), "failed to get ContainerRuntimeConfig from profile %q mcp %q", profile.Name, mcp.Name)
-			if ctrcfg != nil {
-				Skip(fmt.Sprintf("ContainerRuntimeConfig %s exist in the cluster and not expected", ctrcfg.Name))
+			if !hypershift.IsHypershiftCluster() {
+				Expect(testclient.ControlPlaneClient.Get(context.TODO(), key, mcp)).ToNot(HaveOccurred(), "cannot get MCP %q", poolName)
+				ctrcfg, err = getContainerRuntimeConfigFrom(context.TODO(), profile, mcp)
+				Expect(err).ToNot(HaveOccurred(), "failed to get ContainerRuntimeConfig from mcp %q", mcp.Name)
+				Expect(ctrcfg).To(BeNil(), "ContainerRuntimeConfig should not exist for MCP %q", mcp.Name)
+			} else {
+				ctrcfg, err = getContainerRuntimeConfigFrom(context.TODO(), profile, mcp)
+				Expect(err).ToNot(HaveOccurred(), "failed to get ContainerRuntimeConfig from profile %q", profile.Name)
+				Expect(ctrcfg).To(BeNil(), "ContainerRuntimeConfig should not exist for profile %q", profile.Name)
 			}
 			testpodTemplate = pods.GetTestPod()
 			testpodTemplate.Namespace = testutils.NamespaceTesting
@@ -1188,28 +1192,63 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				var expectedRuntime string
 				if withCTRCfg {
 					ctrcfg = newContainerRuntimeConfig(ContainerRuntimeConfigName, profile, mcp)
-					By(fmt.Sprintf("creating ContainerRuntimeConfig %q", ctrcfg.Name))
-					Expect(testclient.Client.Create(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to create ctrcfg %#v", ctrcfg)
+					if hypershift.IsHypershiftCluster() {
+						By(fmt.Sprintf("creating ContainerRuntimeConfig configmap %q", ctrcfg.Name))
+						Expect(testclient.ControlPlaneClient.Create(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to create ctrcfg configmap %#v", ctrcfg.Name)
 
-					DeferCleanup(func() {
-						Expect(testclient.Client.Delete(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to delete ctrcfg %#v", ctrcfg)
+						hostedClusterName, err := hypershift.GetHostedClusterName()
+						Expect(err).ToNot(HaveOccurred())
+						np, err = nodepools.GetByClusterName(context.TODO(), testclient.ControlPlaneClient, hostedClusterName)
+						Expect(err).ToNot(HaveOccurred())
+
+						By("Attaching the Config object to the nodepool")
+						Expect(nodepools.AttachConfigObject(context.TODO(), testclient.ControlPlaneClient, ctrcfg)).To(Succeed())
+
+						By("Waiting for the nodepool configuration to start updating")
+						err = nodepools.WaitForUpdatingConfig(context.TODO(), testclient.ControlPlaneClient, np.Name, np.Namespace)
+						Expect(err).ToNot(HaveOccurred())
+
+						By("Waiting for the nodepool configuration to be ready")
+						err = nodepools.WaitForConfigToBeReady(context.TODO(), testclient.ControlPlaneClient, np.Name, np.Namespace)
+						Expect(err).ToNot(HaveOccurred())
+					} else {
+						By(fmt.Sprintf("creating ContainerRuntimeConfig %q", ctrcfg.Name))
+						Expect(testclient.ControlPlaneClient.Create(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to create ctrcfg %#v", ctrcfg)
+
 						By(fmt.Sprintf("waiting for MCP %q transition to UPDATING state", poolName))
 						mcps.WaitForConditionFunc(poolName, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue, getMCPConditionStatus)
 						By(fmt.Sprintf("waiting for MCP %q transition to UPDATED state", poolName))
 						mcps.WaitForConditionFunc(poolName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue, getMCPConditionStatus)
-					})
+					}
+					DeferCleanup(func() {
+						if hypershift.IsHypershiftCluster() {
+							By("Deattaching the Config object from the nodepool")
+							Expect(nodepools.DeattachConfigObject(context.TODO(), testclient.ControlPlaneClient, ctrcfg)).To(Succeed())
 
-					By(fmt.Sprintf("waiting for MCP %q transition to UPDATING state", poolName))
-					mcps.WaitForConditionFunc(poolName, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue, getMCPConditionStatus)
-					By(fmt.Sprintf("waiting for MCP %q transition to UPDATED state", poolName))
-					mcps.WaitForConditionFunc(poolName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue, getMCPConditionStatus)
+							Expect(testclient.ControlPlaneClient.Delete(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to delete ctrcfg configmap %#v", ctrcfg)
+
+							By("Waiting for the nodepool configuration to start updating")
+							err = nodepools.WaitForUpdatingConfig(context.TODO(), testclient.ControlPlaneClient, np.Name, np.Namespace)
+							Expect(err).ToNot(HaveOccurred())
+
+							By("Waiting for the nodepool configuration to be ready")
+							err = nodepools.WaitForConfigToBeReady(context.TODO(), testclient.ControlPlaneClient, np.Name, np.Namespace)
+							Expect(err).ToNot(HaveOccurred())
+						} else {
+							Expect(testclient.ControlPlaneClient.Delete(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to delete ctrcfg %#v", ctrcfg)
+							By(fmt.Sprintf("waiting for MCP %q transition to UPDATING state", poolName))
+							mcps.WaitForConditionFunc(poolName, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue, getMCPConditionStatus)
+							By(fmt.Sprintf("waiting for MCP %q transition to UPDATED state", poolName))
+							mcps.WaitForConditionFunc(poolName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue, getMCPConditionStatus)
+						}
+					})
 				}
 
 				for i := 0; i < len(workerRTNodes); i++ {
 					By("Determining the default container runtime used in the node")
 					tunedPod, err := tuned.GetPod(context.TODO(), &workerRTNodes[i])
 					Expect(err).ToNot(HaveOccurred())
-					expectedRuntime, err = runtime.GetContainerRuntimeTypeFor(context.TODO(), testclient.Client, tunedPod)
+					expectedRuntime, err = runtime.GetContainerRuntimeTypeFor(context.TODO(), testclient.DataPlaneClient, tunedPod)
 					Expect(err).ToNot(HaveOccurred())
 					testlog.Infof("Container runtime used for the node: %s", expectedRuntime)
 
@@ -1219,15 +1258,15 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					testpod.Spec.NodeName = workerRTNodes[i].Name
 					testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNodes[i].Name}
 					By(fmt.Sprintf("creating a test pod using high-performance runtime class on node %s", workerRTNodes[i].Name))
-					Expect(testclient.Client.Create(context.TODO(), testpod)).ToNot(HaveOccurred())
+					Expect(testclient.DataPlaneClient.Create(context.TODO(), testpod)).ToNot(HaveOccurred())
 					DeferCleanup(func() {
 						By(fmt.Sprintf("deleting the test pod from node %s", workerRTNodes[i].Name))
-						Expect(testclient.Client.Delete(context.TODO(), testpod)).ToNot(HaveOccurred())
+						Expect(testclient.DataPlaneClient.Delete(context.TODO(), testpod)).ToNot(HaveOccurred())
 						Expect(pods.WaitForDeletion(context.TODO(), testpod, pods.DefaultDeletionTimeout*time.Second)).ToNot(HaveOccurred())
 					})
 					testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 					Expect(err).ToNot(HaveOccurred())
-					runtimeType, err := runtime.GetContainerRuntimeTypeFor(context.TODO(), testclient.Client, testpod)
+					runtimeType, err := runtime.GetContainerRuntimeTypeFor(context.TODO(), testclient.DataPlaneClient, testpod)
 					Expect(err).ToNot(HaveOccurred())
 					testlog.Infof("Container runtime used for the test pod: %s", runtimeType)
 					Expect(runtimeType).To(Equal(expectedRuntime))
@@ -1333,6 +1372,10 @@ func removeLabels(nodeSelector map[string]string, targetNode *corev1.Node) {
 
 func newContainerRuntimeConfig(name string, profile *performancev2.PerformanceProfile, profileMCP *machineconfigv1.MachineConfigPool) *machineconfigv1.ContainerRuntimeConfig {
 	return &machineconfigv1.ContainerRuntimeConfig{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ContainerRuntimeConfig",
+			APIVersion: machineconfigv1.GroupVersion.String(),
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
