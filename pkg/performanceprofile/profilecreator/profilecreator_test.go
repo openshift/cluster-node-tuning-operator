@@ -1483,13 +1483,13 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Function ensureSameTopo
 			err := ensureSameTopology(&originTopology, &mutatedTopology)
 			Expect(err).ToNot(HaveOccurred())
 		})
-		FIt("bad core ids", func() {
+		It("bad core ids", func() {
 			mutatedTopology.Nodes[0].Cores[0].ID = 1
 			mutatedTopology.Nodes[0].Cores[1].ID = 0
 			err := ensureSameTopology(&originTopology, &mutatedTopology)
 			Expect(err).ToNot(HaveOccurred())
 		})
-		FIt("duplicated core IDs across are allowed", func() {
+		It("duplicated core IDs across are allowed", func() {
 			mutatedTopology.Nodes[0].Cores[0].ID = 1 // Core[1] has also ID 1
 			originTopology.Nodes[0].Cores[0].ID = 1  // Core[1] has also ID 1
 			err := ensureSameTopology(&originTopology, &mutatedTopology)
