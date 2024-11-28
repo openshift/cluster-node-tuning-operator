@@ -55,6 +55,9 @@ const (
 	// ExperimentalAnnotations ExperimentalAnnotation should be added in tests that test Kubelet changes using
 	// experimental annotation
 	ExperimentalAnnotations Feature = "experimental-annotations"
+
+	// TunedDeferred should be added in tests that test tuned deferred updates annotation
+	TunedDeferred Feature = "tuned-deferred"
 )
 
 // Tier is a label to classify tests under specific grade/level
