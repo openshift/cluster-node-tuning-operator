@@ -129,6 +129,21 @@ var _ = Describe("Tuned", func() {
 			Expect(bootLoaderSection.Key("cmdline_realtime_common").String()).To(Equal(cmdlineRealtimeCommon))
 		})
 
+		It("should normalize cpusets", func() {
+			test_profile := testutils.NewPerformanceProfile("test")
+			isolated_cpus := performancev2.CPUSet("10,9,8,7,6,5,4,3,2,1,21,22,23,24,25,26,27,28")
+			reserved_cpus := performancev2.CPUSet("11-15,19,18,17,16")
+
+			test_profile.Spec.CPU.Isolated = &isolated_cpus
+			test_profile.Spec.CPU.Reserved = &reserved_cpus
+
+			tunedData := getTunedStructuredData(test_profile, components.ProfileNamePerformance)
+			isolated, err := tunedData.GetSection("variables")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(isolated.Key("isolated_cores").String()).To(Equal("1-10,21-28"))
+		})
+
 		Context("default profile default tuned", func() {
 			It("should [cpu] section in tuned", func() {
 				tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
