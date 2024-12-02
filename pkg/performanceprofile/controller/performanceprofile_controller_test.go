@@ -68,7 +68,6 @@ var _ = Describe("Controller", func() {
 		var profileMCP *mcov1.MachineConfigPool
 		var infra *apiconfigv1.Infrastructure
 		var clusterOperator *apiconfigv1.ClusterOperator
-		var ctrcfg *mcov1.ContainerRuntimeConfig
 		BeforeEach(func() {
 			profileMCP = testutils.NewProfileMCP()
 			profile = testutils.NewPerformanceProfile(performanceProfileName)
@@ -1063,52 +1062,6 @@ var _ = Describe("Controller", func() {
 			})
 
 		})
-
-		Context("with ContainerRuntimeConfig enabling crun", func() {
-			BeforeEach(func() {
-				ctrcfg = testutils.NewContainerRuntimeConfig(mcov1.ContainerRuntimeDefaultRuntimeCrun, profile.Spec.MachineConfigPoolSelector)
-			})
-
-			It("should run high-performance runtimes class with crun as container-runtime", func() {
-				mc, err := machineconfig.New(profile, &components.MachineConfigOptions{PinningMode: &infra.Status.CPUPartitioning})
-				Expect(err).ToNot(HaveOccurred())
-
-				r := newFakeReconciler(instance, profileMCP, infra, ctrcfg, clusterOperator)
-				Expect(reconcileTimes(r, request, 2)).To(Equal(reconcile.Result{}))
-
-				By("Verifying MC update")
-				key := types.NamespacedName{
-					Name:      machineconfig.GetMachineConfigName(profile.Name),
-					Namespace: metav1.NamespaceNone,
-				}
-				mc = &mcov1.MachineConfig{}
-				err = r.ManagementClient.Get(context.TODO(), key, mc)
-				Expect(err).ToNot(HaveOccurred())
-
-				config := &igntypes.Config{}
-				err = json.Unmarshal(mc.Spec.Config.Raw, config)
-				Expect(err).ToNot(HaveOccurred())
-
-				mode := 420
-				containFiles := []igntypes.File{
-					{
-						Node: igntypes.Node{
-							Path:  "/etc/crio/crio.conf.d/99-runtimes.conf",
-							Group: &igntypes.NodeGroup{},
-							User:  &igntypes.NodeUser{},
-						},
-						FileEmbedded1: igntypes.FileEmbedded1{
-							Contents: igntypes.FileContents{
-								Verification: igntypes.Verification{},
-								Source:       "data:text/plain;charset=utf-8;base64,CltjcmlvLnJ1bnRpbWVdCmluZnJhX2N0cl9jcHVzZXQgPSAiMC0zIgoKCgojIFdlIHNob3VsZCBjb3B5IHBhc3RlIHRoZSBkZWZhdWx0IHJ1bnRpbWUgYmVjYXVzZSB0aGlzIHNuaXBwZXQgd2lsbCBvdmVycmlkZSB0aGUgd2hvbGUgcnVudGltZXMgc2VjdGlvbgpbY3Jpby5ydW50aW1lLnJ1bnRpbWVzLnJ1bmNdCnJ1bnRpbWVfcGF0aCA9ICIiCnJ1bnRpbWVfdHlwZSA9ICJvY2kiCnJ1bnRpbWVfcm9vdCA9ICIvcnVuL3J1bmMiCgojIFRoZSBDUkktTyB3aWxsIGNoZWNrIHRoZSBhbGxvd2VkX2Fubm90YXRpb25zIHVuZGVyIHRoZSBydW50aW1lIGhhbmRsZXIgYW5kIGFwcGx5IGhpZ2gtcGVyZm9ybWFuY2UgaG9va3Mgd2hlbiBvbmUgb2YKIyBoaWdoLXBlcmZvcm1hbmNlIGFubm90YXRpb25zIHByZXNlbnRzIHVuZGVyIGl0LgojIFdlIHNob3VsZCBwcm92aWRlIHRoZSBydW50aW1lX3BhdGggYmVjYXVzZSB3ZSBuZWVkIHRvIGluZm9ybSB0aGF0IHdlIHdhbnQgdG8gcmUtdXNlIHJ1bmMgYmluYXJ5IGFuZCB3ZQojIGRvIG5vdCBoYXZlIGhpZ2gtcGVyZm9ybWFuY2UgYmluYXJ5IHVuZGVyIHRoZSAkUEFUSCB0aGF0IHdpbGwgcG9pbnQgdG8gaXQuCltjcmlvLnJ1bnRpbWUucnVudGltZXMuaGlnaC1wZXJmb3JtYW5jZV0KcnVudGltZV9wYXRoID0gIi91c3IvYmluL2NydW4iCnJ1bnRpbWVfdHlwZSA9ICJvY2kiCnJ1bnRpbWVfcm9vdCA9ICIvcnVuL2NydW4iCmFsbG93ZWRfYW5ub3RhdGlvbnMgPSBbImNwdS1sb2FkLWJhbGFuY2luZy5jcmlvLmlvIiwgImNwdS1xdW90YS5jcmlvLmlvIiwgImlycS1sb2FkLWJhbGFuY2luZy5jcmlvLmlvIiwgImNwdS1jLXN0YXRlcy5jcmlvLmlvIiwgImNwdS1mcmVxLWdvdmVybm9yLmNyaW8uaW8iXQo=",
-							},
-							Mode: &mode,
-						},
-					},
-				}
-				Expect(config.Storage.Files).To(ContainElements(containFiles))
-			})
-		})
 	},
 		Entry("OpenShift Platform", newFakeReconciler, "foreground-deletion", false),
 		Entry("HyperShift Platform", newFakeReconcilerForHypershift, "hypershift.openshift.io/foreground-deletion", true),
@@ -1223,9 +1176,6 @@ func adaptObjectsForHypershift(instance client.Object, initObjects ...runtime.Ob
 				klog.Fatal(err)
 			}
 			mngClusterObjects = append(mngClusterObjects, cm)
-		case *mcov1.ContainerRuntimeConfig:
-			cm := encapsulateContainerRuntimeConfigInConfigMap(obj.(*mcov1.ContainerRuntimeConfig))
-			mngClusterObjects = append(mngClusterObjects, cm)
 		case *apiconfigv1.Infrastructure, *apiconfigv1.ClusterOperator:
 			hostedClusterObjects = append(hostedClusterObjects, obj)
 		case *mcov1.MachineConfigPool:
@@ -1253,26 +1203,6 @@ func encapsulateProfileInConfigMap(profile *performancev2.PerformanceProfile) *c
 		},
 		Data: map[string]string{
 			"tuning": string(encodedObj),
-		},
-	}
-}
-
-func encapsulateContainerRuntimeConfigInConfigMap(ctrcfg *mcov1.ContainerRuntimeConfig) *corev1.ConfigMap {
-	GinkgoHelper()
-	encodedObj, err := hypershift.EncodeManifest(ctrcfg, scheme.Scheme)
-	if err != nil {
-		Fail(fmt.Sprintf("failed to encode manifest %v", err))
-	}
-	return &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "ctrcfg-test-config",
-			Namespace: hostedControlPlaneNamespace,
-			Annotations: map[string]string{
-				"hypershift.openshift.io/nodePool": "nodepool-test",
-			},
-		},
-		Data: map[string]string{
-			"config": string(encodedObj),
 		},
 	}
 }
