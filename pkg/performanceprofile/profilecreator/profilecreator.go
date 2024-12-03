@@ -688,6 +688,20 @@ func EnsureNodesHaveTheSameHardware(nodeHandlers []*GHWHandler) error {
 	if err != nil {
 		return fmt.Errorf("can't obtain Topology info from GHW snapshot for %s: %v", firstHandle.Node.GetName(), err)
 	}
+	if len(nodeHandlers) == 1 {
+		for _, node := range firstTopology.Nodes {
+			lpListByCoreID := make(map[int][]int)
+			for _, core := range node.Cores {
+				val, ok := lpListByCoreID[core.ID]
+				if ok {
+					if !reflect.DeepEqual(val, core.LogicalProcessors) {
+						return fmt.Errorf("found different list of logical processors for CPU %d in the same NUMA node %d: %d vs %d", core.ID, node.ID, val, core.LogicalProcessors)
+					}
+				}
+				lpListByCoreID[core.ID] = val
+			}
+		}
+	}
 
 	for _, handle := range nodeHandlers[1:] {
 		if err != nil {
@@ -731,6 +745,8 @@ func ensureSameTopology(topology1, topology2 *topology.Info) error {
 				node1.ID, len(topology1.Nodes), len(topology2.Nodes))
 		}
 
+		lpListByCoreID1 := make(map[int][]int)
+		lpListByCoreID2 := make(map[int][]int)
 		for j, core1 := range cores1 {
 			// skip comparing index because it's fine if they deffer; see https://github.com/jaypipes/ghw/issues/345#issuecomment-1620274077
 			// ghw.ProcessorCore.Index is completely removed starting v0.11.0
@@ -743,6 +759,23 @@ func ensureSameTopology(topology1, topology2 *topology.Info) error {
 			if !reflect.DeepEqual(core1.LogicalProcessors, cores2[j].LogicalProcessors) {
 				return fmt.Errorf("logical processors for CPU %d in NUMA node %d differs: %d vs %d", core1.ID, node1.ID, core1.LogicalProcessors, cores2[j].LogicalProcessors)
 			}
+
+			// in addition to verifying logical processors list between the two NUMAs we want to verify that siblings are under the same core ID in NUMA level of the same node
+			val, ok := lpListByCoreID1[core1.ID]
+			if ok {
+				if !reflect.DeepEqual(val, core1.LogicalProcessors) {
+					return fmt.Errorf("found different list of logical processors for CPU %d in the same NUMA node %d: %d vs %d", core1.ID, node1.ID, val, core1.LogicalProcessors)
+				}
+			}
+			lpListByCoreID1[core1.ID] = core1.LogicalProcessors
+
+			val, ok = lpListByCoreID2[cores2[j].ID]
+			if ok {
+				if !reflect.DeepEqual(val, cores2[j].LogicalProcessors) {
+					return fmt.Errorf("found different list of logical processors for CPU %d in the same NUMA node %d: %d vs %d", cores2[j].ID, node1.ID, val, cores2[j].LogicalProcessors)
+				}
+			}
+			lpListByCoreID2[cores2[j].ID] = cores2[j].LogicalProcessors
 		}
 	}
 
