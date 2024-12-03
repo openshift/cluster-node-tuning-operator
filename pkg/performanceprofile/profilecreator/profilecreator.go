@@ -678,7 +678,7 @@ func contains(s []string, str string) bool {
 }
 
 // EnsureNodesHaveTheSameHardware returns an error if all the input nodes do not have the same hardware configuration
-func EnsureNodesHaveTheSameHardware(nodeHandlers []*GHWHandler) error {
+func EnsureNodesHaveTheSameHardware(nodeHandlers []*GHWHandler, tolerateCoreIDsDiff bool) error {
 	if len(nodeHandlers) < 1 {
 		return fmt.Errorf("no suitable nodes to compare")
 	}
@@ -713,7 +713,7 @@ func EnsureNodesHaveTheSameHardware(nodeHandlers []*GHWHandler) error {
 		if err != nil {
 			return fmt.Errorf("can't obtain Topology info from GHW snapshot for %s: %v", handle.Node.GetName(), err)
 		}
-		err = ensureSameTopology(firstTopology, topology)
+		err = ensureSameTopology(firstTopology, topology, tolerateCoreIDsDiff)
 		if err != nil {
 			return fmt.Errorf("nodes %s and %s have different topology: %v", firstHandle.Node.GetName(), handle.Node.GetName(), err)
 		}
@@ -722,7 +722,7 @@ func EnsureNodesHaveTheSameHardware(nodeHandlers []*GHWHandler) error {
 	return nil
 }
 
-func ensureSameTopology(topology1, topology2 *topology.Info) error {
+func ensureSameTopology(topology1, topology2 *topology.Info, tolerateCoreIDsDiff bool) error {
 	// the assumption here is that both topologies are deep sorted (e.g. slices of numa nodes, cores, processors ..);
 	// see handle.SortedTopology()
 	if topology1.Architecture != topology2.Architecture {
@@ -751,7 +751,7 @@ func ensureSameTopology(topology1, topology2 *topology.Info) error {
 		for j, core1 := range cores1 {
 			// skip comparing index because it's fine if they deffer; see https://github.com/jaypipes/ghw/issues/345#issuecomment-1620274077
 			// ghw.ProcessorCore.Index is completely removed starting v0.11.0
-			if core1.ID != cores2[j].ID {
+			if core1.ID != cores2[j].ID && !tolerateCoreIDsDiff {
 				return fmt.Errorf("the CPU core ids in NUMA node %d differ: %d vs %d", node1.ID, core1.ID, cores2[j].ID)
 			}
 			if core1.NumThreads != cores2[j].NumThreads {

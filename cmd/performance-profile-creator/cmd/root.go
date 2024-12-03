@@ -168,7 +168,7 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := profilecreator.EnsureNodesHaveTheSameHardware(nodesHandlers); err != nil {
+			if err := profilecreator.EnsureNodesHaveTheSameHardware(nodesHandlers, pcArgs.TolerateCoreIDsDiff); err != nil {
 				return fmt.Errorf("targeted nodes differ: %w", err)
 			}
 			// We make sure that the matched Nodes are the same
@@ -412,6 +412,7 @@ type ProfileCreatorArgs struct {
 	TMPolicy                    string `json:"topology-manager-policy"`
 	PerPodPowerManagement       *bool  `json:"per-pod-power-management,omitempty"`
 	EnableHardwareTuning        bool   `json:"enable-hardware-tuning,omitempty"`
+	TolerateCoreIDsDiff         bool   `json:"tolerate-core-ids-diff,omitempty"`
 	// internal only this argument not passed by the user
 	// but detected automatically
 	createForHypershift bool
@@ -432,6 +433,7 @@ func (pca *ProfileCreatorArgs) AddFlags(flags *pflag.FlagSet) {
 	flags.BoolVar(pca.PerPodPowerManagement, "per-pod-power-management", false, "Enable Per Pod Power Management")
 	flags.BoolVar(&pca.EnableHardwareTuning, "enable-hardware-tuning", false, "Enable setting maximum cpu frequencies")
 	flags.StringVar(&pca.NodePoolName, "node-pool-name", "", "Node pool name corresponding to the target machines (HyperShift only)")
+	flags.BoolVar(&pca.TolerateCoreIDsDiff, "tolerate-core-ids-diff", false, "[EXPERIMENTAL] If set to true PPC tolerates having different core IDs for the same logical processors on the same NUMA cell compared with other nodes that belong to the stated pool. While core IDs numbering may differ between two systems, it still can be considered that NUMA and HW topologies are similar; However this depends on the combination setting of the hardware, software and firmware as that may affect the mapping pattern. While the performance profile controller depends on the logical processors per NUMA, having different IDs may affect your system's performance optimization where the cores location matters, thus use this flag with caution.")
 }
 
 func makePerformanceProfileFrom(profileData ProfileData) (runtime.Object, error) {
