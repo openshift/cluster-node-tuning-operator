@@ -3,18 +3,22 @@ package profilecreator
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/utils/cpuset"
 
 	"github.com/jaypipes/ghw/pkg/cpu"
 	"github.com/jaypipes/ghw/pkg/topology"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	mcfgv1 "github.com/openshift/api/machineconfiguration/v1"
 	log "github.com/sirupsen/logrus"
 
-	mcfgv1 "github.com/openshift/api/machineconfiguration/v1"
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/utils/cpuset"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 )
 
 const (
@@ -475,6 +479,14 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
 			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
 
+			// ensure that siblings of the CPUs in each category belong to the same category (reserved/offlined/isolated)
+			reservedSiblings := getSiblingsListForCPUSet(sysInfo, reserved)
+			isolatedSiblings := getSiblingsListForCPUSet(sysInfo, isolated)
+			offlinedSiblings := getSiblingsListForCPUSet(sysInfo, offlined)
+			Expect(reservedSiblings).To(Equal(reserved))
+			Expect(isolatedSiblings).To(Equal(isolated))
+			Expect(offlinedSiblings).To(Equal(offlined))
+
 			Expect(reserved.String()).To(Equal("0-3,8-11"))
 			Expect(isolated.String()).To(Equal("4-7,12-15"))
 			Expect(offlined.String()).To(Equal("16-31"))
@@ -504,6 +516,9 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			Expect(offlined.Intersection(reserved).IsEmpty()).To(BeTrue())
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
 			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
+
+			reservedSiblings := getSiblingsListForCPUSet(sysInfo, reserved)
+			Expect(reservedSiblings).To(Equal(reserved))
 
 			Expect(reserved.String()).To(Equal("0,4,8,12,16,20,24,28"))
 			Expect(isolated.String()).To(Equal("6-7,17-19,21-23"))
@@ -535,6 +550,9 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
 			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
 
+			reservedSiblings := getSiblingsListForCPUSet(sysInfo, reserved)
+			Expect(reservedSiblings).To(Equal(reserved))
+
 			Expect(reserved.String()).To(Equal("0-3,8-11"))
 			Expect(isolated.String()).To(Equal("16-23"))
 			Expect(offlined.String()).To(Equal("4-7,12-15,24-31"))
@@ -565,6 +583,9 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
 			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
 
+			reservedSiblings := getSiblingsListForCPUSet(sysInfo, reserved)
+			Expect(reservedSiblings).To(Equal(reserved))
+
 			Expect(reserved.String()).To(Equal("0-3,8-11"))
 			Expect(isolated.String()).To(Equal("4-7,16-23"))
 			Expect(offlined.String()).To(Equal("12-15,24-31"))
@@ -594,6 +615,9 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			Expect(offlined.Intersection(reserved).IsEmpty()).To(BeTrue())
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
 			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
+
+			reservedSiblings := getSiblingsListForCPUSet(sysInfo, reserved)
+			Expect(reservedSiblings).To(Equal(reserved))
 
 			Expect(reserved.String()).To(Equal("0-3,8-11"))
 			Expect(isolated.String()).To(Equal("4-7,15"))
@@ -662,6 +686,12 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6,8,10,12,14,16,18,40,42,44,46,48,50,52,54,56,58"))
 			Expect(isolatedCPUSet.String()).To(Equal("1,3,5,7,9,11,13,15,17,19-39,41,43,45,47,49,51,53,55,57,59-79"))
 			Expect(offlinedCPUSet.String()).To(BeEmpty())
+
+			// ensure that siblings of the CPUs in each category belong to the same category (reserved/offlined/isolated)
+			reservedSiblings := getSiblingsListForCPUSet(*systemInfo, reservedCPUSet)
+			isolatedSiblings := getSiblingsListForCPUSet(*systemInfo, isolatedCPUSet)
+			Expect(reservedSiblings).To(Equal(reservedCPUSet))
+			Expect(isolatedSiblings).To(Equal(isolatedCPUSet))
 		})
 		It("Ensure reserved CPUs populated are correctly when splitReservedCPUsAcrossNUMA is enabled and disableHT is disabled", func() {
 			reservedCPUCount = 20 // random number, no special meaning
@@ -679,6 +709,12 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(reservedCPUSet.String()).To(Equal("0-9,40-49"))
 			Expect(isolatedCPUSet.String()).To(Equal("10-39,50-79"))
 			Expect(offlinedCPUSet.String()).To(BeEmpty())
+
+			// ensure that siblings of the CPUs in each category belong to the same category (reserved/offlined/isolated)
+			reservedSiblings := getSiblingsListForCPUSet(*systemInfo, reservedCPUSet)
+			isolatedSiblings := getSiblingsListForCPUSet(*systemInfo, isolatedCPUSet)
+			Expect(reservedSiblings).To(Equal(reservedCPUSet))
+			Expect(isolatedSiblings).To(Equal(isolatedCPUSet))
 		})
 		It("Errors out in case negative reservedCPUCount is specified", func() {
 			reservedCPUCount = -2 // random negative number, no special meaning
@@ -943,6 +979,14 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reservedCPUSet.Union(offlinedCPUSet).Union(isolatedCPUSet)).To(Equal(totalCPUSet))
 
+			// ensure that siblings of the CPUs in each category belong to the same category (reserved/offlined/isolated)
+			reservedSiblings := getSiblingsListForCPUSet(*systemInfo, reservedCPUSet)
+			isolatedSiblings := getSiblingsListForCPUSet(*systemInfo, isolatedCPUSet)
+			offlinedSiblings := getSiblingsListForCPUSet(*systemInfo, offlinedCPUSet)
+			Expect(reservedSiblings).To(Equal(reservedCPUSet))
+			Expect(isolatedSiblings).To(Equal(isolatedCPUSet))
+			Expect(offlinedSiblings).To(Equal(offlinedCPUSet))
+
 			Expect(offlinedCPUSet.String()).To(Equal("1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39,41,43,45,47,49,51,53,55,57,59,61,63,65,67,69,71,73,75,77,79"))
 			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6,8,10,12,14,16,18,40,42,44,46,48,50,52,54,56,58"))
 			Expect(isolatedCPUSet.String()).To(Equal("20,22,24,26,28,30,32,34,36,38,60,62,64,66,68,70,72,74,76,78"))
@@ -974,6 +1018,9 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			totalCPUSet, err := GetTotalCPUSetFromGHW(handle, disableHT)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reservedCPUSet.Union(offlinedCPUSet).Union(isolatedCPUSet)).To(Equal(totalCPUSet))
+
+			reservedSiblings := getSiblingsListForCPUSet(*systemInfo, reservedCPUSet)
+			Expect(reservedSiblings).To(Equal(reservedCPUSet))
 
 			Expect(offlinedCPUSet.String()).To(Equal("10,12,14,16,18,20,22,24,26,28,50-79"))
 			Expect(reservedCPUSet.String()).To(Equal("0-9,40-49"))
@@ -1008,6 +1055,9 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reservedCPUSet.Union(offlinedCPUSet).Union(isolatedCPUSet)).To(Equal(totalCPUSet))
 
+			reservedSiblings := getSiblingsListForCPUSet(*systemInfo, reservedCPUSet)
+			Expect(reservedSiblings).To(Equal(reservedCPUSet))
+
 			Expect(offlinedCPUSet.String()).To(Equal("20,22,24,26,28,30,32,34,36,38,41,43,45,47,49,51,53,55,57,59-79"))
 			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6,8,10,12,14,16,18,40,42,44,46,48,50,52,54,56,58"))
 			Expect(isolatedCPUSet.String()).To(Equal("1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39"))
@@ -1041,6 +1091,9 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reservedCPUSet.Union(offlinedCPUSet).Union(isolatedCPUSet)).To(Equal(totalCPUSet))
 
+			reservedSiblings := getSiblingsListForCPUSet(*systemInfo, reservedCPUSet)
+			Expect(reservedSiblings).To(Equal(reservedCPUSet))
+
 			Expect(offlinedCPUSet.String()).To(Equal("41,43,45,47,49,51,53,55,57,59-60,62,64,66,68,70,72,74,76,78"))
 			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6,8,10,12,14,16,18,40,42,44,46,48,50,52,54,56,58"))
 			Expect(isolatedCPUSet.String()).To(Equal("1,3,5,7,9,11,13,15,17,19-39,61,63,65,67,69,71,73,75,77,79"))
@@ -1073,6 +1126,9 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			totalCPUSet, err := GetTotalCPUSetFromGHW(handle, disableHT)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reservedCPUSet.Union(offlinedCPUSet).Union(isolatedCPUSet)).To(Equal(totalCPUSet))
+
+			reservedSiblings := getSiblingsListForCPUSet(*systemInfo, reservedCPUSet)
+			Expect(reservedSiblings).To(Equal(reservedCPUSet))
 
 			Expect(offlinedCPUSet.String()).To(Equal("1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39,41,43,45,47,49,51,53,55,57,59-69,71,73,75,77,79"))
 			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6,8,10,12,14,16,18,40,42,44,46,48,50,52,54,56,58"))
@@ -1654,4 +1710,22 @@ func GetTotalCPUSetFromGHW(handler *GHWHandler, disableHT bool) (cpuset.CPUSet, 
 		return cpuset.CPUSet{}, err
 	}
 	return totalCPUSet, nil
+}
+
+func getSiblingsListForCPUSet(sysinfo systemInfo, cpus cpuset.CPUSet) cpuset.CPUSet {
+	cpuInfo := sysinfo.CpuInfo.CpuInfo
+	siblingsSet := sets.Set[int]{}
+	for _, cpu := range cpus.List() {
+		for _, physicalProc := range cpuInfo.Processors {
+			cores := physicalProc.Cores
+			for _, core := range cores {
+				if slices.Contains(core.LogicalProcessors, cpu) {
+					siblingsSet.Insert(core.LogicalProcessors...)
+				}
+			}
+
+		}
+	}
+	siblingsInt := siblingsSet.UnsortedList()
+	return cpuset.New(siblingsInt...)
 }
