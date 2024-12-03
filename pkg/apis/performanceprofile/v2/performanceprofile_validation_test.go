@@ -2,6 +2,7 @@ package v2
 
 import (
 	"fmt"
+	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -103,6 +104,33 @@ func NewPerformanceProfile(name string) *PerformanceProfile {
 			},
 		},
 	}
+}
+
+// Fuzz test for ValidateCPUs to ensure it handles invalid inputs and does not panic.
+func FuzzValidateCPUs(f *testing.F) {
+	seeds := []string{"garbage", "a,b,c", "0-1"}
+	for _, seed := range seeds {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, input string) {
+		cpuFields := map[string]func(*PerformanceProfile, CPUSet){
+			"reserved": func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Reserved = &input },
+			"isolated": func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Isolated = &input },
+			"shared":   func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Shared = &input },
+			"offline":  func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Offlined = &input },
+		}
+
+		for fieldName, setField := range cpuFields {
+			t.Run(fieldName, func(t *testing.T) {
+				cpuSet := CPUSet(input)
+				profile := NewPerformanceProfile("test")
+
+				setField(profile, cpuSet)
+				// We don't care for the errors we got, only care about panics, which will cause a failure if they occur.
+				_ = profile.validateCPUs()
+			})
+		}
+	})
 }
 
 var _ = Describe("PerformanceProfile", func() {
