@@ -1483,6 +1483,63 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Function ensureSameTopo
 			err := ensureSameTopology(&originTopology, &mutatedTopology)
 			Expect(err).ToNot(HaveOccurred())
 		})
+		It("should fail when core id on same numa is associated with different siblings list", func() {
+			nodes3 := []*topology.Node{
+				{
+					ID: 0,
+					Cores: []*cpu.ProcessorCore{
+						{ID: 0, Index: 0, NumThreads: 2, LogicalProcessors: []int{0, 4}}, // Cores must be sorted by logical processors before passing them to ensureSameTopology
+						{ID: 2, Index: 3, NumThreads: 2, LogicalProcessors: []int{0, 4}},
+						{ID: 2, Index: 2, NumThreads: 2, LogicalProcessors: []int{2, 6}},
+						{ID: 0, Index: 1, NumThreads: 2, LogicalProcessors: []int{2, 6}},
+					},
+				},
+				{
+					ID: 1,
+					Cores: []*cpu.ProcessorCore{
+						{ID: 0, Index: 2, NumThreads: 2, LogicalProcessors: []int{1, 3}},
+						{ID: 0, Index: 2, NumThreads: 2, LogicalProcessors: []int{1, 3}},
+						{ID: 1, Index: 3, NumThreads: 2, LogicalProcessors: []int{5, 7}},
+						{ID: 1, Index: 3, NumThreads: 2, LogicalProcessors: []int{5, 7}},
+					},
+				},
+			}
+
+			t3 := topology.Info{
+				Architecture: topology.ARCHITECTURE_NUMA,
+				Nodes:        nodes3,
+			}
+
+			nodes4 := []*topology.Node{
+				{
+					ID: 0,
+					Cores: []*cpu.ProcessorCore{
+						{ID: 0, Index: 0, NumThreads: 2, LogicalProcessors: []int{0, 4}},
+						{ID: 2, Index: 3, NumThreads: 2, LogicalProcessors: []int{0, 4}},
+						{ID: 2, Index: 2, NumThreads: 2, LogicalProcessors: []int{2, 6}},
+						{ID: 0, Index: 1, NumThreads: 2, LogicalProcessors: []int{2, 6}},
+					},
+				},
+				{
+					ID: 1,
+					Cores: []*cpu.ProcessorCore{
+						{ID: 0, Index: 2, NumThreads: 2, LogicalProcessors: []int{1, 3}},
+						{ID: 0, Index: 2, NumThreads: 2, LogicalProcessors: []int{1, 3}},
+						{ID: 1, Index: 3, NumThreads: 2, LogicalProcessors: []int{5, 7}},
+						{ID: 1, Index: 3, NumThreads: 2, LogicalProcessors: []int{5, 7}},
+					},
+				},
+			}
+
+			t4 := topology.Info{
+				Architecture: topology.ARCHITECTURE_NUMA,
+				Nodes:        nodes4,
+			}
+			err := ensureSameTopology(&t3, &t4)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("found different list of logical processors for CPU"))
+		})
+
 	})
 })
 
