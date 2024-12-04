@@ -82,13 +82,6 @@ var (
 	scheme                     = runtime.NewScheme()
 	validTMPolicyValues        = []string{kubeletconfig.SingleNumaNodeTopologyManagerPolicy, kubeletconfig.BestEffortTopologyManagerPolicy, kubeletconfig.RestrictedTopologyManagerPolicy}
 	validPowerConsumptionModes = []string{defaultLatency, lowLatency, ultraLowLatency}
-	hardwareTuningMessage      = `#HardwareTuning is an advanced feature, and only intended to be used if 
-#user is aware of the vendor recommendation on maximum cpu frequency.
-#The structure must follow
-#
-# hardwareTuning:
-#   isolatedCpuFreq: <Maximum frequency for applications running on isolated cpus>
-#   reservedCpuFreq: <Maximum frequency for platform software running on reserved cpus>`
 )
 
 // ProfileData collects and stores all the data needed for profile creation
@@ -135,6 +128,8 @@ func NewRootCommand() *cobra.Command {
 		"must-gather-dir-path",
 	}
 
+	tolerations := profilecreator.TolerationSet{}
+
 	root := &cobra.Command{
 		Use:   "performance-profile-creator",
 		Short: "A tool that automates creation of Performance Profiles",
@@ -168,7 +163,9 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := profilecreator.EnsureNodesHaveTheSameHardware(nodesHandlers); err != nil {
+
+			err = profilecreator.EnsureNodesHaveTheSameHardware(nodesHandlers, tolerations)
+			if err != nil {
 				return fmt.Errorf("targeted nodes differ: %w", err)
 			}
 			// We make sure that the matched Nodes are the same
@@ -178,11 +175,12 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to make profile data from node handler: %w", err)
 			}
+			tolerations[profilecreator.EnableHardwareTuning] = true
 			profile, err := makePerformanceProfileFrom(*profileData)
 			if err != nil {
 				return err
 			}
-			return writeProfile(profile, profileData.enableHardwareTuning)
+			return writeProfile(profile, tolerations)
 		},
 	}
 	pcArgs.AddFlags(root.PersistentFlags())
@@ -523,15 +521,21 @@ func makePerformanceProfileFrom(profileData ProfileData) (runtime.Object, error)
 	return profile, nil
 }
 
-func writeProfile(obj runtime.Object, enableHardwareTuning bool) error {
+func writeProfile(obj runtime.Object, tolerations profilecreator.TolerationSet) error {
 	// write CSV to out dir
 	writer := strings.Builder{}
 	if err := MarshallObject(obj, &writer); err != nil {
 		return err
 	}
 
-	if enableHardwareTuning {
-		if _, err := writer.Write([]byte(hardwareTuningMessage)); err != nil {
+	if tolerations[profilecreator.EnableHardwareTuning] {
+		if _, err := writer.Write([]byte(profilecreator.HardwareTuningMessage)); err != nil {
+			return err
+		}
+	}
+
+	if tolerations[profilecreator.DifferentCoreIDs] {
+		if _, err := writer.Write([]byte(profilecreator.DifferentCoreIDsMessage)); err != nil {
 			return err
 		}
 	}
