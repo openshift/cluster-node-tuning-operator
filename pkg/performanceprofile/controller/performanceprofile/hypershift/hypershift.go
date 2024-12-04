@@ -103,8 +103,7 @@ func GetObjectConfigMapDataKey(obj runtime.Object) string {
 	case *performancev2.PerformanceProfile, *performancev2.PerformanceProfileList, *tunedv1.Tuned, *tunedv1.TunedList:
 		return hypershiftconsts.TuningKey
 	case *machineconfigv1.KubeletConfig, *machineconfigv1.KubeletConfigList,
-		*machineconfigv1.MachineConfig, *machineconfigv1.MachineConfigList,
-		*machineconfigv1.ContainerRuntimeConfig, *machineconfigv1.ContainerRuntimeConfigList:
+		*machineconfigv1.MachineConfig, *machineconfigv1.MachineConfigList:
 		return hypershiftconsts.ConfigKey
 	default:
 		return ""

@@ -6,22 +6,18 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	k8serros "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/status"
 )
 
 var _ components.Handler = &handler{}
@@ -49,13 +45,6 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	// set missing options
 	opts.MachineConfig.MixedCPUsEnabled = opts.MixedCPUsFeatureGateEnabled && profileutil.IsMixedCPUsEnabled(profile)
 
-	ctrRuntime, err := h.getContainerRuntimeName(ctx, profile, opts.ProfileMCP)
-	if err != nil {
-		return fmt.Errorf("could not determine high-performance runtime class container-runtime for profile %q; %w", profile.Name, err)
-	}
-	klog.V(2).Infof("using %q as high-performance runtime class container-runtime for profile %q", ctrRuntime, profile.Name)
-
-	opts.MachineConfig.DefaultRuntime = ctrRuntime
 	components, err := manifestset.GetNewComponents(profile, opts)
 	if err != nil {
 		return err
@@ -169,46 +158,4 @@ func (h *handler) Exists(ctx context.Context, profileName string) bool {
 		return true
 	}
 	return false
-}
-
-func (h *handler) getContainerRuntimeName(ctx context.Context, profile *performancev2.PerformanceProfile, mcp *mcov1.MachineConfigPool) (mcov1.ContainerRuntimeDefaultRuntime, error) {
-	ctrcfgList := &mcov1.ContainerRuntimeConfigList{}
-	if err := h.Client.List(ctx, ctrcfgList); err != nil {
-		return "", err
-	}
-
-	if len(ctrcfgList.Items) == 0 {
-		return mcov1.ContainerRuntimeDefaultRuntimeRunc, nil
-	}
-
-	var ctrcfgs []*mcov1.ContainerRuntimeConfig
-	mcpSetLabels := labels.Set(mcp.Labels)
-	for i := 0; i < len(ctrcfgList.Items); i++ {
-		ctrcfg := &ctrcfgList.Items[i]
-		ctrcfgSelector, err := metav1.LabelSelectorAsSelector(ctrcfg.Spec.MachineConfigPoolSelector)
-		if err != nil {
-			return "", err
-		}
-		if ctrcfgSelector.Matches(mcpSetLabels) {
-			ctrcfgs = append(ctrcfgs, ctrcfg)
-		}
-	}
-
-	if len(ctrcfgs) == 0 {
-		klog.V(1).Infof("no ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q; using default container runtime", mcpSetLabels.String(), profile.Name)
-		return mcov1.ContainerRuntimeDefaultRuntimeRunc, nil
-	}
-
-	if len(ctrcfgs) > 1 {
-		return "", fmt.Errorf("more than one ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q", mcpSetLabels.String(), profile.Name)
-	}
-
-	condition := status.GetLatestContainerRuntimeConfigCondition(ctrcfgs[0].Status.Conditions)
-	if condition == nil {
-		return "", fmt.Errorf("ContainerRuntimeConfig: %q no conditions reported (yet)", ctrcfgs[0].Name)
-	}
-	if condition.Type != mcov1.ContainerRuntimeConfigSuccess || condition.Status != corev1.ConditionTrue {
-		return "", fmt.Errorf("ContainerRuntimeConfig: %q failed to be applied: message=%q", ctrcfgs[0].Name, condition.Message)
-	}
-	return ctrcfgs[0].Spec.ContainerRuntimeConfig.DefaultRuntime, nil
 }

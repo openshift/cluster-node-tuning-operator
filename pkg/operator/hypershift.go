@@ -33,10 +33,9 @@ const (
 	// TODO remove once HyperShift has switched to using new key.
 	tunedConfigMapConfigKeyDeprecated = "tuned"
 
-	operatorGeneratedMachineConfig                      = "hypershift.openshift.io/nto-generated-machine-config"
-	mcConfigMapDataKey                                  = "config"
-	generatedConfigMapPrefix                            = "nto-mc-"
-	HypershiftControllerGeneratedContainerRuntimeConfig = "hypershift.openshift.io/containerruntimeconfig-config"
+	operatorGeneratedMachineConfig = "hypershift.openshift.io/nto-generated-machine-config"
+	mcConfigMapDataKey             = "config"
+	generatedConfigMapPrefix       = "nto-mc-"
 )
 
 // syncHostedClusterTuneds synchronizes Tuned objects embedded in ConfigMaps

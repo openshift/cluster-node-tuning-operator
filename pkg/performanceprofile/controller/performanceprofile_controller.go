@@ -31,7 +31,6 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/operator"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	hypershiftconsts "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/consts"
@@ -131,28 +130,6 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		},
 	}
 
-	ctrcfgPredicates := predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
-			ctrcfg := e.Object.(*mcov1.ContainerRuntimeConfig)
-			return ctrcfg.Spec.ContainerRuntimeConfig.DefaultRuntime != ""
-		},
-
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			if !validateUpdateEvent(e.ObjectOld, e.ObjectNew) {
-				return false
-			}
-
-			ctrcfgOld := e.ObjectOld.(*mcov1.ContainerRuntimeConfig)
-			ctrcfgNew := e.ObjectNew.(*mcov1.ContainerRuntimeConfig)
-			return !reflect.DeepEqual(ctrcfgOld.Status.Conditions, ctrcfgNew.Status.Conditions)
-		},
-
-		DeleteFunc: func(e event.DeleteEvent) bool {
-			ctrcfg := e.Object.(*mcov1.ContainerRuntimeConfig)
-			return ctrcfg.Spec.ContainerRuntimeConfig.DefaultRuntime != ""
-		},
-	}
-
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&performancev2.PerformanceProfile{}).
 		Owns(&mcov1.MachineConfig{}, builder.WithPredicates(p)).
@@ -166,9 +143,6 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 			handler.EnqueueRequestsFromMapFunc(r.tunedProfileToPerformanceProfile),
 			builder.WithPredicates(tunedProfilePredicates),
 		).
-		Watches(&mcov1.ContainerRuntimeConfig{},
-			handler.EnqueueRequestsFromMapFunc(r.ctrRuntimeConfToPerformanceProfile),
-			builder.WithPredicates(ctrcfgPredicates)).
 		Complete(r)
 }
 
@@ -245,30 +219,6 @@ func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Ma
 		},
 	}
 
-	containerRuntimeConfigPredicate := predicate.TypedFuncs[*corev1.ConfigMap]{
-		UpdateFunc: func(ue event.TypedUpdateEvent[*corev1.ConfigMap]) bool {
-			if !validateUpdateEvent(ue.ObjectOld, ue.ObjectNew) {
-				klog.V(4).InfoS("UpdateEvent not valid", "objectName", ue.ObjectOld.GetName())
-				return false
-			}
-			return validateLabels(ue.ObjectNew, operator.HypershiftControllerGeneratedContainerRuntimeConfig, "UpdateEvent")
-		},
-		CreateFunc: func(ce event.TypedCreateEvent[*corev1.ConfigMap]) bool {
-			if ce.Object == nil {
-				klog.Error("Create event has no runtime object")
-				return false
-			}
-			return validateLabels(ce.Object, operator.HypershiftControllerGeneratedContainerRuntimeConfig, "CreateEvent")
-		},
-		DeleteFunc: func(de event.TypedDeleteEvent[*corev1.ConfigMap]) bool {
-			if de.Object == nil {
-				klog.Error("Delete event has no runtime object")
-				return false
-			}
-			return validateLabels(de.Object, operator.HypershiftControllerGeneratedContainerRuntimeConfig, "DeleteEvent")
-		},
-	}
-
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("performanceprofile_controller").
 		// we can't use For() and Owns(), because this calls are using the cache of the hosted cluster's client.
@@ -277,10 +227,6 @@ func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Ma
 			&corev1.ConfigMap{},
 			&handler.TypedEnqueueRequestForObject[*corev1.ConfigMap]{},
 			performanceProfileConfigMapPredicate)).
-		WatchesRawSource(source.Kind(managementCluster.GetCache(),
-			&corev1.ConfigMap{},
-			&handler.TypedEnqueueRequestForObject[*corev1.ConfigMap]{},
-			containerRuntimeConfigPredicate)).
 		WatchesRawSource(source.Kind(managementCluster.GetCache(),
 			&corev1.ConfigMap{},
 			handler.TypedEnqueueRequestForOwner[*corev1.ConfigMap](r.ManagementClient.Scheme(), r.ManagementClient.RESTMapper(), &corev1.ConfigMap{}, handler.OnlyControllerOwner()),
@@ -407,53 +353,6 @@ func (r *PerformanceProfileReconciler) tunedProfileToPerformanceProfile(ctx cont
 	return requests
 }
 
-func (r *PerformanceProfileReconciler) ctrRuntimeConfToPerformanceProfile(ctx context.Context, ctrRuntimeConfObj client.Object) []reconcile.Request {
-	ctrcfg := &mcov1.ContainerRuntimeConfig{}
-
-	err := r.Get(ctx, client.ObjectKeyFromObject(ctrRuntimeConfObj), ctrcfg)
-	if err != nil {
-		klog.Errorf("failed to get container runtime config; name=%q err=%v", ctrRuntimeConfObj.GetName(), err)
-		return nil
-	}
-	klog.V(2).Infof("reconciling from ContainerRuntimeConfig %q", ctrcfg.Name)
-
-	selector, err := metav1.LabelSelectorAsSelector(ctrcfg.Spec.MachineConfigPoolSelector)
-	if err != nil {
-		klog.Errorf("failed to parse the selector %v for container runtime config; name=%q err=%v", ctrcfg.Spec.MachineConfigPoolSelector, ctrRuntimeConfObj.GetName(), err)
-		return nil
-	}
-
-	mcps := &mcov1.MachineConfigPoolList{}
-	opts := &client.ListOptions{
-		LabelSelector: selector,
-	}
-
-	err = r.List(ctx, mcps, opts)
-	if err != nil {
-		klog.Errorf("failed to list machine config pools; err=%v", err)
-		return nil
-	}
-
-	klog.V(2).Infof("reconciling from ContainerRuntimeConfig %q selector %v: %d MCPs", ctrcfg.Name, ctrcfg.Spec.MachineConfigPoolSelector, len(mcps.Items))
-
-	profiles := &performancev2.PerformanceProfileList{}
-	err = r.List(ctx, profiles)
-	if err != nil {
-		klog.Errorf("failed to get performance profiles: %v", err)
-		return nil
-	}
-
-	var allRequests []reconcile.Request
-	for i := 0; i < len(mcps.Items); i++ {
-		requests := mcpToPerformanceProfileReconcileRequests(profiles, &mcps.Items[i])
-		if requests == nil {
-			return nil
-		}
-		allRequests = append(allRequests, requests...)
-	}
-	return allRequests
-}
-
 func getInfraPartitioningMode(ctx context.Context, client client.Client) (pinning apiconfigv1.CPUPartitioningMode, err error) {
 	key := types.NamespacedName{
 		Name: "cluster",
@@ -484,7 +383,7 @@ func validateUpdateEvent(old, new metav1.Object) bool {
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=performance.openshift.io,resources=performanceprofiles;performanceprofiles/status;performanceprofiles/finalizers,verbs=*
 // +kubebuilder:rbac:groups=machineconfiguration.openshift.io,resources=machineconfigs;kubeletconfigs,verbs=*
-// +kubebuilder:rbac:groups=machineconfiguration.openshift.io,resources=machineconfigpools;containerruntimeconfigs,verbs=get;list;watch
+// +kubebuilder:rbac:groups=machineconfiguration.openshift.io,resources=machineconfigpools,verbs=get;list;watch
 // +kubebuilder:rbac:groups=tuned.openshift.io,resources=tuneds;profiles,verbs=*
 // +kubebuilder:rbac:groups=node.k8s.io,resources=runtimeclasses,verbs=*
 // +kubebuilder:rbac:groups=config.openshift.io,resources=infrastructures,verbs=get;list;watch
