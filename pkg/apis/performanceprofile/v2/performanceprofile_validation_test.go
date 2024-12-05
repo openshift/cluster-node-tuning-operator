@@ -2,6 +2,7 @@ package v2
 
 import (
 	"fmt"
+	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -153,6 +154,33 @@ func NewPerformanceProfile(name string) *PerformanceProfile {
 	}
 }
 
+// Fuzz test for ValidateCPUs to ensure it handles invalid inputs and does not panic.
+func FuzzValidateCPUs(f *testing.F) {
+	seeds := []string{"garbage", "a,b,c", "0-1"}
+	for _, seed := range seeds {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, input string) {
+		cpuFields := map[string]func(*PerformanceProfile, CPUSet){
+			"reserved": func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Reserved = &input },
+			"isolated": func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Isolated = &input },
+			"shared":   func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Shared = &input },
+			"offline":  func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Offlined = &input },
+		}
+
+		for fieldName, setField := range cpuFields {
+			t.Run(fieldName, func(t *testing.T) {
+				cpuSet := CPUSet(input)
+				profile := NewPerformanceProfile("test")
+
+				setField(profile, cpuSet)
+				// We don't care for the errors we got, only care about panics, which will cause a failure if they occur.
+				_ = profile.validateCPUs()
+			})
+		}
+	})
+}
+
 var _ = Describe("PerformanceProfile", func() {
 	var profile *PerformanceProfile
 
@@ -265,6 +293,19 @@ var _ = Describe("PerformanceProfile", func() {
 			Expect(errors).NotTo(BeEmpty(), "should have validation error when isolated and shared CPUs have overlap")
 			Expect(errors[0].Error()).To(Or(ContainSubstring("isolated and shared cpus overlap"), ContainSubstring("shared and isolated cpus overlap")))
 		})
+		DescribeTable("should reject invalid input that does not represent CPU sets",
+			func(fieldSetter func(*PerformanceProfile, CPUSet), cpusField string) {
+				garbageInput := CPUSet("garbage")
+				fieldSetter(profile, garbageInput)
+				errors := profile.validateCPUs()
+				Expect(errors).NotTo(BeEmpty(), "should have error when "+cpusField+" is filled with garbage input")
+				Expect(errors[0].Error()).To(Or(ContainSubstring("Internal error: strconv.Atoi: parsing")))
+			},
+			Entry("reserved CPUs", func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Reserved = &input }, "reserved CPUs"),
+			Entry("isolated CPUs", func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Isolated = &input }, "isolated CPUs"),
+			Entry("shared CPUs", func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Shared = &input }, "shared CPUs"),
+			Entry("offline CPUs", func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Offlined = &input }, "offline CPUs"),
+		)
 	})
 
 	Describe("CPU Frequency validation", func() {
