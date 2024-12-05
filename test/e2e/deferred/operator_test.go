@@ -138,7 +138,7 @@ func setDeferred(obj *tunedv1.Tuned, mode ntoutil.DeferMode) *tunedv1.Tuned {
 	return obj
 }
 
-func findCondition(conditions []tunedv1.ProfileStatusCondition, conditionType tunedv1.ProfileConditionType) *tunedv1.ProfileStatusCondition {
+func findCondition(conditions []tunedv1.StatusCondition, conditionType tunedv1.ConditionType) *tunedv1.StatusCondition {
 	for _, condition := range conditions {
 		if condition.Type == conditionType {
 			return &condition
@@ -147,7 +147,7 @@ func findCondition(conditions []tunedv1.ProfileStatusCondition, conditionType tu
 	return nil
 }
 
-func checkAppliedConditionDeferred(cond *tunedv1.ProfileStatusCondition, expectedProfile string) error {
+func checkAppliedConditionDeferred(cond *tunedv1.StatusCondition, expectedProfile string) error {
 	klog.Infof("expected profile: %q", expectedProfile)
 	if cond.Status != corev1.ConditionFalse {
 		return fmt.Errorf("applied is true")
@@ -158,7 +158,7 @@ func checkAppliedConditionDeferred(cond *tunedv1.ProfileStatusCondition, expecte
 	return nil
 }
 
-func checkAppliedConditionOK(cond *tunedv1.ProfileStatusCondition) error {
+func checkAppliedConditionOK(cond *tunedv1.StatusCondition) error {
 	if cond.Status != corev1.ConditionTrue {
 		return fmt.Errorf("applied is false")
 	}

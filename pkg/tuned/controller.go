@@ -1357,7 +1357,7 @@ func (c *Controller) updateTunedProfileStatus(ctx context.Context, change Change
 	c.daemon.status = daemonStatus
 
 	if profile.Status.TunedProfile == activeProfile &&
-		conditionsEqual(profile.Status.Conditions, statusConditions) {
+		ConditionsEqual(profile.Status.Conditions, statusConditions) {
 		klog.V(2).Infof("updateTunedProfileStatus(): no need to update status of Profile %s", profile.Name)
 		return nil
 	}

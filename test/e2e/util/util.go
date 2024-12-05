@@ -349,7 +349,7 @@ func WaitForClusterOperatorConditionReason(cs *framework.ClientSet, interval, du
 // The execution interval to check the value is 'interval' and retries last
 // for at most the duration 'duration'.
 func WaitForProfileConditionStatus(cs *framework.ClientSet, interval, duration time.Duration, profile string, profileExpect string,
-	conditionType tunedv1.ProfileConditionType, conditionStatus corev1.ConditionStatus) error {
+	conditionType tunedv1.ConditionType, conditionStatus corev1.ConditionStatus) error {
 	var explain error
 
 	startTime := time.Now()
