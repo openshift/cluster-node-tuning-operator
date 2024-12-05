@@ -1,10 +1,11 @@
 run:
   timeout: 5m
   tests: false
-  skip-dirs:
+  modules-download-mode: vendor
+issues:
+  exclude-dirs:
     - vendor
     - test
-  modules-download-mode: vendor
 linters:
   disable-all: true
   enable:
