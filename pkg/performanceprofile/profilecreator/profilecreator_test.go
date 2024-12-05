@@ -3,6 +3,7 @@ package profilecreator
 import (
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"sort"
 
 	"github.com/jaypipes/ghw/pkg/cpu"
@@ -1483,6 +1484,149 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Function ensureSameTopo
 			err := ensureSameTopology(&originTopology, &mutatedTopology)
 			Expect(err).ToNot(HaveOccurred())
 		})
+	})
+})
+
+var _ = Describe("PerformanceProfileCreator: Test Helper Function sortTopology", func() {
+	It("should sort node topologies as expected", func() {
+		unsorted := topology.Info{
+			Nodes: []*topology.Node{
+				{
+					ID: 2,
+					Cores: []*cpu.ProcessorCore{
+						{
+							ID:                0,
+							LogicalProcessors: []int{1, 0},
+						},
+						{
+							ID:                3,
+							LogicalProcessors: []int{6, 7},
+						},
+						{
+							ID:                2,
+							LogicalProcessors: []int{5, 4},
+						},
+						{
+							ID:                1,
+							LogicalProcessors: []int{3, 2},
+						},
+					},
+				},
+				{
+					ID: 1,
+					Cores: []*cpu.ProcessorCore{
+
+						{
+							ID:                2,
+							LogicalProcessors: []int{5, 4},
+						},
+						{
+							ID:                3,
+							LogicalProcessors: []int{7, 6},
+						},
+						{
+							ID:                0,
+							LogicalProcessors: []int{0, 1},
+						},
+						{
+							ID:                1,
+							LogicalProcessors: []int{2, 3},
+						},
+					},
+				},
+				{
+					ID: 0,
+					Cores: []*cpu.ProcessorCore{
+						{
+							ID:                1,
+							LogicalProcessors: []int{2, 3},
+						},
+						{
+							ID:                0,
+							LogicalProcessors: []int{1, 0},
+						},
+						{
+							ID:                3,
+							LogicalProcessors: []int{7, 6},
+						},
+						{
+							ID:                2,
+							LogicalProcessors: []int{4, 5},
+						},
+					},
+				},
+			},
+		}
+		expectedSorted := topology.Info{
+			Nodes: []*topology.Node{
+				{
+					ID: 0,
+					Cores: []*cpu.ProcessorCore{
+						{
+							ID:                0,
+							LogicalProcessors: []int{0, 1},
+						},
+						{
+							ID:                1,
+							LogicalProcessors: []int{2, 3},
+						},
+						{
+							ID:                2,
+							LogicalProcessors: []int{4, 5},
+						},
+						{
+							ID:                3,
+							LogicalProcessors: []int{6, 7},
+						},
+					},
+				},
+				{
+					ID: 1,
+					Cores: []*cpu.ProcessorCore{
+						{
+							ID:                0,
+							LogicalProcessors: []int{0, 1},
+						},
+						{
+							ID:                1,
+							LogicalProcessors: []int{2, 3},
+						},
+						{
+							ID:                2,
+							LogicalProcessors: []int{4, 5},
+						},
+						{
+							ID:                3,
+							LogicalProcessors: []int{6, 7},
+						},
+					},
+				},
+				{
+					ID: 2,
+					Cores: []*cpu.ProcessorCore{
+						{
+							ID:                0,
+							LogicalProcessors: []int{0, 1},
+						},
+						{
+							ID:                1,
+							LogicalProcessors: []int{2, 3},
+						},
+						{
+							ID:                2,
+							LogicalProcessors: []int{4, 5},
+						},
+						{
+							ID:                3,
+							LogicalProcessors: []int{6, 7},
+						},
+					},
+				},
+			},
+		}
+
+		sortTopology(&unsorted)
+		Expect(reflect.DeepEqual(unsorted, expectedSorted)).To(BeTrue(), "expected %+v, got %+v", expectedSorted, unsorted)
 	})
 })
 
