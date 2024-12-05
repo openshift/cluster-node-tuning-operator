@@ -214,6 +214,7 @@ func NewGHWHandler(mustGatherDirPath string, node *v1.Node) (*GHWHandler, error)
 	nodeName := node.GetName()
 	nodePathSuffix := path.Join(Nodes)
 	nodepath, err := getMustGatherFullPathsWithFilter(mustGatherDirPath, nodePathSuffix, ClusterScopedResources)
+	fmt.Printf("node path %s\n", nodepath)
 	if err != nil {
 		return nil, fmt.Errorf("can't obtain the node path %s: %v", nodeName, err)
 	}
@@ -267,6 +268,7 @@ func (ghwHandler GHWHandler) SortedCPU() (*cpu.Info, error) {
 // SortedTopology returns a TopologyInfo struct that contains information about the Topology sorted by numa ids and cpu ids on the host system
 func (ghwHandler GHWHandler) SortedTopology() (*topology.Info, error) {
 	topologyInfo, err := ghw.Topology(ghwHandler.snapShotOptions)
+	fmt.Printf("Fetched Topology: %+v\n", topologyInfo)
 	if err != nil {
 		return nil, fmt.Errorf("can't obtain topology info from GHW snapshot: %v", err)
 	}
@@ -299,7 +301,6 @@ func topologyHTDisabled(info *topology.Info) *topology.Info {
 		cores := []*cpu.ProcessorCore{}
 		for _, processorCore := range node.Cores {
 			newCore := cpu.ProcessorCore{ID: processorCore.ID,
-				Index:      processorCore.Index,
 				NumThreads: 1,
 			}
 			// LogicalProcessors is a slice of ints representing the logical processor IDs assigned to
@@ -732,8 +733,6 @@ func ensureSameTopology(topology1, topology2 *topology.Info) error {
 		}
 
 		for j, core1 := range cores1 {
-			// skip comparing index because it's fine if they deffer; see https://github.com/jaypipes/ghw/issues/345#issuecomment-1620274077
-			// ghw.ProcessorCore.Index is completely removed starting v0.11.0
 			if core1.ID != cores2[j].ID {
 				return fmt.Errorf("the CPU core ids in NUMA node %d differ: %d vs %d", node1.ID, core1.ID, cores2[j].ID)
 			}
@@ -792,7 +791,6 @@ func updateExtendedCPUInfo(extCpuInfo *extendedCPUInfo, used cpuset.CPUSet, disa
 		for _, core := range socket.Cores {
 			c := &cpu.ProcessorCore{
 				ID:         core.ID,
-				Index:      core.Index,
 				NumThreads: 0,
 			}
 
