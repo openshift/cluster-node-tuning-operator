@@ -889,7 +889,120 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		})
 	})
 
+	Context("Check container runtimes cpu usage", func() {
+		var guaranteedPod, bestEffortPod *corev1.Pod
+		It("[test_id: 74461] Verify that runc excludes the cpus used by guaranteed pod", func() {
+			By("Creating a guaranteed pod")
+			guaranteedPod = makePod(ctx, workerRTNode, true)
+			err := testclient.Client.Create(ctx, guaranteedPod)
+			Expect(err).ToNot(HaveOccurred(), "Failed to create guaranteed pod")
+
+			By("Waiting for guaranteed pod to be ready")
+			_, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(guaranteedPod), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
+			Expect(err).ToNot(HaveOccurred(), "Guaranteed pod did not become ready in time")
+			Expect(guaranteedPod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed), "Guaranteed pod does not have the correct QOSClass")
+			testlog.Infof("Guranteed pod %s/%s was successfully created", guaranteedPod.Namespace, guaranteedPod.Name)
+			defer func() {
+				if guaranteedPod != nil {
+					testlog.Infof("deleting pod %q", guaranteedPod.Name)
+					deleteTestPod(ctx, guaranteedPod)
+				}
+			}()
+
+			By("Creating a best-effort pod")
+			bestEffortPod = makePod(ctx, workerRTNode, false)
+			err = testclient.Client.Create(ctx, bestEffortPod)
+			Expect(err).ToNot(HaveOccurred(), "Failed to create best-effort pod")
+			defer func() {
+				if bestEffortPod != nil {
+					testlog.Infof("deleting pod %q", bestEffortPod.Name)
+					deleteTestPod(ctx, bestEffortPod)
+				}
+			}()
+
+			By("Waiting for best-effort pod to be ready")
+			_, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(bestEffortPod), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
+			Expect(err).ToNot(HaveOccurred(), "Best-effort pod did not become ready in time")
+			testlog.Infof("BestEffort pod %s/%s was successfully created", bestEffortPod.Namespace, bestEffortPod.Name)
+			containerIDs := make([]string, 2)
+
+			By("Fetching container ID for guaranteed pod")
+			containerIDs[0], err = pods.GetContainerIDByName(guaranteedPod, "test")
+			Expect(err).ToNot(HaveOccurred(), "Failed to get container ID for guaranteed pod")
+
+			By("Fetching container ID for best-effort pod")
+			containerIDs[1], err = pods.GetContainerIDByName(bestEffortPod, "test")
+			Expect(err).ToNot(HaveOccurred(), "Failed to get container ID for best-effort pod")
+			var configData string
+
+			By("Reading config.json for both containers")
+			for _, containerID := range containerIDs {
+				path := fmt.Sprintf("/rootfs/var/run/containers/storage/overlay-containers/%s/userdata/config.json", containerID)
+				cmd := []string{"/bin/bash", "-c", fmt.Sprintf("cat %s", path)}
+				output, err := nodes.ExecCommand(ctx, workerRTNode, cmd)
+				Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Failed to read config.json for container ID: %s", containerID))
+				configData += testutils.ToString(output)
+			}
+
+			By("Extracting hostname and cpus information from config data")
+			hostnameRe := regexp.MustCompile(`"hostname":\s+"([^"]+)"`)
+			cpusRe := regexp.MustCompile(`"cpus":\s+"([^"]+)"`)
+			hostnameMatches := hostnameRe.FindAllStringSubmatch(configData, -1)
+			cpusMatches := cpusRe.FindAllStringSubmatch(configData, -1)
+			Expect(hostnameMatches).ToNot(BeEmpty(), "Failed to extract hostname information")
+			Expect(cpusMatches).ToNot(BeEmpty(), "Failed to extract cpus information")
+
+			By("Comparing CPU sets of guaranteed pod and runc")
+			uniqueCombinations := make(map[string]struct{})
+			zippedMatches := make([]map[string]string, 0)
+			for i := 0; i < len(hostnameMatches) && i < len(cpusMatches); i++ {
+				combination := fmt.Sprintf("%s-%s", hostnameMatches[i][1], cpusMatches[i][1])
+				if _, exists := uniqueCombinations[combination]; !exists {
+					uniqueCombinations[combination] = struct{}{}
+					zippedMatches = append(zippedMatches, map[string]string{
+						"hostname": hostnameMatches[i][1],
+						"cpus":     cpusMatches[i][1],
+					})
+				}
+			}
+			guaranteedPodCpus, err := cpuset.Parse(zippedMatches[0]["cpus"])
+			Expect(err).ToNot(HaveOccurred(), "Failed to parse CPU set for guaranteed pod")
+			bestEffortPodCpus, err := cpuset.Parse(zippedMatches[1]["cpus"])
+			Expect(err).ToNot(HaveOccurred(), "Failed to parse CPU set for bestEffot pod")
+
+			By("Validating CPU allocation for Guaranteed and Best-Effort pods")
+			isolatedCpus, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+			Expect(err).ToNot(HaveOccurred(), "Failed to parse isolated CPU set from performance profile")
+			reservedCpus, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
+			Expect(err).ToNot(HaveOccurred(), "Failed to parse reserved CPU set from performance profile")
+
+			Expect(guaranteedPodCpus.IsSubsetOf(isolatedCpus)).
+				To(BeTrue(), "Guaranteed pod CPUs (%s) are not strictly within the isolated set (%s)", guaranteedPodCpus, isolatedCpus)
+			availableForBestEffort := isolatedCpus.Union(reservedCpus).Difference(guaranteedPodCpus)
+			Expect(bestEffortPodCpus.IsSubsetOf(availableForBestEffort)).
+				To(BeTrue(), "Best-Effort pod CPUs (%s) include CPUs not allowed (%s)", bestEffortPodCpus, availableForBestEffort)
+		})
+	})
+
 })
+
+func makePod(ctx context.Context, workerRTNode *corev1.Node, guaranteed bool) *corev1.Pod {
+	testPod := pods.GetTestPod()
+	testPod.Namespace = testutils.NamespaceTesting
+	testPod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
+	if guaranteed {
+		testPod.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("2"),
+				corev1.ResourceMemory: resource.MustParse("200Mi"),
+			},
+		}
+	}
+	profile, _ := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+	runtimeClass := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+	testPod.Spec.RuntimeClassName = &runtimeClass
+	return testPod
+}
 
 func checkForWorkloadPartitioning(ctx context.Context) bool {
 	// Look for the correct Workload Partition annotation in
