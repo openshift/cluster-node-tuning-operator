@@ -33,14 +33,16 @@ import (
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/deployments"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/namespaces"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
-	testprofiles "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 )
 
 const (
@@ -92,7 +94,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 			name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
 			key := client.ObjectKey{Name: name}
 			kc := &machineconfigv1.KubeletConfig{}
-			Expect(testclient.Client.Get(ctx, key, kc)).ToNot(HaveOccurred())
+			Expect(testclient.ControlPlaneClient.Get(ctx, key, kc)).ToNot(HaveOccurred())
 			k8sKc := &kubeletconfig.KubeletConfiguration{}
 			Expect(json.Unmarshal(kc.Spec.KubeletConfig.Raw, k8sKc)).ToNot(HaveOccurred())
 			reserved := mustParse(string(*profile.Spec.CPU.Reserved))
@@ -135,12 +137,12 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 			Expect(err).ToNot(HaveOccurred())
 			// create test namespace
 			ns := getTestingNamespace()
-			Expect(testclient.Client.Create(ctx, &ns)).ToNot(HaveOccurred())
+			Expect(testclient.DataPlaneClient.Create(ctx, &ns)).ToNot(HaveOccurred())
 			DeferCleanup(func() {
-				Expect(testclient.Client.Delete(ctx, &ns)).ToNot(HaveOccurred())
+				Expect(testclient.DataPlaneClient.Delete(ctx, &ns)).ToNot(HaveOccurred())
 				Expect(namespaces.WaitForDeletion(testutils.NamespaceTesting, 5*time.Minute)).ToNot(HaveOccurred())
 			})
-			getter, err = cgroup.BuildGetter(ctx, testclient.Client, testclient.K8sClient)
+			getter, err = cgroup.BuildGetter(ctx, testclient.DataPlaneClient, testclient.K8sClient)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -151,7 +153,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 					corev1.ResourceMemory: resource.MustParse("100Mi"),
 					sharedCpusResource:    resource.MustParse("1"),
 				}
-				p, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+				p, err := createPod(ctx, testclient.DataPlaneClient, testutils.NamespaceTesting,
 					withRequests(rl),
 					withLimits(rl),
 					withAnnotations(map[string]string{"cpu-load-balancing.crio.io": "disable"}),
@@ -167,7 +169,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 				// After the testpod is started get the schedstat and check for cpus
 				// not participating in scheduling domains
 				node := &corev1.Node{}
-				err = testclient.Client.Get(ctx, client.ObjectKey{Name: p.Spec.NodeName}, node)
+				err = testclient.DataPlaneClient.Get(ctx, client.ObjectKey{Name: p.Spec.NodeName}, node)
 				Expect(err).ToNot(HaveOccurred())
 				checkSchedulingDomains(node, exclusivepodCpus, func(cpuIDs cpuset.CPUSet) error {
 					if !exclusivepodCpus.IsSubsetOf(cpuIDs) {
@@ -183,7 +185,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 					corev1.ResourceMemory: resource.MustParse("100Mi"),
 					sharedCpusResource:    resource.MustParse("1"),
 				}
-				p, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+				p, err := createPod(ctx, testclient.DataPlaneClient, testutils.NamespaceTesting,
 					withRequests(rl),
 					withLimits(rl),
 					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
@@ -203,7 +205,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 					corev1.ResourceMemory: resource.MustParse("100Mi"),
 					sharedCpusResource:    resource.MustParse("1"),
 				}
-				p, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+				p, err := createPod(ctx, testclient.DataPlaneClient, testutils.NamespaceTesting,
 					withRequests(rl),
 					withLimits(rl),
 					withAnnotations(map[string]string{"cpu-quota.crio.io": "disable"}),
@@ -220,7 +222,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 					corev1.ResourceMemory: resource.MustParse("100Mi"),
 					sharedCpusResource:    resource.MustParse("1"),
 				}
-				p, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+				p, err := createPod(ctx, testclient.DataPlaneClient, testutils.NamespaceTesting,
 					withRequests(rl),
 					withLimits(rl),
 					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
@@ -251,7 +253,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 					corev1.ResourceMemory: resource.MustParse("100Mi"),
 					sharedCpusResource:    resource.MustParse("1"),
 				}
-				p, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+				p, err := createPod(ctx, testclient.DataPlaneClient, testutils.NamespaceTesting,
 					withRequests(rl),
 					withLimits(rl),
 					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
@@ -266,7 +268,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 					fmt.Sprintf("%s/%s", p.Namespace, p.Name), cgroupCpuSet.String(), shared.String())
 
 				node := &corev1.Node{}
-				err = testclient.Client.Get(ctx, client.ObjectKey{Name: p.Spec.NodeName}, node)
+				err = testclient.DataPlaneClient.Get(ctx, client.ObjectKey{Name: p.Spec.NodeName}, node)
 				Expect(err).ToNot(HaveOccurred())
 
 				cmd := kubeletRestartCmd()
@@ -307,13 +309,10 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 				profile.Spec.CPU.Isolated = cpuSetToPerformanceCPUSet(&newIsolated)
 				profile.Spec.CPU.Shared = cpuSetToPerformanceCPUSet(&newShared)
 				By("applying new performanceProfile")
-				testprofiles.UpdateWithRetry(profile)
-				mcp, err := mcps.GetByProfile(profile)
-				Expect(err).ToNot(HaveOccurred())
-				By("waiting for mcp to catch up")
-				mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-				mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
-				Expect(testclient.Client.Get(ctx, client.ObjectKeyFromObject(profile), profile))
+				profiles.UpdateWithRetry(profile)
+				poolName := getPoolName()
+				CheckProfileUpdating(poolName, profile)
+				Expect(testclient.ControlPlaneClient.Get(ctx, client.ObjectKeyFromObject(profile), profile))
 				testlog.Infof("new isolated CPU set=%q\nnew shared CPU set=%q", string(*profile.Spec.CPU.Isolated), string(*profile.Spec.CPU.Isolated))
 				// we do not bother to revert the profile at the end of the test, since its irrelevant which of the cpus are shared
 			})
@@ -324,7 +323,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 					corev1.ResourceMemory: resource.MustParse("100Mi"),
 					sharedCpusResource:    resource.MustParse("1"),
 				}
-				p, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+				p, err := createPod(ctx, testclient.DataPlaneClient, testutils.NamespaceTesting,
 					withRequests(rl),
 					withLimits(rl),
 					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
@@ -363,7 +362,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 					corev1.ResourceCPU: resource.MustParse("1"),
 					sharedCpusResource: resource.MustParse("1"),
 				}
-				_, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+				_, err := createPod(ctx, testclient.DataPlaneClient, testutils.NamespaceTesting,
 					withRequests(rl),
 					withLimits(rl),
 					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
@@ -376,7 +375,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 				rl := &corev1.ResourceList{
 					sharedCpusResource: resource.MustParse("1"),
 				}
-				_, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+				_, err := createPod(ctx, testclient.DataPlaneClient, testutils.NamespaceTesting,
 					withRequests(rl),
 					withLimits(rl),
 					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
@@ -391,7 +390,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 					corev1.ResourceMemory: resource.MustParse("100Mi"),
 					sharedCpusResource:    resource.MustParse("2"),
 				}
-				_, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+				_, err := createPod(ctx, testclient.DataPlaneClient, testutils.NamespaceTesting,
 					withRequests(rl),
 					withLimits(rl),
 					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
@@ -406,7 +405,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 				ns := getTestingNamespace()
 				//Remove the annotations to disable mixedcpus
 				ns.ObjectMeta.Annotations = nil
-				Expect(testclient.Client.Update(ctx, &ns)).ToNot(HaveOccurred())
+				Expect(testclient.DataPlaneClient.Update(ctx, &ns)).ToNot(HaveOccurred())
 				rl := &corev1.ResourceList{
 					corev1.ResourceCPU:    resource.MustParse("1"),
 					corev1.ResourceMemory: resource.MustParse("100Mi"),
@@ -414,7 +413,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 				}
 
 				By("Creating a pod requesting shared cpus")
-				_, err := createPod(ctx, testclient.Client, testutils.NamespaceTesting,
+				_, err := createPod(ctx, testclient.DataPlaneClient, testutils.NamespaceTesting,
 					withRequests(rl),
 					withLimits(rl))
 				Expect(err).To(HaveOccurred())
@@ -432,7 +431,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 					corev1.ResourceMemory: resource.MustParse("100Mi"),
 					sharedCpusResource:    resource.MustParse("1"),
 				}
-				p := makePod(ctx, testclient.Client, testutils.NamespaceTesting,
+				p := makePod(ctx, testclient.DataPlaneClient, testutils.NamespaceTesting,
 					withRequests(rl),
 					withLimits(rl),
 					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
@@ -440,15 +439,15 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 					deployments.WithPodTemplate(p),
 					deployments.WithNodeSelector(testutils.NodeSelectorLabels))
 
-				Expect(testclient.Client.Create(ctx, dp)).ToNot(HaveOccurred())
+				Expect(testclient.DataPlaneClient.Create(ctx, dp)).ToNot(HaveOccurred())
 				podList := &corev1.PodList{}
 				listOptions := &client.ListOptions{Namespace: testutils.NamespaceTesting, LabelSelector: labels.SelectorFromSet(dp.Spec.Selector.MatchLabels)}
 				Eventually(func() bool {
-					isReady, err := deployments.IsReady(ctx, testclient.Client, listOptions, podList, dp)
+					isReady, err := deployments.IsReady(ctx, testclient.DataPlaneClient, listOptions, podList, dp)
 					Expect(err).ToNot(HaveOccurred())
 					return isReady
 				}, time.Minute, time.Second).Should(BeTrue())
-				Expect(testclient.Client.List(ctx, podList, listOptions)).To(Succeed())
+				Expect(testclient.DataPlaneClient.List(ctx, podList, listOptions)).To(Succeed())
 				Expect(len(podList.Items)).To(Equal(1), "Expected exactly one pod in the list")
 				pod := podList.Items[0]
 
@@ -469,37 +468,28 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 				profile.Spec.WorkloadHints.MixedCpus = pointer.Bool(false)
 
 				By("Applying new performanceProfile")
-				testprofiles.UpdateWithRetry(profile)
-				mcp, err := mcps.GetByProfile(profile)
-				Expect(err).ToNot(HaveOccurred())
-
-				By("Waiting for mcp to catch up")
-				mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-				mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				profiles.UpdateWithRetry(profile)
+				poolName := getPoolName()
+				CheckProfileUpdating(poolName, profile)
 
 				By("Verifying that the pod is failed to be scheduled")
 				podList = &corev1.PodList{}
-				Expect(testclient.Client.List(ctx, podList, listOptions)).To(Succeed())
+				Expect(testclient.DataPlaneClient.List(ctx, podList, listOptions)).To(Succeed())
 				Expect(len(podList.Items)).To(Equal(1), "Expected exactly one pod in the list")
 				pod = podList.Items[0]
 				Eventually(func() bool {
-					isFailed, err := pods.CheckPODSchedulingFailed(testclient.Client, &pod)
+					isFailed, err := pods.CheckPODSchedulingFailed(testclient.DataPlaneClient, &pod)
 					Expect(err).ToNot(HaveOccurred())
 					return isFailed
 				}, time.Minute, time.Second).Should(BeTrue())
 				Expect(pod.Status.Phase).To(Equal(corev1.PodPending), "Pod %s is not in the pending state", pod.Name)
 
 				By("Reverting the cluster to previous state")
-				Expect(testclient.Client.Get(ctx, client.ObjectKeyFromObject(profile), profile))
+				Expect(testclient.ControlPlaneClient.Get(ctx, client.ObjectKeyFromObject(profile), profile))
 				profile.Spec.CPU.Shared = cpuSetToPerformanceCPUSet(ppShared)
 				profile.Spec.WorkloadHints.MixedCpus = pointer.Bool(true)
-				testprofiles.UpdateWithRetry(profile)
-				mcp, err = mcps.GetByProfile(profile)
-				Expect(err).ToNot(HaveOccurred())
-
-				By("Waiting for mcp to catch up")
-				mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-				mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				profiles.UpdateWithRetry(profile)
+				CheckProfileUpdating(poolName, profile)
 			})
 		})
 	})
@@ -546,25 +536,53 @@ func setup(ctx context.Context) func(ctx2 context.Context) {
 			By(fmt.Sprintf("skipping teardown - no changes to profile %q were applied", profile.Name))
 		}
 	}
-	testprofiles.UpdateWithRetry(profile)
-	mcp, err := mcps.GetByProfile(profile)
-	Expect(err).ToNot(HaveOccurred())
-
-	mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-	mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+	profiles.UpdateWithRetry(profile)
+	poolName := getPoolName()
+	CheckProfileUpdating(poolName, profile)
 
 	teardown := func(ctx2 context.Context) {
 		By(fmt.Sprintf("executing teardown - revert profile %q back to its intial state", profile.Name))
-		Expect(testclient.Client.Get(ctx2, client.ObjectKeyFromObject(initialProfile), profile))
-		testprofiles.UpdateWithRetry(initialProfile)
+		Expect(testclient.ControlPlaneClient.Get(ctx2, client.ObjectKeyFromObject(initialProfile), profile))
+		profiles.UpdateWithRetry(initialProfile)
 
 		// do not wait if nothing has changed
 		if initialProfile.ResourceVersion != profile.ResourceVersion {
-			mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-			mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+			mcps.WaitForCondition(poolName, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+			mcps.WaitForCondition(poolName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 		}
 	}
 	return teardown
+}
+
+func CheckProfileUpdating(poolName string, profile *performancev2.PerformanceProfile) {
+	if hypershift.IsHypershiftCluster() {
+		By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+		profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
+
+		By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+		profilesupdate.WaitForTuningUpdated(context.TODO(), profile)
+	} else {
+		mcps.WaitForCondition(poolName, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+		mcps.WaitForCondition(poolName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+	}
+}
+
+func getPoolName() string {
+	var poolName string
+	if hypershift.IsHypershiftCluster() {
+		hostedClusterName, err := hypershift.GetHostedClusterName()
+		Expect(err).ToNot(HaveOccurred())
+		np, err := nodepools.GetByClusterName(context.TODO(), testclient.ControlPlaneClient, hostedClusterName)
+		Expect(err).ToNot(HaveOccurred())
+		poolName = client.ObjectKeyFromObject(np).String()
+		return poolName
+	} else {
+		profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+		Expect(err).ToNot(HaveOccurred())
+		poolName, err = mcps.GetByProfile(profile)
+		Expect(err).ToNot(HaveOccurred())
+	}
+	return poolName
 }
 
 func cpuSetToPerformanceCPUSet(set *cpuset.CPUSet) *performancev2.CPUSet {
@@ -725,6 +743,6 @@ func checkSchedulingDomains(workerRTNode *corev1.Node, podCpus cpuset.CPUSet, te
 		}
 		cpuIDs := cpuset.New(cpuIDList...)
 		return testFunc(cpuIDs)
-	}).WithTimeout(2*time.Minute).WithPolling(5*time.Second).ShouldNot(HaveOccurred(), errMsg)
+	}).WithTimeout(timeout).WithPolling(polling).ShouldNot(HaveOccurred(), errMsg)
 
 }
