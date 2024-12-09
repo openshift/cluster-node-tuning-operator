@@ -128,12 +128,16 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred(), "Failed to get the Tuned profile for node %s", node.Name)
 				degradedCondition := findCondition(tunedProfile.Status.Conditions, "Degraded")
 				Expect(degradedCondition).ToNot(BeNil(), "Degraded condition not found in Tuned profile status")
-				isNodeBasedOnVM, err := infrastructure.IsVM(&node)
+				isNodeBasedOnVM, err := infrastructure.IsVM(context.TODO(), &node)
 				Expect(err).ToNot(HaveOccurred(), "Failed to detect if the node is based on VM")
-				if isNodeBasedOnVM {
-					testlog.Warning(fmt.Sprintf("Tuned profile is degraded. A warning raised as the node is based on a VM. Error message: %s", degradedCondition.Message))
-				} else {
-					Expect(degradedCondition.Status).To(Equal(corev1.ConditionFalse), "Tuned profile is degraded. Error message: %s", degradedCondition.Message)
+
+				if degradedCondition.Status == corev1.ConditionTrue {
+					message := fmt.Sprintf("Tuned profile is degraded. Error message: %s", degradedCondition.Message)
+					if isNodeBasedOnVM {
+						testlog.Warning(fmt.Sprintf("A warning raised as the node is based on a VM. %s", message))
+					} else {
+						Fail(message)
+					}
 				}
 			}
 		})
