@@ -10,13 +10,14 @@ import (
 )
 
 // IsVM checks if a given node's underlying infrastructure is a VM
-func IsVM(node *corev1.Node) (bool, error) {
+func IsVM(ctx context.Context, node *corev1.Node) (bool, error) {
 	cmd := []string{
-		"/bin/bash",
-		"-c",
-		"systemd-detect-virt > /dev/null ; echo $?",
+		"/usr/sbin/chroot",
+		"/rootfs",
+		"/bin/bash", "-c",
+		"systemd-detect-virt > /dev/null; echo $?",
 	}
-	output, err := nodes.ExecCommandOnMachineConfigDaemon(context.TODO(), node, cmd)
+	output, err := nodes.ExecCommandOnMachineConfigDaemon(ctx, node, cmd)
 	if err != nil {
 		return false, err
 	}
