@@ -55,7 +55,7 @@ PAO_CRD_APIS :=$(addprefix ./$(API_TYPES_DIR)/performanceprofile/,v2 v1 v1alpha1
 PAO_E2E_SUITES := $(shell hack/list-test-bin.sh)
 
 # golangci-lint variables
-GOLANGCI_LINT_VERSION=1.54.2
+GOLANGCI_LINT_VERSION=1.60.1
 GOLANGCI_LINT_BIN=$(OUT_DIR)/golangci-lint
 GOLANGCI_LINT_VERSION_TAG=v${GOLANGCI_LINT_VERSION}
 
