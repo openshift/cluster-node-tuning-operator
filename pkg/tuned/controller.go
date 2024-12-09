@@ -6,6 +6,7 @@ import (
 	"context" // context.TODO()
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"  // errors.Is()
 	"fmt"     // Printf()
 	"math"    // math.Pow()
@@ -22,6 +23,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	kmeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
@@ -1253,15 +1256,17 @@ func (c *Controller) updateNodeAnnotations(node *corev1.Node, annotations map[st
 	var (
 		change bool
 	)
-	node = node.DeepCopy() // never update the objects from cache
 
-	if node.ObjectMeta.Annotations == nil {
-		node.ObjectMeta.Annotations = map[string]string{}
+	curNode := node.DeepCopy() // never update the objects from cache
+	modNode := node.DeepCopy() // mutate over this copy
+
+	if modNode.ObjectMeta.Annotations == nil {
+		modNode.ObjectMeta.Annotations = map[string]string{}
 	}
 
 	for k, v := range annotations {
-		change = change || node.ObjectMeta.Annotations[k] != v
-		node.ObjectMeta.Annotations[k] = v
+		change = change || modNode.ObjectMeta.Annotations[k] != v
+		modNode.ObjectMeta.Annotations[k] = v
 	}
 
 	if !change {
@@ -1269,9 +1274,26 @@ func (c *Controller) updateNodeAnnotations(node *corev1.Node, annotations map[st
 		return nil
 	}
 
+	// Setup Patch
+	curNodeJson, err := json.Marshal(curNode)
+	if err != nil {
+		return err
+	}
+	modNodeJson, err := json.Marshal(modNode)
+	if err != nil {
+		return err
+	}
+	patch, err := strategicpatch.CreateTwoWayMergePatch(curNodeJson, modNodeJson, corev1.Node{})
+	if err != nil {
+		return err
+	}
+	if len(patch) == 0 || string(patch) == "{}" {
+		return nil
+	}
+
 	// See OCPBUGS-17585: Instead of carrying information that could affect other cluster nodes in
 	// Profiles's status, use the kubelet's credentials to write to the Node's resource.
-	_, err = c.kubeclient.CoreV1().Nodes().Update(context.TODO(), node, metav1.UpdateOptions{})
+	_, err = c.kubeclient.CoreV1().Nodes().Patch(context.TODO(), modNode.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update Node %s: %v", node.ObjectMeta.Name, err)
 	}
