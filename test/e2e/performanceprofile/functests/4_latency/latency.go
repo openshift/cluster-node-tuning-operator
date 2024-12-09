@@ -482,8 +482,7 @@ func isOddCpuNumber(cpusNum int, profile *performancev2.PerformanceProfile) bool
 	if cpusNum == defaultTestCpus {
 		isolatedCpus, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
 		Expect(err).ToNot(HaveOccurred(), "failed to parse cpus %q", string(*profile.Spec.CPU.Isolated))
-		isolatedCpusNum := isolatedCpus.Size() - 1
-		return isolatedCpusNum%2 != 0
+		return isolatedCpus.Size()%2 != 0
 	}
 	return cpusNum%2 != 0
 }

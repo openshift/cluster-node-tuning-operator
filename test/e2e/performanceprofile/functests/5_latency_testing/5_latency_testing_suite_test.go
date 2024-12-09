@@ -58,7 +58,7 @@ var _ = BeforeSuite(func() {
 	initialIsolated := profile.Spec.CPU.Isolated
 	initialReserved := profile.Spec.CPU.Reserved
 	//updated both sets to ensure there is no overlap
-	latencyIsolatedSet := performancev2.CPUSet("1-9")
+	latencyIsolatedSet := performancev2.CPUSet("1-8")
 	latencyReservedSet := performancev2.CPUSet("0")
 	testlog.Infof("current isolated cpus: %s, desired is %s", string(*initialIsolated), latencyIsolatedSet)
 	isolated, err := cpuset.Parse(string(latencyIsolatedSet))
