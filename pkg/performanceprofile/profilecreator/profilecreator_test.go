@@ -3,18 +3,22 @@ package profilecreator
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/utils/cpuset"
 
 	"github.com/jaypipes/ghw/pkg/cpu"
 	"github.com/jaypipes/ghw/pkg/topology"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	mcfgv1 "github.com/openshift/api/machineconfiguration/v1"
 	log "github.com/sirupsen/logrus"
 
-	mcfgv1 "github.com/openshift/api/machineconfiguration/v1"
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/utils/cpuset"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 )
 
 const (
@@ -249,7 +253,7 @@ var _ = Describe("PerformanceProfileCreator: Consuming GHW Snapshot from Must Ga
 var _ = Describe("Performance profile creator: test with a simple cpu architecture to see algorithm easely", func() {
 	Context("With 16 cores, 32 Threads, 2 sockets 2 NUMA zones", func() {
 
-		var sysInfo systemInfo
+		var sysInfo, sysInfoNode1 systemInfo
 
 		BeforeEach(func() {
 			core0 := cpu.ProcessorCore{
@@ -448,6 +452,162 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 				TopologyInfo: &topologyInfo,
 				HtEnabled:    true,
 			}
+
+			// second system with different core IDs
+			core4node1 := cpu.ProcessorCore{
+				ID:                7,
+				Index:             4,
+				NumThreads:        2,
+				LogicalProcessors: []int{4, 12},
+			}
+			core5node1 := cpu.ProcessorCore{
+				ID:                4,
+				Index:             5,
+				NumThreads:        2,
+				LogicalProcessors: []int{5, 13},
+			}
+			core6node1 := cpu.ProcessorCore{
+				ID:                6,
+				Index:             6,
+				NumThreads:        2,
+				LogicalProcessors: []int{6, 14},
+			}
+			core7node1 := cpu.ProcessorCore{
+				ID:                5,
+				Index:             7,
+				NumThreads:        2,
+				LogicalProcessors: []int{7, 15},
+			}
+
+			core8node1 := cpu.ProcessorCore{
+				ID:                0,
+				Index:             8,
+				NumThreads:        2,
+				LogicalProcessors: []int{16, 24},
+			}
+			core9node1 := cpu.ProcessorCore{
+				ID:                1,
+				Index:             9,
+				NumThreads:        2,
+				LogicalProcessors: []int{17, 25},
+			}
+			core10node1 := cpu.ProcessorCore{
+				ID:                2,
+				Index:             10,
+				NumThreads:        2,
+				LogicalProcessors: []int{18, 26},
+			}
+			core11node1 := cpu.ProcessorCore{
+				ID:                3,
+				Index:             11,
+				NumThreads:        2,
+				LogicalProcessors: []int{19, 27},
+			}
+			core12node1 := cpu.ProcessorCore{
+				ID:                5,
+				Index:             12,
+				NumThreads:        2,
+				LogicalProcessors: []int{20, 28},
+			}
+
+			topologyInfoNodesNode1 := []*topology.Node{
+				{
+					ID: 0,
+					Cores: []*cpu.ProcessorCore{
+						&core0,
+						&core1,
+						&core2,
+						&core3,
+					},
+				},
+				{
+					ID: 1,
+					Cores: []*cpu.ProcessorCore{
+						&core4node1,
+						&core5node1,
+						&core6node1,
+						&core7node1,
+					},
+				},
+				{
+					ID: 2,
+					Cores: []*cpu.ProcessorCore{
+						&core8node1,
+						&core9node1,
+						&core10node1,
+						&core11node1,
+					},
+				},
+				{
+					ID: 3,
+					Cores: []*cpu.ProcessorCore{
+						&core12node1,
+						&core13,
+						&core14,
+						&core15,
+					},
+				},
+			}
+
+			topologyInfoNode1 := topology.Info{
+				Architecture: topology.ARCHITECTURE_NUMA,
+				Nodes:        topologyInfoNodesNode1,
+			}
+
+			processorsNode1 := []*cpu.Processor{
+				{
+					ID:         0,
+					NumCores:   8,
+					NumThreads: 16,
+					Vendor:     "redhat",
+					Model:      "rh-testing",
+					Cores: []*cpu.ProcessorCore{
+						&core0,
+						&core1,
+						&core2,
+						&core3,
+						&core4node1,
+						&core5node1,
+						&core6node1,
+						&core7node1,
+					},
+				},
+				{
+					ID:         1,
+					NumCores:   8,
+					NumThreads: 16,
+					Vendor:     "redhat",
+					Model:      "rh-testing",
+					Cores: []*cpu.ProcessorCore{
+						&core8node1,
+						&core9node1,
+						&core10node1,
+						&core11node1,
+						&core12node1,
+						&core13,
+						&core14,
+						&core15,
+					},
+				},
+			}
+
+			cpuInfoNode1 := cpu.Info{
+				TotalCores:   16,
+				TotalThreads: 32,
+				Processors:   processorsNode1,
+			}
+
+			extCpuInfoNode1 := extendedCPUInfo{
+				CpuInfo:                  &cpuInfoNode1,
+				NumLogicalProcessorsUsed: make(map[int]int),
+				LogicalProcessorsUsed:    make(map[int]struct{}),
+			}
+
+			sysInfoNode1 = systemInfo{
+				CpuInfo:      &extCpuInfoNode1,
+				TopologyInfo: &topologyInfoNode1,
+				HtEnabled:    true,
+			}
 		})
 
 		It("diag0002 can offline a full socket", func() {
@@ -474,6 +634,22 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			Expect(offlined.Intersection(reserved).IsEmpty()).To(BeTrue())
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
 			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
+
+			reservedNode1, isolatedNode1, offlinedNode1, err := CalculateCPUSets(&sysInfoNode1, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("ensure that PPC calculated same sets on another nodes but different core IDs")
+			Expect(reservedNode1).To(Equal(reserved))
+			Expect(isolatedNode1).To(Equal(isolated))
+			Expect(offlinedNode1).To(Equal(offlined))
+
+			// ensure that siblings of the CPUs in each category belong to the same category (reserved/offlined/isolated)
+			reservedSiblings := getSiblingsListForCPUSet(sysInfo, reserved)
+			isolatedSiblings := getSiblingsListForCPUSet(sysInfo, isolated)
+			offlinedSiblings := getSiblingsListForCPUSet(sysInfo, offlined)
+			Expect(reservedSiblings).To(Equal(reserved))
+			Expect(isolatedSiblings).To(Equal(isolated))
+			Expect(offlinedSiblings).To(Equal(offlined))
 
 			Expect(reserved.String()).To(Equal("0-3,8-11"))
 			Expect(isolated.String()).To(Equal("4-7,12-15"))
@@ -505,6 +681,17 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
 			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
 
+			reservedNode1, isolatedNode1, offlinedNode1, err := CalculateCPUSets(&sysInfoNode1, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("ensure that PPC calculated same sets on another nodes but different core IDs")
+			Expect(reservedNode1).To(Equal(reserved))
+			Expect(isolatedNode1).To(Equal(isolated))
+			Expect(offlinedNode1).To(Equal(offlined))
+
+			reservedSiblings := getSiblingsListForCPUSet(sysInfo, reserved)
+			Expect(reservedSiblings).To(Equal(reserved))
+
 			Expect(reserved.String()).To(Equal("0,4,8,12,16,20,24,28"))
 			Expect(isolated.String()).To(Equal("6-7,17-19,21-23"))
 			Expect(offlined.String()).To(Equal("1-3,5,9-11,13-15,25-27,29-31"))
@@ -534,6 +721,17 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			Expect(offlined.Intersection(reserved).IsEmpty()).To(BeTrue())
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
 			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
+
+			reservedNode1, isolatedNode1, offlinedNode1, err := CalculateCPUSets(&sysInfoNode1, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("ensure that PPC calculated same sets on another nodes but different core IDs")
+			Expect(reservedNode1).To(Equal(reserved))
+			Expect(isolatedNode1).To(Equal(isolated))
+			Expect(offlinedNode1).To(Equal(offlined))
+
+			reservedSiblings := getSiblingsListForCPUSet(sysInfo, reserved)
+			Expect(reservedSiblings).To(Equal(reserved))
 
 			Expect(reserved.String()).To(Equal("0-3,8-11"))
 			Expect(isolated.String()).To(Equal("16-23"))
@@ -565,6 +763,17 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
 			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
 
+			reservedNode1, isolatedNode1, offlinedNode1, err := CalculateCPUSets(&sysInfoNode1, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("ensure that PPC calculated same sets on another nodes but different core IDs")
+			Expect(reservedNode1).To(Equal(reserved))
+			Expect(isolatedNode1).To(Equal(isolated))
+			Expect(offlinedNode1).To(Equal(offlined))
+
+			reservedSiblings := getSiblingsListForCPUSet(sysInfo, reserved)
+			Expect(reservedSiblings).To(Equal(reserved))
+
 			Expect(reserved.String()).To(Equal("0-3,8-11"))
 			Expect(isolated.String()).To(Equal("4-7,16-23"))
 			Expect(offlined.String()).To(Equal("12-15,24-31"))
@@ -595,6 +804,17 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
 			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
 
+			reservedNode1, isolatedNode1, offlinedNode1, err := CalculateCPUSets(&sysInfoNode1, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("ensure that PPC calculated same sets on another nodes but different core IDs")
+			Expect(reservedNode1).To(Equal(reserved))
+			Expect(isolatedNode1).To(Equal(isolated))
+			Expect(offlinedNode1).To(Equal(offlined))
+
+			reservedSiblings := getSiblingsListForCPUSet(sysInfo, reserved)
+			Expect(reservedSiblings).To(Equal(reserved))
+
 			Expect(reserved.String()).To(Equal("0-3,8-11"))
 			Expect(isolated.String()).To(Equal("4-7,15"))
 			Expect(offlined.String()).To(Equal("12-14,16-31"))
@@ -624,6 +844,14 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			Expect(offlined.Intersection(reserved).IsEmpty()).To(BeTrue())
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
 			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
+
+			reservedNode1, isolatedNode1, offlinedNode1, err := CalculateCPUSets(&sysInfoNode1, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("ensure that PPC calculated same sets on another nodes but different core IDs")
+			Expect(reservedNode1).To(Equal(reserved))
+			Expect(isolatedNode1).To(Equal(isolated))
+			Expect(offlinedNode1).To(Equal(offlined))
 
 			Expect(reserved.String()).To(Equal("0-3"))
 			Expect(isolated.String()).To(Equal("4-7"))
@@ -662,6 +890,12 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6,8,10,12,14,16,18,40,42,44,46,48,50,52,54,56,58"))
 			Expect(isolatedCPUSet.String()).To(Equal("1,3,5,7,9,11,13,15,17,19-39,41,43,45,47,49,51,53,55,57,59-79"))
 			Expect(offlinedCPUSet.String()).To(BeEmpty())
+
+			// ensure that siblings of the CPUs in each category belong to the same category (reserved/offlined/isolated)
+			reservedSiblings := getSiblingsListForCPUSet(*systemInfo, reservedCPUSet)
+			isolatedSiblings := getSiblingsListForCPUSet(*systemInfo, isolatedCPUSet)
+			Expect(reservedSiblings).To(Equal(reservedCPUSet))
+			Expect(isolatedSiblings).To(Equal(isolatedCPUSet))
 		})
 		It("Ensure reserved CPUs populated are correctly when splitReservedCPUsAcrossNUMA is enabled and disableHT is disabled", func() {
 			reservedCPUCount = 20 // random number, no special meaning
@@ -679,6 +913,12 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(reservedCPUSet.String()).To(Equal("0-9,40-49"))
 			Expect(isolatedCPUSet.String()).To(Equal("10-39,50-79"))
 			Expect(offlinedCPUSet.String()).To(BeEmpty())
+
+			// ensure that siblings of the CPUs in each category belong to the same category (reserved/offlined/isolated)
+			reservedSiblings := getSiblingsListForCPUSet(*systemInfo, reservedCPUSet)
+			isolatedSiblings := getSiblingsListForCPUSet(*systemInfo, isolatedCPUSet)
+			Expect(reservedSiblings).To(Equal(reservedCPUSet))
+			Expect(isolatedSiblings).To(Equal(isolatedCPUSet))
 		})
 		It("Errors out in case negative reservedCPUCount is specified", func() {
 			reservedCPUCount = -2 // random negative number, no special meaning
@@ -943,6 +1183,14 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reservedCPUSet.Union(offlinedCPUSet).Union(isolatedCPUSet)).To(Equal(totalCPUSet))
 
+			// ensure that siblings of the CPUs in each category belong to the same category (reserved/offlined/isolated)
+			reservedSiblings := getSiblingsListForCPUSet(*systemInfo, reservedCPUSet)
+			isolatedSiblings := getSiblingsListForCPUSet(*systemInfo, isolatedCPUSet)
+			offlinedSiblings := getSiblingsListForCPUSet(*systemInfo, offlinedCPUSet)
+			Expect(reservedSiblings).To(Equal(reservedCPUSet))
+			Expect(isolatedSiblings).To(Equal(isolatedCPUSet))
+			Expect(offlinedSiblings).To(Equal(offlinedCPUSet))
+
 			Expect(offlinedCPUSet.String()).To(Equal("1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39,41,43,45,47,49,51,53,55,57,59,61,63,65,67,69,71,73,75,77,79"))
 			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6,8,10,12,14,16,18,40,42,44,46,48,50,52,54,56,58"))
 			Expect(isolatedCPUSet.String()).To(Equal("20,22,24,26,28,30,32,34,36,38,60,62,64,66,68,70,72,74,76,78"))
@@ -974,6 +1222,9 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			totalCPUSet, err := GetTotalCPUSetFromGHW(handle, disableHT)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reservedCPUSet.Union(offlinedCPUSet).Union(isolatedCPUSet)).To(Equal(totalCPUSet))
+
+			reservedSiblings := getSiblingsListForCPUSet(*systemInfo, reservedCPUSet)
+			Expect(reservedSiblings).To(Equal(reservedCPUSet))
 
 			Expect(offlinedCPUSet.String()).To(Equal("10,12,14,16,18,20,22,24,26,28,50-79"))
 			Expect(reservedCPUSet.String()).To(Equal("0-9,40-49"))
@@ -1008,6 +1259,9 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reservedCPUSet.Union(offlinedCPUSet).Union(isolatedCPUSet)).To(Equal(totalCPUSet))
 
+			reservedSiblings := getSiblingsListForCPUSet(*systemInfo, reservedCPUSet)
+			Expect(reservedSiblings).To(Equal(reservedCPUSet))
+
 			Expect(offlinedCPUSet.String()).To(Equal("20,22,24,26,28,30,32,34,36,38,41,43,45,47,49,51,53,55,57,59-79"))
 			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6,8,10,12,14,16,18,40,42,44,46,48,50,52,54,56,58"))
 			Expect(isolatedCPUSet.String()).To(Equal("1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39"))
@@ -1041,6 +1295,9 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reservedCPUSet.Union(offlinedCPUSet).Union(isolatedCPUSet)).To(Equal(totalCPUSet))
 
+			reservedSiblings := getSiblingsListForCPUSet(*systemInfo, reservedCPUSet)
+			Expect(reservedSiblings).To(Equal(reservedCPUSet))
+
 			Expect(offlinedCPUSet.String()).To(Equal("41,43,45,47,49,51,53,55,57,59-60,62,64,66,68,70,72,74,76,78"))
 			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6,8,10,12,14,16,18,40,42,44,46,48,50,52,54,56,58"))
 			Expect(isolatedCPUSet.String()).To(Equal("1,3,5,7,9,11,13,15,17,19-39,61,63,65,67,69,71,73,75,77,79"))
@@ -1073,6 +1330,9 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			totalCPUSet, err := GetTotalCPUSetFromGHW(handle, disableHT)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reservedCPUSet.Union(offlinedCPUSet).Union(isolatedCPUSet)).To(Equal(totalCPUSet))
+
+			reservedSiblings := getSiblingsListForCPUSet(*systemInfo, reservedCPUSet)
+			Expect(reservedSiblings).To(Equal(reservedCPUSet))
 
 			Expect(offlinedCPUSet.String()).To(Equal("1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39,41,43,45,47,49,51,53,55,57,59-69,71,73,75,77,79"))
 			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6,8,10,12,14,16,18,40,42,44,46,48,50,52,54,56,58"))
@@ -1374,8 +1634,11 @@ var _ = Describe("PerformanceProfileCreator: Ensuring Nodes hardware equality", 
 			Expect(err).ToNot(HaveOccurred())
 
 			nodeHandles := []*GHWHandler{node1Handle, node2Handle}
-			err = EnsureNodesHaveTheSameHardware(nodeHandles)
+			tols := TolerationSet{}
+			err = EnsureNodesHaveTheSameHardware(nodeHandles, tols)
 			Expect(err).ToNot(HaveOccurred())
+			_, ok := tols[DifferentCoreIDs]
+			Expect(ok).To(BeFalse())
 		})
 	})
 
@@ -1395,7 +1658,7 @@ var _ = Describe("PerformanceProfileCreator: Ensuring Nodes hardware equality", 
 			Expect(err).ToNot(HaveOccurred())
 
 			nodeHandles := []*GHWHandler{node1Handle, node2Handle}
-			err = EnsureNodesHaveTheSameHardware(nodeHandles)
+			err = EnsureNodesHaveTheSameHardware(nodeHandles, TolerationSet{})
 			Expect(err).To(HaveOccurred())
 		})
 	})
@@ -1454,34 +1717,62 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Function ensureSameTopo
 
 	Context("Check if ensureSameTopology is working correctly", func() {
 		It("nodes with similar topology should not return error", func() {
-			err := ensureSameTopology(&originTopology, &mutatedTopology)
+			tols := TolerationSet{}
+			err := ensureSameTopology(&originTopology, &mutatedTopology, tols)
 			Expect(err).ToNot(HaveOccurred())
+			_, ok := tols[DifferentCoreIDs]
+			Expect(ok).To(BeFalse())
 		})
 		It("nodes with different architecture should return error", func() {
 			mutatedTopology.Architecture = topology.ARCHITECTURE_SMP
-			err := ensureSameTopology(&originTopology, &mutatedTopology)
+			tols := TolerationSet{}
+			err := ensureSameTopology(&originTopology, &mutatedTopology, tols)
 			Expect(err).To(HaveOccurred())
+			_, ok := tols[DifferentCoreIDs]
+			Expect(ok).To(BeFalse())
 		})
 		It("nodes with different number of NUMA nodes should return error", func() {
 			mutatedTopology.Nodes = mutatedTopology.Nodes[1:]
-			err := ensureSameTopology(&originTopology, &mutatedTopology)
+			tols := TolerationSet{}
+			err := ensureSameTopology(&originTopology, &mutatedTopology, tols)
 			Expect(err).To(HaveOccurred())
+			_, ok := tols[DifferentCoreIDs]
+			Expect(ok).To(BeFalse())
 		})
 		It("nodes with different number threads per core should return error", func() {
 			mutatedTopology.Nodes[1].Cores[1].NumThreads = 1
-			err := ensureSameTopology(&originTopology, &mutatedTopology)
+			tols := TolerationSet{}
+			err := ensureSameTopology(&originTopology, &mutatedTopology, tols)
 			Expect(err).To(HaveOccurred())
+			_, ok := tols[DifferentCoreIDs]
+			Expect(ok).To(BeFalse())
 		})
 		It("nodes with different thread IDs should return error", func() {
 			mutatedTopology.Nodes[1].Cores[1].LogicalProcessors[1] = 15
-			err := ensureSameTopology(&originTopology, &mutatedTopology)
+			tols := TolerationSet{}
+			err := ensureSameTopology(&originTopology, &mutatedTopology, tols)
 			Expect(err).To(HaveOccurred())
+			_, ok := tols[DifferentCoreIDs]
+			Expect(ok).To(BeFalse())
 		})
 		It("same cores with different indices should still considered equivalent", func() {
 			mutatedTopology.Nodes[0].Cores[0].Index = 1
 			mutatedTopology.Nodes[0].Cores[1].Index = 0
-			err := ensureSameTopology(&originTopology, &mutatedTopology)
+			tols := TolerationSet{}
+			err := ensureSameTopology(&originTopology, &mutatedTopology, tols)
 			Expect(err).ToNot(HaveOccurred())
+			_, ok := tols[DifferentCoreIDs]
+			Expect(ok).To(BeFalse())
+		})
+		It("same cores with different Core IDs should still considered equivalent but with a warning", func() {
+			mutatedTopology.Nodes[0].Cores[0].ID = 3
+			tols := TolerationSet{}
+			err := ensureSameTopology(&originTopology, &mutatedTopology, tols)
+			Expect(err).ToNot(HaveOccurred())
+			val, ok := tols[DifferentCoreIDs]
+			Expect(ok).To(BeTrue())
+			Expect(val).To(BeTrue())
+
 		})
 	})
 })
@@ -1623,4 +1914,22 @@ func GetTotalCPUSetFromGHW(handler *GHWHandler, disableHT bool) (cpuset.CPUSet, 
 		return cpuset.CPUSet{}, err
 	}
 	return totalCPUSet, nil
+}
+
+func getSiblingsListForCPUSet(sysinfo systemInfo, cpus cpuset.CPUSet) cpuset.CPUSet {
+	cpuInfo := sysinfo.CpuInfo.CpuInfo
+	siblingsSet := sets.Set[int]{}
+	for _, cpu := range cpus.List() {
+		for _, physicalProc := range cpuInfo.Processors {
+			cores := physicalProc.Cores
+			for _, core := range cores {
+				if slices.Contains(core.LogicalProcessors, cpu) {
+					siblingsSet.Insert(core.LogicalProcessors...)
+				}
+			}
+
+		}
+	}
+	siblingsInt := siblingsSet.UnsortedList()
+	return cpuset.New(siblingsInt...)
 }
