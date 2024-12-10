@@ -178,6 +178,18 @@ func testProfile() (*performancev2.PerformanceProfile, error) {
 
 	hugePagesSize := performancev2.HugePageSize("1G")
 
+	// This implements a workaround to prevent CI failures on specific hardware using an Intel E810 network card.
+	// When UserLevelNetworking is set to True, tuned attempts to set the combined channel count equal to the reserved CPUs but fails with the following error:
+	// tuned.utils.commands: Executing 'ethtool -L ens2f0 combined 1' error: netlink error: Device or resource busy
+	// The error occurs because the ice driver: ens2f0: Cannot change channels when RDMA is active.
+	// This issue causes the tuned profile to degrade.
+	// As a temporary solution, by adding 'module_blacklist=irdma' to the kernel Args we will block RDMA, to avoid these errors.
+	// Reference: OCPBUGS-46426
+
+	additionalKernelArgs := []string{
+		"module_blacklist=irdma",
+	}
+
 	profile := &performancev2.PerformanceProfile{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PerformanceProfile",
@@ -217,6 +229,7 @@ func testProfile() (*performancev2.PerformanceProfile, error) {
 				HighPowerConsumption:  pointer.Bool(false),
 				PerPodPowerManagement: pointer.Bool(false),
 			},
+			AdditionalKernelArgs: additionalKernelArgs,
 		},
 	}
 	// If the machineConfigPool is master, the automatic selector from PAO won't work
