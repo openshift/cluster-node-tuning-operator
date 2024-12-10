@@ -64,32 +64,28 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 	templateArgs[templatePerformanceProfileName] = profile.Name
 
 	if profile.Spec.CPU.Isolated != nil {
-		templateArgs[templateIsolatedCpus] = string(*profile.Spec.CPU.Isolated)
-		if profile.Spec.CPU.BalanceIsolated != nil && !*profile.Spec.CPU.BalanceIsolated {
-			templateArgs[templateStaticIsolation] = strconv.FormatBool(true)
+		minifiedCpuSet, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse isolated cpuset: %v", err)
 		}
+		templateArgs[templateIsolatedCpus] = minifiedCpuSet.String()
+		templateArgs[templateIsolatedCpuList] = minifiedCpuSet.List()
+	}
+
+	if profile.Spec.CPU.Reserved != nil {
+		minifiedCpuSet, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse reserved cpuset: %v", err)
+		}
+		templateArgs[templateReservedCpuList] = minifiedCpuSet.List()
+	}
+
+	if profile.Spec.CPU.BalanceIsolated != nil && !*profile.Spec.CPU.BalanceIsolated {
+		templateArgs[templateStaticIsolation] = strconv.FormatBool(true)
 	}
 
 	if profile.Spec.HardwareTuning != nil {
-		isolatedCpuSet, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
-		if err != nil {
-			return nil, err
-		}
-		isolatedCpuString := components.ListToString(isolatedCpuSet.List())
-		// converts a string to a string slice
-		isolatedCpuList := strings.SplitN(isolatedCpuString, ",", len(isolatedCpuString))
-
-		reservedSet, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
-		if err != nil {
-			return nil, err
-		}
-		reservedCpuString := components.ListToString(reservedSet.List())
-		// converts a string to a string slice
-		reservedCpuList := strings.SplitN(reservedCpuString, ",", len(reservedCpuString))
-
 		templateArgs[templateHardwareTuning] = strconv.FormatBool(true)
-		templateArgs[templateIsolatedCpuList] = isolatedCpuList
-		templateArgs[templateReservedCpuList] = reservedCpuList
 		templateArgs[templateIsolatedCpuMaxFreq] = int(*profile.Spec.HardwareTuning.IsolatedCpuFreq)
 		templateArgs[templateReservedCpuMaxFreq] = int(*profile.Spec.HardwareTuning.ReservedCpuFreq)
 	}
