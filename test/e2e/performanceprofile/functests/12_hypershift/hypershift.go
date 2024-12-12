@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -112,7 +112,7 @@ var _ = Describe("Multiple performance profile in hypershift", Label("Hypershift
 
 			By("Modifying the second profile CPU and NUMA configurations")
 			secondProfile.Spec.CPU = &performancev2.CPU{
-				BalanceIsolated: pointer.Bool(false),
+				BalanceIsolated: ptr.To(false),
 				Reserved:        &reserved,
 				Isolated:        &isolated,
 			}

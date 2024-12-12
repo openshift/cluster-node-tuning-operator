@@ -32,15 +32,16 @@ var _ = ginkgo.Describe("[basic][tuned_errors_and_recovery] Cause TuneD daemon e
 
 		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of ginkgo.It()
 		ginkgo.AfterEach(func() {
+			// Ignore failures to cleanup resources which are already deleted or not yet created.
 			ginkgo.By("cluster changes rollback")
 			if node != nil {
-				util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelCauseTunedFailure+"-")
+				_, _, _ = util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelCauseTunedFailure+"-")
 			}
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileCauseTunedFailure)
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileDummy)
+			_, _, _ = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileCauseTunedFailure)
+			_, _, _ = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileDummy)
 			if pod != nil {
 				// Without removing the profile directory this e2e test fails when invoking for the second time on the same system.
-				util.ExecAndLogCommand("oc", "exec", "-n", ntoconfig.WatchNamespace(), pod.Name, "--", "rm", "-rf", "/etc/tuned/openshift-dummy")
+				_, _, _ = util.ExecAndLogCommand("oc", "exec", "-n", ntoconfig.WatchNamespace(), pod.Name, "--", "rm", "-rf", "/etc/tuned/openshift-dummy")
 			}
 		})
 

@@ -30,9 +30,11 @@ var _ = ginkgo.Describe("[reboots][kernel_parameter_add_rm] Node Tuning Operator
 		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of ginkgo.It()
 		ginkgo.AfterEach(func() {
 			// The cleanup will not work during the time API server is unavailable, e.g. during SNO reboot.
+
+			// Ignore failures to cleanup resources which are already deleted or not yet created.
 			ginkgo.By("cluster changes rollback")
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileParent)
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileChild)
+			_, _, _ = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileParent)
+			_, _, _ = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileChild)
 		})
 
 		ginkgo.It("kernel parameters set", func() {
@@ -89,6 +91,7 @@ var _ = ginkgo.Describe("[reboots][kernel_parameter_add_rm] Node Tuning Operator
 
 			ginkgo.By(fmt.Sprintf("getting the current %s value in Pod %s", procCmdline, pod.Name))
 			cmdlineNew, err = util.WaitForCmdInPod(pollInterval, waitDuration, pod, cmdCatCmdline...)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			util.Logf("%s has %s: %s", pod.Name, procCmdline, cmdlineNew)
 
 			ginkgo.By("ensuring the custom master child profile was set")

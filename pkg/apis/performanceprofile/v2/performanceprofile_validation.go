@@ -216,11 +216,11 @@ func validateNoIntersectionExists(lists *components.CPULists, allErrs field.Erro
 func (r *PerformanceProfile) validateSelectors() field.ErrorList {
 	var allErrs field.ErrorList
 
-	if r.Spec.MachineConfigLabel != nil && len(r.Spec.MachineConfigLabel) > 1 {
+	if len(r.Spec.MachineConfigLabel) > 1 {
 		allErrs = append(allErrs, field.Invalid(field.NewPath("spec.machineConfigLabel"), r.Spec.MachineConfigLabel, "you should provide only 1 MachineConfigLabel"))
 	}
 
-	if r.Spec.MachineConfigPoolSelector != nil && len(r.Spec.MachineConfigPoolSelector) > 1 {
+	if len(r.Spec.MachineConfigPoolSelector) > 1 {
 		allErrs = append(allErrs, field.Invalid(field.NewPath("spec.machineConfigPoolSelector"), r.Spec.MachineConfigLabel, "you should provide only 1 MachineConfigPoolSelector"))
 	}
 

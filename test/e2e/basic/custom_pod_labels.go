@@ -29,11 +29,12 @@ var _ = ginkgo.Describe("[basic][custom_pod_labels] Node Tuning Operator custom 
 
 		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of ginkgo.It()
 		ginkgo.AfterEach(func() {
+			// Ignore failures to cleanup resources which are already deleted or not yet created.
 			ginkgo.By("cluster changes rollback")
 			if pod != nil {
-				util.ExecAndLogCommand("oc", "label", "pod", "--overwrite", "-n", ntoconfig.WatchNamespace(), pod.Name, podLabelIngress+"-")
+				_, _, _ = util.ExecAndLogCommand("oc", "label", "pod", "--overwrite", "-n", ntoconfig.WatchNamespace(), pod.Name, podLabelIngress+"-")
 			}
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileIngress)
+			_, _, _ = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileIngress)
 		})
 
 		ginkgo.It(fmt.Sprintf("%s set", sysctlVar), func() {

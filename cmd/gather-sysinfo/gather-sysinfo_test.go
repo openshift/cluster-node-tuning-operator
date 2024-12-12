@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -63,7 +62,7 @@ func TestCollectMachineInfo(t *testing.T) {
 		t.Errorf("Collection of machine info failed: %v", err)
 	}
 
-	content, err := ioutil.ReadFile(destFile)
+	content, err := os.ReadFile(destFile)
 	if err != nil {
 		t.Errorf("Reading of generated output failed: %v", err)
 	}

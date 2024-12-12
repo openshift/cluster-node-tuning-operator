@@ -30,12 +30,13 @@ var _ = ginkgo.Describe("[basic][tuned_builtin_expand] Node Tuning Operator cust
 
 		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of ginkgo.It()
 		ginkgo.AfterEach(func() {
+			// Ignore failures to cleanup resources which are already deleted or not yet created.
 			ginkgo.By("cluster changes rollback")
 			if node != nil {
-				util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelBuiltinExpand+"-")
+				_, _, _ = util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelBuiltinExpand+"-")
 			}
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileBuiltinExpand)
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileHugepages)
+			_, _, _ = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileBuiltinExpand)
+			_, _, _ = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileHugepages)
 		})
 
 		ginkgo.It(fmt.Sprintf("%s set", sysctlVar), func() {

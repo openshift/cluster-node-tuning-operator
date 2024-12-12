@@ -24,6 +24,7 @@ func TestNodeTuningOperator(t *testing.T) {
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	nodeCount, err := util.GetClusterNodes(cs)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	if nodeCount != 1 || controlPlaneTopology != configv1.SingleReplicaTopologyMode {
 		// This does not seem to be an SNO cluster.
 		util.Logf("the cluster does not seem to be an SNO cluster, skipping test suite")

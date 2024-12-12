@@ -43,7 +43,9 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 	)
 
 	testutils.CustomBeforeAll(func() {
-		workerRTNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
+		var err error
+
+		workerRTNodes, err = nodes.GetByLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 
 		workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes)
@@ -60,6 +62,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			}
 		} else {
 			hostedClusterName, err := hypershift.GetHostedClusterName()
+			Expect(err).ToNot(HaveOccurred())
 			np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
 			Expect(err).ToNot(HaveOccurred())
 			poolName = client.ObjectKeyFromObject(np).String()
@@ -162,7 +165,9 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 				evictionMemory := kubeletConfig.EvictionHard["memory.available"]
 				kubeReserved := kubeletConfig.KubeReserved["memory"]
 				evictionMemoryInt, err := strconv.ParseInt(strings.TrimSuffix(evictionMemory, "Mi"), 10, 64)
+				Expect(err).ToNot(HaveOccurred())
 				kubeReservedMemoryInt, err := strconv.ParseInt(strings.TrimSuffix(kubeReserved, "Mi"), 10, 64)
+				Expect(err).ToNot(HaveOccurred())
 				systemReservedResource := resource.NewQuantity(300*1024*1024, resource.BinarySI)
 				kubeReservedMemoryResource := resource.NewQuantity(kubeReservedMemoryInt*1024*1024, resource.BinarySI)
 				evictionMemoryResource := resource.NewQuantity(evictionMemoryInt*1024*1024, resource.BinarySI)
@@ -173,7 +178,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			}
 		})
 		It("[test_id:45495] Test setting PAO managed parameters", func() {
-			var paoParameters string = ""
+			var paoParameters string
 			if *profile.Spec.NUMA.TopologyPolicy == "single-numa-node" {
 				paoParameters = "{\"topologyManagerPolicy\":\"restricted\"}"
 			} else {

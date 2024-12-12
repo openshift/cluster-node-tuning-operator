@@ -16,7 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/cpuset"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -170,7 +170,7 @@ func testProfile() (*performancev2.PerformanceProfile, error) {
 					{
 						Size:  "1G",
 						Count: 1,
-						Node:  pointer.Int32(0),
+						Node:  ptr.To(int32(0)),
 					},
 					{
 						Size:  "2M",
@@ -180,18 +180,18 @@ func testProfile() (*performancev2.PerformanceProfile, error) {
 			},
 			NodeSelector: testutils.NodeSelectorLabels,
 			RealTimeKernel: &performancev2.RealTimeKernel{
-				Enabled: pointer.Bool(true),
+				Enabled: ptr.To(true),
 			},
 			NUMA: &performancev2.NUMA{
-				TopologyPolicy: pointer.String("single-numa-node"),
+				TopologyPolicy: ptr.To("single-numa-node"),
 			},
 			Net: &performancev2.Net{
-				UserLevelNetworking: pointer.Bool(true),
+				UserLevelNetworking: ptr.To(true),
 			},
 			WorkloadHints: &performancev2.WorkloadHints{
-				RealTime:              pointer.Bool(true),
-				HighPowerConsumption:  pointer.Bool(false),
-				PerPodPowerManagement: pointer.Bool(false),
+				RealTime:              ptr.To(true),
+				HighPowerConsumption:  ptr.To(false),
+				PerPodPowerManagement: ptr.To(false),
 			},
 		},
 	}

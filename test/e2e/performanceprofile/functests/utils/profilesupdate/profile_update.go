@@ -25,7 +25,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 )
 
-// UpdateIsolatedReservedCpus Updates the current performance profile with new sets of isolated and reserved cpus, and returns true if the update was successfull and false otherwise
+// UpdateIsolatedReservedCpus Updates the current performance profile with new sets of isolated and reserved cpus, and returns true if the update was successful and false otherwise
 func UpdateIsolatedReservedCpus(isolatedSet performancev2.CPUSet, reservedSet performancev2.CPUSet) error {
 	profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 	if err != nil {

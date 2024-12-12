@@ -164,7 +164,7 @@ var _ = Describe("PerformanceProfileCreator: MCP and Node Matching in SNO", func
 var _ = Describe("PerformanceProfileCreator: Getting MCP from Must Gather", func() {
 	var mcpName, mcpNodeSelectorKey, mustGatherDirAbsolutePath string
 	var err error
-	Context("Identifying Nodes targetted by MCP", func() {
+	Context("Identifying Nodes targeted by MCP", func() {
 		It("gets the MCP successfully", func() {
 			mcpName = "worker-cnf"
 			mcpNodeSelectorKey = "node-role.kubernetes.io/worker-cnf"
@@ -1927,7 +1927,6 @@ func getSiblingsListForCPUSet(sysinfo systemInfo, cpus cpuset.CPUSet) cpuset.CPU
 					siblingsSet.Insert(core.LogicalProcessors...)
 				}
 			}
-
 		}
 	}
 	siblingsInt := siblingsSet.UnsortedList()

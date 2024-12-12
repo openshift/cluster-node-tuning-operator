@@ -11,7 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/cpuset"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -79,7 +79,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 		if profile.Spec.Net == nil {
 			By("Enable UserLevelNetworking in Profile")
 			profile.Spec.Net = &performancev2.Net{
-				UserLevelNetworking: pointer.Bool(true),
+				UserLevelNetworking: ptr.To(true),
 			}
 			By("Updating the performance profile")
 			profiles.UpdateWithRetry(profile)
@@ -127,7 +127,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 			if profile.Spec.Net.UserLevelNetworking != nil && *profile.Spec.Net.UserLevelNetworking && len(profile.Spec.Net.Devices) == 0 {
 				By("Enable UserLevelNetworking and add Devices in Profile")
 				profile.Spec.Net = &performancev2.Net{
-					UserLevelNetworking: pointer.Bool(true),
+					UserLevelNetworking: ptr.To(true),
 					Devices: []performancev2.Device{
 						{
 							InterfaceName: &device,
@@ -175,7 +175,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 			if profile.Spec.Net.UserLevelNetworking != nil && *profile.Spec.Net.UserLevelNetworking && len(profile.Spec.Net.Devices) == 0 {
 				By("Enable UserLevelNetworking and add Devices in Profile")
 				profile.Spec.Net = &performancev2.Net{
-					UserLevelNetworking: pointer.Bool(true),
+					UserLevelNetworking: ptr.To(true),
 					Devices: []performancev2.Device{
 						{
 							InterfaceName: &devicePattern,
@@ -231,7 +231,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 			if profile.Spec.Net.UserLevelNetworking != nil && *profile.Spec.Net.UserLevelNetworking && len(profile.Spec.Net.Devices) == 0 {
 				By("Enable UserLevelNetworking and add Devices in Profile")
 				profile.Spec.Net = &performancev2.Net{
-					UserLevelNetworking: pointer.Bool(true),
+					UserLevelNetworking: ptr.To(true),
 					Devices: []performancev2.Device{
 						{
 							InterfaceName: &devicePattern,
@@ -286,7 +286,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 			if profile.Spec.Net.UserLevelNetworking != nil && *profile.Spec.Net.UserLevelNetworking && len(profile.Spec.Net.Devices) == 0 {
 				By("Enable UserLevelNetworking and add DeviceID, VendorID and Interface in Profile")
 				profile.Spec.Net = &performancev2.Net{
-					UserLevelNetworking: pointer.Bool(true),
+					UserLevelNetworking: ptr.To(true),
 					Devices: []performancev2.Device{
 						{
 							InterfaceName: &device,
@@ -364,6 +364,7 @@ func checkDeviceSupport(ctx context.Context, workernodes []corev1.Node, nodesDev
 				cmdCombinedChannelsCurrent := []string{"bash", "-c",
 					fmt.Sprintf("ethtool -l %s | sed -n '/Current hardware settings:/,/Combined:/{s/^Combined:\\s*//p}'", d)}
 				out, err := pods.WaitForPodOutput(ctx, testclient.K8sClient, tunedPod, cmdCombinedChannelsCurrent)
+				Expect(err).ToNot(HaveOccurred())
 				if strings.Contains(string(out), "n/a") {
 					fmt.Printf("Device %s doesn't support multiple queues\n", d)
 				} else {

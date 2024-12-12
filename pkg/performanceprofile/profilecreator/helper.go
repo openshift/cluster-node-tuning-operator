@@ -30,9 +30,6 @@ const (
 // TolerationSet records the data to be tolerated or warned about based on the tool handling
 type TolerationSet map[string]bool
 
-// This is a linter false positive, this function is used in unit tests.
-//
-//nolint:unused
 func newTestNode(nodeName string) *v1.Node {
 	n := v1.Node{}
 	n.Name = nodeName

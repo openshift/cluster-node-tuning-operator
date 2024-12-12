@@ -24,7 +24,7 @@ var _ = Describe("[performance]RT Kernel", Ordered, Label(string(label.Tier0)), 
 			func(profile performancev2.PerformanceProfile) bool {
 				if profile.Spec.RealTimeKernel != nil &&
 					profile.Spec.RealTimeKernel.Enabled != nil &&
-					*profile.Spec.RealTimeKernel.Enabled == true {
+					*profile.Spec.RealTimeKernel.Enabled {
 					return true
 				}
 				return false

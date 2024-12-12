@@ -28,9 +28,11 @@ var _ = ginkgo.Describe("[reboots][stalld] Node Tuning Operator installing syste
 		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of ginkgo.It()
 		ginkgo.AfterEach(func() {
 			// The cleanup will not work during the time API server is unavailable, e.g. during SNO reboot.
+
+			// Ignore failures to cleanup resources which are already deleted or not yet created.
 			ginkgo.By("cluster changes rollback")
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileStalldOff)
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileStalldOn)
+			_, _, _ = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileStalldOff)
+			_, _, _ = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileStalldOn)
 		})
 
 		ginkgo.It("stalld process started/stopped", func() {

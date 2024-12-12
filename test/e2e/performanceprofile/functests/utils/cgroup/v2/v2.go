@@ -58,7 +58,7 @@ func (cm *ControllersManager) Cpu(ctx context.Context, pod *corev1.Pod, containe
 	cfg.Quota = quotaAndPeriod[0]
 	cfg.Period = quotaAndPeriod[1]
 	cfg.Stat, err = stat(cm.k8sClient, pod, containerName, childName)
-	return cfg, nil
+	return cfg, err
 }
 
 // stat fetch cpu.stat values

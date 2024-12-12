@@ -125,7 +125,7 @@ func GetByName(nodeName string) (*corev1.Node, error) {
 	return node, nil
 }
 
-// GetNonPerformancesWorkers returns list of nodes with non matching perfomance profile labels
+// GetNonPerformancesWorkers returns list of nodes with non matching performance profile labels
 func GetNonPerformancesWorkers(nodeSelectorLabels map[string]string) ([]corev1.Node, error) {
 	nonPerformanceWorkerNodes := []corev1.Node{}
 	workerNodes, err := GetByRole(testutils.RoleWorker)
@@ -268,7 +268,7 @@ func GetSMTLevel(ctx context.Context, cpuID int, node *corev1.Node) int {
 	threadSiblingsList := testutils.ToString(out)
 	// how many thread sibling you have = SMT level
 	// example: 2-way SMT means 2 threads sibling for each thread
-	cpus, err := cpuset.Parse(strings.TrimSpace(string(threadSiblingsList)))
+	cpus, err := cpuset.Parse(strings.TrimSpace(threadSiblingsList))
 	ExpectWithOffset(1, err).ToNot(HaveOccurred())
 	return cpus.Size()
 }
@@ -302,12 +302,15 @@ func GetNumaNodes(ctx context.Context, node *corev1.Node) (map[int][]int, error)
 
 // GetCoreSiblings returns the siblings of core per numa node
 func GetCoreSiblings(ctx context.Context, node *corev1.Node) (map[int]map[int][]int, error) {
+	coreSiblings := make(map[int]map[int][]int)
 	lscpuCmd := []string{"lscpu", "-e=node,core,cpu", "-J"}
 	output, err := ExecCommand(ctx, node, lscpuCmd)
+	if err != nil {
+		return coreSiblings, err
+	}
 	out := testutils.ToString(output)
 	var result NumaNodes
 	var numaNode, core, cpu int
-	coreSiblings := make(map[int]map[int][]int)
 	err = json.Unmarshal([]byte(out), &result)
 	if err != nil {
 		return nil, err
@@ -332,7 +335,6 @@ func GetCoreSiblings(ctx context.Context, node *corev1.Node) (map[int]map[int][]
 
 // TunedForNode find tuned pod for appropriate node
 func TunedForNode(node *corev1.Node, sno bool) *corev1.Pod {
-
 	listOptions := &client.ListOptions{
 		Namespace:     components.NamespaceNodeTuningOperator,
 		FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": node.Name}),
@@ -349,12 +351,11 @@ func TunedForNode(node *corev1.Node, sno bool) *corev1.Pod {
 			return false
 		}
 		for _, s := range tunedList.Items[0].Status.ContainerStatuses {
-			if s.Ready == false {
+			if !s.Ready {
 				return false
 			}
 		}
 		return true
-
 	}, cluster.ComputeTestTimeout(testTimeout*time.Second, sno), testPollInterval*time.Second).Should(BeTrue(),
 		"there should be one tuned daemon per node")
 
@@ -438,7 +439,7 @@ func GetNumaRanges(cpuString string) string {
 // Get Node Ethernet/Virtual Interfaces
 func GetNodeInterfaces(ctx context.Context, node corev1.Node) ([]NodeInterface, error) {
 	var nodeInterfaces []NodeInterface
-	listNetworkInterfacesCmd := []string{"/bin/sh", "-c", fmt.Sprintf("ls -l /sys/class/net")}
+	listNetworkInterfacesCmd := []string{"/bin/sh", "-c", "ls -l /sys/class/net"}
 	networkInterfaces, err := ExecCommand(ctx, &node, listNetworkInterfacesCmd)
 	if err != nil {
 		return nil, err
@@ -532,6 +533,9 @@ func CpuManagerCpuSet(ctx context.Context, node *corev1.Node) (cpuset.CPUSet, er
 	var stateData CpuManagerStateInfo
 	cmd := []string{"/usr/sbin/chroot", "/rootfs", "cat", stateFilePath}
 	data, err := ExecCommand(ctx, node, cmd)
+	if err != nil {
+		return cpuset.New(), err
+	}
 	err = json.Unmarshal(data, &stateData)
 	if err != nil {
 		return cpuset.New(), err

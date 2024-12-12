@@ -36,7 +36,7 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = AfterSuite(func() {
-	nodeinspector.Delete(context.TODO())
+	Expect(nodeinspector.Delete(context.TODO())).To(Succeed())
 })
 
 func TestPPC(t *testing.T) {

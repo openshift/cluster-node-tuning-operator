@@ -13,7 +13,7 @@ import (
 // RoleWorkerCNF contains role name of cnf worker nodes
 var RoleWorkerCNF string
 
-// NodeSelectorLabels contains the node labels the perfomance profile should match
+// NodeSelectorLabels contains the node labels the performance profile should match
 var NodeSelectorLabels map[string]string
 
 // PerformanceProfileName contains the name of the PerformanceProfile created for tests

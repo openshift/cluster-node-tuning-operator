@@ -18,7 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 	"k8s.io/utils/cpuset"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -158,7 +158,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			for _, node := range workerRTNodes {
 				cmdline, err := nodes.ExecCommand(context.TODO(), &node, []string{"cat", "/proc/cmdline"})
 				Expect(err).ToNot(HaveOccurred())
-				if profile.Spec.CPU.BalanceIsolated != nil && *profile.Spec.CPU.BalanceIsolated == false {
+				if profile.Spec.CPU.BalanceIsolated != nil && !*profile.Spec.CPU.BalanceIsolated {
 					Expect(string(cmdline)).To(ContainSubstring("isolcpus=domain,managed_irq,"))
 				} else {
 					Expect(string(cmdline)).To(ContainSubstring("isolcpus=managed_irq,"))
@@ -250,7 +250,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 
 				if profile.Spec.RealTimeKernel == nil ||
 					profile.Spec.RealTimeKernel.Enabled == nil ||
-					*profile.Spec.RealTimeKernel.Enabled != true {
+					!*profile.Spec.RealTimeKernel.Enabled {
 					Expect(stalld_prio).To(BeNumerically("<", ksoftirq_prio))
 					testlog.Warning("Skip checking rcu since RT kernel is disabled")
 					return
@@ -275,7 +275,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 
 	})
 
-	Context("Additional kernel arguments added from perfomance profile", Label(string(label.Tier0)), func() {
+	Context("Additional kernel arguments added from performance profile", Label(string(label.Tier0)), func() {
 		It("[test_id:28611][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Should set additional kernel arguments on the machine", func() {
 			if profile.Spec.AdditionalKernelArgs != nil {
 				for _, node := range workerRTNodes {
@@ -390,7 +390,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Expect(allInterfaces).ToNot(BeNil())
 				// collect all veth interfaces in a list
 				for _, iface := range allInterfaces {
-					if iface.Bridge == true && iface.Physical == false {
+					if iface.Bridge && !iface.Physical {
 						vethInterfaces = append(vethInterfaces, iface.Name)
 					}
 				}
@@ -549,13 +549,13 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					},
 					NodeSelector: map[string]string{newLabel: ""},
 					RealTimeKernel: &performancev2.RealTimeKernel{
-						Enabled: pointer.Bool(true),
+						Enabled: ptr.To(true),
 					},
 					AdditionalKernelArgs: []string{
 						"NEW_ARGUMENT",
 					},
 					NUMA: &performancev2.NUMA{
-						TopologyPolicy: pointer.String("restricted"),
+						TopologyPolicy: ptr.To("restricted"),
 					},
 				},
 			}
@@ -783,7 +783,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				profile.Name = testProfileName
 				profile.ResourceVersion = ""
 				profile.Spec.NodeSelector = map[string]string{"test/test": "test"}
-				profile.Spec.GloballyDisableIrqLoadBalancing = pointer.Bool(globallyDisableIrqLoadBalancing)
+				profile.Spec.GloballyDisableIrqLoadBalancing = ptr.To(globallyDisableIrqLoadBalancing)
 				profile.Spec.MachineConfigPoolSelector = nil
 				profile.Spec.MachineConfigLabel = nil
 
@@ -904,11 +904,11 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					},
 					Spec: performancev1alpha1.PerformanceProfileSpec{
 						RealTimeKernel: &performancev1alpha1.RealTimeKernel{
-							Enabled: pointer.Bool(true),
+							Enabled: ptr.To(true),
 						},
 						NodeSelector: map[string]string{"v1alpha1/v1alpha1": "v1alpha1"},
 						NUMA: &performancev1alpha1.NUMA{
-							TopologyPolicy: pointer.String("restricted"),
+							TopologyPolicy: ptr.To("restricted"),
 						},
 					},
 				}
@@ -963,11 +963,11 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					},
 					Spec: performancev1.PerformanceProfileSpec{
 						RealTimeKernel: &performancev1.RealTimeKernel{
-							Enabled: pointer.Bool(true),
+							Enabled: ptr.To(true),
 						},
 						NodeSelector: map[string]string{"v1/v1": "v1"},
 						NUMA: &performancev1.NUMA{
-							TopologyPolicy: pointer.String("restricted"),
+							TopologyPolicy: ptr.To("restricted"),
 						},
 					},
 				}
@@ -1022,11 +1022,11 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					},
 					Spec: performancev2.PerformanceProfileSpec{
 						RealTimeKernel: &performancev2.RealTimeKernel{
-							Enabled: pointer.Bool(true),
+							Enabled: ptr.To(true),
 						},
 						NodeSelector: map[string]string{"v2/v2": "v2"},
 						NUMA: &performancev2.NUMA{
-							TopologyPolicy: pointer.String("restricted"),
+							TopologyPolicy: ptr.To("restricted"),
 						},
 					},
 				}
@@ -1361,21 +1361,6 @@ func execSysctlOnWorkers(ctx context.Context, workerNodes []corev1.Node, sysctlM
 		for param, expected := range sysctlMap {
 			By(fmt.Sprintf("executing the command \"sysctl -n %s\"", param))
 			out, err = nodes.ExecCommand(ctx, &node, []string{"sysctl", "-n", param})
-			Expect(err).ToNot(HaveOccurred())
-			Expect(strings.TrimSpace(string(out))).Should(Equal(expected), "parameter %s value is not %s.", param, expected)
-		}
-	}
-}
-
-// check scheduler settings. on RHCOS9.2 all scheduler settings are moved to /sys/kernel/debug/sched/
-func checkSchedKnobs(ctx context.Context, workerNodes []corev1.Node, schedKnobs map[string]string) {
-	var err error
-	var out []byte
-	for _, node := range workerNodes {
-		for param, expected := range schedKnobs {
-			By(fmt.Sprintf("Checking scheduler knob %s", param))
-			knob := fmt.Sprintf("/rootfs/sys/kernel/debug/sched/%s", param)
-			out, err = nodes.ExecCommand(ctx, &node, []string{"cat", knob})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(strings.TrimSpace(string(out))).Should(Equal(expected), "parameter %s value is not %s.", param, expected)
 		}

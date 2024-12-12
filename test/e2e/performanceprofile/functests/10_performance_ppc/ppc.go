@@ -86,8 +86,7 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 				fmt.Sprintf("--split-reserved-cpus-across-numa=%t", false),
 				fmt.Sprintf("--must-gather-dir-path=%s", mustgatherDir),
 			}
-			podmanArgs := []string{}
-			podmanArgs = append(defaultArgs, cmdArgs...)
+			podmanArgs := append(defaultArgs, cmdArgs...)
 			session, err := ppcIntgTest.PodmanAsUserBase(podmanArgs, false, false)
 			Expect(err).ToNot(HaveOccurred(), "Podman command failed")
 			output := session.Wait(20).Out.Contents()
@@ -120,13 +119,13 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 				fmt.Sprintf("--topology-manager-policy=%s", "single-numa-node"),
 				fmt.Sprintf("--must-gather-dir-path=%s", mustgatherDir),
 			}
-			podmanArgs := []string{}
-			podmanArgs = append(defaultArgs, cmdArgs...)
+			podmanArgs := append(defaultArgs, cmdArgs...)
 			session, err := ppcIntgTest.PodmanAsUserBase(podmanArgs, false, false)
 			Expect(err).ToNot(HaveOccurred(), "Podman command failed")
 			output := session.Wait(20).Err.Contents()
 			errString := "Error: failed to obtain data from flags not appropriate to split reserved CPUs in case of topology-manager-policy: single-numa-node"
 			ok, err := regexp.MatchString(errString, string(output))
+			Expect(err).ToNot(HaveOccurred())
 			if ok {
 				testlog.Info(errString)
 			}
@@ -150,8 +149,7 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 				fmt.Sprintf("--split-reserved-cpus-across-numa=%t", true),
 				fmt.Sprintf("--must-gather-dir-path=%s", mustgatherDir),
 			}
-			podmanArgs := []string{}
-			podmanArgs = append(defaultArgs, cmdArgs...)
+			podmanArgs := append(defaultArgs, cmdArgs...)
 			session, err := ppcIntgTest.PodmanAsUserBase(podmanArgs, false, false)
 			Expect(err).ToNot(HaveOccurred(), "Podman command failed")
 			output := session.Wait(20).Err.Contents()
@@ -181,8 +179,7 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 				fmt.Sprintf("--split-reserved-cpus-across-numa=%t", true),
 				fmt.Sprintf("--must-gather-dir-path=%s", mustgatherDir),
 			}
-			podmanArgs := []string{}
-			podmanArgs = append(defaultArgs, cmdArgs...)
+			podmanArgs := append(defaultArgs, cmdArgs...)
 			session, err := ppcIntgTest.PodmanAsUserBase(podmanArgs, false, false)
 			Expect(err).ToNot(HaveOccurred(), "Podman command failed")
 			output := session.Wait(20).Err.Contents()

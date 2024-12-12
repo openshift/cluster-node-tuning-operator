@@ -45,7 +45,7 @@ import (
 	"k8s.io/klog"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/cpuset"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -396,7 +396,7 @@ var _ = Describe("Controller", func() {
 				})
 
 				It("should update MC when RT kernel gets disabled", func() {
-					profile.Spec.RealTimeKernel.Enabled = pointer.Bool(false)
+					profile.Spec.RealTimeKernel.Enabled = ptr.To(false)
 					r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator)
 
 					Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
@@ -454,7 +454,7 @@ var _ = Describe("Controller", func() {
 					profile.Spec.CPU = &performancev2.CPU{
 						Reserved:        &reserved,
 						Isolated:        &isolated,
-						BalanceIsolated: pointer.Bool(true),
+						BalanceIsolated: ptr.To(true),
 					}
 
 					r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator)
@@ -478,7 +478,7 @@ var _ = Describe("Controller", func() {
 					profile.Spec.CPU = &performancev2.CPU{
 						Reserved:        &reserved,
 						Isolated:        &isolated,
-						BalanceIsolated: pointer.Bool(false),
+						BalanceIsolated: ptr.To(false),
 					}
 
 					r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator)
@@ -532,7 +532,7 @@ var _ = Describe("Controller", func() {
 							{
 								Count: 8,
 								Size:  size,
-								Node:  pointer.Int32(0),
+								Node:  ptr.To(int32(0)),
 							},
 						},
 					}
@@ -1054,7 +1054,7 @@ var _ = Describe("Controller", func() {
 								Verification: igntypes.Verification{},
 								Source:       "data:text/plain;charset=utf-8;base64,CnsKICAic2hhcmVkX2NwdXMiOiB7CiAgICAgImNvbnRhaW5lcnNfbGltaXQiOiAyNTYKICB9Cn0=",
 							},
-							Mode: pointer.Int(0644),
+							Mode: ptr.To(int(0644)),
 						},
 					},
 				}

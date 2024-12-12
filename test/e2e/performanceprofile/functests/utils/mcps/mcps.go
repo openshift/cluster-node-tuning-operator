@@ -158,7 +158,6 @@ func GetConditionReason(mcpName string, conditionType machineconfigv1.MachineCon
 
 // WaitForCondition waits for the MCP with given name having a condition of given type with given status
 func WaitForCondition(mcpName string, conditionType machineconfigv1.MachineConfigPoolConditionType, conditionStatus corev1.ConditionStatus) {
-
 	var cnfNodes []corev1.Node
 	runningOnSingleNode, err := cluster.IsSingleNode()
 	ExpectWithOffset(1, err).ToNot(HaveOccurred())
@@ -201,7 +200,6 @@ func WaitForCondition(mcpName string, conditionType machineconfigv1.MachineConfi
 
 // WaitForCondition waits for the MCP with given name having a condition of given type with given status using the given helper function
 func WaitForConditionFunc(mcpName string, conditionType machineconfigv1.MachineConfigPoolConditionType, conditionStatus corev1.ConditionStatus, mcpCondGetter func(mcpName string, conditionType machineconfigv1.MachineConfigPoolConditionType) corev1.ConditionStatus) {
-
 	var cnfNodes []corev1.Node
 	runningOnSingleNode, err := cluster.IsSingleNode()
 	ExpectWithOffset(1, err).ToNot(HaveOccurred())

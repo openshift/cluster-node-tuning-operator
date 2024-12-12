@@ -29,11 +29,12 @@ var _ = ginkgo.Describe("[basic][modules] Node Tuning Operator load kernel modul
 
 		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of ginkgo.It()
 		ginkgo.AfterEach(func() {
+			// Ignore failures to cleanup resources which are already deleted or not yet created.
 			ginkgo.By("cluster changes rollback")
 			if node != nil {
-				util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelModules+"-")
+				_, _, _ = util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelModules+"-")
 			}
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileModules)
+			_, _, _ = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileModules)
 		})
 
 		ginkgo.It(fmt.Sprintf("modules: %s loaded", moduleName), func() {
@@ -59,6 +60,7 @@ var _ = ginkgo.Describe("[basic][modules] Node Tuning Operator load kernel modul
 
 			ginkgo.By(fmt.Sprintf("trying to remove the %s module if loaded", moduleName))
 			_, err = util.ExecCmdInPod(pod, "rmmod", moduleName)
+			gomega.Expect(err).To(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("ensuring the %s module is not loaded", moduleName))
 			_, err = util.ExecCmdInPod(pod, cmdGrepModule...)

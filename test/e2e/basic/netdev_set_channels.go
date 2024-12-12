@@ -31,11 +31,12 @@ var _ = ginkgo.Describe("[basic][netdev_set_channels] Node Tuning Operator adjus
 
 		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of ginkgo.It()
 		ginkgo.AfterEach(func() {
+			// Ignore failures to cleanup resources which are already deleted or not yet created.
 			ginkgo.By("cluster changes rollback")
 			if node != nil {
-				util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelNetdev+"-")
+				_, _, _ = util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelNetdev+"-")
 			}
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileNetdev)
+			_, _, _ = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileNetdev)
 		})
 
 		ginkgo.It("adjust netdev queue count for physical network devices via ethtool", func() {
@@ -187,7 +188,7 @@ var _ = ginkgo.Describe("[basic][netdev_set_channels] Node Tuning Operator adjus
 			gomega.Expect(err).NotTo(gomega.HaveOccurred(), explain)
 
 			// Set the original value of multi-purpose channels.  Ignore failures.
-			util.ExecCmdInPod(pod, "bash", "-c", fmt.Sprintf("ethtool -L %s combined %d", phyDev, channelOrigCombined))
+			_, _ = util.ExecCmdInPod(pod, "bash", "-c", fmt.Sprintf("ethtool -L %s combined %d", phyDev, channelOrigCombined))
 		})
 	})
 })

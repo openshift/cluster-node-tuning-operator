@@ -105,7 +105,7 @@ var _ = AfterSuite(func() {
 			testlog.Errorf("could not restore the initial profile: %v", err)
 		}
 	}
-	nodeinspector.Delete(context.TODO())
+	Expect(nodeinspector.Delete(context.TODO())).To(Succeed())
 })
 
 func Test5LatencyTesting(t *testing.T) {

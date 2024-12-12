@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/kubernetes/pkg/kubelet/eviction"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/yaml"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
@@ -43,7 +43,7 @@ var _ = Describe("Kubelet Config", func() {
 	Context("with topology manager restricted policy", func() {
 		It("should have the memory manager related parameters", func() {
 			profile := testutils.NewPerformanceProfile("test")
-			profile.Spec.NUMA.TopologyPolicy = pointer.String(kubeletconfigv1beta1.RestrictedTopologyManagerPolicy)
+			profile.Spec.NUMA.TopologyPolicy = ptr.To(kubeletconfigv1beta1.RestrictedTopologyManagerPolicy)
 			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
 			kc, err := New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{selectorKey: selectorValue}})
 			Expect(err).ToNot(HaveOccurred())
@@ -58,7 +58,7 @@ var _ = Describe("Kubelet Config", func() {
 
 		It("should not have the cpumanager policy options set", func() {
 			profile := testutils.NewPerformanceProfile("test")
-			profile.Spec.NUMA.TopologyPolicy = pointer.String(kubeletconfigv1beta1.RestrictedTopologyManagerPolicy)
+			profile.Spec.NUMA.TopologyPolicy = ptr.To(kubeletconfigv1beta1.RestrictedTopologyManagerPolicy)
 			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
 			kc, err := New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{selectorKey: selectorValue}})
 			Expect(err).ToNot(HaveOccurred())
@@ -75,7 +75,7 @@ var _ = Describe("Kubelet Config", func() {
 	Context("with topology manager best-effort policy", func() {
 		It("should not have the memory manager related parameters", func() {
 			profile := testutils.NewPerformanceProfile("test")
-			profile.Spec.NUMA.TopologyPolicy = pointer.String(kubeletconfigv1beta1.BestEffortTopologyManagerPolicy)
+			profile.Spec.NUMA.TopologyPolicy = ptr.To(kubeletconfigv1beta1.BestEffortTopologyManagerPolicy)
 			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
 			kc, err := New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{selectorKey: selectorValue}})
 			Expect(err).ToNot(HaveOccurred())
@@ -97,6 +97,7 @@ var _ = Describe("Kubelet Config", func() {
 			}
 			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
 			kc, err := New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{selectorKey: selectorValue}})
+			Expect(err).ToNot(HaveOccurred())
 			y, err := yaml.Marshal(kc)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -113,6 +114,7 @@ var _ = Describe("Kubelet Config", func() {
 			}
 			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
 			kc, err := New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{selectorKey: selectorValue}})
+			Expect(err).ToNot(HaveOccurred())
 			y, err := yaml.Marshal(kc)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -128,6 +130,7 @@ var _ = Describe("Kubelet Config", func() {
 			}
 			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
 			kc, err := New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{selectorKey: selectorValue}})
+			Expect(err).ToNot(HaveOccurred())
 			y, err := yaml.Marshal(kc)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -144,6 +147,7 @@ var _ = Describe("Kubelet Config", func() {
 			}
 			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
 			kc, err := New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{selectorKey: selectorValue}})
+			Expect(err).ToNot(HaveOccurred())
 			y, err := yaml.Marshal(kc)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -159,15 +163,16 @@ var _ = Describe("Kubelet Config", func() {
 			profile := testutils.NewPerformanceProfile("test")
 			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
 			kc, err := New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{selectorKey: selectorValue}})
+			Expect(err).ToNot(HaveOccurred())
 			y, err := yaml.Marshal(kc)
 			Expect(err).ToNot(HaveOccurred())
 
 			manifest := string(y)
 
-			memoryAvaialable := "memory.available: " + string(eviction.DefaultEvictionHard[evictionHardMemoryAvailable])
-			nodefsAvailable := "nodefs.available: " + string(eviction.DefaultEvictionHard[evictionHardNodefsAvaialble])
-			imagefsAvailable := "imagefs.available: " + string(eviction.DefaultEvictionHard[evictionHardImagefsAvailable])
-			nodefsInodesFree := "nodefs.inodesFree: " + string(eviction.DefaultEvictionHard[evictionHardNodefsInodesFree])
+			memoryAvaialable := "memory.available: " + eviction.DefaultEvictionHard[evictionHardMemoryAvailable]
+			nodefsAvailable := "nodefs.available: " + eviction.DefaultEvictionHard[evictionHardNodefsAvaialble]
+			imagefsAvailable := "imagefs.available: " + eviction.DefaultEvictionHard[evictionHardImagefsAvailable]
+			nodefsInodesFree := "nodefs.inodesFree: " + eviction.DefaultEvictionHard[evictionHardNodefsInodesFree]
 
 			Expect(manifest).To(ContainSubstring(memoryAvaialable))
 			Expect(manifest).To(ContainSubstring(nodefsAvailable))
@@ -182,6 +187,7 @@ var _ = Describe("Kubelet Config", func() {
 			}
 			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
 			kc, err := New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{selectorKey: selectorValue}})
+			Expect(err).ToNot(HaveOccurred())
 			data, err := yaml.Marshal(kc)
 			Expect(err).ToNot(HaveOccurred())
 
