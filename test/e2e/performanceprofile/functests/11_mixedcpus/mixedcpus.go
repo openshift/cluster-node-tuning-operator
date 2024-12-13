@@ -395,7 +395,11 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 					withRequests(rl),
 					withLimits(rl),
 					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
-				expectedError := "more than a single \"workload.openshift.io/enable-shared-cpus\" resource is forbidden, please set the request to 1 or remove it"
+				// The full expectedError should be:
+				// "more than a single \"workload.openshift.io/enable-shared-cpus\" resource is forbidden, please set the request to 1 or remove it"
+				// however, the word forbidden is misspelt in openshift/kubernetes
+				// https://github.com/openshift/kubernetes/blob/3c62f738ce74a624d46b4f73f25d6c15b3a80a2b/openshift-kube-apiserver/admission/autoscaling/mixedcpus/admission.go#L112
+				expectedError := "more than a single \"workload.openshift.io/enable-shared-cpus\" resource is "
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring(expectedError))
 			})
