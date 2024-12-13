@@ -1,0 +1,48 @@
+[main]
+summary=Platform specific tuning for Intel x86
+
+[bootloader]
+# DO NOT REMOVE THIS BLOCK
+# It makes sure the kernel arguments for Intel are applied
+# in the order compatible with OCP 4.17 which is important
+# for preventing an extra reboot during upgrade
+cmdline_cpu_part=
+cmdline_iommu_intel=
+cmdline_isolation=
+cmdline_realtime_nohzfull=
+cmdline_realtime_intel=
+cmdline_realtime_nosoftlookup=
+cmdline_realtime_intel_nmi=
+cmdline_realtime_common=
+cmdline_power_performance=
+cmdline_power_performance_intel=
+cmdline_idle_poll=
+cmdline_idle_poll_intel=
+cmdline_hugepages=
+cmdline_pstate=
+
+# Here comes the Intel specific tuning
+
+cmdline_iommu_intel=intel_iommu=on iommu=pt
+
+{{if .RealTimeHint}}
+cmdline_realtime_intel=tsc=reliable
+cmdline_realtime_intel_nmi=nmi_watchdog=0 mce=off
+{{end}}
+
+{{if .HighPowerConsumption}}
+cmdline_power_performance_intel=processor.max_cstate=1 intel_idle.max_cstate=0
+{{end}}
+
+{{if and .HighPowerConsumption .RealTimeHint}}
+cmdline_idle_poll_intel=idle=poll
+{{end}}
+
+{{if .PerPodPowerManagement}}
+cmdline_pstate=intel_pstate=passive
+{{else if .HardwareTuning}}
+cmdline_pstate=intel_pstate=active
+{{else}}
+cmdline_pstate=intel_pstate=${f:intel_recommended_pstate}
+{{end}}
+

@@ -214,13 +214,32 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 	if err != nil {
 		return nil, err
 	}
+	name := components.GetComponentName(profile.Name, components.ProfileNamePerformance)
 
 	RealTimeKernelProfileData, err := getProfileData(filepath.Join("tuned", components.ProfileNamePerformanceRT), templateArgs)
 	if err != nil {
 		return nil, err
 	}
-	name := components.GetComponentName(profile.Name, components.ProfileNamePerformance)
 	RealTimeKernelProfileName := components.GetComponentName(profile.Name, components.ProfileNamePerformanceRT)
+
+	AmdX86ProfileData, err := getProfileData(filepath.Join("tuned", components.ProfileNameAmdX86), templateArgs)
+	if err != nil {
+		return nil, err
+	}
+	AmdX86ProfileName := components.GetComponentName(profile.Name, components.ProfileNameAmdX86)
+
+	ArmAarch64ProfileData, err := getProfileData(filepath.Join("tuned", components.ProfileNameArmAarch64), templateArgs)
+	if err != nil {
+		return nil, err
+	}
+	ArmAarch64ProfileName := components.GetComponentName(profile.Name, components.ProfileNameArmAarch64)
+
+	IntelX86ProfileData, err := getProfileData(filepath.Join("tuned", components.ProfileNameIntelX86), templateArgs)
+	if err != nil {
+		return nil, err
+	}
+	IntelX86ProfileName := components.GetComponentName(profile.Name, components.ProfileNameIntelX86)
+
 	profiles := []tunedv1.TunedProfile{
 		{
 			Name: &name,
@@ -229,6 +248,18 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 		{
 			Name: &RealTimeKernelProfileName,
 			Data: &RealTimeKernelProfileData,
+		},
+		{
+			Name: &AmdX86ProfileName,
+			Data: &AmdX86ProfileData,
+		},
+		{
+			Name: &ArmAarch64ProfileName,
+			Data: &ArmAarch64ProfileData,
+		},
+		{
+			Name: &IntelX86ProfileName,
+			Data: &IntelX86ProfileData,
 		},
 	}
 
