@@ -81,13 +81,6 @@ var (
 	validTMPolicyValues        = []string{kubeletconfig.SingleNumaNodeTopologyManagerPolicy, kubeletconfig.BestEffortTopologyManagerPolicy, kubeletconfig.RestrictedTopologyManagerPolicy}
 	validInfoModes             = []string{infoModeLog, infoModeJSON}
 	validPowerConsumptionModes = []string{defaultLatency, lowLatency, ultraLowLatency}
-	hardwareTuningMessage      = `#HardwareTuning is an advanced feature, and only intended to be used if 
-#user is aware of the vendor recommendation on maximum cpu frequency.
-#The structure must follow
-#
-# hardwareTuning:
-#   isolatedCpuFreq: <Maximum frequency for applications running on isolated cpus>
-#   reservedCpuFreq: <Maximum frequency for platform software running on reserved cpus>`
 )
 
 // ProfileData collects and stores all the data needed for profile creation
@@ -132,6 +125,8 @@ func NewRootCommand() *cobra.Command {
 		"rt-kernel",
 		"must-gather-dir-path",
 	}
+
+	tolerations := profilecreator.TolerationSet{}
 
 	root := &cobra.Command{
 		Use:   "performance-profile-creator",
@@ -180,12 +175,13 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to obtain data from flags %v", err)
 			}
-			profileData, err := getProfileData(profileCreatorArgsFromFlags, cluster)
+			profileData, err := getProfileData(profileCreatorArgsFromFlags, cluster, tolerations)
 			if err != nil {
 				return err
 			}
+			tolerations[profilecreator.EnableHardwareTuning] = profileData.enableHardwareTuning
 
-			err = createProfile(*profileData)
+			err = createProfile(*profileData, tolerations)
 			return err
 		},
 	}
@@ -449,7 +445,7 @@ func getDataFromFlags(cmd *cobra.Command) (ProfileCreatorArgs, error) {
 	return creatorArgs, nil
 }
 
-func getProfileData(args ProfileCreatorArgs, cluster ClusterData) (*ProfileData, error) {
+func getProfileData(args ProfileCreatorArgs, cluster ClusterData, tolerations profilecreator.TolerationSet) (*ProfileData, error) {
 	mcps := make([]*machineconfigv1.MachineConfigPool, len(cluster))
 	mcpNames := make([]string, len(cluster))
 	var mcp *machineconfigv1.MachineConfigPool
@@ -482,7 +478,7 @@ func getProfileData(args ProfileCreatorArgs, cluster ClusterData) (*ProfileData,
 		matchedNodeNames = append(matchedNodeNames, nodeHandler.Node.GetName())
 	}
 	log.Infof("Nodes targeted by %s MCP are: %v", args.MCPName, matchedNodeNames)
-	err = profilecreator.EnsureNodesHaveTheSameHardware(cluster[mcp])
+	err = profilecreator.EnsureNodesHaveTheSameHardware(cluster[mcp], tolerations)
 	if err != nil {
 		return nil, fmt.Errorf("targeted nodes differ: %v", err)
 	}
@@ -578,7 +574,7 @@ type ProfileCreatorArgs struct {
 	EnableHardwareTuning        bool   `json:"enable-hardware-tuning,omitempty"`
 }
 
-func createProfile(profileData ProfileData) error {
+func createProfile(profileData ProfileData, tolerations profilecreator.TolerationSet) error {
 	reserved := performancev2.CPUSet(profileData.reservedCPUs)
 
 	isolated := performancev2.CPUSet(profileData.isolatedCPUs)
@@ -647,8 +643,14 @@ func createProfile(profileData ProfileData) error {
 		return err
 	}
 
-	if profileData.enableHardwareTuning {
-		if _, err := writer.Write([]byte(hardwareTuningMessage)); err != nil {
+	if tolerations[profilecreator.EnableHardwareTuning] {
+		if _, err := writer.Write([]byte(profilecreator.HardwareTuningMessage)); err != nil {
+			return err
+		}
+	}
+
+	if tolerations[profilecreator.DifferentCoreIDs] {
+		if _, err := writer.Write([]byte(profilecreator.DifferentCoreIDsMessage)); err != nil {
 			return err
 		}
 	}
