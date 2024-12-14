@@ -1,12 +1,18 @@
 [main]
 summary=Openshift node optimized for deterministic performance at the cost of increased power consumption, focused on low latency network performance. Based on Tuned 2.11 and Cluster node tuning (oc 4.5)
 
-# In case real time kernel is enabled the following include section will be evaluated as:
-# include=openshift-node,cpu-partitioning,openshift-node-performance-rt-<PerformanceProfile name>
-# Otherwise:
-# include=openshift-node,cpu-partitioning
-include=openshift-node,cpu-partitioning${f:regex_search_ternary:${f:exec:uname:-r}:rt:,openshift-node-performance-rt-{{.PerformanceProfileName}}:}
-
+# The final result of the include depends on cpu vendor, cpu architecture, and whether the real time kernel is enabled
+# The first line will be evaluated based on the CPU vendor and architecture
+# This has three possible results:
+#   include=openshift-node-performance-amd-x86;
+#   include=openshift-node-performance-arm-aarch64;
+#   include=openshift-node-performance-intel-x86;
+# The second line will be evaluated based on whether the real time kernel is enabled
+# This has two possible results:
+#     openshift-node,cpu-partitioning
+#     openshift-node,cpu-partitioning,openshift-node-performance-rt-<PerformanceProfile name>
+include=openshift-node,cpu-partitioning${f:regex_search_ternary:${f:exec:uname:-r}:rt:,openshift-node-performance-rt-{{.PerformanceProfileName}}:};
+    openshift-node-performance-${f:lscpu_check:Vendor ID\:\s*GenuineIntel:intel:Vendor ID\:\s*AuthenticAMD:amd:Vendor ID\:\s*ARM:arm}-${f:lscpu_check:Architecture\:\s*x86_64:x86:Architecture\:\s*aarch64:aarch64}-{{.PerformanceProfileName}}
 
 # Inheritance of base profiles legend:
 # cpu-partitioning -> network-latency -> latency-performance
@@ -24,7 +30,6 @@ isolated_cores={{.IsolatedCpus}}
 {{end}}
 
 not_isolated_cores_expanded=${f:cpulist_invert:${isolated_cores_expanded}}
-automatic_pstate=${f:intel_recommended_pstate}
 
 {{if .PerPodPowerManagement}}
 [cpu]
@@ -128,13 +133,18 @@ avc_cache_threshold=8192
 {{end}}
 
 [bootloader]
+# !! The names are important for Intel and are referenced in openshift-node-performance-intel-x86
+
 # set empty values to disable RHEL initrd setting in cpu-partitioning
 initrd_remove_dir=
 initrd_dst_img=
 initrd_add_dir=
 
 # overrides cpu-partitioning cmdline
-cmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded} intel_iommu=on iommu=pt
+cmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded}
+
+# No default value but will be composed conditionally based on platform
+cmdline_iommu=
 
 {{if .StaticIsolation}}
 cmdline_isolation=+isolcpus=domain,managed_irq,${isolated_cores}
@@ -143,30 +153,26 @@ cmdline_isolation=+isolcpus=managed_irq,${isolated_cores}
 {{end}}
 
 {{if .RealTimeHint}}
-cmdline_realtime=+nohz_full=${isolated_cores} tsc=reliable nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11
+cmdline_realtime_nohzfull=+nohz_full=${isolated_cores}
+cmdline_realtime_nosoftlookup=+nosoftlockup
+cmdline_realtime_common=+skew_tick=1 rcutree.kthread_prio=11
 {{end}}
 
 {{if .HighPowerConsumption}}
-cmdline_power_performance=+processor.max_cstate=1 intel_idle.max_cstate=0
+# No default value but will be composed conditionally based on platform
+cmdline_power_performance=
 {{end}}
 
 {{if and .HighPowerConsumption .RealTimeHint}}
-cmdline_idle_poll=+idle=poll
+# No default value but will be composed conditionally based on platform
+cmdline_idle_poll=
 {{end}}
 
 {{if .DefaultHugepagesSize}}
 cmdline_hugepages=+ default_hugepagesz={{.DefaultHugepagesSize}} {{end}} {{if .Hugepages}} {{.Hugepages}} {{end}}
 
 {{if .AdditionalArgs}}
-cmdline_additionalArg=+{{.AdditionalArgs}} 
-{{end}}
-
-{{if .PerPodPowerManagement}}
-cmdline_pstate=+intel_pstate=passive
-{{else if .HardwareTuning}}
-cmdline_pstate=+intel_pstate=active
-{{else}}
-cmdline_pstate=+intel_pstate=${automatic_pstate}
+cmdline_additionalArg=+{{.AdditionalArgs}}
 {{end}}
 
 [rtentsk]
