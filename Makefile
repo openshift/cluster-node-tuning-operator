@@ -147,8 +147,11 @@ endif
 vet: $(BINDATA)
 	$(GO) vet ./...
 
-test-unit: $(BINDATA)
+test-unit: $(BINDATA) test-fuzz
 	$(GO) test ./cmd/... ./pkg/... -coverprofile cover.out
+
+test-fuzz:
+	$(GO) test ./pkg/apis/performanceprofile/v2 -fuzz=FuzzValidateCPUs -fuzztime=10s 
 
 clean:
 	$(GO) clean $(PACKAGE_MAIN)
