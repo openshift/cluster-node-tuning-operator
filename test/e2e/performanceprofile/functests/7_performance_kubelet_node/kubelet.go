@@ -43,12 +43,13 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 	)
 
 	testutils.CustomBeforeAll(func() {
-		var err error
-
-		workerRTNodes, err = nodes.GetByLabels(testutils.NodeSelectorLabels)
+		// TODO: The code here is broken as it masks workerRTNodes defined above
+		// and the value of workerRTNodes is never used.  Keep the linter happy for now
+		// and remove the ineffectual assignment of workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes) below.
+		workerRTNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 
-		workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes)
+		_, err = nodes.MatchingOptionalSelector(workerRTNodes)
 		Expect(err).ToNot(HaveOccurred())
 
 		profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
