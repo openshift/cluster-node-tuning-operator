@@ -20,7 +20,7 @@ import (
 	"k8s.io/klog"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/cpuset"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
@@ -130,7 +130,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(err).ToNot(HaveOccurred())
 				if len(numaInfo) < 2 {
 					skipTests = true
-					klog.Infof(fmt.Sprintf("This test need 2 NUMA nodes.The number of NUMA nodes on node %s < 2", node.Name))
+					klog.Infof("This test need 2 NUMA nodes. The number of NUMA nodes on node %s < 2", node.Name)
 					return
 				}
 			}
@@ -151,7 +151,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 			By("Modifying profile")
 			profile.Spec.CPU = &performancev2.CPU{
-				BalanceIsolated: pointer.Bool(false),
+				BalanceIsolated: ptr.To(false),
 				Reserved:        &reserved,
 				Isolated:        &isolated,
 			}
@@ -161,17 +161,17 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					{
 						Count: hpCntOnNuma0,
 						Size:  hpSize2M,
-						Node:  pointer.Int32(0),
+						Node:  ptr.To(int32(0)),
 					},
 					{
 						Count: hpCntOnNuma1,
 						Size:  hpSize2M,
-						Node:  pointer.Int32(1),
+						Node:  ptr.To(int32(1)),
 					},
 				},
 			}
 			profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-				Enabled: pointer.Bool(true),
+				Enabled: ptr.To(true),
 			}
 
 			By("Updating the performance profile")
@@ -247,7 +247,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				},
 			}
 			profile.Spec.CPU = &performancev2.CPU{
-				BalanceIsolated: pointer.Bool(false),
+				BalanceIsolated: ptr.To(false),
 				Reserved:        &reserved,
 				Isolated:        &isolated,
 			}
@@ -255,7 +255,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				TopologyPolicy: &policy,
 			}
 			profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-				Enabled: pointer.Bool(false),
+				Enabled: ptr.To(false),
 			}
 
 			if profile.Spec.AdditionalKernelArgs == nil {
@@ -305,6 +305,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		DescribeTable("Verify that kubelet parameters were updated", func(ctx context.Context, cmdFn checkFunction, getterFn func(kubeletCfg *kubeletconfigv1beta1.KubeletConfiguration) string, wantedValue string) {
 			for _, node := range workerRTNodes {
 				result, err := cmdFn(ctx, &node)
+				Expect(err).ToNot(HaveOccurred())
 				obj, err := manifestsutil.DeserializeObjectFromData([]byte(result), kubeletconfigv1beta1.AddToScheme)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -342,7 +343,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		It("[test_id:22764] verify that by default RT kernel is disabled", func() {
 			conditionUpdating := machineconfigv1.MachineConfigPoolUpdating
-			if profile.Spec.RealTimeKernel == nil || *profile.Spec.RealTimeKernel.Enabled == true {
+			if profile.Spec.RealTimeKernel == nil || *profile.Spec.RealTimeKernel.Enabled {
 				Skip("Skipping test - This test expects RT Kernel to be disabled. Found it to be enabled or nil.")
 			}
 			profile.Spec.RealTimeKernel = nil
@@ -465,6 +466,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 		It("[test_id:28440]Verifies that nodeSelector can be updated in performance profile", func() {
 			kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), newCnfNode)
+			Expect(err).ToNot(HaveOccurred())
 			Expect(kubeletConfig.TopologyManagerPolicy).ToNot(BeEmpty())
 			out, err := nodes.ExecCommand(context.TODO(), newCnfNode, chkCmdLine)
 			Expect(err).ToNot(HaveOccurred(), "failed to execute %s", chkCmdLine)
@@ -494,11 +496,12 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			Expect(cmdline).NotTo(ContainSubstring("tuned.non_isolcpus"))
 
 			kblcfg, err := nodes.GetKubeletConfig(context.TODO(), newCnfNode)
+			Expect(err).ToNot(HaveOccurred())
 			Expect(kblcfg.ReservedSystemCPUs).NotTo(ContainSubstring("reservedSystemCPUs"))
 		})
 
 		AfterEach(func() {
-			if labelsDeletion == false {
+			if !labelsDeletion {
 				removeLabels(profile.Spec.NodeSelector, newCnfNode)
 			}
 
@@ -509,6 +512,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			nodeSelector := strings.Join(selectorLabels, ",")
 			profile.Spec.NodeSelector = oldNodeSelector
 			spec, err := json.Marshal(profile.Spec)
+			Expect(err).ToNot(HaveOccurred())
 			Expect(testclient.Client.Patch(context.TODO(), profile,
 				client.RawPatch(
 					types.JSONPatchType,
@@ -621,6 +625,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(err).ToNot(HaveOccurred())
 				offlinedOutput := testutils.ToString(out)
 				offlinedCPUSet, err := cpuset.Parse(offlinedOutput)
+				Expect(err).ToNot(HaveOccurred())
 				offlinedCPUSetProfile, err := cpuset.Parse(string(offlined))
 				Expect(err).ToNot(HaveOccurred())
 				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile))
@@ -690,6 +695,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(err).ToNot(HaveOccurred())
 				offlinedOutput := testutils.ToString(out)
 				offlinedCPUSet, err := cpuset.Parse(offlinedOutput)
+				Expect(err).ToNot(HaveOccurred())
 				offlinedCPUSetProfile, err := cpuset.Parse(string(offlinedSet))
 				Expect(err).ToNot(HaveOccurred())
 				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile))
@@ -755,6 +761,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(err).ToNot(HaveOccurred())
 				offlinedOutput := testutils.ToString(out)
 				offlinedCPUSet, err := cpuset.Parse(offlinedOutput)
+				Expect(err).ToNot(HaveOccurred())
 				offlinedCPUSetProfile, err := cpuset.Parse(string(offlinedSet))
 				Expect(err).ToNot(HaveOccurred())
 				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile))
@@ -768,7 +775,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Skip(fmt.Sprintf("This test need 2 NUMA nodes, available only %d", len(numaCoreSiblings)))
 			}
 			if len(numaCoreSiblings[0]) < 20 {
-				Skip(fmt.Sprintf("This test needs systems with at least 20 cores per socket"))
+				Skip("This test needs systems with at least 20 cores per socket")
 			}
 			// Get reserved core siblings from 0, 1
 			for reservedCores := 0; reservedCores < 2; reservedCores++ {
@@ -830,6 +837,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(err).ToNot(HaveOccurred())
 				offlinedOutput := testutils.ToString(out)
 				offlinedCPUSet, err := cpuset.Parse(offlinedOutput)
+				Expect(err).ToNot(HaveOccurred())
 				offlinedCPUSetProfile, err := cpuset.Parse(string(offlinedSet))
 				Expect(err).ToNot(HaveOccurred())
 				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile))
@@ -898,7 +906,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 						}
 					}
 				}
-				return fmt.Sprint("Profile applied successfully")
+				return "Profile applied successfully"
 			}, 10*time.Minute, 5*time.Second).Should(ContainSubstring("isolated and offlined cpus overlap"))
 
 		})
@@ -961,6 +969,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(err).ToNot(HaveOccurred())
 				offlinedOutput := testutils.ToString(out)
 				offlinedCPUSet, err := cpuset.Parse(offlinedOutput)
+				Expect(err).ToNot(HaveOccurred())
 				offlinedCPUSetProfile, err := cpuset.Parse(string(offlinedSet))
 				Expect(err).ToNot(HaveOccurred())
 				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile))
@@ -1126,13 +1135,13 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		It("[test_id:54191]Verify RPS Mask is not applied when RealtimeHint is disabled", func() {
 			By("Modifying profile")
 			profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-				HighPowerConsumption:  pointer.Bool(false),
-				RealTime:              pointer.Bool(false),
-				PerPodPowerManagement: pointer.Bool(false),
+				HighPowerConsumption:  ptr.To(false),
+				RealTime:              ptr.To(false),
+				PerPodPowerManagement: ptr.To(false),
 			}
 
 			profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-				Enabled: pointer.Bool(false),
+				Enabled: ptr.To(false),
 			}
 			By("Updating the performance profile")
 			profiles.UpdateWithRetry(profile)
@@ -1197,7 +1206,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 
 				for i := 0; i < len(workerRTNodes); i++ {
-					By("Determing the default container runtime used in the node")
+					By("Determining the default container runtime used in the node")
 					tunedPod, err := tuned.GetPod(context.TODO(), &workerRTNodes[i])
 					Expect(err).ToNot(HaveOccurred())
 					expectedRuntime, err = runtime.GetContainerRuntimeTypeFor(context.TODO(), testclient.Client, tunedPod)

@@ -2,6 +2,7 @@ package operator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -9,7 +10,7 @@ import (
 	operatorv1 "github.com/openshift/api/operator/v1"
 	operatorv1helpers "github.com/openshift/library-go/pkg/operator/v1helpers"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
@@ -80,7 +81,7 @@ func (c *Controller) syncOperatorStatus(tuned *tunedv1.Tuned) error {
 func (c *Controller) getOrCreateOperatorStatus() (*configv1.ClusterOperator, error) {
 	co, err := c.listers.ClusterOperators.Get(tunedv1.TunedClusterOperatorResourceName)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			// Cluster operator not found, create it
 			co = &configv1.ClusterOperator{ObjectMeta: metav1.ObjectMeta{Name: tunedv1.TunedClusterOperatorResourceName}}
 			co, err = c.clients.ConfigV1Client.ClusterOperators().Create(context.TODO(), co, metav1.CreateOptions{})
@@ -205,7 +206,7 @@ func (c *Controller) computeStatus(tuned *tunedv1.Tuned, conditions []configv1.C
 		ds, err := c.listers.DaemonSets.Get(dsMf.Name)
 		if err != nil {
 			// There was a problem fetching Tuned daemonset
-			if errors.IsNotFound(err) {
+			if apierrors.IsNotFound(err) {
 				// Tuned daemonset has not been created yet
 				if len(conditions) == 0 {
 					// This looks like a fresh install => initialize
@@ -238,7 +239,7 @@ func (c *Controller) computeStatus(tuned *tunedv1.Tuned, conditions []configv1.C
 		} else {
 			if ds.Status.ObservedGeneration != ds.Generation {
 				// Do not base the conditions on stale information
-				return conditions, "", fmt.Errorf(errGenerationMismatch)
+				return conditions, "", errors.New(errGenerationMismatch)
 			}
 
 			dsReleaseVersion := c.getDaemonSetReleaseVersion(ds)
@@ -303,14 +304,14 @@ func (c *Controller) computeStatus(tuned *tunedv1.Tuned, conditions []configv1.C
 		}
 
 		if numDegradedProfiles > 0 {
-			klog.Infof(fmt.Sprintf("%v/%v Profiles failed to be applied", numDegradedProfiles, len(profileList)))
+			klog.Infof("%v/%v Profiles failed to be applied", numDegradedProfiles, len(profileList))
 			availableCondition.Reason = "ProfileDegraded"
 			availableCondition.Message = fmt.Sprintf("%v/%v Profiles failed to be applied", numDegradedProfiles, len(profileList))
 		}
 
 		numConflict := c.numProfilesWithBootcmdlineConflict(profileList)
 		if numConflict > 0 {
-			klog.Infof(fmt.Sprintf("%v/%v Profiles with bootcmdline conflict", numConflict, len(profileList)))
+			klog.Infof("%v/%v Profiles with bootcmdline conflict", numConflict, len(profileList))
 			degradedCondition.Status = configv1.ConditionTrue
 			degradedCondition.Reason = "ProfileConflict"
 			degradedCondition.Message = fmt.Sprintf("%v/%v Profiles with bootcmdline conflict", numConflict, len(profileList))

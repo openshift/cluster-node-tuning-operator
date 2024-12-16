@@ -8,7 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -76,7 +76,7 @@ func NewPerformanceProfile(name string) *performancev2.PerformanceProfile {
 				},
 			},
 			RealTimeKernel: &performancev2.RealTimeKernel{
-				Enabled: pointer.Bool(true),
+				Enabled: ptr.To(true),
 			},
 			NUMA: &performancev2.NUMA{
 				TopologyPolicy: &numaPolicy,
@@ -91,10 +91,10 @@ func NewPerformanceProfile(name string) *performancev2.PerformanceProfile {
 				"nodekey": "nodeValue",
 			},
 			WorkloadHints: &performancev2.WorkloadHints{
-				HighPowerConsumption:  pointer.Bool(false),
-				RealTime:              pointer.Bool(true),
-				PerPodPowerManagement: pointer.Bool(false),
-				MixedCpus:             pointer.Bool(true),
+				HighPowerConsumption:  ptr.To(false),
+				RealTime:              ptr.To(true),
+				PerPodPowerManagement: ptr.To(false),
+				MixedCpus:             ptr.To(true),
 			},
 			AdditionalKernelArgs: additionalKernelArgs,
 		},

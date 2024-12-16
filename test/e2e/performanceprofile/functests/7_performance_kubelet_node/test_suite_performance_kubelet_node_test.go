@@ -43,7 +43,8 @@ var _ = AfterSuite(func() {
 	err := testclient.DataPlaneClient.Delete(context.TODO(), namespaces.TestingNamespace)
 	Expect(err).ToNot(HaveOccurred())
 	err = namespaces.WaitForDeletion(testutils.NamespaceTesting, 5*time.Minute)
-	nodeinspector.Delete(context.TODO())
+	Expect(err).ToNot(HaveOccurred())
+	Expect(nodeinspector.Delete(context.TODO())).To(Succeed())
 })
 
 func TestPerformanceKubelet(t *testing.T) {

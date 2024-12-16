@@ -23,7 +23,7 @@ func IsVM(ctx context.Context, node *corev1.Node) (bool, error) {
 	}
 
 	statusCode := strings.TrimSpace(string(output))
-	isVM := string(statusCode) == "0"
+	isVM := statusCode == "0"
 
 	return isVM, nil
 }

@@ -46,7 +46,7 @@ var _ = BeforeSuite(func() {
 
 var _ = AfterSuite(func() {
 	os.RemoveAll(destDir)
-	nodeinspector.Delete(context.TODO())
+	Expect(nodeinspector.Delete(context.TODO())).To(Succeed())
 })
 
 func TestPaoMustgatherTests(t *testing.T) {

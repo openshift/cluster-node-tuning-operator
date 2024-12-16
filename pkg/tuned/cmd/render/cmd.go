@@ -16,8 +16,8 @@ limitations under the License.
 package render
 
 import (
+	"errors"
 	"flag"
-	"fmt"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 
@@ -76,7 +76,7 @@ func (r *renderOpts) Validate() error {
 	if len(err) == 0 {
 		return nil
 	}
-	return fmt.Errorf(err)
+	return errors.New(err)
 }
 
 func (r *renderOpts) Run() error {

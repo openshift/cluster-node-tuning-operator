@@ -13,7 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
@@ -197,7 +197,7 @@ func createDaemonSet(name, namespace, serviceAccountName, image string) *appsv1.
 					HostPID:                       true,
 					HostNetwork:                   true,
 					ServiceAccountName:            serviceAccountName,
-					TerminationGracePeriodSeconds: pointer.Int64(0),
+					TerminationGracePeriodSeconds: ptr.To(int64(0)),
 					NodeSelector:                  map[string]string{"kubernetes.io/os": "linux"},
 					Containers: []corev1.Container{
 						{
@@ -212,8 +212,8 @@ func createDaemonSet(name, namespace, serviceAccountName, image string) *appsv1.
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
-								Privileged:             pointer.Bool(true),
-								ReadOnlyRootFilesystem: pointer.Bool(true),
+								Privileged:             ptr.To(true),
+								ReadOnlyRootFilesystem: ptr.To(true),
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{

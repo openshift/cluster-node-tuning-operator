@@ -12,7 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -126,13 +126,13 @@ func NewPerformanceProfile(name string) *PerformanceProfile {
 				},
 			},
 			RealTimeKernel: &RealTimeKernel{
-				Enabled: pointer.Bool(true),
+				Enabled: ptr.To(true),
 			},
 			NUMA: &NUMA{
 				TopologyPolicy: &numaPolicy,
 			},
 			Net: &Net{
-				UserLevelNetworking: pointer.Bool(true),
+				UserLevelNetworking: ptr.To(true),
 				Devices: []Device{
 					{
 						InterfaceName: &netDeviceName,
@@ -381,7 +381,7 @@ var _ = Describe("PerformanceProfile", func() {
 			setValidNodeSelector(profile)
 
 			errors = profile.validateSelectors()
-			Expect(profile.validateSelectors()).To(BeEmpty(), "should not have validation errors when machine config selector nil")
+			Expect(errors).To(BeEmpty(), "should not have validation errors when machine config selector nil")
 		})
 
 		It("should should have 0 or 1 MachineConfigPoolSelector labels", func() {
@@ -397,7 +397,7 @@ var _ = Describe("PerformanceProfile", func() {
 			setValidNodeSelector(profile)
 
 			errors = profile.validateSelectors()
-			Expect(profile.validateSelectors()).To(BeEmpty(), "should not have validation errors when machine config pool selector nil")
+			Expect(errors).To(BeEmpty(), "should not have validation errors when machine config pool selector nil")
 		})
 
 		It("should have sensible NodeSelector in case MachineConfigLabel or MachineConfigPoolSelector is empty", func() {
@@ -583,7 +583,7 @@ var _ = Describe("PerformanceProfile", func() {
 
 			profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 				Count: 128,
-				Node:  pointer.Int32(0),
+				Node:  ptr.To(int32(0)),
 				Size:  "14M",
 			})
 			errors := profile.validateHugePages(nodes)
@@ -604,7 +604,7 @@ var _ = Describe("PerformanceProfile", func() {
 
 			profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 				Count: 128,
-				Node:  pointer.Int32(0),
+				Node:  ptr.To(int32(0)),
 				Size:  "14M",
 			})
 			errors := profile.validateHugePages(nodes)
@@ -635,7 +635,7 @@ var _ = Describe("PerformanceProfile", func() {
 
 			profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 				Count: 128,
-				Node:  pointer.Int32(0),
+				Node:  ptr.To(int32(0)),
 				Size:  "14M",
 			})
 
@@ -661,12 +661,12 @@ var _ = Describe("PerformanceProfile", func() {
 					profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 						Count: 128,
 						Size:  hugepagesSize1G,
-						Node:  pointer.Int32(0),
+						Node:  ptr.To(int32(0)),
 					})
 					profile.Spec.HugePages.Pages = append(profile.Spec.HugePages.Pages, HugePage{
 						Count: 64,
 						Size:  hugepagesSize1G,
-						Node:  pointer.Int32(0),
+						Node:  ptr.To(int32(0)),
 					})
 					errors := profile.validateHugePages(nodes)
 					Expect(errors).NotTo(BeEmpty())
@@ -729,22 +729,22 @@ var _ = Describe("PerformanceProfile", func() {
 			It("should raise the validation syntax errors", func() {
 				invalidVendor := "123"
 				invalidDevice := "0x12345"
-				profile.Spec.Net.Devices[0].InterfaceName = pointer.String("")
-				profile.Spec.Net.Devices[0].VendorID = pointer.String(invalidVendor)
-				profile.Spec.Net.Devices[0].DeviceID = pointer.String(invalidDevice)
+				profile.Spec.Net.Devices[0].InterfaceName = ptr.To("")
+				profile.Spec.Net.Devices[0].VendorID = ptr.To(invalidVendor)
+				profile.Spec.Net.Devices[0].DeviceID = ptr.To(invalidDevice)
 				errors := profile.validateNet()
 				Expect(len(errors)).To(Equal(3))
-				Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("device name cannot be empty")))
+				Expect(errors[0].Error()).To(ContainSubstring("device name cannot be empty"))
 				Expect(errors[1].Error()).To(ContainSubstring(fmt.Sprintf("device vendor ID %s has an invalid format. Vendor ID should be represented as 0x<4 hexadecimal digits> (16 bit representation)", invalidVendor)))
 				Expect(errors[2].Error()).To(ContainSubstring(fmt.Sprintf("device model ID %s has an invalid format. Model ID should be represented as 0x<4 hexadecimal digits> (16 bit representation)", invalidDevice)))
 
 			})
 			It("should raise the validation errors for missing fields", func() {
 				profile.Spec.Net.Devices[0].VendorID = nil
-				profile.Spec.Net.Devices[0].DeviceID = pointer.String("0x1")
+				profile.Spec.Net.Devices[0].DeviceID = ptr.To("0x1")
 				errors := profile.validateNet()
 				Expect(errors).NotTo(BeEmpty())
-				Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("device model ID can not be used without specifying the device vendor ID.")))
+				Expect(errors[0].Error()).To(ContainSubstring("device model ID can not be used without specifying the device vendor ID."))
 			})
 		})
 
@@ -752,10 +752,10 @@ var _ = Describe("PerformanceProfile", func() {
 			When("realtime kernel is enabled and realtime workload hint is explicitly disabled", func() {
 				It("should raise validation error", func() {
 					profile.Spec.WorkloadHints = &WorkloadHints{
-						RealTime: pointer.Bool(false),
+						RealTime: ptr.To(false),
 					}
 					profile.Spec.RealTimeKernel = &RealTimeKernel{
-						Enabled: pointer.Bool(true),
+						Enabled: ptr.To(true),
 					}
 					errors := profile.validateWorkloadHints()
 					Expect(errors).NotTo(BeEmpty())
@@ -765,8 +765,8 @@ var _ = Describe("PerformanceProfile", func() {
 			When("HighPowerConsumption hint is enabled and PerPodPowerManagement hint is enabled", func() {
 				It("should raise validation error", func() {
 					profile.Spec.WorkloadHints = &WorkloadHints{
-						HighPowerConsumption:  pointer.Bool(true),
-						PerPodPowerManagement: pointer.Bool(true),
+						HighPowerConsumption:  ptr.To(true),
+						PerPodPowerManagement: ptr.To(true),
 					}
 					errors := profile.validateWorkloadHints()
 					Expect(errors).NotTo(BeEmpty())
@@ -776,7 +776,7 @@ var _ = Describe("PerformanceProfile", func() {
 			When("MixedCPUs hint is enabled but no shared CPUs are specified", func() {
 				It("should raise validation error", func() {
 					profile.Spec.WorkloadHints = &WorkloadHints{
-						MixedCpus: pointer.Bool(true),
+						MixedCpus: ptr.To(true),
 					}
 					errors := profile.validateWorkloadHints()
 					Expect(errors).NotTo(BeEmpty())
@@ -807,17 +807,17 @@ var _ = Describe("PerformanceProfile", func() {
 			profile.Spec.HugePages.DefaultHugePagesSize = &incorrectDefaultSize
 
 			profile.Spec.WorkloadHints = &WorkloadHints{
-				RealTime: pointer.Bool(false),
+				RealTime: ptr.To(false),
 			}
 			profile.Spec.RealTimeKernel = &RealTimeKernel{
-				Enabled: pointer.Bool(true),
+				Enabled: ptr.To(true),
 			}
 
 			invalidVendor := "123"
 			invalidDevice := "0x12345"
-			profile.Spec.Net.Devices[0].InterfaceName = pointer.String("")
-			profile.Spec.Net.Devices[0].VendorID = pointer.String(invalidVendor)
-			profile.Spec.Net.Devices[0].DeviceID = pointer.String(invalidDevice)
+			profile.Spec.Net.Devices[0].InterfaceName = ptr.To("")
+			profile.Spec.Net.Devices[0].VendorID = ptr.To(invalidVendor)
+			profile.Spec.Net.Devices[0].DeviceID = ptr.To(invalidDevice)
 
 			errors := profile.ValidateBasicFields()
 

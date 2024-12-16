@@ -1,7 +1,7 @@
 package performance
 
 import (
-	"io/ioutil"
+	"os"
 	"strings"
 
 	"github.com/RHsyseng/operator-utils/pkg/validation"
@@ -53,7 +53,7 @@ var _ = Describe("PerformanceProfile CR(D) Schema", func() {
 // getSchema reads in & returns CRD schema file as openAPIV3Schema{} for validation usage.
 // See references operator-utils/validation/schema & go-openapi/spec/schema
 func getSchema(crdPath string) (validation.Schema, error) {
-	bytes, err := ioutil.ReadFile(crdPath)
+	bytes, err := os.ReadFile(crdPath)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func getSchema(crdPath string) (validation.Schema, error) {
 
 // getCR unmarshals a *_cr.yaml file and returns the representing struct
 func getCR(crPath string) (map[string]interface{}, error) {
-	bytes, err := ioutil.ReadFile(crPath)
+	bytes, err := os.ReadFile(crPath)
 	if err != nil {
 		return nil, err
 	}

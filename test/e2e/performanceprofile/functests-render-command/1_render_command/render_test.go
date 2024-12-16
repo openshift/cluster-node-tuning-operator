@@ -94,7 +94,7 @@ var _ = Describe("render command e2e test", func() {
 			Expect(err).To(HaveOccurred(), logStderr(err))
 		})
 
-		It("Must not set any owner reference if disabled explicitely", func() {
+		It("Must not set any owner reference if disabled explicitly", func() {
 			cmdline := []string{
 				filepath.Join(binPath, "cluster-node-tuning-operator"),
 				"render",

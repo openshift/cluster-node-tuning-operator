@@ -35,11 +35,12 @@ var _ = ginkgo.Describe("[basic][default_irq_smp_affinity] Node Tuning Operator 
 
 		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of ginkgo.It()
 		ginkgo.AfterEach(func() {
+			// Ignore failures to cleanup resources which are already deleted or not yet created.
 			ginkgo.By("cluster changes rollback")
 			if node != nil {
-				util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelAffinity+"-")
+				_, _, _ = util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelAffinity+"-")
 			}
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileAffinity0)
+			_, _, _ = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileAffinity0)
 		})
 
 		ginkgo.It(fmt.Sprintf("default_irq_smp_affinity: %s set", procIrqDefaultSmpAffinity), func() {

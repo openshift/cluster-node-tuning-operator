@@ -59,9 +59,10 @@ var _ = ginkgo.Describe("Profile deferred", ginkgo.Label("deferred", "slow", "di
 		})
 
 		ginkgo.AfterEach(func() {
+			// Ignore failures to cleanup resources which are already deleted or not yet created.
 			for _, createdTuned := range createdTuneds {
 				ginkgo.By(fmt.Sprintf("cluster changes rollback: %q", createdTuned))
-				util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", createdTuned)
+				_, _, _ = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", createdTuned)
 			}
 
 			if len(createdTuneds) == 0 {

@@ -53,10 +53,9 @@ func GetCurrentDirPath() (string, error) {
 }
 
 // Logf formats using the default formats for its operands and writes to
-// ginkgo.GinkgoWriter and a newline is appended.  It returns the number of
-// bytes written and any write error encountered.
-func Logf(format string, args ...interface{}) (n int, err error) {
-	return fmt.Fprintf(ginkgo.GinkgoWriter, format+"\n", args...)
+// ginkgo.GinkgoWriter and a newline is appended.
+func Logf(format string, args ...interface{}) {
+	fmt.Fprintf(ginkgo.GinkgoWriter, format+"\n", args...)
 }
 
 // getNodes returns a list of nodes that match the labelSelector.

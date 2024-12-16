@@ -292,6 +292,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				// we don't need to check cpus used by all the containers
 				// we take first container
 				containerPid, err := nodes.ContainerPid(ctx, workerRTNode, ovnContainerids[0])
+				Expect(err).ToNot(HaveOccurred())
 				// we need to wait as process affinity can change
 				time.Sleep(30 * time.Second)
 				ctnCpuset := taskSet(ctx, containerPid, workerRTNode)
@@ -383,6 +384,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 
 				tasksetcmd := []string{"taskset", "-pc", "1"}
 				testpod1Cpus, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod1, "", tasksetcmd)
+				Expect(err).ToNot(HaveOccurred())
 				testlog.Infof("%v pod is using %v cpus", testpod1.Name, string(testpod1Cpus))
 
 				// Create testpod2
@@ -403,6 +405,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 
 				By("fetch cpus used by container process using taskset")
 				testpod2Cpus, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod2, "", tasksetcmd)
+				Expect(err).ToNot(HaveOccurred())
 				testlog.Infof("%v pod is using %v cpus", testpod2.Name, string(testpod2Cpus))
 
 				// Get cpus used by the ovnkubenode-pods containers
@@ -410,6 +413,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				ovnContainers, err := ovnPodContainers(&ovnPod)
 				Expect(err).ToNot(HaveOccurred())
 				containerPid, err := nodes.ContainerPid(context.TODO(), workerRTNode, ovnContainers[0])
+				Expect(err).ToNot(HaveOccurred())
 				// we need to wait as process affinity can change
 				time.Sleep(30 * time.Second)
 				ovnContainerCpuset1 := taskSet(ctx, containerPid, workerRTNode)
@@ -487,6 +491,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				ovnContainerids, err := ovnPodContainers(&ovnPod)
 				Expect(err).ToNot(HaveOccurred())
 				containerPid, err := nodes.ContainerPid(ctx, workerRTNode, ovnContainerids[0])
+				Expect(err).ToNot(HaveOccurred())
 				// we need to wait as process affinity can change
 				time.Sleep(30 * time.Second)
 				ovnContainerCpuset := taskSet(ctx, containerPid, workerRTNode)
@@ -535,11 +540,13 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				}
 
 				err = waitForCondition(dp, desiredStatus)
+				Expect(err).ToNot(HaveOccurred())
 				ovnPodAfterReboot, err := ovnCnfNodePod(ctx, workerRTNode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get ovnPod")
 				ovnContainerIdsAfterReboot, err := ovnPodContainers(&ovnPodAfterReboot)
 				Expect(err).ToNot(HaveOccurred())
 				containerPid, err = nodes.ContainerPid(ctx, workerRTNode, ovnContainerIdsAfterReboot[0])
+				Expect(err).ToNot(HaveOccurred())
 				// we need to wait as process affinity can change
 				time.Sleep(30 * time.Second)
 				ovnContainerCpusetAfterReboot := taskSet(ctx, containerPid, workerRTNode)
@@ -630,7 +637,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 						return false
 					}
 					for _, s := range podList.Items[0].Status.ContainerStatuses {
-						if s.Ready == false {
+						if !s.Ready {
 							return false
 						}
 					}
@@ -646,6 +653,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					testpodCpus := bytes.Split(outputb, []byte(":"))
 					testlog.Infof("%v pod is using cpus %v", pod.Name, string(testpodCpus[1]))
 					podcpus, err := cpuset.Parse(strings.TrimSpace(string(testpodCpus[1])))
+					Expect(err).ToNot(HaveOccurred())
 					for _, line := range postDeploymentThreadAffinity {
 						if line != "" {
 							cpumask := strings.Split(line, ":")
@@ -689,7 +697,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 						return false
 					}
 					for _, s := range podList.Items[0].Status.ContainerStatuses {
-						if s.Ready == false {
+						if !s.Ready {
 							return false
 						}
 					}
@@ -705,6 +713,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					testpodCpus := bytes.Split(outputb, []byte(":"))
 					testlog.Infof("%v pod is using cpus %v", pod.Name, string(testpodCpus[1]))
 					podcpus, err := cpuset.Parse(strings.TrimSpace(string(testpodCpus[1])))
+					Expect(err).ToNot(HaveOccurred())
 					for _, line := range refresshedThreadAffinity {
 						if line != "" {
 							cpumask := strings.Split(line, ":")
@@ -812,15 +821,16 @@ func ovnCnfNodePod(ctx context.Context, workerNode *corev1.Node) (corev1.Pod, er
 // ovnPodContainers returns containerids of all containers running inside ovn kube node pod
 func ovnPodContainers(ovnKubeNodePod *corev1.Pod) ([]string, error) {
 	var ovnKubeNodePodContainerids []string
-	var err error
+	var errRet error
 	for _, ovnctn := range ovnKubeNodePod.Spec.Containers {
 		ctnName, err := pods.GetContainerIDByName(ovnKubeNodePod, ovnctn.Name)
 		if err != nil {
 			err = fmt.Errorf("unable to fetch container id of %v", ovnctn)
+			errRet = err
 		}
 		ovnKubeNodePodContainerids = append(ovnKubeNodePodContainerids, ctnName)
 	}
-	return ovnKubeNodePodContainerids, err
+	return ovnKubeNodePodContainerids, errRet
 }
 
 // getCPUMaskForPids returns cpu mask of ovs process pids
@@ -922,7 +932,7 @@ func ovsSystemdServicesOnOvsSlice(ctx context.Context, workerRTNode *corev1.Node
 // ovsPids Returns Pid of ovs services running inside the ovs.slice cgroup
 func ovsPids(ctx context.Context, ovsSystemdServices []string, workerRTNode *corev1.Node) ([]string, error) {
 	var pidList []string
-	var err error
+	var errRet error
 	for _, service := range ovsSystemdServices {
 		//we need to ignore oneshot services which are part of ovs.slices
 		serviceType, err := systemd.ShowProperty(ctx, service, "Type", workerRTNode)
@@ -933,10 +943,13 @@ func ovsPids(ctx context.Context, ovsSystemdServices []string, workerRTNode *cor
 			continue
 		}
 		pid, err := systemd.ShowProperty(context.TODO(), service, "ExecMainPID", workerRTNode)
+		if errRet != nil {
+			errRet = err
+		}
 		ovsPid := strings.Split(strings.TrimSpace(pid), "=")
 		pidList = append(pidList, ovsPid[1])
 	}
-	return pidList, err
+	return pidList, errRet
 }
 
 // taskSet returns cpus used by the pid

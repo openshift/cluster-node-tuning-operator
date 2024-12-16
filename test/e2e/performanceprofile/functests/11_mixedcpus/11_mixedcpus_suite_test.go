@@ -15,5 +15,5 @@ func TestMixedCPUs(t *testing.T) {
 }
 
 var _ = AfterSuite(func() {
-	nodeinspector.Delete(context.TODO())
+	Expect(nodeinspector.Delete(context.TODO())).To(Succeed())
 })

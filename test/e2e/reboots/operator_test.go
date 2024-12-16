@@ -24,8 +24,9 @@ func TestNodeTuningOperator(t *testing.T) {
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	nodeCount, err := util.GetClusterNodes(cs)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	if nodeCount == 1 && controlPlaneTopology == configv1.SingleReplicaTopologyMode {
-		// This looks like an SNO cluster.  For the "reboots" tests to work, "master" MCP needs to be targetted.
+		// This looks like an SNO cluster.  For the "reboots" tests to work, "master" MCP needs to be targeted.
 		util.Logf("seeing only %d node and control plane topology is %v, skipping test suite", nodeCount, controlPlaneTopology)
 		return
 	}

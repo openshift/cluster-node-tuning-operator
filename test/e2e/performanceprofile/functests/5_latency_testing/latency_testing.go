@@ -96,6 +96,8 @@ var _ = DescribeTable("Test latency measurement tools tests", func(testGroup []l
 	format.MaxLength = 0
 	var output []byte
 	var err error
+	skipInsufficientCpuRegex := regexp.MustCompile(skipInsufficientCpu)
+	successRegex := regexp.MustCompile(success)
 	for _, test := range testGroup {
 		clearEnv()
 		testDescription := setEnvAndGetDescription(test)
@@ -114,10 +116,7 @@ var _ = DescribeTable("Test latency measurement tools tests", func(testGroup []l
 			testlog.Info(err.Error())
 		}
 
-		ok, matchErr := regexp.MatchString(skipInsufficientCpu, string(output))
-		if matchErr != nil {
-			testlog.Error(matchErr.Error())
-		}
+		ok := skipInsufficientCpuRegex.MatchString(string(output))
 		if ok {
 			testlog.Info(skipInsufficientCpu)
 			continue
@@ -129,10 +128,7 @@ var _ = DescribeTable("Test latency measurement tools tests", func(testGroup []l
 			}
 			Expect(string(output)).NotTo(MatchRegexp(unexpectedError), "Unexpected error was detected in a positive test")
 			//Check runtime argument in the pod's log only if the tool is expected to be executed
-			ok, matchErr := regexp.MatchString(success, string(output))
-			if matchErr != nil {
-				testlog.Error(matchErr.Error())
-			}
+			ok := successRegex.MatchString(string(output))
 			if ok {
 				//verify the command is executed with the expected args
 				//this lists of args depend on the ones the latency tool runners adds to tool command in cnf-features-deploy.
@@ -231,7 +227,7 @@ func getValidValuesTests(toolToTest string) []latencyTest {
 	//testCpus: for tests that expect a success output message, note that an even CPU number is needed, otherwise the test would fail with SMTAlignmentError
 
 	successRuntime := "30"
-	// Using a timeout value such that ginkgo timeout > runtime + latency to ensure successfull runs
+	// Using a timeout value such that ginkgo timeout > runtime + latency to ensure successful runs
 	successGinkgoTimeout := "200s"
 	testSet = append(testSet, latencyTest{testDelay: "140", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, testCpus: "4", outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
 	testSet = append(testSet, latencyTest{testDelay: "0", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, testCpus: "4", outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})

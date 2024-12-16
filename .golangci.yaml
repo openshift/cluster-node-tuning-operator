@@ -1,16 +1,19 @@
 run:
   timeout: 5m
-  tests: false
-  skip-dirs:
-    - vendor
-    - test
   modules-download-mode: vendor
+issues:
+  exclude-dirs:
+    - vendor
+  exclude-rules:
+    # Temporarily disable the deprecation warnings until we rewrite the code based on deprecated functionality.
+    - linters:
+        - staticcheck
+      text: "SA1019: .* deprecated"
 linters:
   disable-all: true
   enable:
     - errcheck
     - bodyclose
-    - exportloopref
     - gosimple
     - govet
     - ineffassign
@@ -25,8 +28,14 @@ linters:
     - wastedassign
     - whitespace
 linters-settings:
+  errcheck:
+    # report about assignment of errors to blank identifier: `num, _ := strconv.Atoi(numStr)`;
+    # default is false: such cases aren't reported by default.
+    check-blank: false
   misspell:
-    locale: US
+    # Do not set locale explicitly, the default is to use a neutral variety of English.
+    # Setting locale to US will cause correcting the British spelling of 'colour' to 'color'.
+    # locale: US
     ignore-words:
       - NTO
       - nto

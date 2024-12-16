@@ -19,7 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 	"k8s.io/utils/cpuset"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
@@ -96,7 +96,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				profile.Spec.WorkloadHints = nil
 
 				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.Bool(false),
+					Enabled: ptr.To(false),
 				}
 				// If current workload hints already contains the changes skip updating
 				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
@@ -152,11 +152,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					HighPowerConsumption: pointer.Bool(false),
-					RealTime:             pointer.Bool(true),
+					HighPowerConsumption: ptr.To(false),
+					RealTime:             ptr.To(true),
 				}
 				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.Bool(false),
+					Enabled: ptr.To(false),
 				}
 
 				// If current workload hints already contains the changes skip updating
@@ -211,12 +211,12 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					HighPowerConsumption: pointer.Bool(true),
-					RealTime:             pointer.Bool(false),
+					HighPowerConsumption: ptr.To(true),
+					RealTime:             ptr.To(false),
 				}
 
 				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-					Enabled: pointer.Bool(false),
+					Enabled: ptr.To(false),
 				}
 
 				// If current workload hints already contains the changes skip updating
@@ -270,9 +270,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 			It("[test_id:50993][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", Label(string(label.Slow)), func() {
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					HighPowerConsumption:  pointer.Bool(true),
-					RealTime:              pointer.Bool(true),
-					PerPodPowerManagement: pointer.Bool(false),
+					HighPowerConsumption:  ptr.To(true),
+					RealTime:              ptr.To(true),
+					PerPodPowerManagement: ptr.To(false),
 				}
 				// If current workload hints already contains the changes
 				// skip mcp wait
@@ -330,9 +330,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 			It("[test_id:54177]should update kernel arguments and tuned accordingly", Label(string(label.Slow)), func() {
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					PerPodPowerManagement: pointer.Bool(true),
-					HighPowerConsumption:  pointer.Bool(false),
-					RealTime:              pointer.Bool(true),
+					PerPodPowerManagement: ptr.To(true),
+					HighPowerConsumption:  ptr.To(false),
+					RealTime:              ptr.To(true),
 				}
 				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
 					By("Patching the performance profile with workload hints")
@@ -375,13 +375,13 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					HighPowerConsumption:  pointer.Bool(true),
-					RealTime:              pointer.Bool(true),
-					PerPodPowerManagement: pointer.Bool(false),
+					HighPowerConsumption:  ptr.To(true),
+					RealTime:              ptr.To(true),
+					PerPodPowerManagement: ptr.To(false),
 				}
 				if !*profile.Spec.RealTimeKernel.Enabled {
 					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-						Enabled: pointer.Bool(true),
+						Enabled: ptr.To(true),
 					}
 				}
 				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
@@ -434,13 +434,13 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 				//Update the profile to disable HighPowerConsumption and enable PerPodPowerManagment
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					HighPowerConsumption:  pointer.Bool(false),
-					RealTime:              pointer.Bool(true),
-					PerPodPowerManagement: pointer.Bool(true),
+					HighPowerConsumption:  ptr.To(false),
+					RealTime:              ptr.To(true),
+					PerPodPowerManagement: ptr.To(true),
 				}
 				if !*profile.Spec.RealTimeKernel.Enabled {
 					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-						Enabled: pointer.Bool(true),
+						Enabled: ptr.To(true),
 					}
 				}
 
@@ -498,13 +498,13 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				// First enable HighPowerConsumption
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					HighPowerConsumption:  pointer.Bool(false),
-					RealTime:              pointer.Bool(true),
-					PerPodPowerManagement: pointer.Bool(true),
+					HighPowerConsumption:  ptr.To(false),
+					RealTime:              ptr.To(true),
+					PerPodPowerManagement: ptr.To(true),
 				}
 				if !*profile.Spec.RealTimeKernel.Enabled {
 					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-						Enabled: pointer.Bool(true),
+						Enabled: ptr.To(true),
 					}
 				}
 				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
@@ -554,13 +554,13 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 				//Update the profile to enable HighPowerConsumption and disable PerPodPowerManagment
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					HighPowerConsumption:  pointer.Bool(true),
-					RealTime:              pointer.Bool(true),
-					PerPodPowerManagement: pointer.Bool(false),
+					HighPowerConsumption:  ptr.To(true),
+					RealTime:              ptr.To(true),
+					PerPodPowerManagement: ptr.To(false),
 				}
 				if !*profile.Spec.RealTimeKernel.Enabled {
 					profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-						Enabled: pointer.Bool(true),
+						Enabled: ptr.To(true),
 					}
 				}
 				By("Updating the performance profile")
@@ -612,9 +612,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 			It("[test_id:54184]Verify enabling both HighPowerConsumption and PerPodPowerManagment fails", Label(string(label.Tier0)), func() {
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					PerPodPowerManagement: pointer.Bool(true),
-					HighPowerConsumption:  pointer.Bool(true),
-					RealTime:              pointer.Bool(true),
+					PerPodPowerManagement: ptr.To(true),
+					HighPowerConsumption:  ptr.To(true),
+					RealTime:              ptr.To(true),
 				}
 				if hypershift.IsHypershiftCluster() {
 					hostedClusterName, err := hypershift.GetHostedClusterName()
@@ -638,7 +638,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 							statusErr, _ := err.(*errors.StatusError)
 							return statusErr.Status().Message
 						}
-						return fmt.Sprint("Profile applied successfully")
+						return "Profile applied successfully"
 					}, time.Minute, 5*time.Second).Should(ContainSubstring("HighPowerConsumption and PerPodPowerManagement can not be both enabled"))
 				}
 			})
@@ -651,9 +651,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				checkHardwareCapability(context.TODO(), workerRTNodes)
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					PerPodPowerManagement: pointer.Bool(true),
-					HighPowerConsumption:  pointer.Bool(false),
-					RealTime:              pointer.Bool(true),
+					PerPodPowerManagement: ptr.To(true),
+					HighPowerConsumption:  ptr.To(false),
+					RealTime:              ptr.To(true),
 				}
 				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
 					By("Updating the performance profile")
@@ -755,9 +755,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				checkHardwareCapability(context.TODO(), workerRTNodes)
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-					PerPodPowerManagement: pointer.Bool(false),
-					HighPowerConsumption:  pointer.Bool(true),
-					RealTime:              pointer.Bool(true),
+					PerPodPowerManagement: ptr.To(false),
+					HighPowerConsumption:  ptr.To(true),
+					RealTime:              ptr.To(true),
 				}
 				if !(cmp.Equal(currentWorkloadHints, profile.Spec.WorkloadHints)) {
 					By("Updating the performance profile")
@@ -805,9 +805,12 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				Expect(err).ToNot(HaveOccurred())
 
 				pid, err := nodes.ContainerPid(context.TODO(), &workerRTNodes[0], containerID)
+				Expect(err).ToNot(HaveOccurred())
 				cmd := []string{"cat", fmt.Sprintf("/rootfs/proc/%s/cgroup", pid)}
 				out, err := nodes.ExecCommand(context.TODO(), &workerRTNodes[0], cmd)
+				Expect(err).ToNot(HaveOccurred())
 				containerCgroup, err = cgroup.PidParser(out)
+				Expect(err).ToNot(HaveOccurred())
 				cgroupv2, err := cgroup.IsVersion2(context.TODO(), testclient.DataPlaneClient)
 				Expect(err).ToNot(HaveOccurred())
 				if cgroupv2 {
@@ -823,12 +826,14 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				Expect(err).ToNot(HaveOccurred())
 				output := testutils.ToString(out)
 				cpus, err := cpuset.Parse(output)
+				Expect(err).ToNot(HaveOccurred())
 				targetCpus := cpus.List()
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), targetCpus, &workerRTNodes[0], "n/a", "performance")
 				Expect(err).ToNot(HaveOccurred())
 				By("Verify the rest of cpus have default power setting")
 				var otherCpus []int
 				numaInfo, err := nodes.GetNumaNodes(context.TODO(), &workerRTNodes[0])
+				Expect(err).ToNot(HaveOccurred())
 				for _, cpusiblings := range numaInfo {
 					for _, cpu := range cpusiblings {
 						if cpu != targetCpus[0] && cpu != targetCpus[1] {
@@ -838,10 +843,12 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				}
 				//Verify cpus not assigned to the pod have default power settings
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), otherCpus, &workerRTNodes[0], "0", "performance")
+				Expect(err).ToNot(HaveOccurred())
 				deleteTestPod(context.TODO(), testpod)
 				//Test after pod is deleted the governors are set back to default for the cpus that were alloted to containers.
 				By("Verify after pod is delete cpus assigned to container have default powersave settings")
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), targetCpus, &workerRTNodes[0], "0", "performance")
+				Expect(err).ToNot(HaveOccurred())
 			})
 		})
 
@@ -940,7 +947,7 @@ func checkHardwareCapability(ctx context.Context, workerRTNodes []corev1.Node) {
 		numaInfo, err := nodes.GetNumaNodes(ctx, &node)
 		Expect(err).ToNot(HaveOccurred())
 		if len(numaInfo) < 2 {
-			Skip(fmt.Sprintf("This test need 2 NUMA nodes.The number of NUMA nodes on node %s < 2", node.Name))
+			Skip(fmt.Sprintf("This test need 2 NUMA nodes. The number of NUMA nodes on node %s < 2", node.Name))
 		}
 		// Additional check so that test gets skipped on vm with fake numa
 		out, err := nodes.ExecCommand(ctx, &node, []string{"nproc", "--all"})

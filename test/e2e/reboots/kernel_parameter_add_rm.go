@@ -33,13 +33,15 @@ var _ = ginkgo.Describe("[reboots][kernel_parameter_add_rm] Node Tuning Operator
 		ginkgo.AfterEach(func() {
 			// This cleanup code ignores issues outlined in rhbz#1816239;
 			// this can cause a degraded MachineConfigPool
+
+			// Ignore failures to cleanup resources which are already deleted or not yet created.
 			ginkgo.By("cluster changes rollback")
 			if node != nil {
-				util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelRealtime+"-")
+				_, _, _ = util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelRealtime+"-")
 			}
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileParent)
-			util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileChild)
-			util.ExecAndLogCommand("oc", "delete", "-f", mcpRealtime)
+			_, _, _ = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileParent)
+			_, _, _ = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileChild)
+			_, _, _ = util.ExecAndLogCommand("oc", "delete", "-f", mcpRealtime)
 		})
 
 		ginkgo.It("kernel parameters set", func() {
@@ -104,6 +106,7 @@ var _ = ginkgo.Describe("[reboots][kernel_parameter_add_rm] Node Tuning Operator
 
 			ginkgo.By(fmt.Sprintf("getting the current %s value in Pod %s", procCmdline, pod.Name))
 			cmdlineNew, err = util.WaitForCmdInPod(pollInterval, waitDuration, pod, cmdCatCmdline...)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			util.Logf("%s has %s: %s", pod.Name, procCmdline, cmdlineNew)
 
 			ginkgo.By("ensuring the custom worker child profile was set")

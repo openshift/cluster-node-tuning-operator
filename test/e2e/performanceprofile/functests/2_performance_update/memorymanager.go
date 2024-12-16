@@ -29,7 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -312,12 +312,12 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 					{
 						Count: int32(numaZone0HugepagesCount),
 						Size:  hpSize2M,
-						Node:  pointer.Int32(0),
+						Node:  ptr.To(int32(0)),
 					},
 					{
 						Count: int32(numaZone1HugepagesCount),
 						Size:  hpSize2M,
-						Node:  pointer.Int32(1),
+						Node:  ptr.To(int32(1)),
 					},
 				},
 			}
@@ -624,12 +624,12 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 					{
 						Count: int32(numaZone0HugepagesCount),
 						Size:  hpSize2M,
-						Node:  pointer.Int32(0),
+						Node:  ptr.To(int32(0)),
 					},
 					{
 						Count: int32(numaZone1HugepagesCount),
 						Size:  hpSize1G,
-						Node:  pointer.Int32(1),
+						Node:  ptr.To(int32(1)),
 					},
 				},
 			}
@@ -777,8 +777,11 @@ func (mm MMPod) removePod(ctx context.Context, testPod *corev1.Pod) error {
 		return err
 	}
 	err = testclient.DataPlaneClient.Delete(ctx, testPod)
-	err = pods.WaitForDeletion(ctx, testPod, pods.DefaultDeletionTimeout*time.Second)
-	return err
+	if err != nil {
+		return err
+	}
+
+	return pods.WaitForDeletion(ctx, testPod, pods.DefaultDeletionTimeout*time.Second)
 }
 
 // InitializePod initialize pods which we want to be in running state
@@ -806,9 +809,16 @@ func GetMemoryNodes(ctx context.Context, testPod *corev1.Pod, targetNode *corev1
 		return "", fmt.Errorf("Failed to fetch containerId for %v", testPod)
 	}
 	pid, err := nodes.ContainerPid(context.TODO(), targetNode, containerID)
+	if err != nil {
+		return "", fmt.Errorf("Unable to get container PID: %v", err)
+	}
 	cmd := []string{"cat", fmt.Sprintf("/rootfs/proc/%s/cgroup", pid)}
 	out, err := nodes.ExecCommand(context.TODO(), targetNode, cmd)
+	if err != nil {
+		return "", err
+	}
 	containerCgroup, err = cgroup.PidParser(out)
+	Expect(err).ToNot(HaveOccurred())
 	fmt.Println("Container Cgroup = ", containerCgroup)
 	cgroupv2, err := cgroup.IsVersion2(context.TODO(), testclient.DataPlaneClient)
 	if err != nil {
@@ -823,6 +833,9 @@ func GetMemoryNodes(ctx context.Context, testPod *corev1.Pod, targetNode *corev1
 	}
 	cmd = []string{"cat", cpusetMemsPath}
 	out, err = nodes.ExecCommand(ctx, targetNode, cmd)
+	if err != nil {
+		return "", err
+	}
 	memoryNodes = testutils.ToString(out)
 	testlog.Infof("test pod %s with container id %s has Memory nodes %s", testPod.Name, containerID, memoryNodes)
 	return memoryNodes, err

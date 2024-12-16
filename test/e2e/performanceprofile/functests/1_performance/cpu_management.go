@@ -18,7 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/cpuset"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -299,6 +299,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			}
 
 			err := testclient.DataPlaneClient.Create(context.TODO(), testpod)
+			Expect(err).ToNot(HaveOccurred())
 			testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 			logEventsForPod(testpod)
 			Expect(err).ToNot(HaveOccurred())
@@ -331,6 +332,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 				By("fetch Default cpuset from cpu manager state after restart")
 				cpuManagerCpusetAfterRestart, err := nodes.CpuManagerCpuSet(ctx, workerRTNode)
+				Expect(err).ToNot(HaveOccurred())
 				Expect(cpuManagerCpusetBeforeRestart).To(Equal(cpuManagerCpusetAfterRestart))
 			})
 		})
@@ -427,7 +429,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			testpod = pods.GetTestPod()
 			testpod.Namespace = testutils.NamespaceTesting
 			testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
-			testpod.Spec.ShareProcessNamespace = pointer.Bool(true)
+			testpod.Spec.ShareProcessNamespace = ptr.To(true)
 
 			err := testclient.DataPlaneClient.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
@@ -820,6 +822,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				// Get cpus used by the container
 				tasksetcmd := []string{"/bin/taskset", "-pc", "1"}
 				testpodAffinity, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod, testpod.Spec.Containers[0].Name, tasksetcmd)
+				Expect(err).ToNot(HaveOccurred())
 				podCpusStr := string(testpodAffinity)
 				parts := strings.Split(strings.TrimSpace(podCpusStr), ":")
 				testpodCpus := strings.TrimSpace(parts[1])
@@ -955,7 +958,7 @@ func checkPodHTSiblings(ctx context.Context, testpod *corev1.Pod) bool {
 	)
 	output = testutils.ToString(out)
 
-	// output is newline seperated. Convert to cpulist format by replacing internal "\n" chars with ","
+	// output is newline separated. Convert to cpulist format by replacing internal "\n" chars with ","
 	hostHTSiblings := strings.ReplaceAll(
 		strings.Trim(fmt.Sprint(output), "\n"), "\n", ",",
 	)
@@ -966,8 +969,8 @@ func checkPodHTSiblings(ctx context.Context, testpod *corev1.Pod) bool {
 
 	// pod cpu list should have the same siblings as the host for the same cpus
 	return hostcpus.Equals(podcpus)
-
 }
+
 func startHTtestPod(ctx context.Context, cpuCount int) *corev1.Pod {
 	var testpod *corev1.Pod
 
@@ -1183,7 +1186,6 @@ func checkSchedulingDomains(workerRTNode *corev1.Node, podCpus cpuset.CPUSet, te
 		cpuIDs := cpuset.New(cpuIDList...)
 		return testFunc(cpuIDs)
 	}).WithTimeout(2*time.Minute).WithPolling(5*time.Second).ShouldNot(HaveOccurred(), errMsg)
-
 }
 
 // busyCpuImageEnv return busycpus image used for crio quota annotations test

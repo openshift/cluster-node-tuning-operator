@@ -17,7 +17,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	kubeletconfig "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/cpuset"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -395,7 +395,11 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 					withRequests(rl),
 					withLimits(rl),
 					withRuntime(components.GetComponentName(profile.Name, components.ComponentNamePrefix)))
-				expectedError := "more than a single \"workload.openshift.io/enable-shared-cpus\" resource is forbiden, please set the request to 1 or remove it"
+				// The full expectedError should be:
+				// "more than a single \"workload.openshift.io/enable-shared-cpus\" resource is forbidden, please set the request to 1 or remove it"
+				// however, the word forbidden is misspelt in openshift/kubernetes
+				// https://github.com/openshift/kubernetes/blob/3c62f738ce74a624d46b4f73f25d6c15b3a80a2b/openshift-kube-apiserver/admission/autoscaling/mixedcpus/admission.go#L112
+				expectedError := "more than a single \"workload.openshift.io/enable-shared-cpus\" resource is "
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring(expectedError))
 			})
@@ -466,7 +470,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 
 				By("Editing performanceProfile to have empty shared cpus and setting mixedCpus to false")
 				profile.Spec.CPU.Shared = cpuSetToPerformanceCPUSet(&cpuset.CPUSet{})
-				profile.Spec.WorkloadHints.MixedCpus = pointer.Bool(false)
+				profile.Spec.WorkloadHints.MixedCpus = ptr.To(false)
 
 				By("Applying new performanceProfile")
 				testprofiles.UpdateWithRetry(profile)
@@ -492,7 +496,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 				By("Reverting the cluster to previous state")
 				Expect(testclient.Client.Get(ctx, client.ObjectKeyFromObject(profile), profile))
 				profile.Spec.CPU.Shared = cpuSetToPerformanceCPUSet(ppShared)
-				profile.Spec.WorkloadHints.MixedCpus = pointer.Bool(true)
+				profile.Spec.WorkloadHints.MixedCpus = ptr.To(true)
 				testprofiles.UpdateWithRetry(profile)
 				mcp, err = mcps.GetByProfile(profile)
 				Expect(err).ToNot(HaveOccurred())
@@ -520,7 +524,7 @@ func setup(ctx context.Context) func(ctx2 context.Context) {
 		updatedIsolated := isolated.Difference(sharedcpu)
 		profile.Spec.CPU.Isolated = cpuSetToPerformanceCPUSet(&updatedIsolated)
 		profile.Spec.CPU.Shared = cpuSetToPerformanceCPUSet(&sharedcpu)
-		profile.Spec.WorkloadHints.MixedCpus = pointer.Bool(true)
+		profile.Spec.WorkloadHints.MixedCpus = ptr.To(true)
 		testlog.Infof("enable mixed cpus for profile %q", profile.Name)
 		updateNeeded = true
 	} else {
@@ -554,7 +558,7 @@ func setup(ctx context.Context) func(ctx2 context.Context) {
 	mcps.WaitForCondition(mcp, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 
 	teardown := func(ctx2 context.Context) {
-		By(fmt.Sprintf("executing teardown - revert profile %q back to its intial state", profile.Name))
+		By(fmt.Sprintf("executing teardown - revert profile %q back to its initial state", profile.Name))
 		Expect(testclient.Client.Get(ctx2, client.ObjectKeyFromObject(initialProfile), profile))
 		testprofiles.UpdateWithRetry(initialProfile)
 
@@ -726,5 +730,4 @@ func checkSchedulingDomains(workerRTNode *corev1.Node, podCpus cpuset.CPUSet, te
 		cpuIDs := cpuset.New(cpuIDList...)
 		return testFunc(cpuIDs)
 	}).WithTimeout(2*time.Minute).WithPolling(5*time.Second).ShouldNot(HaveOccurred(), errMsg)
-
 }

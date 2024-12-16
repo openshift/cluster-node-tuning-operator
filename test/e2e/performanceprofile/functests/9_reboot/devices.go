@@ -123,7 +123,7 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 		// Power loss scenarios, aka hard reboot, deferred to another test.
 		// intentionally ignoring error. We need to tolerate connection error or disconnect
 		// because the node is rebooting.
-		runCommandOnNodeThroughMCD(context.TODO(), node, "reboot", rebootNodeCommandMCD)
+		Expect(runCommandOnNodeThroughMCD(context.TODO(), node, "reboot", rebootNodeCommandMCD)).To(Succeed())
 		// this is (likely) a SNO. We need to tolerate connection errors,
 		// because the apiserver is going down as well.
 		// we intentionally use a generous timeout.
@@ -201,7 +201,7 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 		testlog.Infof("pod %q %s/%s ready", podUID, updatedPod.Namespace, updatedPod.Name)
 
 		// phase3: the kubelet restart
-		runCommandOnNodeThroughMCD(context.TODO(), node, "kubelet restart", kubeletRestartCommandMCD)
+		Expect(runCommandOnNodeThroughMCD(context.TODO(), node, "kubelet restart", kubeletRestartCommandMCD)).To(Succeed())
 
 		waitForNodeReadyOrFail("post restart", targetNode, 20*time.Minute, 3*time.Second)
 

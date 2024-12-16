@@ -30,8 +30,6 @@ const (
 	verifyCommandAnnotation = "verificationCommand"
 	verifyOutputAnnotation  = "verificationOutput"
 
-	pollInterval = 5 * time.Second
-	waitDuration = 5 * time.Minute
 	// The number of Profile status conditions.  Adjust when adding new conditions in the API.
 	ProfileStatusConditions = 2
 
