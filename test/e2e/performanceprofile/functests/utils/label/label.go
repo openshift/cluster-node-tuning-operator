@@ -43,8 +43,8 @@ const (
 	// MemoryManager should be added in tests that are meant to test memory manager tests
 	MemoryManager Feature = "memory-manager"
 
-	// Offline should be added in tests that are meant to test offline cpus tests
-	OfflineCPUs Feature = "offlinecpus"
+	// OfflineCPUs should be added in tests that are meant to test offline cpus tests
+	OfflineCPUs Feature = "offline-cpus"
 
 	// RPSMask should be added in tests that are meant to test RPS Masks
 	RPSMask Feature = "rps-mask"
@@ -52,9 +52,9 @@ const (
 	// OVSPinning should be added in tests that test Dynamic OVS Pinning
 	OVSPinning Feature = "ovs-pinning"
 
-	// ExperimentalAnnotation should be added in tests that test Kubelet changes using
+	// ExperimentalAnnotations ExperimentalAnnotation should be added in tests that test Kubelet changes using
 	// experimental annotation
-	ExperimentalAnnotations = "experimental-annotaions"
+	ExperimentalAnnotations Feature = "experimental-annotations"
 )
 
 // Tier is a label to classify tests under specific grade/level
