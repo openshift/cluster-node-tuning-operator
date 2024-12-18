@@ -3,6 +3,7 @@ package __performance_workloadhints
 import (
 	"context"
 	"fmt"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/infrastructure"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -55,6 +56,8 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		poolName                string
 		err                     error
 		ctx                     context.Context = context.Background()
+		isIntel                 bool
+		isAMD                   bool
 	)
 
 	nodeLabel := testutils.NodeSelectorLabels
@@ -67,6 +70,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		profile, err = profiles.GetByNodeLabels(nodeLabel)
 		Expect(err).ToNot(HaveOccurred())
 		klog.Infof("using profile: %q", profile.Name)
+		// Check if one of the nodes is intel or AMD using Vendor ID
+		isIntel, err = infrastructure.IsIntel(ctx, &workerRTNodes[0])
+		Expect(err).ToNot(HaveOccurred(), "Unable to fetch Vendor ID")
+		isAMD, err = infrastructure.IsAMD(ctx, &workerRTNodes[0])
+		Expect(err).ToNot(HaveOccurred(), "Unable to fetch Vendor ID")
 		if !hypershift.IsHypershiftCluster() {
 			poolName, err = mcps.GetByProfile(profile)
 			Expect(err).ToNot(HaveOccurred())
@@ -237,8 +245,10 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"kernel.sched_rt_runtime_us":    "950000",
 					"vm.stat_interval":              "10",
 				}
-				kernelParameters := []string{"processor.max_cstate=1", "intel_idle.max_cstate=0"}
-
+				kernelParameters := []string{"processor.max_cstate=1"}
+				if isIntel {
+					kernelParameters = append(kernelParameters, "intel_idle.max_cstate=0")
+				}
 				wg := sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
@@ -296,8 +306,10 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters := []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
-					"processor.max_cstate=1", "intel_idle.max_cstate=0", "idle=poll"}
-
+					"processor.max_cstate=1", "idle=poll"}
+				if isIntel {
+					kernelParameters = append(kernelParameters, "intel_idle.max_cstate=0")
+				}
 				wg := sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
@@ -319,6 +331,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
 						kernelParameters = append(kernelParameters, utilstuned.AddPstateParameter(context.TODO(), node))
+
 						utilstuned.CheckParameters(context.TODO(), node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
 					}()
 				}
@@ -349,9 +362,14 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				By("Verifying node kernel arguments")
 				cmdline, err := nodes.ExecCommand(context.TODO(), &workerRTNodes[0], []string{"cat", "/proc/cmdline"})
 				Expect(err).ToNot(HaveOccurred())
-				Expect(cmdline).To(ContainSubstring("intel_pstate=passive"))
-				Expect(cmdline).ToNot(ContainSubstring("intel_pstate=active"))
 
+				if isIntel {
+					Expect(cmdline).To(ContainSubstring("intel_pstate=passive"))
+					Expect(cmdline).ToNot(ContainSubstring("intel_pstate=active"))
+				} else {
+					Expect(cmdline).To(ContainSubstring("amd_pstate=passive"))
+					Expect(cmdline).ToNot(ContainSubstring("amd_pstate=active"))
+				}
 				By("Verifying tuned profile")
 				key := types.NamespacedName{
 					Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
@@ -371,6 +389,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware.
 				checkHardwareCapability(context.TODO(), workerRTNodes)
+
 				// First enable HighPowerConsumption
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				By("Modifying profile")
@@ -404,8 +423,10 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters := []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
-					"processor.max_cstate=1", "intel_idle.max_cstate=0", "idle=poll"}
-
+					"processor.max_cstate=1", "idle=poll"}
+				if isIntel {
+					kernelParameters = append(kernelParameters, "intel_idle.max_cstate=0")
+				}
 				wg := sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
@@ -461,8 +482,15 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-				kernelParameters = []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1", "intel_pstate=passive"}
+				kernelParameters = []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1"}
 
+				// Note: Here if it's not intel, its AMD
+				if isIntel {
+					kernelParameters = append(kernelParameters, "intel_pstate=passive")
+				}
+				if isAMD {
+					kernelParameters = append(kernelParameters, "amd_pstate=passive")
+				}
 				wg = sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
@@ -526,7 +554,12 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters := []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1", "intel_pstate=passive"}
-
+				if isIntel {
+					kernelParameters = append(kernelParameters, "intel_pstate=passive")
+				}
+				if isAMD {
+					kernelParameters = append(kernelParameters, "amd_pstate=passive")
+				}
 				wg := sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
@@ -581,8 +614,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters = []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
-					"processor.max_cstate=1", "intel_idle.max_cstate=0", "idle=poll"}
+					"processor.max_cstate=1", "idle=poll"}
 
+				if isIntel {
+					kernelParameters = append(kernelParameters, "intel_idle.max_cstate=0")
+				}
 				wg = sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
@@ -648,6 +684,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				var err error
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware.
+				if isAMD {
+					Skip("Crio Powersave annotations test can only be run on Intel systems")
+				}
 				checkHardwareCapability(context.TODO(), workerRTNodes)
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
@@ -752,6 +791,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware
 				var containerCgroup, fullPath string
+				if isAMD {
+					Skip("Crio Performance annotations test can only be run on Intel systems")
+				}
 				checkHardwareCapability(context.TODO(), workerRTNodes)
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
