@@ -366,7 +366,8 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				if isIntel {
 					Expect(cmdline).To(ContainSubstring("intel_pstate=passive"))
 					Expect(cmdline).ToNot(ContainSubstring("intel_pstate=active"))
-				} else {
+				}
+				if isAMD {
 					Expect(cmdline).To(ContainSubstring("amd_pstate=passive"))
 					Expect(cmdline).ToNot(ContainSubstring("amd_pstate=active"))
 				}
