@@ -39,6 +39,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/poolname"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
@@ -100,23 +101,13 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		profile, err = profiles.GetByNodeLabels(nodeLabel)
 		Expect(err).ToNot(HaveOccurred())
 		klog.Infof("using profile: %q", profile.Name)
-		if hypershift.IsHypershiftCluster() {
-			hostedClusterName, err := hypershift.GetHostedClusterName()
-			Expect(err).ToNot(HaveOccurred())
-			np, err := nodepools.GetByClusterName(context.TODO(), testclient.ControlPlaneClient, hostedClusterName)
-			Expect(err).ToNot(HaveOccurred())
-			poolName = client.ObjectKeyFromObject(np).String()
-			err = nodepools.WaitForConfigToBeReady(context.TODO(), testclient.ControlPlaneClient, np.Name, np.Namespace)
-			Expect(err).ToNot(HaveOccurred())
-		} else {
-			poolName, err = mcps.GetByProfile(profile)
-			Expect(err).ToNot(HaveOccurred())
+		poolName = poolname.GetByProfile(context.TODO(), profile)
+		profilesupdate.WaitForTuningUpdated(context.TODO(), profile)
+		if !hypershift.IsHypershiftCluster() {
 			klog.Infof("using performanceMCP: %q", poolName)
-
-			// Verify that worker and performance MCP have updated state equals to true
-			for _, mcpName := range []string{testutils.RoleWorker, poolName} {
-				mcps.WaitForCondition(mcpName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
-			}
+			// Verify that worker have updated state equals to true
+			// the performanceMCP already checked as part of profilesupdate.WaitForTuningUpdated()
+			mcps.WaitForCondition(testutils.RoleWorker, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 		}
 	})
 
