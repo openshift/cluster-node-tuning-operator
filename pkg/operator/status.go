@@ -20,6 +20,7 @@ import (
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	ntomf "github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/metrics"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/tuned"
 )
 
 const (
@@ -75,7 +76,7 @@ func (c *Controller) syncOperatorStatus(tuned *tunedv1.Tuned) error {
 	return nil
 }
 
-// getOrCreateOperatorStatus get the currect ClusterOperator object or creates a new one.
+// getOrCreateOperatorStatus gets the currect ClusterOperator object or creates a new one.
 // The method always returns a DeepCopy() of the object so the return value is safe to use
 // for Update()s.
 func (c *Controller) getOrCreateOperatorStatus() (*configv1.ClusterOperator, error) {
@@ -112,7 +113,7 @@ func profileApplied(profile *tunedv1.Profile) bool {
 }
 
 // profileDegraded returns true if Profile 'profile' is Degraded.
-// The Degraded ProfileStatusCondition occurs when a TuneD reports errors applying
+// The Degraded StatusCondition occurs when a TuneD reports errors applying
 // the profile or when there is a timeout waiting for the profile to be applied.
 func profileDegraded(profile *tunedv1.Profile) bool {
 	if profile == nil {
@@ -386,4 +387,37 @@ func conditionTrue(conditions []configv1.ClusterOperatorStatusCondition, condTyp
 	}
 
 	return false
+}
+
+// initializeTunedStatusConditions returns a slice of tunedv1.StatusCondition
+// initialized to an unknown state.
+func initializeTunedStatusConditions() []tunedv1.StatusCondition {
+	now := metav1.Now()
+	return []tunedv1.StatusCondition{
+		{
+			Type:               tunedv1.TunedValid,
+			Status:             corev1.ConditionUnknown,
+			LastTransitionTime: now,
+		},
+	}
+}
+
+// computeTunedStatus computes the Tuned CR's status.
+func computeStatusConditions(tunedValid bool, message string, conditions []tunedv1.StatusCondition) []tunedv1.StatusCondition {
+	tunedValidCondition := tunedv1.StatusCondition{
+		Type: tunedv1.TunedValid,
+	}
+
+	if tunedValid {
+		tunedValidCondition.Status = corev1.ConditionTrue
+		tunedValidCondition.Reason = "AsExpected"
+	} else {
+		tunedValidCondition.Status = corev1.ConditionFalse
+		tunedValidCondition.Reason = "InvalidConfiguration"
+	}
+	tunedValidCondition.Message = message
+
+	conditions = tuned.SetStatusCondition(conditions, &tunedValidCondition)
+
+	return conditions
 }
