@@ -1,14 +1,10 @@
 approvers:
   - jmencak
-  - kpouget
-  - dagrayvid  
   - MarSik
   - ffromani
   - yanirq
 reviewers:
   - jmencak
-  - dagrayvid
-  - kpouget
   - MarSik
   - yanirq
   - ffromani
