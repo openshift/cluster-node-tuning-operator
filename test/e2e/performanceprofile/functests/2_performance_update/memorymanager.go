@@ -16,13 +16,11 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/events"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/poolname"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 	corev1 "k8s.io/api/core/v1"
@@ -67,16 +65,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			// Save the original performance profile
 			initialProfile = profile.DeepCopy()
 
-			if !hypershift.IsHypershiftCluster() {
-				poolName, err = mcps.GetByProfile(profile)
-				Expect(err).ToNot(HaveOccurred())
-			} else {
-				hostedClusterName, err := hypershift.GetHostedClusterName()
-				Expect(err).ToNot(HaveOccurred(), "unable to fetch hosted clustername")
-				np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
-				Expect(err).ToNot(HaveOccurred())
-				poolName = client.ObjectKeyFromObject(np).String()
-			}
+			poolName = poolname.GetByProfile(ctx, profile)
 
 			for _, node := range workerRTNodes {
 				numaInfo, err := nodes.GetNumaNodes(context.TODO(), &node)
@@ -231,16 +220,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			workerRTNodes = getUpdatedNodes()
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred(), "unable to get performance profile")
-			if !hypershift.IsHypershiftCluster() {
-				poolName, err = mcps.GetByProfile(profile)
-				Expect(err).ToNot(HaveOccurred())
-			} else {
-				hostedClusterName, err := hypershift.GetHostedClusterName()
-				Expect(err).ToNot(HaveOccurred(), "Unable to fetch hosted cluster name")
-				np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
-				Expect(err).ToNot(HaveOccurred())
-				poolName = client.ObjectKeyFromObject(np).String()
-			}
+			poolName = poolname.GetByProfile(ctx, profile)
 
 			for _, node := range workerRTNodes {
 				numaInfo, err := nodes.GetNumaNodes(context.TODO(), &node)
@@ -436,16 +416,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			workerRTNodes = getUpdatedNodes()
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
-			if !hypershift.IsHypershiftCluster() {
-				poolName, err = mcps.GetByProfile(profile)
-				Expect(err).ToNot(HaveOccurred())
-			} else {
-				hostedClusterName, err := hypershift.GetHostedClusterName()
-				Expect(err).ToNot(HaveOccurred(), "unable to fetch hosted clustername")
-				np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
-				Expect(err).ToNot(HaveOccurred())
-				poolName = client.ObjectKeyFromObject(np).String()
-			}
+			poolName = poolname.GetByProfile(ctx, profile)
 			// Save the original performance profile
 			initialProfile = profile.DeepCopy()
 
@@ -555,16 +526,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			workerRTNodes = getUpdatedNodes()
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred(), "failed to fetch performance profile")
-			if !hypershift.IsHypershiftCluster() {
-				poolName, err = mcps.GetByProfile(profile)
-				Expect(err).ToNot(HaveOccurred())
-			} else {
-				hostedClusterName, err := hypershift.GetHostedClusterName()
-				Expect(err).ToNot(HaveOccurred(), "unable to fetch hosted clustername")
-				np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
-				Expect(err).ToNot(HaveOccurred())
-				poolName = client.ObjectKeyFromObject(np).String()
-			}
+			poolName = poolname.GetByProfile(ctx, profile)
 			// Save the original performance profile
 			initialProfile = profile.DeepCopy()
 

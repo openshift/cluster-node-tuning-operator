@@ -17,7 +17,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -26,9 +25,8 @@ import (
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/poolname"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 )
@@ -52,19 +50,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 		profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 
-		if !hypershift.IsHypershiftCluster() {
-			poolName, err = mcps.GetByProfile(profile)
-			Expect(err).ToNot(HaveOccurred())
-			for _, mcpName := range []string{testutils.RoleWorker, poolName} {
-				mcps.WaitForCondition(mcpName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
-			}
-		} else {
-			hostedClusterName, err := hypershift.GetHostedClusterName()
-			np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
-			Expect(err).ToNot(HaveOccurred())
-			poolName = client.ObjectKeyFromObject(np).String()
-		}
-
+		poolName = poolname.GetByProfile(ctx, profile)
 		initialProfile = profile.DeepCopy()
 
 	})
