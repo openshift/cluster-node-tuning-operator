@@ -554,7 +554,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-				kernelParameters := []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1", "intel_pstate=passive"}
+				kernelParameters := []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1"}
 				if isIntel {
 					kernelParameters = append(kernelParameters, "intel_pstate=passive")
 				}
