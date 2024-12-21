@@ -63,6 +63,7 @@ func PPCTestCreateUtil() *PPCTestIntegration {
 
 var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform awareness", Label(string(label.PerformanceProfileCreator)), func() {
 	mustgatherDir := testutils.MustGatherDir
+	mcpName := testutils.RoleWorkerCNF
 	ntoImage := testutils.NTOImage
 	Context("PPC Sanity Tests", Label(string(label.Tier0)), func() {
 		ppcIntgTest := PPCTestCreateUtil()
@@ -79,7 +80,7 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 			cmdArgs := []string{
 				fmt.Sprintf("%s:%s:z", mustgatherDir, mustgatherDir),
 				ntoImage,
-				"--mcp-name=worker",
+				fmt.Sprintf("--mcp-name=%s", mcpName),
 				fmt.Sprintf("--reserved-cpu-count=%d", reservedCpuCount),
 				fmt.Sprintf("--rt-kernel=%t", true),
 				fmt.Sprintf("--power-consumption-mode=%s", "low-latency"),
@@ -111,7 +112,7 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 			cmdArgs := []string{
 				fmt.Sprintf("%s:%s:z", mustgatherDir, mustgatherDir),
 				ntoImage,
-				"--mcp-name=worker",
+				fmt.Sprintf("--mcp-name=%s", mcpName),
 				fmt.Sprintf("--reserved-cpu-count=%d", 2),
 				fmt.Sprintf("--rt-kernel=%t", true),
 				fmt.Sprintf("--power-consumption-mode=%s", "low-latency"),
@@ -142,7 +143,7 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 			cmdArgs := []string{
 				fmt.Sprintf("%s:%s:z", mustgatherDir, mustgatherDir),
 				ntoImage,
-				"--mcp-name=worker",
+				fmt.Sprintf("--mcp-name=%s", mcpName),
 				fmt.Sprintf("--reserved-cpu-count=%d", 2),
 				fmt.Sprintf("--rt-kernel=%t", true),
 				fmt.Sprintf("--power-consumption-mode=%s", "low-latency"),
@@ -172,7 +173,7 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 			cmdArgs := []string{
 				fmt.Sprintf("%s:%s:z", mustgatherDir, mustgatherDir),
 				ntoImage,
-				"--mcp-name=worker",
+				fmt.Sprintf("--mcp-name=%s", mcpName),
 				fmt.Sprintf("--reserved-cpu-count=%d", 100),
 				fmt.Sprintf("--rt-kernel=%t", true),
 				fmt.Sprintf("--power-consumption-mode=%s", "low-latency"),
