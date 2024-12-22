@@ -37,6 +37,8 @@ const (
 	MCKernelRT = "realtime"
 	// MCKernelDefault is the value of the kernel setting in MachineConfig for the default kernel
 	MCKernelDefault = "default"
+	// MCKernel64kPages is the value of the kernel setting in MachineConfig for 64k-pages kernel on aarch64
+	MCKernel64kPages = "64k-pages"
 	// HighPerformanceRuntime contains the name of the high-performance runtime
 	HighPerformanceRuntime = "high-performance"
 
@@ -146,8 +148,13 @@ func New(profile *performancev2.PerformanceProfile, opts *components.MachineConf
 		profile.Spec.RealTimeKernel.Enabled != nil &&
 		*profile.Spec.RealTimeKernel.Enabled
 
+	// Real time kernel with 64k-pages for aarch64 not yet supported and rejected in the validation webhook.
 	if enableRTKernel {
 		mc.Spec.KernelType = MCKernelRT
+	} else if profile.Spec.KernelPageSize != nil && *profile.Spec.KernelPageSize == performancev2.KernelPageSize("64k") {
+		// During validation, we ensure that nodes are based on aarch64 when the administrator specifies 64k for this field.
+		// Hence, this assignment is guaranteed to be safe.
+		mc.Spec.KernelType = MCKernel64kPages
 	} else {
 		mc.Spec.KernelType = MCKernelDefault
 	}
