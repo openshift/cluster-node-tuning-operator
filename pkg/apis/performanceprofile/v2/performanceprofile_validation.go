@@ -142,6 +142,8 @@ func (r *PerformanceProfile) validateCPUs() field.ErrorList {
 			cpuLists, err := components.NewCPULists(string(*cpus.Reserved), string(*cpus.Isolated), offlined, shared)
 			if err != nil {
 				allErrs = append(allErrs, field.InternalError(field.NewPath("spec.cpu"), err))
+				// If err != nil then the cpuList is nil and we can't continue with the function logic
+				return allErrs
 			}
 
 			if cpuLists.GetReserved().IsEmpty() {
