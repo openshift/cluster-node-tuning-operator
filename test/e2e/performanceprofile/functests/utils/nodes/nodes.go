@@ -540,7 +540,7 @@ func ContainerPid(ctx context.Context, node *corev1.Node, containerId string) (s
 	var criInfo CrictlInfo
 	var cridata = []byte{}
 	Eventually(func() []byte {
-		cmd := []string{"/bin/bash", "-c", fmt.Sprintf("chroot /rootfs crictl inspect %s", containerId)}
+		cmd := []string{"/usr/sbin/chroot", "/rootfs", "crictl", "inspect", containerId}
 		cridata, err = ExecCommandOnMachineConfigDaemon(ctx, node, cmd)
 		Expect(err).ToNot(HaveOccurred(), "failed to run %s cmd", cmd)
 		return cridata
@@ -556,7 +556,7 @@ func ContainerPid(ctx context.Context, node *corev1.Node, containerId string) (s
 func CpuManagerCpuSet(ctx context.Context, node *corev1.Node) (cpuset.CPUSet, error) {
 	stateFilePath := "/var/lib/kubelet/cpu_manager_state"
 	var stateData CpuManagerStateInfo
-	cmd := []string{"/bin/bash", "-c", fmt.Sprintf("chroot /rootfs cat %s", stateFilePath)}
+	cmd := []string{"/usr/sbin/chroot", "/rootfs", "cat", stateFilePath}
 	data, err := ExecCommandOnMachineConfigDaemon(ctx, node, cmd)
 	err = json.Unmarshal(data, &stateData)
 	if err != nil {
