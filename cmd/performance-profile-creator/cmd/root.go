@@ -175,7 +175,7 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to make profile data from node handler: %w", err)
 			}
-			tolerations[profilecreator.EnableHardwareTuning] = true
+			tolerations[profilecreator.EnableHardwareTuning] = profileData.enableHardwareTuning
 			profile, err := makePerformanceProfileFrom(*profileData)
 			if err != nil {
 				return err
