@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -141,7 +140,7 @@ func ExecCommandOnPod(c *kubernetes.Clientset, pod *corev1.Pod, command []string
 		VersionedParams(&corev1.PodExecOptions{
 			Container: pod.Spec.Containers[0].Name,
 			Command:   command,
-			Stdin:     true,
+			Stdin:     false,
 			Stdout:    true,
 			Stderr:    true,
 			TTY:       true,
@@ -158,7 +157,6 @@ func ExecCommandOnPod(c *kubernetes.Clientset, pod *corev1.Pod, command []string
 	}
 
 	err = exec.Stream(remotecommand.StreamOptions{
-		Stdin:  os.Stdin,
 		Stdout: &outputBuf,
 		Stderr: &errorBuf,
 		Tty:    true,
