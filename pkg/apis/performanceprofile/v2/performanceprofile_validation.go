@@ -41,12 +41,14 @@ import (
 )
 
 const (
-	hugepagesSize2M   = "2M"
-	hugepagesSize32M  = "32M"
-	hugepagesSize512M = "512M"
-	hugepagesSize1G   = "1G"
-	amd64             = "amd64"
-	aarch64           = "arm64"
+	kernelPagesSize4k  = "4k"
+	kernelPagesSize64k = "64k" // Only valid on aarch64
+	hugepagesSize2M    = "2M"
+	hugepagesSize32M   = "32M"
+	hugepagesSize512M  = "512M"
+	hugepagesSize1G    = "1G"
+	amd64              = "amd64"
+	aarch64            = "arm64"
 )
 
 var x86ValidHugepagesSizes = []string{
@@ -59,6 +61,15 @@ var aarch64ValidHugepagesSizes = []string{
 	hugepagesSize2M,   // With 4k kernel pages
 	hugepagesSize32M,  // With 16k kernel pages
 	hugepagesSize512M, // With 64k kernel pages
+}
+
+var aarch64ValidKernelPagesSizes = []string{
+	kernelPagesSize4k,
+	kernelPagesSize64k,
+}
+
+var x86ValidKernelPagesSizes = []string{
+	kernelPagesSize4k,
 }
 
 var validatorContext = context.TODO()
@@ -145,6 +156,7 @@ func (r *PerformanceProfile) ValidateBasicFields() field.ErrorList {
 	allErrs = append(allErrs, r.validateAllNodesAreSameCpuArchitecture(nodes)...)
 	allErrs = append(allErrs, r.validateAllNodesAreSameCpuCapacity(nodes)...)
 	allErrs = append(allErrs, r.validateHugePages(nodes)...)
+	allErrs = append(allErrs, r.validateKernelPageSize(nodes)...)
 	allErrs = append(allErrs, r.validateNUMA()...)
 	allErrs = append(allErrs, r.validateNet()...)
 	allErrs = append(allErrs, r.validateWorkloadHints()...)
@@ -433,6 +445,67 @@ func (r *PerformanceProfile) validateHugePages(nodes corev1.NodeList) field.Erro
 		}
 
 		allErrs = append(allErrs, r.validatePageDuplication(&page, r.Spec.HugePages.Pages[i+1:])...)
+	}
+
+	return allErrs
+}
+
+func (r *PerformanceProfile) validateKernelPageSize(nodes corev1.NodeList) field.ErrorList {
+	var allErrs field.ErrorList
+
+	if r.Spec.KernelPageSize == nil {
+		return allErrs
+	}
+
+	// We can only partially validate this if we have no nodes
+	// We can check that the value used is legitimate but we cannot check
+	// whether it is supposed to be x86 or aarch64
+	x86 := false
+	aarch64 := false
+
+	if len(nodes.Items) > 0 {
+		// `validateKernelPageSize` implicitly relies on `validateAllNodesAreSameCpuArchitecture` to have already been run
+		// Under that assumption we can return any node from the list since they should all be the same architecture
+		// However it is simple and easy to just return the first node
+		x86 = isX86(nodes.Items[0])
+		aarch64 = isAarch64(nodes.Items[0])
+	}
+
+	kernelPageSize := *r.Spec.KernelPageSize
+	errField := "spec.kernelPageSize"
+	errMsg := "KernelPageSize should be equal to one of:"
+
+	if x86 && !slices.Contains(x86ValidKernelPagesSizes, string(kernelPageSize)) {
+		allErrs = append(
+			allErrs,
+			field.Invalid(
+				field.NewPath(errField),
+				r.Spec.KernelPageSize,
+				fmt.Sprintf("%s %v", errMsg, kernelPagesSize4k),
+			),
+		)
+	} else if aarch64 && !slices.Contains(aarch64ValidKernelPagesSizes, string(kernelPageSize)) {
+		allErrs = append(
+			allErrs,
+			field.Invalid(
+				field.NewPath(errField),
+				r.Spec.KernelPageSize,
+				fmt.Sprintf("%s %v", errMsg, kernelPagesSize64k),
+			),
+		)
+	}
+
+	// Ensure 64k pages are used only with nodes based on aarch64 and when real-time kernel is disabled.
+	if aarch64 && kernelPageSize == kernelPagesSize64k &&
+		r.Spec.RealTimeKernel != nil && r.Spec.RealTimeKernel.Enabled != nil && *r.Spec.RealTimeKernel.Enabled {
+		allErrs = append(
+			allErrs,
+			field.Invalid(
+				field.NewPath(errField),
+				r.Spec.KernelPageSize,
+				"64k pages are not supported on ARM64 with a real-time kernel yet",
+			),
+		)
 	}
 
 	return allErrs
