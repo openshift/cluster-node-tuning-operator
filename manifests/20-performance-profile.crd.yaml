@@ -580,6 +580,10 @@ spec:
                           size:
                             description: Size defines huge page size, maps to the 'hugepagesz' kernel boot parameter.
                             type: string
+                kernelPageSize:
+                  description: KernelPageSize defines the kernel page size. 4k is the default, 64k is only supported on aarch64
+                  type: string
+                  default: 4k
                 machineConfigLabel:
                   description: |-
                     MachineConfigLabel defines the label to add to the MachineConfigs the operator creates. It has to be
