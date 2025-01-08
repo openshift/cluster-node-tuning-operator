@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
+	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/cpuset"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -26,6 +27,7 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	profilecomponent "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
+	manifestsutil "github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
@@ -292,9 +294,21 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			Entry("[test_id:28025] verify that cpu affinity mask was updated", context.TODO(), chkCmdLineFn, []string{"tuned.non_isolcpus=.*9"}, true, true),
 			Entry("[test_id:28071] verify that cpu balancer disabled", context.TODO(), chkCmdLineFn, []string{"isolcpus=domain,managed_irq,1-2"}, true, false),
 			Entry("[test_id:28071] verify that cpu balancer disabled", context.TODO(), chkCmdLineFn, []string{"systemd.cpu_affinity=0,3"}, true, false),
-			// kubelet.conf changed formatting, there is a space after colons atm. Let's deal with both cases with a regex
-			Entry("[test_id:28935] verify that reservedSystemCPUs was updated", context.TODO(), chkKubeletConfigFn, []string{`"reservedSystemCPUs": ?"0,3"`}, true, true),
-			Entry("[test_id:28760] verify that topologyManager was updated", context.TODO(), chkKubeletConfigFn, []string{`"topologyManagerPolicy": ?"best-effort"`}, true, true),
+		)
+
+		DescribeTable("Verify that kubelet parameters were updated", func(ctx context.Context, cmdFn checkFunction, getterFn func(kubeletCfg *kubeletconfigv1beta1.KubeletConfiguration) string, wantedValue string) {
+			for _, node := range workerRTNodes {
+				result, err := cmdFn(ctx, &node)
+				obj, err := manifestsutil.DeserializeObjectFromData([]byte(result), kubeletconfigv1beta1.AddToScheme)
+				Expect(err).ToNot(HaveOccurred())
+
+				kc, ok := obj.(*kubeletconfigv1beta1.KubeletConfiguration)
+				Expect(ok).To(BeTrue(), "wrong type %T", obj)
+				Expect(getterFn(kc)).To(Equal(wantedValue))
+			}
+		},
+			Entry("[test_id:28935] verify that reservedSystemCPUs was updated", context.TODO(), chkKubeletConfigFn, func(k *kubeletconfigv1beta1.KubeletConfiguration) string { return k.ReservedSystemCPUs }, "0,3"),
+			Entry("[test_id:28760] verify that topologyManager was updated", context.TODO(), chkKubeletConfigFn, func(k *kubeletconfigv1beta1.KubeletConfiguration) string { return k.TopologyManagerPolicy }, "best-effort"),
 		)
 
 		It("[test_id:27738] should succeed to disable the RT kernel", func() {
