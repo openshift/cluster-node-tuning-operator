@@ -318,7 +318,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
 						if isIntel {
-							kernelParameters = append(kernelParameters, "intel_idle.max.cstate=0", utilstuned.AddPstateParameter(context.TODO(), node))
+							kernelParameters = append(kernelParameters, "intel_idle.max_cstate=0", utilstuned.AddPstateParameter(context.TODO(), node))
 						}
 						utilstuned.CheckParameters(context.TODO(), node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
 					}()
