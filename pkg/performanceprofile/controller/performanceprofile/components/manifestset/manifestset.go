@@ -1,6 +1,8 @@
 package manifestset
 
 import (
+	"k8s.io/klog/v2"
+
 	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
@@ -8,6 +10,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/kubeletconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	profilecomponent "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
+	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/runtimeclass"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/tuned"
 
@@ -53,7 +56,15 @@ func (ms *ManifestResultSet) ToManifestTable() ManifestTable {
 func GetNewComponents(profile *performancev2.PerformanceProfile, opts *components.Options) (*ManifestResultSet, error) {
 	machineConfigPoolSelector := profilecomponent.GetMachineConfigPoolSelector(profile, opts.ProfileMCP)
 
-	mc, err := machineconfig.New(profile, &opts.MachineConfig)
+	llcEnabled, found := kubeletconfig.IsPreferAlignCPUsByUncoreCacheEnabled(profile)
+	if !found {
+		llcEnabled = profileutil.IsLLCAlignmentEnabled(profile)
+	}
+	klog.V(4).InfoS("components manifests", "LLCEnabled", llcEnabled, "annotationPresent", found)
+
+	mcOpts := opts.MachineConfig.Clone()
+	mcOpts.LLCFileEnabled = llcEnabled
+	mc, err := machineconfig.New(profile, mcOpts)
 	if err != nil {
 		return nil, err
 	}

@@ -195,6 +195,18 @@ var _ = Describe("Kubelet Config", func() {
 			Expect(manifest).To(ContainSubstring("net.core.somaxconn"))
 			Expect(manifest).To(ContainSubstring(`full-pcpus-only: "false"`))
 		})
+	})
 
+	Context("with annotated performance profile", func() {
+		It("should create a kubeletconfig object", func() {
+			profile := testutils.NewPerformanceProfile("kubeletconfig-test")
+			profile.Annotations = map[string]string{
+				experimentalKubeletSnippetAnnotation: `{"allowedUnsafeSysctls": ["net.core.somaxconn"], "cpuManagerPolicyOptions": {"full-pcpus-only": "false"}}`,
+			}
+			kubeletConfig, err := NewFromExperimentalAnnotation(profile)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(kubeletConfig.AllowedUnsafeSysctls).Should(ContainElement("net.core.somaxconn"))
+			Expect(kubeletConfig.CPUManagerPolicyOptions).Should(HaveKeyWithValue("full-pcpus-only", "false"))
+		})
 	})
 })
