@@ -32,6 +32,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/infrastructure"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
@@ -47,13 +48,16 @@ const (
 )
 
 var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific PerformanceProfile API", Label(string(label.WorkloadHints)), func() {
-	var workerRTNodes []corev1.Node
-	var profile, initialProfile *performancev2.PerformanceProfile
-	var performanceMCP string
-	var err error
+	var (
+		workerRTNodes           []corev1.Node
+		profile, initialProfile *performancev2.PerformanceProfile
+		performanceMCP          string
+		err                     error
+		ctx                     context.Context = context.Background()
+		isIntel, isAMD          bool
+	)
 
 	nodeLabel := testutils.NodeSelectorLabels
-
 	BeforeEach(func() {
 		if discovery.Enabled() && testutils.ProfileNotFound {
 			Skip("Discovery mode enabled, performance profile not found")
@@ -66,6 +70,11 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		performanceMCP, err = mcps.GetByProfile(profile)
 		Expect(err).ToNot(HaveOccurred())
 		klog.Infof("using performanceMCP: %q", performanceMCP)
+		// Check if one of the nodes is intel or AMD using Vendor ID
+		isIntel, err = infrastructure.IsIntel(ctx, &workerRTNodes[0])
+		Expect(err).ToNot(HaveOccurred(), "Unable to fetch Vendor ID")
+		isAMD, err = infrastructure.IsAMD(ctx, &workerRTNodes[0])
+		Expect(err).ToNot(HaveOccurred(), "Unable to fetch Vendor ID")
 
 		// Verify that worker and performance MCP have updated state equals to true
 		for _, mcpName := range []string{testutils.RoleWorker, performanceMCP} {
@@ -219,8 +228,10 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"kernel.sched_rt_runtime_us":    "950000",
 					"vm.stat_interval":              "10",
 				}
-				kernelParameters := []string{"processor.max_cstate=1", "intel_idle.max_cstate=0"}
-
+				kernelParameters := []string{"processor.max_cstate=1"}
+				if isIntel {
+					kernelParameters = append(kernelParameters, "intel_idle.max_cstate=0")
+				}
 				wg := sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
@@ -285,8 +296,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters := []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
-					"processor.max_cstate=1", "intel_idle.max_cstate=0", "idle=poll"}
-
+					"processor.max_cstate=1", "idle=poll"}
 				wg := sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
@@ -307,7 +317,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-						kernelParameters = append(kernelParameters, utilstuned.AddPstateParameter(context.TODO(), node))
+						if isIntel {
+							kernelParameters = append(kernelParameters, "intel_idle.max.cstate=0", utilstuned.AddPstateParameter(context.TODO(), node))
+						}
 						utilstuned.CheckParameters(context.TODO(), node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
 					}()
 				}
@@ -344,9 +356,15 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				By("Verifying node kernel arguments")
 				cmdline, err := nodes.ExecCommand(context.TODO(), &workerRTNodes[0], []string{"cat", "/proc/cmdline"})
 				Expect(err).ToNot(HaveOccurred())
-				Expect(cmdline).To(ContainSubstring("intel_pstate=passive"))
-				Expect(cmdline).ToNot(ContainSubstring("intel_pstate=active"))
+				if isIntel {
+					Expect(cmdline).To(ContainSubstring("intel_pstate=passive"))
+					Expect(cmdline).ToNot(ContainSubstring("intel_pstate=active"))
+				}
 
+				if isAMD {
+					Expect(cmdline).To(ContainSubstring("amd_pstate=passive"))
+					Expect(cmdline).ToNot(ContainSubstring("amd_pstate=active"))
+				}
 				By("Verifying tuned profile")
 				key := types.NamespacedName{
 					Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
@@ -406,7 +424,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters := []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
-					"processor.max_cstate=1", "intel_idle.max_cstate=0", "idle=poll"}
+					"processor.max_cstate=1", "idle=poll"}
 
 				wg := sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
@@ -428,7 +446,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-						kernelParameters = append(kernelParameters, utilstuned.AddPstateParameter(context.TODO(), node))
+						if isIntel {
+							kernelParameters = append(kernelParameters, "intel_idle.max_cstate=0", utilstuned.AddPstateParameter(context.TODO(), node))
+						}
 						utilstuned.CheckParameters(context.TODO(), node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
 					}()
 				}
@@ -471,8 +491,14 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-				kernelParameters = []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1", "intel_pstate=passive"}
+				kernelParameters = []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1"}
+				if isIntel {
+					kernelParameters = append(kernelParameters, "intel_pstate=passive")
+				}
 
+				if isAMD {
+					kernelParameters = append(kernelParameters, "amd_pstate=passive")
+				}
 				wg = sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
 				for i := 0; i < len(workerRTNodes); i++ {
@@ -543,7 +569,13 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"kernel.sched_rt_runtime_us":    "-1",
 					"vm.stat_interval":              "10",
 				}
-				kernelParameters := []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1", "intel_pstate=passive"}
+				kernelParameters := []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1"}
+				if isIntel {
+					kernelParameters = append(kernelParameters, "intel_pstate=passive")
+				}
+				if isAMD {
+					kernelParameters = append(kernelParameters, "amd_pstate=passive")
+				}
 
 				wg := sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
@@ -608,7 +640,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 					"vm.stat_interval":              "10",
 				}
 				kernelParameters = []string{noHzParam, "tsc=reliable", "nosoftlockup", "nmi_watchdog=0", "mce=off", "skew_tick=1",
-					"processor.max_cstate=1", "intel_idle.max_cstate=0", "idle=poll"}
+					"processor.max_cstate=1", "idle=poll"}
 
 				wg = sync.WaitGroup{}
 				By("Waiting for TuneD to start on nodes")
@@ -630,7 +662,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 							fmt.Sprintf("stalld is not running on %q when it should", node.Name))
 
 						By(fmt.Sprintf("Checking TuneD parameters on %q", node.Name))
-						kernelParameters = append(kernelParameters, utilstuned.AddPstateParameter(context.TODO(), node))
+						if isIntel {
+							kernelParameters = append(kernelParameters, "intel_idle.max_cstate=0", utilstuned.AddPstateParameter(context.TODO(), node))
+						}
 						utilstuned.CheckParameters(context.TODO(), node, sysctlMap, kernelParameters, stalldEnabled, rtKernel)
 					}()
 				}
@@ -659,6 +693,10 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				var fullPath string = ""
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware.
+
+				if isAMD {
+					Skip("Crio Powersave annotations test can only be run on Intel systems")
+				}
 				checkHardwareCapability(context.TODO(), workerRTNodes)
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
@@ -758,10 +796,13 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), targetCpus, &workerRTNodes[0], "0", "performance")
 			})
 
-			It("[test_id:54186] Verify sysfs paramters of guaranteed pod with performance annotiations", func() {
+			It("[test_id:54186] Verify sysfs parameters of guaranteed pod with performance annotiations", func() {
 
 				// This test requires real hardware with powermanagement settings done on BIOS
 				// Using numa nodes to check if we are running on real hardware
+				if isAMD {
+					Skip("Crio Powersave annotations test can only be run on Intel systems")
+				}
 				var containerCgroup, fullPath string
 				checkHardwareCapability(context.TODO(), workerRTNodes)
 				currentWorkloadHints := profile.Spec.WorkloadHints
