@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/cpuset"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -23,6 +24,7 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/utils/schedstat"
+	manifestsutil "github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
@@ -111,8 +113,11 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			cmd = []string{"cat", "/rootfs/etc/kubernetes/kubelet.conf"}
 			conf, err := nodes.ExecCommandOnNode(cmd, workerRTNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to cat kubelet.conf")
-			// kubelet.conf changed formatting, there is a space after colons atm. Let's deal with both cases with a regex
-			Expect(conf).To(MatchRegexp(fmt.Sprintf(`"reservedSystemCPUs": ?"%s"`, reservedCPU)))
+			obj, err := manifestsutil.DeserializeObjectFromData([]byte(conf), kubeletconfigv1beta1.AddToScheme)
+			Expect(err).ToNot(HaveOccurred())
+			kc, ok := obj.(*kubeletconfigv1beta1.KubeletConfiguration)
+			Expect(ok).To(BeTrue(), "wrong type %T", obj)
+			Expect(kc.ReservedSystemCPUs).To(Equal(reservedCPU))
 
 			By("checking CPU affinity mask for kernel scheduler")
 			cmd = []string{"/bin/bash", "-c", "taskset -pc 1"}

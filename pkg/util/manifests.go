@@ -24,10 +24,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/client-go/kubernetes/scheme"
+
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 )
 
 type manifest struct {
@@ -167,4 +170,18 @@ func AppendMissingDefaultMCPManifests(currentMCPs []*mcfgv1.MachineConfigPool) [
 	}
 
 	return append(finalMCPList, currentMCPs...)
+}
+
+func DeserializeObjectFromData(data []byte, addToSchemeFn ...func(scheme2 *runtime.Scheme) error) (runtime.Object, error) {
+	for _, fn := range addToSchemeFn {
+		if err := fn(scheme.Scheme); err != nil {
+			return nil, err
+		}
+	}
+	decode := scheme.Codecs.UniversalDeserializer().Decode
+	obj, _, err := decode(data, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	return obj, nil
 }
