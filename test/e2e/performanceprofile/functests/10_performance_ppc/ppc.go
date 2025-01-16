@@ -193,5 +193,65 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 			Eventually(session).Should(gexec.Exit(1))
 		})
 
+		It("[test_id: 54187] PPC generates profile with PerPodPowerManagement workload hint", func() {
+			defaultArgs := []string{
+				"run",
+				"--entrypoint",
+				"performance-profile-creator",
+				"-v",
+			}
+			pp := &performancev2.PerformanceProfile{}
+			cmdArgs := []string{
+				fmt.Sprintf("%s:%s:z", mustgatherDir, mustgatherDir),
+				ntoImage,
+				fmt.Sprintf("--mcp-name=%s", mcpName),
+				fmt.Sprintf("--reserved-cpu-count=%d", 4),
+				fmt.Sprintf("--rt-kernel=%t", true),
+				"--per-pod-power-management",
+				fmt.Sprintf("--power-consumption-mode=%s", "low-latency"),
+				fmt.Sprintf("--split-reserved-cpus-across-numa=%t", true),
+				fmt.Sprintf("--must-gather-dir-path=%s", mustgatherDir),
+			}
+			podmanArgs := append(defaultArgs, cmdArgs...)
+			session, err := ppcIntgTest.PodmanAsUserBase(podmanArgs, false, false)
+			Expect(err).ToNot(HaveOccurred(), "Podman command failed")
+			output := session.Wait(20).Out.Contents()
+			err = yaml.Unmarshal(output, pp)
+			Expect(err).ToNot(HaveOccurred(), "Unable to marshal the ppc output")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(*pp.Spec.WorkloadHints.PerPodPowerManagement).To(BeTrue())
+			Expect(*pp.Spec.WorkloadHints.HighPowerConsumption).To(BeFalse())
+		})
+
+		It("[test_id: 54188] PPC Fails when per-pod-powermanagement is used with ultra-low-latency", func() {
+			defaultArgs := []string{
+				"run",
+				"--entrypoint",
+				"performance-profile-creator",
+				"-v",
+			}
+			cmdArgs := []string{
+				fmt.Sprintf("%s:%s:z", mustgatherDir, mustgatherDir),
+				ntoImage,
+				fmt.Sprintf("--mcp-name=%s", mcpName),
+				fmt.Sprintf("--reserved-cpu-count=%d", 4),
+				fmt.Sprintf("--rt-kernel=%t", true),
+				"--per-pod-power-management",
+				fmt.Sprintf("--power-consumption-mode=%s", "ultra-low-latency"),
+				fmt.Sprintf("--split-reserved-cpus-across-numa=%t", true),
+				fmt.Sprintf("--must-gather-dir-path=%s", mustgatherDir),
+			}
+			podmanArgs := append(defaultArgs, cmdArgs...)
+			session, err := ppcIntgTest.PodmanAsUserBase(podmanArgs, false, false)
+			Expect(err).ToNot(HaveOccurred(), "Podman command failed")
+			output := session.Wait(20).Err.Contents()
+			errString := `please use one of \[default low-latency\] power consumption modes together with the perPodPowerManagement`
+			ok, err := regexp.MatchString(errString, string(output))
+			Expect(err).ToNot(HaveOccurred(), "did not fail with Expected:%s failure", errString)
+			if ok {
+				testlog.Info(errString)
+			}
+			Eventually(session).Should(gexec.Exit(1))
+		})
 	})
 })
