@@ -61,7 +61,7 @@ EOF
 
 deploy_custom_nto() {
   # Prepare Makefile and deploy-custom-nto.sh variables
-  export IMAGE_BUILD_EXTRA_OPTS="-v=$REPO_DIR:/etc/yum.repos.d:z"
+  export IMAGE_BUILD_EXTRA_OPTS="-v=$REPO_DIR:/etc/yum.repos.d:z --env=ART_DNF_WRAPPER_POLICY=append"
   export DOCKERFILE=Dockerfile.rhel9	# Do not build TuneD from source, use pre-built TuneD RPMs.  These RPMs might contain extra patches which do not ship ustream.
   export ORG
 
