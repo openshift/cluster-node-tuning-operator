@@ -19,8 +19,8 @@ func WaitToBeRunning(ctx context.Context, cli client.Client, namespace, name str
 
 func WaitToBeRunningWithTimeout(ctx context.Context, cli client.Client, namespace, name string, timeout time.Duration) error {
 	testlog.Infof("wait for the daemonset %q %q to be running", namespace, name)
-	return wait.PollUntilContextTimeout(ctx, 10*time.Second, timeout, true, func(ctx2 context.Context) (bool, error) {
-		return IsRunning(ctx2, cli, namespace, name)
+	return wait.PollUntilContextTimeout(ctx, 30*time.Second, timeout, true, func(derivedCtx context.Context) (bool, error) {
+		return IsRunning(derivedCtx, cli, namespace, name)
 	})
 }
 
