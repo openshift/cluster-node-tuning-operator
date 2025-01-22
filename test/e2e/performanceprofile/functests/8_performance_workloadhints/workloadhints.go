@@ -89,7 +89,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 			initialProfile = profile.DeepCopy()
 		})
 		When("workloadHint RealTime is disabled", func() {
-			It("should update kernel arguments and tuned accordingly to realTime Hint enabled by default", func() {
+			It("[test_id:50990] should update kernel arguments and tuned accordingly to realTime Hint enabled by default", func() {
 				By("Modifying profile")
 				profile.Spec.WorkloadHints = nil
 
