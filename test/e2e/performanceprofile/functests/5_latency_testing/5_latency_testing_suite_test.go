@@ -80,7 +80,7 @@ var _ = BeforeSuite(func() {
 		testlog.Errorf("cannot create the namespace: %v", err)
 	}
 
-	ds, err := images.PrePull(testclient.Client, images.Test(), prePullNamespace.Name, "cnf-tests")
+	ds, err := images.PrePull(context.TODO(), testclient.Client, images.Test(), prePullNamespace.Name, "cnf-tests")
 	if err != nil {
 		data, _ := json.Marshal(ds) // we can safely skip errors
 		testlog.Infof("DaemonSet %s/%s image=%q status:\n%s", ds.Namespace, ds.Name, images.Test(), string(data))

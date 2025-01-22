@@ -13,29 +13,29 @@ import (
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 )
 
-func WaitToBeRunning(cli client.Client, namespace, name string) error {
-	return WaitToBeRunningWithTimeout(cli, namespace, name, 5*time.Minute)
+func WaitToBeRunning(ctx context.Context, cli client.Client, namespace, name string) error {
+	return WaitToBeRunningWithTimeout(ctx, cli, namespace, name, 5*time.Minute)
 }
 
-func WaitToBeRunningWithTimeout(cli client.Client, namespace, name string, timeout time.Duration) error {
+func WaitToBeRunningWithTimeout(ctx context.Context, cli client.Client, namespace, name string, timeout time.Duration) error {
 	testlog.Infof("wait for the daemonset %q %q to be running", namespace, name)
-	return wait.PollUntilContextTimeout(context.TODO(), 10*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
-		return IsRunning(cli, namespace, name)
+	return wait.PollUntilContextTimeout(ctx, 10*time.Second, timeout, true, func(ctx2 context.Context) (bool, error) {
+		return IsRunning(ctx2, cli, namespace, name)
 	})
 }
 
-func GetByName(cli client.Client, namespace, name string) (*appsv1.DaemonSet, error) {
+func GetByName(ctx context.Context, cli client.Client, namespace, name string) (*appsv1.DaemonSet, error) {
 	key := client.ObjectKey{
 		Namespace: namespace,
 		Name:      name,
 	}
 	var ds appsv1.DaemonSet
-	err := cli.Get(context.TODO(), key, &ds)
+	err := cli.Get(ctx, key, &ds)
 	return &ds, err
 }
 
-func IsRunning(cli client.Client, namespace, name string) (bool, error) {
-	ds, err := GetByName(cli, namespace, name)
+func IsRunning(ctx context.Context, cli client.Client, namespace, name string) (bool, error) {
+	ds, err := GetByName(ctx, cli, namespace, name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			testlog.Warningf("daemonset %q %q not found - retrying", namespace, name)
