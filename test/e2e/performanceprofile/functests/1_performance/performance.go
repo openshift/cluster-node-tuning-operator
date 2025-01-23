@@ -1413,7 +1413,7 @@ func makeDevRPSMap(content string) map[string]string {
 }
 
 // Helper function to find a condition in the status.conditions slice by type
-func findCondition(conditions []tunedv1.ProfileStatusCondition, conditionType string) *tunedv1.ProfileStatusCondition {
+func findCondition(conditions []tunedv1.StatusCondition, conditionType string) *tunedv1.StatusCondition {
 	for _, condition := range conditions {
 		if string(condition.Type) == conditionType {
 			return &condition
