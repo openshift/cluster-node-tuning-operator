@@ -2,6 +2,7 @@ package __performance
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
@@ -31,6 +32,7 @@ import (
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/controller"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/runtime"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/deployments"
@@ -49,6 +51,34 @@ var profile *performancev2.PerformanceProfile
 
 const restartCooldownTime = 1 * time.Minute
 const cgroupRoot string = "/sys/fs/cgroup"
+
+type CPUVals struct {
+	CPUs string `json:"cpus"`
+}
+
+type CPUResources struct {
+	CPU CPUVals `json:"cpu"`
+}
+
+type LinuxResources struct {
+	Resources CPUResources `json:"resources"`
+}
+
+type Process struct {
+	Args []string `json:"args"`
+}
+
+type Annotations struct {
+	ContainerName string `json:"io.kubernetes.container.name"`
+	PodName       string `json:"io.kubernetes.pod.name"`
+}
+
+type ContainerConfig struct {
+	Process     Process        `json:"process"`
+	Hostname    string         `json:"hostname"`
+	Annotations Annotations    `json:"annotations"`
+	Linux       LinuxResources `json:"linux"`
+}
 
 var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 	var (
@@ -892,7 +922,177 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		})
 	})
 
+	Context("Check container runtimes cpu usage", Label(string(label.OpenShift)), func() {
+		var guaranteedPod, bestEffortPod *corev1.Pod
+		var guaranteedPodCpus, guaranteedInitPodCpus cpuset.CPUSet
+		var bestEffortPodCpus, bestEffortInitPodCpus cpuset.CPUSet
+
+		// What this test verifies:
+		// - It checks the configuration flow from kubelet -> cri-o -> runc, ensuring the correct CPU
+		//   configuration is provided to runc during the container creation process.
+		//
+		// What this test does NOT verify:
+		// - It does not monitor the actual CPU usage during the container creation process or track
+		//   the CPUs used by any intermediate forks.
+		It("[test_id: 74461] Verify that runc excludes the cpus used by guaranteed pod", func() {
+			By("Creating a guaranteed pod")
+			guaranteedPod = makePod(ctx, workerRTNode, true)
+			err := testclient.Client.Create(ctx, guaranteedPod)
+			Expect(err).ToNot(HaveOccurred(), "Failed to create guaranteed pod")
+			defer func() {
+				if guaranteedPod != nil {
+					testlog.Infof("deleting pod %q", guaranteedPod.Name)
+					deleteTestPod(ctx, guaranteedPod)
+				}
+			}()
+
+			// This Test is specific to runc container runtime
+			// Skipping this test for crun.
+			Eventually(func() error {
+				expectedRuntime, err := runtime.GetContainerRuntimeTypeFor(context.TODO(), testclient.ControlPlaneClient, guaranteedPod)
+				if err != nil {
+					testlog.Errorf("Failed to fetch runtime for Guaranteed Pod: %v", err)
+					return err
+				}
+				if expectedRuntime == "crun" {
+					Skip(fmt.Sprintf("Skipping test as the runtime is 'crun', which is not the expected runtime. Found: %s", expectedRuntime))
+				}
+				return nil
+			}).WithTimeout(30*time.Second).WithPolling(2*time.Second).Should(Succeed(), "Expected to successfully determine the container runtime type")
+
+			By("Waiting for guaranteed pod to be ready")
+			_, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(guaranteedPod), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
+			Expect(err).ToNot(HaveOccurred(), "Guaranteed pod did not become ready in time")
+			Expect(guaranteedPod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed), "Guaranteed pod does not have the correct QOSClass")
+			testlog.Infof("Guaranteed pod %s/%s was successfully created", guaranteedPod.Namespace, guaranteedPod.Name)
+
+			By("Creating a best-effort pod")
+			bestEffortPod = makePod(ctx, workerRTNode, false)
+			err = testclient.Client.Create(ctx, bestEffortPod)
+			Expect(err).ToNot(HaveOccurred(), "Failed to create best-effort pod")
+			defer func() {
+				if bestEffortPod != nil {
+					testlog.Infof("deleting pod %q", bestEffortPod.Name)
+					deleteTestPod(ctx, bestEffortPod)
+				}
+			}()
+
+			By("Waiting for best-effort pod to be ready")
+			_, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(bestEffortPod), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
+			Expect(err).ToNot(HaveOccurred(), "Best-effort pod did not become ready in time")
+			testlog.Infof("BestEffort pod %s/%s was successfully created", bestEffortPod.Namespace, bestEffortPod.Name)
+
+			By("Getting Information for guaranteed POD containers")
+			GuPods := getConfigJsonInfo(guaranteedPod, "test", workerRTNode)
+			for _, pod := range GuPods {
+				if pod.Annotations.ContainerName == "test" {
+					guaranteedPodCpus, err = cpuset.Parse(pod.Linux.Resources.CPU.CPUs)
+				} else if pod.Annotations.ContainerName == "POD" {
+					guaranteedInitPodCpus, err = cpuset.Parse(pod.Linux.Resources.CPU.CPUs)
+				}
+				Expect(err).ToNot(HaveOccurred(), "Failed to parse GU POD cpus")
+			}
+
+			By("Getting Information for BestEffort POD containers")
+			BEPods := getConfigJsonInfo(bestEffortPod, "test", workerRTNode)
+			for _, pod := range BEPods {
+				if pod.Annotations.ContainerName == "test" {
+					bestEffortPodCpus, err = cpuset.Parse(pod.Linux.Resources.CPU.CPUs)
+				} else if pod.Annotations.ContainerName == "POD" {
+					bestEffortInitPodCpus, err = cpuset.Parse(pod.Linux.Resources.CPU.CPUs)
+				}
+				Expect(err).ToNot(HaveOccurred(), "Failed to parse BE POD cpus")
+			}
+
+			By("Validating CPU allocation for Guaranteed and Best-Effort pod containers")
+			isolatedCpus, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+			Expect(err).ToNot(HaveOccurred(), "Failed to parse isolated CPU set from performance profile")
+			reservedCpus, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
+			Expect(err).ToNot(HaveOccurred(), "Failed to parse reserved CPU set from performance profile")
+
+			Expect(guaranteedInitPodCpus.IsSubsetOf(reservedCpus)).
+				To(BeTrue(), "Guaranteed Init pod CPUs (%s) are not strictly within the reserved set (%s)", guaranteedInitPodCpus, reservedCpus)
+			Expect(guaranteedInitPodCpus.IsSubsetOf(isolatedCpus)).
+				To(BeFalse(), "Guaranteed Init pod CPUs (%s) are within the isolated cpu set (%s)", guaranteedInitPodCpus, isolatedCpus)
+			Expect(guaranteedPodCpus.IsSubsetOf(isolatedCpus)).
+				To(BeTrue(), "Guaranteed pod CPUs (%s) are not strictly within the isolated set (%s)", guaranteedPodCpus, isolatedCpus)
+
+			availableForBestEffort := isolatedCpus.Union(reservedCpus).Difference(guaranteedPodCpus)
+			Expect(bestEffortInitPodCpus.IsSubsetOf(reservedCpus)).
+				To(BeTrue(), "Best-Effort Init pod CPUs (%s) include CPUs not allowed (%s)", bestEffortInitPodCpus, availableForBestEffort)
+			Expect(bestEffortPodCpus.IsSubsetOf(availableForBestEffort)).
+				To(BeTrue(), "Best-Effort pod CPUs (%s) include CPUs not allowed (%s)", bestEffortPodCpus, availableForBestEffort)
+		})
+	})
+
 })
+
+func extractConfigInfo(output string) (*ContainerConfig, error) {
+	var config ContainerConfig
+	output = strings.TrimSpace(output)
+	err := json.Unmarshal([]byte(output), &config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config.json: %v", err)
+	}
+	return &config, nil
+}
+
+func getConfigJsonInfo(pod *corev1.Pod, containerName string, workerRTNode *corev1.Node) []*ContainerConfig {
+	var pods []*ContainerConfig
+	path := "/rootfs/var/lib/containers/storage/overlay-containers/"
+	podName := pod.Name
+	cmd := []string{
+		"/bin/bash", "-c",
+		fmt.Sprintf(
+			`find %s -type f -exec grep -lP '\"io.kubernetes.pod.name\": \"%s\"' {} \; -exec grep -l '\"io.kubernetes.container.name\": \"%s\"' {} \; | sort -u`,
+			path, podName, containerName,
+		),
+	}
+	output, err := nodes.ExecCommand(context.TODO(), workerRTNode, cmd)
+	Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Failed to search for config.json with podName %s and containerName %s", podName, containerName))
+	filePaths := strings.Split(string(output), "\n")
+	for _, filePath := range filePaths {
+		if filePath == "" {
+			continue
+		}
+		cmd = []string{"/bin/bash", "-c", fmt.Sprintf("cat %s", filePath)}
+		output, err = nodes.ExecCommand(context.TODO(), workerRTNode, cmd)
+		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Failed to read config.json for container : %s", filePath))
+
+		configData := testutils.ToString(output)
+		config, err := extractConfigInfo(configData)
+		if err != nil {
+			testlog.Errorf("Error extracting config info:", err)
+			continue
+		}
+		pods = append(pods, config)
+		testlog.Infof("Pod Name: %s", config.Annotations.PodName)
+		testlog.Infof("Container Name: %s", config.Annotations.ContainerName)
+		testlog.Infof("Hostname: %s", config.Hostname)
+		testlog.Infof("Arguments: %s", config.Process.Args)
+		testlog.Infof("CPUs: %s", config.Linux.Resources.CPU.CPUs)
+	}
+	return pods
+}
+
+func makePod(ctx context.Context, workerRTNode *corev1.Node, guaranteed bool) *corev1.Pod {
+	testPod := pods.GetTestPod()
+	testPod.Namespace = testutils.NamespaceTesting
+	testPod.Spec.NodeName = workerRTNode.Name
+	testPod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
+	if guaranteed {
+		testPod.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("2"),
+				corev1.ResourceMemory: resource.MustParse("200Mi"),
+			},
+		}
+	}
+	profile, _ := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+	runtimeClass := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+	testPod.Spec.RuntimeClassName = &runtimeClass
+	return testPod
+}
 
 func checkForWorkloadPartitioning(ctx context.Context) bool {
 	// Look for the correct Workload Partition annotation in
