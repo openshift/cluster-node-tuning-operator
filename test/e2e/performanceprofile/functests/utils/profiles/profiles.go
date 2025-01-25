@@ -146,9 +146,7 @@ func prepareForUpdate(updated, current *performancev2.PerformanceProfile) *perfo
 	if updated.Labels != nil {
 		current.Labels = updated.Labels
 	}
-	if updated.Annotations != nil {
-		current.Annotations = updated.Annotations
-	}
+	current.Annotations = updated.Annotations
 	// we return current since it has the most updated data from the API server
 	return current
 }
