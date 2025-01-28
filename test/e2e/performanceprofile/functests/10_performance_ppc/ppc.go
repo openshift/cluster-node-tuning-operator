@@ -67,24 +67,23 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 	ntoImage := testutils.NTOImage
 	Context("PPC Sanity Tests", Label(string(label.Tier0)), func() {
 		ppcIntgTest := PPCTestCreateUtil()
+		defaultArgs := []string{
+			"run",
+			"--entrypoint",
+			"performance-profile-creator",
+			"-v",
+		}
 		It("[test_id:40940] Performance Profile regression tests", func() {
 			pp := &performancev2.PerformanceProfile{}
 			var reservedCpuCount = 2
-			defaultArgs := []string{
-				"run",
-				"--entrypoint",
-				"performance-profile-creator",
-				"-v",
-			}
-
 			cmdArgs := []string{
 				fmt.Sprintf("%s:%s:z", mustgatherDir, mustgatherDir),
 				ntoImage,
 				fmt.Sprintf("--mcp-name=%s", mcpName),
 				fmt.Sprintf("--reserved-cpu-count=%d", reservedCpuCount),
-				fmt.Sprintf("--rt-kernel=%t", true),
-				fmt.Sprintf("--power-consumption-mode=%s", "low-latency"),
-				fmt.Sprintf("--split-reserved-cpus-across-numa=%t", false),
+				"--rt-kernel=true",
+				"--power-consumption-mode=low-latency",
+				"--split-reserved-cpus-across-numa=false",
 				fmt.Sprintf("--must-gather-dir-path=%s", mustgatherDir),
 			}
 			podmanArgs := []string{}
@@ -104,21 +103,15 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 			Eventually(session).Should(gexec.Exit(0))
 		})
 		It("[test_id:41405] Verify PPC script fails when the splitting of reserved cpus and single numa-node policy is specified", func() {
-			defaultArgs := []string{
-				"run",
-				"--entrypoint",
-				"performance-profile-creator",
-				"-v",
-			}
 			cmdArgs := []string{
 				fmt.Sprintf("%s:%s:z", mustgatherDir, mustgatherDir),
 				ntoImage,
 				fmt.Sprintf("--mcp-name=%s", mcpName),
-				fmt.Sprintf("--reserved-cpu-count=%d", 2),
-				fmt.Sprintf("--rt-kernel=%t", true),
-				fmt.Sprintf("--power-consumption-mode=%s", "low-latency"),
-				fmt.Sprintf("--split-reserved-cpus-across-numa=%t", true),
-				fmt.Sprintf("--topology-manager-policy=%s", "single-numa-node"),
+				"--reserved-cpu-count=2",
+				"--rt-kernel=true",
+				"--power-consumption-mode=low-latency",
+				"--split-reserved-cpus-across-numa=true",
+				"--topology-manager-policy=single-numa-node",
 				fmt.Sprintf("--must-gather-dir-path=%s", mustgatherDir),
 			}
 			podmanArgs := []string{}
@@ -135,20 +128,14 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 		})
 
 		It("[test_id:41419] Verify PPC script fails when reserved cpu count is 2 and requires to split across numa nodes", func() {
-			defaultArgs := []string{
-				"run",
-				"--entrypoint",
-				"performance-profile-creator",
-				"-v",
-			}
 			cmdArgs := []string{
 				fmt.Sprintf("%s:%s:z", mustgatherDir, mustgatherDir),
 				ntoImage,
 				fmt.Sprintf("--mcp-name=%s", mcpName),
-				fmt.Sprintf("--reserved-cpu-count=%d", 2),
-				fmt.Sprintf("--rt-kernel=%t", true),
-				fmt.Sprintf("--power-consumption-mode=%s", "low-latency"),
-				fmt.Sprintf("--split-reserved-cpus-across-numa=%t", true),
+				"--reserved-cpu-count=2",
+				"--rt-kernel=true",
+				"--power-consumption-mode=low-latency",
+				"--split-reserved-cpus-across-numa=true",
 				fmt.Sprintf("--must-gather-dir-path=%s", mustgatherDir),
 			}
 			podmanArgs := []string{}
@@ -166,20 +153,15 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 		})
 
 		It("[test_id:41420] Verify PPC script fails when reserved cpu count is more than available cpus", func() {
-			defaultArgs := []string{
-				"run",
-				"--entrypoint",
-				"performance-profile-creator",
-				"-v",
-			}
 			cmdArgs := []string{
 				fmt.Sprintf("%s:%s:z", mustgatherDir, mustgatherDir),
 				ntoImage,
 				fmt.Sprintf("--mcp-name=%s", mcpName),
-				fmt.Sprintf("--reserved-cpu-count=%d", 100),
+				"--reserved-cpu-count=1000",
+				"--rt-kernel=true",
+				"--power-consumption-mode=low-latency",
+				"--split-reserved-cpus-across-numa=true",
 				fmt.Sprintf("--rt-kernel=%t", true),
-				fmt.Sprintf("--power-consumption-mode=%s", "low-latency"),
-				fmt.Sprintf("--split-reserved-cpus-across-numa=%t", true),
 				fmt.Sprintf("--must-gather-dir-path=%s", mustgatherDir),
 			}
 			podmanArgs := []string{}
@@ -196,5 +178,52 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 			Eventually(session).Should(gexec.Exit(1))
 		})
 
+		It("[test_id: 54187] PPC generates profile with PerPodPowerManagement workload hint", func() {
+			pp := &performancev2.PerformanceProfile{}
+			cmdArgs := []string{
+				fmt.Sprintf("%s:%s:z", mustgatherDir, mustgatherDir),
+				ntoImage,
+				fmt.Sprintf("--mcp-name=%s", mcpName),
+				"--reserved-cpu-count=4",
+				"--rt-kernel=true",
+				"--per-pod-power-management",
+				"--power-consumption-mode=low-latency",
+				"--split-reserved-cpus-across-numa=true",
+				fmt.Sprintf("--must-gather-dir-path=%s", mustgatherDir),
+			}
+			podmanArgs := append(defaultArgs, cmdArgs...)
+			session, err := ppcIntgTest.PodmanAsUserBase(podmanArgs, false, false)
+			Expect(err).ToNot(HaveOccurred(), "Podman command failed")
+			output := session.Wait(20).Out.Contents()
+			err = yaml.Unmarshal(output, pp)
+			Expect(err).ToNot(HaveOccurred(), "Unable to marshal the ppc output")
+			Expect(*pp.Spec.WorkloadHints.PerPodPowerManagement).To(BeTrue())
+			Expect(*pp.Spec.WorkloadHints.HighPowerConsumption).To(BeFalse())
+		})
+
+		It("[test_id: 54188] PPC Fails when per-pod-powermanagement is used with ultra-low-latency", func() {
+			cmdArgs := []string{
+				fmt.Sprintf("%s:%s:z", mustgatherDir, mustgatherDir),
+				ntoImage,
+				fmt.Sprintf("--mcp-name=%s", mcpName),
+				"--reserved-cpu-count=4",
+				"--rt-kernel=true",
+				"--per-pod-power-management",
+				"--power-consumption-mode=ultra-low-latency",
+				"--split-reserved-cpus-across-numa=true",
+				fmt.Sprintf("--must-gather-dir-path=%s", mustgatherDir),
+			}
+			podmanArgs := append(defaultArgs, cmdArgs...)
+			session, err := ppcIntgTest.PodmanAsUserBase(podmanArgs, false, false)
+			Expect(err).ToNot(HaveOccurred(), "Podman command failed")
+			output := session.Wait(20).Err.Contents()
+			errString := `please use one of \[default low-latency\] power consumption modes together with the perPodPowerManagement`
+			ok, err := regexp.MatchString(errString, string(output))
+			Expect(err).ToNot(HaveOccurred(), "did not fail with Expected:%s failure", errString)
+			if ok {
+				testlog.Info(errString)
+			}
+			Eventually(session).Should(gexec.Exit(1))
+		})
 	})
 })
