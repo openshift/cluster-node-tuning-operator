@@ -22,8 +22,8 @@ import (
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/infrastructure"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 
@@ -39,30 +39,28 @@ const (
 	fileMode                     = 0420
 )
 
-var _ = Describe("[Performance] Last Level Cache", Label(string(label.OpenShift)), func() {
+var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.OpenShift)), Ordered, func() {
 	var (
 		workerRTNodes      []corev1.Node
 		perfProfile        *performancev2.PerformanceProfile
 		performanceMCP     string
-		isAMD              bool
-		ctx                context.Context = context.Background()
+		ctx                context.Context
 		err                error
-		profileAnnotations = make(map[string]string)
+		profileAnnotations map[string]string
 		poolName           string
+		llcPolicy          string
+		mc                 *machineconfigv1.MachineConfig
 	)
-	testutils.CustomBeforeAll(func() {
+
+	BeforeAll(func() {
+		profileAnnotations = make(map[string]string)
+		ctx = context.Background()
 
 		workerRTNodes, err = nodes.GetByLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 
 		workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes)
 		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("error looking for the optional selector: %v", err))
-
-		isAMD, err = infrastructure.IsAMD(ctx, &workerRTNodes[0])
-		Expect(err).ToNot(HaveOccurred(), "Unable to fetch Vendor ID")
-		if !isAMD {
-			Skip("AMD LLC Tests can only run on AMD Hardware")
-		}
 
 		perfProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
@@ -72,8 +70,14 @@ var _ = Describe("[Performance] Last Level Cache", Label(string(label.OpenShift)
 
 		poolName = poolname.GetByProfile(ctx, perfProfile)
 
-		mc, err := createMachineConfig(perfProfile)
+		mc, err = createMachineConfig(perfProfile)
 		Expect(err).ToNot(HaveOccurred())
+
+		llcPolicy := `{"cpuManagerPolicyOptions":{"prefer-align-cpus-by-uncorecache":"true", "full-pcpus-only":"true"}}`
+		profileAnnotations["kubeletconfig.experimental"] = llcPolicy
+
+		// Create machine config to create file /etc/kubernetes/openshift-llc-alignment
+		// required to enable align-cpus-by-uncorecache cpumanager policy
 
 		By("Enabling AMD LLC Uncore cache feature")
 		err = testclient.Client.Create(context.TODO(), mc)
@@ -86,14 +90,13 @@ var _ = Describe("[Performance] Last Level Cache", Label(string(label.OpenShift)
 		mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 	})
 
-	Context("Configuration Tests", Ordered, func() {
-		llcPolicy := "{\"cpuManagerPolicyOptions\":{\"prefer-align-cpus-by-uncorecache\":\"true\", \"full-pcpus-only\":\"true\"}}"
-		profileAnnotations["kubeletconfig.experimental"] = llcPolicy
+	AfterAll(func() {
 
-		It("[test_id: 77722] Kubelet is configured appropriately when align-cpus-by-uncorecache is enabled through Performance profile", func() {
-
-			perfProfile.Annotations = profileAnnotations
-
+		// Delete machine config created to enable llc cpu pinning
+		// first make sure the profile doesn't have the annotation
+		perfProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+		if perfProfile.Annotations != nil {
+			perfProfile.Annotations = nil
 			By("updating performance profile")
 			profiles.UpdateWithRetry(perfProfile)
 
@@ -102,58 +105,109 @@ var _ = Describe("[Performance] Last Level Cache", Label(string(label.OpenShift)
 
 			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
 			profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
+		}
 
-			for _, node := range workerRTNodes {
-				kubeletconfig, err := nodes.GetKubeletConfig(ctx, &node)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(kubeletconfig.CPUManagerPolicyOptions["prefer-align-cpus-by-uncorecache"]).To(Equal("true"))
+		// delete the machine config pool
+		err := testclient.Client.Delete(ctx, mc)
+		Expect(err).ToNot(HaveOccurred())
+
+		mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
+		By("Waiting when mcp finishes updates")
+
+		mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+	})
+
+	Context("Configuration Tests", func() {
+
+		BeforeEach(func() {
+			if perfProfile.Annotations == nil || perfProfile.Annotations["kubeletconfig.experimental"] != llcPolicy {
+				testlog.Info("Enable align-cpus-by-uncorecache cpumanager policy")
+				perfProfile.Annotations = profileAnnotations
+
+				By("updating performance profile")
+				profiles.UpdateWithRetry(perfProfile)
+
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+				profilesupdate.WaitForTuningUpdating(ctx, perfProfile)
+
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
 			}
 		})
 
-		It("[test_id: 77723] Removing the kubelet annotation should disable align-cpus-by-uncorecache policy", func() {
-
+		AfterEach(func() {
+			testlog.Infof("Remove align-cpus-by-uncorecache cpumanager policy")
 			// Delete the Annotations
 			if perfProfile.Annotations != nil {
 				perfProfile.Annotations = nil
-			}
-			fmt.Println("AFter updating ", perfProfile.Annotations)
 
-			By("updating performance profile")
-			profiles.UpdateWithRetry(perfProfile)
+				By("updating performance profile")
+				profiles.UpdateWithRetry(perfProfile)
 
-			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-			profilesupdate.WaitForTuningUpdating(ctx, perfProfile)
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+				profilesupdate.WaitForTuningUpdating(ctx, perfProfile)
 
-			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-			profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
-
-			for _, node := range workerRTNodes {
-				kubeletconfig, err := nodes.GetKubeletConfig(ctx, &node)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(kubeletconfig.CPUManagerPolicyOptions).ToNot(HaveKey("prefer-align-cpus-by-uncorecache"))
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
 			}
 		})
 
-		It("[test_id: 77724] disabling align-cpus-by-uncorecache explicitly through annotation", func() {
+		When("align-cpus-by-uncorecache annotation is enabled", func() {
+			It("[test_id:77722] cpuManager Policy in kubelet is configured appropriately", func() {
+				for _, node := range workerRTNodes {
+					kubeletconfig, err := nodes.GetKubeletConfig(ctx, &node)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(kubeletconfig.CPUManagerPolicyOptions).To(HaveKeyWithValue("prefer-align-cpus-by-uncorecache", "true"))
+				}
+			})
+		})
 
-			llcDisablePolicy := "{\"cpuManagerPolicyOptions\":{\"prefer-align-cpus-by-uncorecache\":\"false\", \"full-pcpus-only\":\"true\"}}"
-			profileAnnotations["kubeletconfig.experimental"] = llcDisablePolicy
-			perfProfile.Annotations = profileAnnotations
+		When("align-cpus-by-uncorecache annotation is removed", func() {
+			It("[test_id:77723] should disable align-cpus-by-uncorecache cpumanager policy", func() {
+				// Delete the Annotations
+				if perfProfile.Annotations != nil {
+					perfProfile.Annotations = nil
 
-			By("updating performance profile")
-			profiles.UpdateWithRetry(perfProfile)
+					By("updating performance profile")
+					profiles.UpdateWithRetry(perfProfile)
 
-			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-			profilesupdate.WaitForTuningUpdating(ctx, perfProfile)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+					profilesupdate.WaitForTuningUpdating(ctx, perfProfile)
 
-			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-			profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
+				}
 
-			for _, node := range workerRTNodes {
-				kubeletconfig, err := nodes.GetKubeletConfig(ctx, &node)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(kubeletconfig.CPUManagerPolicyOptions["prefer-align-cpus-by-uncorecache"]).To(Equal("false"))
-			}
+				for _, node := range workerRTNodes {
+					kubeletconfig, err := nodes.GetKubeletConfig(ctx, &node)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(kubeletconfig.CPUManagerPolicyOptions).ToNot(HaveKey("prefer-align-cpus-by-uncorecache"))
+				}
+			})
+		})
+
+		When("align-cpus-by-uncorecache annotation is disabled", func() {
+			It("[test_id:77724] cpumanager Policy in kubelet is configured appropriately", func() {
+
+				llcDisablePolicy := `{"cpuManagerPolicyOptions":{"prefer-align-cpus-by-uncorecache":"false", "full-pcpus-only":"true"}}`
+				profileAnnotations["kubeletconfig.experimental"] = llcDisablePolicy
+				perfProfile.Annotations = profileAnnotations
+
+				By("updating performance profile")
+				profiles.UpdateWithRetry(perfProfile)
+
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+				profilesupdate.WaitForTuningUpdating(ctx, perfProfile)
+
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
+
+				for _, node := range workerRTNodes {
+					kubeletconfig, err := nodes.GetKubeletConfig(ctx, &node)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(kubeletconfig.CPUManagerPolicyOptions).To(HaveKeyWithValue("prefer-align-cpus-by-uncorecache", "false"))
+				}
+			})
 		})
 	})
 })
