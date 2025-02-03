@@ -1,8 +1,11 @@
 package profile
 
 import (
+	"strconv"
+
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/kubeletconfig"
 
 	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 )
@@ -90,4 +93,20 @@ func IsMixedCPUsEnabled(profile *performancev2.PerformanceProfile) bool {
 		return false
 	}
 	return *profile.Spec.WorkloadHints.MixedCpus
+}
+
+func IsLLCAlignmentEnabled(profile *performancev2.PerformanceProfile) bool {
+	kubeletConfig, err := kubeletconfig.NewFromExperimentalAnnotation(profile)
+	if err != nil {
+		return false
+	}
+	val, ok := kubeletConfig.CPUManagerPolicyOptions[kubeletconfig.CPUManagerPolicyOptionPreferAlignCPUsByUncoreCache]
+	if !ok {
+		return false
+	}
+	v, err := strconv.ParseBool(val)
+	if err != nil {
+		return false
+	}
+	return v
 }
