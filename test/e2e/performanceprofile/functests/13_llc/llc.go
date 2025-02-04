@@ -44,7 +44,6 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 		workerRTNodes      []corev1.Node
 		perfProfile        *performancev2.PerformanceProfile
 		performanceMCP     string
-		ctx                context.Context
 		err                error
 		profileAnnotations map[string]string
 		poolName           string
@@ -53,6 +52,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 	)
 
 	BeforeAll(func() {
+		var ctx context.Context
 		profileAnnotations = make(map[string]string)
 		ctx = context.Background()
 
@@ -80,7 +80,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 		// required to enable align-cpus-by-uncorecache cpumanager policy
 
 		By("Enabling Uncore cache feature")
-		err = testclient.Client.Create(context.TODO(), mc)
+		Expect(testclient.Client.Create(context.TODO(), mc)).To(Succeed(), "Unable to apply machine config for enabling uncore cache")
 
 		Expect(err).ToNot(HaveOccurred(), "Unable to apply machine config for enabling uncore cache")
 
@@ -110,22 +110,20 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 
 		// Delete machine config created to enable uncocre cache cpumanager policy option
 		// first make sure the profile doesn't have the annotation
+		var ctx context.Context
 		perfProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-		if perfProfile.Annotations != nil {
-			perfProfile.Annotations = nil
-			By("updating performance profile")
-			profiles.UpdateWithRetry(perfProfile)
+		perfProfile.Annotations = nil
+		By("updating performance profile")
+		profiles.UpdateWithRetry(perfProfile)
 
-			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-			profilesupdate.WaitForTuningUpdating(ctx, perfProfile)
+		By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+		profilesupdate.WaitForTuningUpdating(ctx, perfProfile)
 
-			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-			profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
-		}
+		By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+		profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
 
 		// delete the machine config pool
-		err := testclient.Client.Delete(ctx, mc)
-		Expect(err).ToNot(HaveOccurred())
+		Expect(testclient.Client.Delete(ctx, mc)).To(Succeed())
 
 		mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
 		By("Waiting when mcp finishes updates")
@@ -146,6 +144,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 
 		When("align-cpus-by-uncorecache annotations is removed", func() {
 			It("[test_id:77723] should disable align-cpus-by-uncorecache cpumanager policy option", func() {
+				var ctx context.Context
 				// Delete the Annotations
 				if perfProfile.Annotations != nil {
 					perfProfile.Annotations = nil
@@ -170,7 +169,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 
 		When("align-cpus-by-uncorecache cpumanager policy option is disabled", func() {
 			It("[test_id:77724] cpumanager Policy option in kubelet is configured appropriately", func() {
-
+				var ctx context.Context
 				llcDisablePolicy := `{"cpuManagerPolicyOptions":{"prefer-align-cpus-by-uncorecache":"false", "full-pcpus-only":"true"}}`
 				profileAnnotations["kubeletconfig.experimental"] = llcDisablePolicy
 				perfProfile.Annotations = profileAnnotations
