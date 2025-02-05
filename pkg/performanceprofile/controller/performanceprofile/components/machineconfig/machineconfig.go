@@ -429,10 +429,14 @@ func getSystemdContent(options []*unit.UnitOption) (string, error) {
 // GetHugepagesSizeKilobytes retruns hugepages size in kilobytes
 func GetHugepagesSizeKilobytes(hugepagesSize performancev2.HugePageSize) (string, error) {
 	switch hugepagesSize {
-	case "1G":
-		return "1048576", nil
 	case "2M":
 		return "2048", nil
+	case "32M":
+		return "32768", nil
+	case "512M":
+		return "524288", nil
+	case "1G":
+		return "1048576", nil
 	default:
 		return "", fmt.Errorf("can not convert size %q to kilobytes", hugepagesSize)
 	}
