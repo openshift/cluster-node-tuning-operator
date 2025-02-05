@@ -43,3 +43,4 @@ rendersync bootstrap-cluster/performance pinned-cluster/default bootstrap/no-mcp
 rendersync bootstrap-cluster/performance pinned-cluster/default bootstrap-cluster/extra-mcp bootstrap/extra-mcp
 rendersync --owner-ref none -- base/performance manual-cluster/performance no-ref 
 rendersync --owner-ref none -- base/performance manual-cluster/cpuFrequency default/cpuFrequency 
+rendersync --owner-ref none -- base/performance manual-cluster/arm default/arm
