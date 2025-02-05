@@ -1,0 +1,147 @@
+apiVersion: tuned.openshift.io/v1
+kind: Tuned
+metadata:
+  creationTimestamp: null
+  name: openshift-node-performance-manual
+  namespace: openshift-cluster-node-tuning-operator
+spec:
+  profile:
+  - data: "[main]\nsummary=Openshift node optimized for deterministic performance
+      at the cost of increased power consumption, focused on low latency network performance.
+      Based on Tuned 2.11 and Cluster node tuning (oc 4.5)\n\n# The final result of
+      the include depends on cpu vendor, cpu architecture, and whether the real time
+      kernel is enabled\n# The first line will be evaluated based on the CPU vendor
+      and architecture\n# This has three possible results:\n#   include=openshift-node-performance-amd-x86;\n#
+      \  include=openshift-node-performance-arm-aarch64;\n#   include=openshift-node-performance-intel-x86;\n#
+      The second line will be evaluated based on whether the real time kernel is enabled\n#
+      This has two possible results:\n#     openshift-node,cpu-partitioning\n#     openshift-node,cpu-partitioning,openshift-node-performance-rt-<PerformanceProfile
+      name>\ninclude=openshift-node,cpu-partitioning${f:regex_search_ternary:${f:exec:uname:-r}:rt:,openshift-node-performance-rt-manual:};\n
+      \   openshift-node-performance-${f:lscpu_check:Vendor ID\\:\\s*GenuineIntel:intel:Vendor
+      ID\\:\\s*AuthenticAMD:amd:Vendor ID\\:\\s*ARM:arm}-${f:lscpu_check:Architecture\\:\\s*x86_64:x86:Architecture\\:\\s*aarch64:aarch64}-manual\n\n#
+      Inheritance of base profiles legend:\n# cpu-partitioning -> network-latency
+      -> latency-performance\n# https://github.com/redhat-performance/tuned/blob/master/profiles/latency-performance/tuned.conf\n#
+      https://github.com/redhat-performance/tuned/blob/master/profiles/network-latency/tuned.conf\n#
+      https://github.com/redhat-performance/tuned/blob/master/profiles/cpu-partitioning/tuned.conf\n\n#
+      All values are mapped with a comment where a parent profile contains them.\n#
+      Different values will override the original values in parent profiles.\n\n[variables]\n#>
+      isolated_cores take a list of ranges; e.g. isolated_cores=2,4-7\n\nisolated_cores=1\n\n\nnot_isolated_cores_expanded=${f:cpulist_invert:${isolated_cores_expanded}}\n\n\n[cpu]\n#>
+      latency-performance\n#> (override)\nforce_latency=cstate.id:1|3\ngovernor=performance\nenergy_perf_bias=performance\nmin_perf_pct=100\n\n\n\n[service]\nservice.stalld=start,enable\n\n\n[vm]\n#>
+      network-latency\ntransparent_hugepages=never\n\n\n[irqbalance]\n# Disable the
+      plugin entirely, which was enabled by the parent profile `cpu-partitioning`.\n#
+      It can be racy if TuneD restarts for whatever reason.\n#> cpu-partitioning\nenabled=false\n\n\n[scheduler]\nruntime=0\ngroup.ksoftirqd=0:f:11:*:ksoftirqd.*\ngroup.rcuc=0:f:11:*:rcuc.*\ngroup.ktimers=0:f:11:*:ktimers.*\n\ndefault_irq_smp_affinity
+      = ignore\nirq_process=false\n\n\n[sysctl]\n\n#> cpu-partitioning #RealTimeHint\nkernel.hung_task_timeout_secs=600\n#>
+      cpu-partitioning #RealTimeHint\nkernel.nmi_watchdog=0\n#> RealTimeHint\nkernel.sched_rt_runtime_us=-1\n#>
+      cpu-partitioning  #RealTimeHint\nvm.stat_interval=10\n\n# cpu-partitioning and
+      RealTimeHint for RHEL disable it (= 0)\n# OCP is too dynamic when partitioning
+      and needs to evacuate\n#> scheduled timers when starting a guaranteed workload
+      (= 1)\nkernel.timer_migration=1\n#> network-latency\nnet.ipv4.tcp_fastopen=3\n\n#
+      If a workload mostly uses anonymous memory and it hits this limit, the entire\n#
+      working set is buffered for I/O, and any more write buffering would require\n#
+      swapping, so it's time to throttle writes until I/O can catch up.  Workloads\n#
+      that mostly use file mappings may be able to use even higher values.\n#\n# The
+      generator of dirty data starts writeback at this percentage (system default\n#
+      is 20%)\n#> latency-performance\nvm.dirty_ratio=10\n\n# Start background writeback
+      (via writeback threads) at this percentage (system\n# default is 10%)\n#> latency-performance\nvm.dirty_background_ratio=3\n\n#
+      The swappiness parameter controls the tendency of the kernel to move\n# processes
+      out of physical memory and onto the swap disk.\n# 0 tells the kernel to avoid
+      swapping processes out of physical memory\n# for as long as possible\n# 100
+      tells the kernel to aggressively swap processes out of physical memory\n# and
+      move them to swap cache\n#> latency-performance\nvm.swappiness=10\n\n# also
+      configured via a sysctl.d file\n# placed here for documentation purposes and
+      commented out due\n# to a tuned logging bug complaining about duplicate sysctl:\n#
+      \  https://issues.redhat.com/browse/RHEL-18972\n#> rps configuration\n# net.core.rps_default_mask=${not_isolated_cpumask}\n\n\n[selinux]\n#>
+      Custom (atomic host)\navc_cache_threshold=8192\n\n\n[net]\nnf_conntrack_hashsize=131072\n\n\n[bootloader]\n#
+      !! The names are important for Intel and are referenced in openshift-node-performance-intel-x86\n\n#
+      set empty values to disable RHEL initrd setting in cpu-partitioning\ninitrd_remove_dir=\ninitrd_dst_img=\ninitrd_add_dir=\n\n#
+      overrides cpu-partitioning cmdline\ncmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores}
+      tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded}\n\n#
+      No default value but will be composed conditionally based on platform\ncmdline_iommu=\n\n\ncmdline_isolation=+isolcpus=managed_irq,${isolated_cores}\n\n\n\ncmdline_realtime_nohzfull=+nohz_full=${isolated_cores}\ncmdline_realtime_nosoftlookup=+nosoftlockup\ncmdline_realtime_common=+skew_tick=1
+      rcutree.kthread_prio=11\n\n\n\n\n\n\n\ncmdline_hugepages=+ default_hugepagesz=32M
+      \  hugepagesz=512M hugepages=1 \n\n\n\n[rtentsk]\n\n\n"
+    name: openshift-node-performance-manual
+  - data: "[main]\nsummary=Real time profile to override unsupported settings\n\n[sysctl]\n#Real
+      time kernel doesn't support the following kernel parameters.\n#The openshift-node-performance
+      profile inherits these kernel parameters from the network-latency profile. \n#Therefore,
+      if the real time kernel is detected they will be dropped, meaning won't be applied.\ndrop=kernel.numa_balancing,net.core.busy_read,net.core.busy_poll\n"
+    name: openshift-node-performance-rt-manual
+  - data: |+
+      [main]
+      summary=Platform specific tuning for AMD x86
+
+      [bootloader]
+      cmdline_iommu_amd=iommu=pt
+
+
+      cmdline_pstate=amd_pstate=guided
+
+
+
+      cmdline_realtime_amd=tsc=reliable nmi_watchdog=0 mce=off
+
+
+
+
+
+    name: openshift-node-performance-amd-x86-manual
+  - data: |
+      [main]
+      summary=Platform specific tuning for aarch64
+
+      [bootloader]
+      # No cstate for ARM
+      # No pstate args for ARM
+
+      # aarch64 specific tuning options
+      cmdline_iommu_arm=iommu.passthrough=1
+    name: openshift-node-performance-arm-aarch64-manual
+  - data: |+
+      [main]
+      summary=Platform specific tuning for Intel x86
+
+      [bootloader]
+      # DO NOT REMOVE THIS BLOCK
+      # It makes sure the kernel arguments for Intel are applied
+      # in the order compatible with OCP 4.17 which is important
+      # for preventing an extra reboot during upgrade
+      cmdline_cpu_part=
+      cmdline_iommu_intel=
+      cmdline_isolation=
+      cmdline_realtime_nohzfull=
+      cmdline_realtime_intel=
+      cmdline_realtime_nosoftlookup=
+      cmdline_realtime_intel_nmi=
+      cmdline_realtime_common=
+      cmdline_power_performance=
+      cmdline_power_performance_intel=
+      cmdline_idle_poll=
+      cmdline_idle_poll_intel=
+      cmdline_hugepages=
+      cmdline_pstate=
+
+      # Here comes the Intel specific tuning
+
+      cmdline_iommu_intel=intel_iommu=on iommu=pt
+
+
+      cmdline_realtime_intel=tsc=reliable
+      cmdline_realtime_intel_nmi=nmi_watchdog=0 mce=off
+
+
+
+
+
+
+
+      cmdline_pstate=intel_pstate=${f:intel_recommended_pstate}
+
+
+    name: openshift-node-performance-intel-x86-manual
+  recommend:
+  - machineConfigLabels:
+      machineconfiguration.openshift.io/role: worker-cnf
+    operand:
+      tunedConfig:
+        reapply_sysctl: null
+    priority: 20
+    profile: openshift-node-performance-manual
+status: {}
