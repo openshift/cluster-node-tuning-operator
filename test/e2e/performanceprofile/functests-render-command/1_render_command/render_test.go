@@ -18,18 +18,20 @@ const (
 	bootstrapExpectedDir    = "bootstrap"
 	noRefExpectedDir        = "no-ref"
 	cpuFrequencyExpectedDir = defaultExpectedDir + "/" + "cpuFrequency"
+	armExpectedDir          = defaultExpectedDir + "/" + "arm"
 )
 
 var (
-	assetsOutDir                           string
-	assetsInDirs, assetsCpuFrequencyInDirs []string
-	ppDir                                  string
-	ppCpuFrequencyDir                      string
-	testDataPath                           string
-	defaultPinnedDir                       string
-	snoLegacyPinnedDir                     string
-	bootstrapPPDir                         string
-	extraMCPDir                            string
+	assetsOutDir                                            string
+	assetsInDirs, assetsCpuFrequencyInDirs, assetsARMInDirs []string
+	ppDir                                                   string
+	ppCpuFrequencyDir                                       string
+	armDir                                                  string
+	testDataPath                                            string
+	defaultPinnedDir                                        string
+	snoLegacyPinnedDir                                      string
+	bootstrapPPDir                                          string
+	extraMCPDir                                             string
 )
 
 var _ = Describe("render command e2e test", func() {
@@ -41,10 +43,12 @@ var _ = Describe("render command e2e test", func() {
 		extraMCPDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "bootstrap-cluster", "extra-mcp")
 		ppDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "manual-cluster", "performance")
 		ppCpuFrequencyDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "manual-cluster", "cpuFrequency")
+		armDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "manual-cluster", "arm")
 		defaultPinnedDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "pinned-cluster", "default")
 		snoLegacyPinnedDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "pinned-cluster", "single-node-legacy")
 		testDataPath = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "testdata")
 		assetsInDirs = []string{assetsInDir, ppDir}
+		assetsARMInDirs = []string{assetsInDir, armDir}
 		assetsCpuFrequencyInDirs = []string{assetsInDir, ppCpuFrequencyDir}
 	})
 
@@ -124,6 +128,20 @@ var _ = Describe("render command e2e test", func() {
 
 			cmd := exec.Command(cmdline[0], cmdline[1:]...)
 			runAndCompare(cmd, cpuFrequencyExpectedDir)
+		})
+
+		It("should produces the expected components for ARM cluster", func() {
+			cmdline := []string{
+				filepath.Join(binPath, "cluster-node-tuning-operator"),
+				"render",
+				"--asset-input-dir", strings.Join(assetsARMInDirs, ","),
+				"--asset-output-dir", assetsOutDir,
+				"--owner-ref", "none",
+			}
+			fmt.Fprintf(GinkgoWriter, "running: %v\n", cmdline)
+
+			cmd := exec.Command(cmdline[0], cmdline[1:]...)
+			runAndCompare(cmd, armExpectedDir)
 		})
 	})
 
