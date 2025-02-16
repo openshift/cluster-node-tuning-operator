@@ -43,10 +43,12 @@ import (
 const (
 	kernelPageSize4k  = "4k"
 	kernelPageSize64k = "64k"
+	hugepagesSize64k  = "64k"
 	hugepagesSize2M   = "2M"
 	hugepagesSize32M  = "32M"
 	hugepagesSize512M = "512M"
 	hugepagesSize1G   = "1G"
+	hugepagesSize16G  = "16G"
 	amd64             = "amd64"
 	aarch64           = "arm64"
 )
@@ -56,11 +58,15 @@ var x86ValidHugepagesSizes = []string{
 	hugepagesSize1G,
 }
 
-// Each kernel page size has only a single valid hugepage size on aarch64
-var aarch64ValidHugepagesSizes = []string{
-	hugepagesSize2M,   // With 4k kernel pages
-	hugepagesSize32M,  // With 16k kernel pages
-	hugepagesSize512M, // With 64k kernel pages
+// Each kernel page size has a certain group of valid hugepage sizes on aarch64
+// https://docs.kernel.org/mm/vmemmap_dedup.html
+var aarch64HugePagesByKernelPageSize = map[string][]string{
+	kernelPageSize4k:  {hugepagesSize64k, hugepagesSize2M, hugepagesSize32M, hugepagesSize1G},
+	kernelPageSize64k: {hugepagesSize2M, hugepagesSize512M, hugepagesSize16G},
+}
+
+var x86HugePagesByKernelPageSize = map[string][]string{
+	kernelPageSize4k: {hugepagesSize2M, hugepagesSize1G},
 }
 
 var aarch64ValidKernelPageSizes = []string{
@@ -155,8 +161,8 @@ func (r *PerformanceProfile) ValidateBasicFields() field.ErrorList {
 	allErrs = append(allErrs, r.validateSelectors()...)
 	allErrs = append(allErrs, r.validateAllNodesAreSameCpuArchitecture(nodes)...)
 	allErrs = append(allErrs, r.validateAllNodesAreSameCpuCapacity(nodes)...)
-	allErrs = append(allErrs, r.validateHugePages(nodes)...)
 	allErrs = append(allErrs, r.validateKernelPageSize(nodes)...)
+	allErrs = append(allErrs, r.validateHugePages(nodes)...)
 	allErrs = append(allErrs, r.validateNUMA()...)
 	allErrs = append(allErrs, r.validateNet()...)
 	allErrs = append(allErrs, r.validateWorkloadHints()...)
@@ -367,7 +373,16 @@ func (r *PerformanceProfile) validateHugePages(nodes corev1.NodeList) field.Erro
 	// whether it is supposed to be x86 or aarch64
 	x86 := false
 	aarch64 := false
-	combinedHugepagesSizes := append(x86ValidHugepagesSizes, aarch64ValidHugepagesSizes...)
+
+	// Default to 4k if KernelPageSize is not set
+	// This is required for backward compatibility with performance profiles that don't have a kernelPageSize field.
+	kernelPageSize := kernelPageSize4k
+
+	// Override the default if KernelPageSize is specified
+	if r.Spec.KernelPageSize != nil {
+		kernelPageSize = string(*r.Spec.KernelPageSize)
+	}
+	hugepagesSizes := allHugePageSizes()
 
 	if len(nodes.Items) > 0 {
 		// `validateHugePages` implicitly relies on `validateAllNodesAreSameCpuArchitecture` to have already been run
@@ -381,67 +396,72 @@ func (r *PerformanceProfile) validateHugePages(nodes corev1.NodeList) field.Erro
 		defaultSize := *r.Spec.HugePages.DefaultHugePagesSize
 		errField := "spec.hugepages.defaultHugepagesSize"
 		errMsg := "hugepages default size should be equal to one of"
-
+		docsRef := "for more info: https://docs.kernel.org/mm/vmemmap_dedup.html"
 		if x86 && !slices.Contains(x86ValidHugepagesSizes, string(defaultSize)) {
 			allErrs = append(
 				allErrs,
 				field.Invalid(
 					field.NewPath(errField),
 					r.Spec.HugePages.DefaultHugePagesSize,
-					fmt.Sprintf("%s %v", errMsg, x86ValidHugepagesSizes),
+					fmt.Sprintf("%s %v. %s", errMsg, x86ValidHugepagesSizes, docsRef),
 				),
 			)
-		} else if aarch64 && !slices.Contains(aarch64ValidHugepagesSizes, string(defaultSize)) {
+		} else if aarch64 && !slices.Contains(aarch64HugePagesByKernelPageSize[kernelPageSize], string(defaultSize)) {
 			allErrs = append(
 				allErrs,
 				field.Invalid(
 					field.NewPath(errField),
 					r.Spec.HugePages.DefaultHugePagesSize,
-					fmt.Sprintf("%s %v", errMsg, aarch64ValidHugepagesSizes),
+					fmt.Sprintf("%s %v. %s", errMsg, aarch64HugePagesByKernelPageSize[kernelPageSize], docsRef),
 				),
 			)
-		} else if !x86 && !aarch64 && !slices.Contains(combinedHugepagesSizes, string(defaultSize)) {
-			allErrs = append(
-				allErrs,
-				field.Invalid(
-					field.NewPath(errField),
-					r.Spec.HugePages.DefaultHugePagesSize,
-					fmt.Sprintf("%s %v", errMsg, combinedHugepagesSizes),
-				),
-			)
+		} else if !x86 && !aarch64 {
+			if _, exists := hugepagesSizes[string(defaultSize)]; !exists {
+				allErrs = append(
+					allErrs,
+					field.Invalid(
+						field.NewPath(errField),
+						r.Spec.HugePages.DefaultHugePagesSize,
+						fmt.Sprintf("%s %v. %s", errMsg, hugepagesSizes, docsRef),
+					),
+				)
+			}
 		}
 	}
 
 	for i, page := range r.Spec.HugePages.Pages {
 		errField := "spec.hugepages.pages"
 		errMsg := "the page size should be equal to one of"
+		docsRef := "for more info: https://docs.kernel.org/mm/vmemmap_dedup.html"
 		if x86 && !slices.Contains(x86ValidHugepagesSizes, string(page.Size)) {
 			allErrs = append(
 				allErrs,
 				field.Invalid(
 					field.NewPath(errField),
 					r.Spec.HugePages.Pages,
-					fmt.Sprintf("%s %v", errMsg, x86ValidHugepagesSizes),
+					fmt.Sprintf("%s %v. %s", errMsg, x86ValidHugepagesSizes, docsRef),
 				),
 			)
-		} else if aarch64 && !slices.Contains(aarch64ValidHugepagesSizes, string(page.Size)) {
+		} else if aarch64 && !slices.Contains(aarch64HugePagesByKernelPageSize[(kernelPageSize)], string(page.Size)) {
 			allErrs = append(
 				allErrs,
 				field.Invalid(
 					field.NewPath(errField),
 					r.Spec.HugePages.Pages,
-					fmt.Sprintf("%s %v", errMsg, aarch64ValidHugepagesSizes),
+					fmt.Sprintf("%s %v. %s", errMsg, aarch64HugePagesByKernelPageSize[(kernelPageSize)], docsRef),
 				),
 			)
-		} else if !x86 && !aarch64 && !slices.Contains(combinedHugepagesSizes, string(page.Size)) {
-			allErrs = append(
-				allErrs,
-				field.Invalid(
-					field.NewPath(errField),
-					r.Spec.HugePages.DefaultHugePagesSize,
-					fmt.Sprintf("%s %v", errMsg, combinedHugepagesSizes),
-				),
-			)
+		} else if !x86 && !aarch64 {
+			if _, exists := hugepagesSizes[string(page.Size)]; !exists {
+				allErrs = append(
+					allErrs,
+					field.Invalid(
+						field.NewPath(errField),
+						r.Spec.HugePages.Pages,
+						fmt.Sprintf("%s %v. %s", errMsg, hugepagesSizes, docsRef),
+					),
+				)
+			}
 		}
 
 		allErrs = append(allErrs, r.validatePageDuplication(&page, r.Spec.HugePages.Pages[i+1:])...)
@@ -683,4 +703,21 @@ func (r *PerformanceProfile) getNodesList() (corev1.NodeList, error) {
 	}
 
 	return *nodes, nil
+}
+
+func allHugePageSizes() map[string]struct{} {
+	hugePageSet := make(map[string]struct{})
+
+	for _, hugePageSizes := range x86HugePagesByKernelPageSize {
+		for _, size := range hugePageSizes {
+			hugePageSet[size] = struct{}{}
+		}
+	}
+
+	for _, hugePageSizes := range aarch64HugePagesByKernelPageSize {
+		for _, size := range hugePageSizes {
+			hugePageSet[size] = struct{}{}
+		}
+	}
+	return hugePageSet
 }
