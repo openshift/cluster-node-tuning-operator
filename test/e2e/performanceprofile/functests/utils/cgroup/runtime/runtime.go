@@ -23,9 +23,17 @@ const (
 // in the node where the given pod is running
 func GetContainerRuntimeTypeFor(ctx context.Context, c client.Client, pod *corev1.Pod) (string, error) {
 	node := &corev1.Node{}
-	if err := c.Get(ctx, client.ObjectKey{Name: pod.Spec.NodeName}, node); err != nil {
-		return "", err
+
+	if pod.Spec.NodeName == "" {
+		if err := c.Get(ctx, client.ObjectKey{Name: pod.Spec.NodeSelector[testutils.LabelHostname]}, node); err != nil {
+			return "", err
+		}
+	} else {
+		if err := c.Get(ctx, client.ObjectKey{Name: pod.Spec.NodeName}, node); err != nil {
+			return "", err
+		}
 	}
+
 	cmd := []string{
 		"chroot",
 		"/rootfs",
