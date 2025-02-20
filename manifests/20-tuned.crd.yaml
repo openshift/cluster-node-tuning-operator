@@ -18,7 +18,14 @@ spec:
   preserveUnknownFields: false
   scope: Namespaced
   versions:
-  - name: v1
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Valid")].status
+      name: Valid
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1
     schema:
       openAPIV3Schema:
         description: |-
@@ -161,7 +168,42 @@ spec:
             type: object
           status:
             description: TunedStatus is the status for a Tuned resource.
+            properties:
+              conditions:
+                description: conditions represents the state of the Tuned profile
+                items:
+                  description: StatusCondition represents a partial state of the per-node
+                    Profile application.
+                  properties:
+                    lastTransitionTime:
+                      description: lastTransitionTime is the time of the last update
+                        to the current status property.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message provides additional information about the current condition.
+                        This is only to be consumed by humans.
+                      type: string
+                    reason:
+                      description: reason is the CamelCase reason for the condition's
+                        current status.
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      type: string
+                    type:
+                      description: type specifies the aspect reported by this condition.
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - status
+                  - type
+                  type: object
+                type: array
             type: object
         type: object
     served: true
     storage: true
+    subresources:
+      status: {}
