@@ -74,6 +74,9 @@ const (
 	ovsDynamicPinningTriggerHostFile = "/var/lib/ovn-ic/etc/enable_dynamic_cpu_affinity"
 
 	cpusetConfigure = "cpuset-configure"
+
+	// required until the LLC support code (KEP-4800) goes at least Beta
+	llcEnablementFile = "openshift-llc-alignment"
 )
 
 const (
@@ -392,6 +395,15 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 		}
 		addContent(ignitionConfig, content, filepath.Join(kubernetesConfDir, mixedCPUsConfig), ptr.To[int](0644))
 	}
+
+	// required until the LLC support code (KEP-4800) goes at least Beta
+	if opts.LLCFileEnabled {
+		// Note: the content of LLC (enablement) file does not matter. What matters is only the file presence.
+		// If the file is present, the feature is available and can be enabled via the PerformanceProfile object.\
+		// If the file is missing, the feature is forced off regardless of any PerformanceProfile object content.
+		addContent(ignitionConfig, []byte{}, filepath.Join(kubernetesConfDir, llcEnablementFile), ptr.To[int](0644))
+	}
+
 	return ignitionConfig, nil
 }
 
