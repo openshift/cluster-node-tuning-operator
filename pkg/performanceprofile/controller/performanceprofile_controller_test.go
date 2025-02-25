@@ -715,7 +715,7 @@ var _ = Describe("Controller", func() {
 							Name: "tuned-profile-test",
 						},
 						Status: tunedv1.ProfileStatus{
-							Conditions: []tunedv1.ProfileStatusCondition{
+							Conditions: []tunedv1.StatusCondition{
 								{
 									Type:    tunedv1.TunedDegraded,
 									Status:  corev1.ConditionTrue,
