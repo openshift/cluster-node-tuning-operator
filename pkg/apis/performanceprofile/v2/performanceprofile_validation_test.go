@@ -2,6 +2,7 @@ package v2
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -95,6 +96,7 @@ func GetFakeValidatorClient(nodeSpecs []NodeSpecifications) client.Client {
 // NewPerformanceProfile returns new performance profile object that used for tests
 func NewPerformanceProfile(name string) *PerformanceProfile {
 	size := HugePageSize1G
+	kernelPageSize := KernelPageSize(kernelPageSize4k)
 	isolatedCPUs := IsolatedCPUs
 	reservedCPUs := ReservedCPUs
 	offlinedCPUs := OfflinedCPUs
@@ -128,6 +130,7 @@ func NewPerformanceProfile(name string) *PerformanceProfile {
 			RealTimeKernel: &RealTimeKernel{
 				Enabled: ptr.To(true),
 			},
+			KernelPageSize: &kernelPageSize,
 			NUMA: &NUMA{
 				TopologyPolicy: &numaPolicy,
 			},
@@ -607,9 +610,10 @@ var _ = Describe("PerformanceProfile", func() {
 				Node:  ptr.To(int32(0)),
 				Size:  "14M",
 			})
+			kernelPageSize := *profile.Spec.KernelPageSize
 			errors := profile.validateHugePages(nodes)
 			Expect(errors).NotTo(BeEmpty(), "should have validation error when page with invalid format presents")
-			Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page size should be equal to one of %v", aarch64ValidHugepagesSizes)))
+			Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page size should be equal to one of %v", aarch64HugePagesByKernelPageSize[string(kernelPageSize)])))
 		})
 
 		It("should pass when no nodes are detected with a valid hugepage size", func() {
@@ -646,6 +650,58 @@ var _ = Describe("PerformanceProfile", func() {
 			errors := profile.validateHugePages(nodes)
 			Expect(errors).ToNot(BeEmpty())
 			Expect(errors[0].Error()).To(ContainSubstring(("the page size should be equal to one of")))
+		})
+		Context("KernelPageSize with HugePages validation", func() {
+			var kernelToHugePageSizeByArch = map[string]map[string][]string{
+				aarch64: aarch64HugePagesByKernelPageSize,
+				amd64:   x86HugePagesByKernelPageSize,
+			}
+
+			var tableEntries []TableEntry
+			hugepagesSizes := allHugePageSizes()
+
+			for arch, kernelToHugePageSize := range kernelToHugePageSizeByArch {
+				for kernelPageSize, hugePageSizes := range kernelToHugePageSize {
+					for hugePageSize := range hugepagesSizes {
+						isSupported := !slices.Contains(hugePageSizes, hugePageSize)
+						tableEntries = append(tableEntries, Entry(
+							fmt.Sprintf("Arch: %s, KernelPageSize: %s, HugePageSize: %s", arch, kernelPageSize, hugePageSize),
+							arch, kernelPageSize, hugePageSize, isSupported,
+						))
+					}
+				}
+			}
+			DescribeTable("KernelPageSize with HugePages validation",
+				func(arch string, kernelPageSize string, hugePageSize string, expectError bool) {
+					nodeSpecs := []NodeSpecifications{
+						{architecture: arch, cpuCapacity: 1000, name: "node"},
+					}
+					validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+					nodes, err := profile.getNodesList()
+					Expect(err).ToNot(HaveOccurred())
+
+					*profile.Spec.HugePages.DefaultHugePagesSize = HugePageSize(hugePageSize)
+					profile.Spec.HugePages.Pages = []HugePage{
+						{
+							Count: 1,
+							Node:  ptr.To(int32(0)),
+							Size:  HugePageSize(hugePageSize),
+						},
+					}
+					profile.Spec.KernelPageSize = ptr.To(KernelPageSize(kernelPageSize))
+
+					errors := profile.validateHugePages(nodes)
+					if expectError {
+						Expect(errors).ToNot(BeEmpty(), "should have validation error")
+						Expect(errors[0].Error()).To(ContainSubstring("hugepages default size should be equal"))
+						Expect(errors[1].Error()).To(ContainSubstring("the page size should be equal to one of"))
+					} else {
+						Expect(errors).To(BeEmpty(), "should not have validation error")
+					}
+				},
+				tableEntries,
+			)
 		})
 
 		When("pages have duplication", func() {
@@ -887,6 +943,7 @@ var _ = Describe("PerformanceProfile", func() {
 			incorrectDefaultSize := HugePageSize("!#@")
 			profile.Spec.HugePages.DefaultHugePagesSize = &incorrectDefaultSize
 
+			profile.Spec.KernelPageSize = ptr.To(KernelPageSize("!#@"))
 			profile.Spec.WorkloadHints = &WorkloadHints{
 				RealTime: ptr.To(false),
 			}
@@ -905,10 +962,10 @@ var _ = Describe("PerformanceProfile", func() {
 			type void struct{}
 			var member void
 			errorMsgs := make(map[string]void)
-
 			errorMsgs["reserved CPUs can not be empty"] = member
 			errorMsgs["you should provide only 1 MachineConfigLabel"] = member
-			errorMsgs[fmt.Sprintf("hugepages default size should be equal to one of %v", x86ValidHugepagesSizes)] = member
+			errorMsgs[fmt.Sprintf("hugepages default size should be equal to one of %v. doc reference=%s", x86ValidHugepagesSizes, "https://docs.kernel.org/mm/vmemmap_dedup.html")] = member
+			errorMsgs[fmt.Sprintf("KernelPageSize should be equal to one of: %v", kernelPageSize4k)] = member
 			errorMsgs["device name cannot be empty"] = member
 			errorMsgs[fmt.Sprintf("device vendor ID %s has an invalid format. Vendor ID should be represented as 0x<4 hexadecimal digits> (16 bit representation)", invalidVendor)] = member
 			errorMsgs[fmt.Sprintf("device model ID %s has an invalid format. Model ID should be represented as 0x<4 hexadecimal digits> (16 bit representation)", invalidDevice)] = member

@@ -72,7 +72,12 @@ HugePage defines the number of allocated huge pages of the specific size.
 
 ## HugePageSize
 
-HugePageSize defines size of huge pages, can be 2M or 1G.
+HugePageSize defines the size of huge pages, which depends on the CPU architecture:
+
+- **For x86/amd64**, the valid values are **2M** and **1G**.
+- **For aarch64**, the valid values depend on the kernel page size:
+  - With **[kernelPageSize](#kernelpagesize) set to 4k**: **64k, 2M, 32M, 1G**
+  - With **[kernelPageSize](#kernelpagesize) set to 64k**: **2M, 512M, 16G**
 
 HugePageSize is of type `string`.
 
