@@ -1,0 +1,10 @@
+apiVersion: config.openshift.io/v1
+kind: Node
+metadata:
+  creationTimestamp: null
+  labels:
+    performance.openshift.io/weak-owner-reference-name: manual
+  name: cluster
+spec:
+  cgroupMode: v1
+status: {}
