@@ -19,12 +19,14 @@ const (
 	noRefExpectedDir        = "no-ref"
 	cpuFrequencyExpectedDir = defaultExpectedDir + "/" + "cpuFrequency"
 	armExpectedDir          = defaultExpectedDir + "/" + "arm"
+	ppNoRPSExpectedDir      = defaultExpectedDir + "/" + "pp-norps"
 )
 
 var (
 	assetsOutDir                                            string
+	assetsInDir                                             string
 	assetsInDirs, assetsCpuFrequencyInDirs, assetsARMInDirs []string
-	ppDir                                                   string
+	ppDir, ppDirNoRPS                                       string
 	ppCpuFrequencyDir                                       string
 	armDir                                                  string
 	testDataPath                                            string
@@ -38,10 +40,11 @@ var _ = Describe("render command e2e test", func() {
 
 	BeforeEach(func() {
 		assetsOutDir = createTempAssetsDir()
-		assetsInDir := filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "base", "performance")
+		assetsInDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "base", "performance")
 		bootstrapPPDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "bootstrap-cluster", "performance")
 		extraMCPDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "bootstrap-cluster", "extra-mcp")
 		ppDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "manual-cluster", "performance")
+		ppDirNoRPS = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "manual-cluster", "performance-norps")
 		ppCpuFrequencyDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "manual-cluster", "cpuFrequency")
 		armDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "manual-cluster", "arm")
 		defaultPinnedDir = filepath.Join(workspaceDir, "test", "e2e", "performanceprofile", "cluster-setup", "pinned-cluster", "default")
@@ -142,6 +145,19 @@ var _ = Describe("render command e2e test", func() {
 
 			cmd := exec.Command(cmdline[0], cmdline[1:]...)
 			runAndCompare(cmd, armExpectedDir)
+		})
+
+		It("should not render RPS when disabled", func() {
+			cmdline := []string{
+				filepath.Join(binPath, "cluster-node-tuning-operator"),
+				"render",
+				"--asset-input-dir", assetsInDir + "," + ppDirNoRPS,
+				"--asset-output-dir", assetsOutDir,
+			}
+			fmt.Fprintf(GinkgoWriter, "running: %v\n", cmdline)
+
+			cmd := exec.Command(cmdline[0], cmdline[1:]...)
+			runAndCompare(cmd, ppNoRPSExpectedDir)
 		})
 	})
 

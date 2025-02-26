@@ -375,8 +375,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			}
 		})
 		It("[test_id: 59572] Check RPS Mask is applied to at least one single rx queue on all veth interface", func() {
-			if profile.Spec.WorkloadHints != nil && profile.Spec.WorkloadHints.RealTime != nil &&
-				!*profile.Spec.WorkloadHints.RealTime && !profileutil.IsRpsEnabled(profile) {
+			if !profileutil.IsRpsEnabled(profile) {
 				Skip("realTime Workload Hints is not enabled")
 			}
 			count := 0
@@ -415,8 +414,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			}
 		})
 		It("[test_id:55012] Should have the correct RPS configuration", func() {
-			if profile.Spec.WorkloadHints != nil && profile.Spec.WorkloadHints.RealTime != nil &&
-				!*profile.Spec.WorkloadHints.RealTime && !profileutil.IsRpsEnabled(profile) {
+			if !profileutil.IsRpsEnabled(profile) {
 				Skip("realTime Workload Hints is not enabled")
 			}
 
@@ -491,8 +489,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			}
 		})
 		It("[test_id:54190] Should not have RPS configuration set when realtime workload hint is explicitly set", func() {
-			if profile.Spec.WorkloadHints != nil && profile.Spec.WorkloadHints.RealTime != nil &&
-				!*profile.Spec.WorkloadHints.RealTime && !profileutil.IsRpsEnabled(profile) {
+			if !profileutil.IsRpsEnabled(profile) {
 				for _, node := range workerRTNodes {
 					// Verify the systemd RPS services were not created
 					cmd := []string{"ls", "/rootfs/etc/systemd/system/update-rps@.service"}
