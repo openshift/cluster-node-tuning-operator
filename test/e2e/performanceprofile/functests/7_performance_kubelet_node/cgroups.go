@@ -29,14 +29,12 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/poolname"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/systemd"
@@ -76,16 +74,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 		profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 
-		if !hypershift.IsHypershiftCluster() {
-			poolName, err = mcps.GetByProfile(profile)
-			Expect(err).ToNot(HaveOccurred())
-		} else {
-			hostedClusterName, err := hypershift.GetHostedClusterName()
-			Expect(err).ToNot(HaveOccurred(), "Unable to fetch hosted cluster name")
-			np, err := nodepools.GetByClusterName(ctx, testclient.ControlPlaneClient, hostedClusterName)
-			Expect(err).ToNot(HaveOccurred())
-			poolName = client.ObjectKeyFromObject(np).String()
-		}
+		poolName = poolname.GetByProfile(ctx, profile)
 
 		isCgroupV2, err = cgroup.IsVersion2(ctx, testclient.DataPlaneClient)
 		Expect(err).ToNot(HaveOccurred())
