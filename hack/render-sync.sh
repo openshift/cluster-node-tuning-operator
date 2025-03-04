@@ -39,8 +39,9 @@ function rendersync() {
 }
 
 rendersync manual-cluster/performance base/performance default
+rendersync manual-cluster/performance-norps base/performance default/pp-norps
 rendersync bootstrap-cluster/performance pinned-cluster/default bootstrap/no-mcp
 rendersync bootstrap-cluster/performance pinned-cluster/default bootstrap-cluster/extra-mcp bootstrap/extra-mcp
-rendersync --owner-ref none -- base/performance manual-cluster/performance no-ref 
-rendersync --owner-ref none -- base/performance manual-cluster/cpuFrequency default/cpuFrequency 
+rendersync --owner-ref none -- base/performance manual-cluster/performance no-ref
+rendersync --owner-ref none -- base/performance manual-cluster/cpuFrequency default/cpuFrequency
 rendersync --owner-ref none -- base/performance manual-cluster/arm default/arm

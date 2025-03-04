@@ -182,8 +182,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 	}
 
 	// add script files under the node /usr/local/bin directory
-	if profileutil.IsRpsEnabled(profile) || profile.Spec.WorkloadHints == nil ||
-		profile.Spec.WorkloadHints.RealTime == nil || *profile.Spec.WorkloadHints.RealTime {
+	if profileutil.IsRpsEnabled(profile) {
 		scripts = []string{hugepagesAllocation, setRPSMask, setCPUsOffline, clearIRQBalanceBannedCPUs}
 	} else {
 		// realtime is explicitly disabled by workload hint
@@ -209,8 +208,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 	addContent(ignitionConfig, crioConfigSnippetContent, crioConfSnippetDst, &crioConfdRuntimesMode)
 
 	// do not add RPS handling when realtime is explicitly disabled by workload hint
-	if profileutil.IsRpsEnabled(profile) || profile.Spec.WorkloadHints == nil ||
-		profile.Spec.WorkloadHints.RealTime == nil || *profile.Spec.WorkloadHints.RealTime {
+	if profileutil.IsRpsEnabled(profile) {
 		// configure default rps mask applied to all network devices
 		sysctlConfContent, err := renderSysctlConf(profile, filepath.Join("configs", defaultRPSMaskConfig))
 		if err != nil {

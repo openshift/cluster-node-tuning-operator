@@ -71,15 +71,19 @@ func IsPhysicalRpsEnabled(profile *performancev2.PerformanceProfile) bool {
 
 // IsRpsEnabled checks if all RPS should be applied
 func IsRpsEnabled(profile *performancev2.PerformanceProfile) bool {
-	if profile.Annotations == nil {
-		return false
-	}
-	isRpsEnabled, ok := profile.Annotations[performancev2.PerformanceProfileEnableRpsAnnotation]
-	if ok && isRpsEnabled == "true" {
-		return true
+	if profile.Annotations != nil {
+		// First check overrides
+		isRpsEnabled, ok := profile.Annotations[performancev2.PerformanceProfileEnableRpsAnnotation]
+		if ok && isRpsEnabled == "true" {
+			return true
+		} else if ok && isRpsEnabled == "false" {
+			return false
+		}
 	}
 
-	return false
+	// The default behavior enables RPS for real time workloads
+	return profile.Spec.WorkloadHints == nil ||
+		profile.Spec.WorkloadHints.RealTime == nil || *profile.Spec.WorkloadHints.RealTime
 }
 
 func IsMixedCPUsEnabled(profile *performancev2.PerformanceProfile) bool {
