@@ -1,3 +1,4 @@
+
 package __llc
 
 import (
@@ -5,31 +6,43 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-
+	"time"
+	"k8s.io/utils/cpuset"
+	"strings"
+	
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
-
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"k8s.io/apimachinery/pkg/labels"
+	
 	igntypes "github.com/coreos/ignition/v2/config/v3_2/types"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	profilecomponent "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 
+	//"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/controller"
+	//"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/namespaces"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/poolname"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/deployments"
 )
 
 const (
@@ -43,12 +56,14 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 	var (
 		workerRTNodes      []corev1.Node
 		perfProfile        *performancev2.PerformanceProfile
-		performanceMCP     string
+		//performanceMCP     string
 		err                error
 		profileAnnotations map[string]string
 		poolName           string
-		llcPolicy          string
-		mc                 *machineconfigv1.MachineConfig
+		//llcPolicy          string
+		//mc                 *machineconfigv1.MachineConfig
+		getter                   cgroup.ControllersGetter
+		cgroupV2                 bool
 	)
 
 	BeforeAll(func() {
@@ -64,12 +79,19 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 		perfProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 
-		performanceMCP, err = mcps.GetByProfile(perfProfile)
+		getter, err = cgroup.BuildGetter(ctx, testclient.DataPlaneClient, testclient.K8sClient)
 		Expect(err).ToNot(HaveOccurred())
+		cgroupV2, err = cgroup.IsVersion2(ctx, testclient.DataPlaneClient)
+		Expect(err).ToNot(HaveOccurred())
+		if !cgroupV2 {
+			Skip("prefer-align-cpus-by-uncorecache cpumanager policy options is supported in cgroupv2 configuration only")
+		}
+		//performanceMCP, err = mcps.GetByProfile(perfProfile)
+		//Expect(err).ToNot(HaveOccurred())
 
 		poolName = poolname.GetByProfile(ctx, perfProfile)
 
-		mc, err = createMachineConfig(perfProfile)
+		/*mc, err = createMachineConfig(perfProfile)
 		Expect(err).ToNot(HaveOccurred())
 
 		llcPolicy = `{"cpuManagerPolicyOptions":{"prefer-align-cpus-by-uncorecache":"true", "full-pcpus-only":"true"}}`
@@ -101,7 +123,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 
 			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
 			profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
-		}
+		}*/
 
 	})
 
@@ -109,7 +131,8 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 
 		// Delete machine config created to enable uncocre cache cpumanager policy option
 		// first make sure the profile doesn't have the annotation
-		ctx := context.Background()
+		fmt.Println("We are in afterall and nothing is deleted")
+		/*ctx := context.Background()
 		perfProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		perfProfile.Annotations = nil
 		By("updating performance profile")
@@ -127,7 +150,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 		mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
 		By("Waiting when mcp finishes updates")
 
-		mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+		mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)*/
 	})
 
 	Context("Configuration Tests", func() {
@@ -191,6 +214,120 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			})
 		})
 	})
+	Context("Functional Tests", func() {
+		BeforeAll(func() {
+			var cpuGroupSize int
+			//var numaCoreSiblings map[int]map[int][]int
+			//var reserved, isolated []string
+			//var policy = "single-numa-node"
+			
+			//profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			//Expect(err).ToNot(HaveOccurred())
+			ctx := context.Background()
+			for _, cnfnode := range workerRTNodes {
+				numaInfo, err := nodes.GetNumaNodes(context.TODO(), &cnfnode)
+				Expect(err).ToNot(HaveOccurred(), "Unable to get numa information from the node")
+				if len(numaInfo) < 2 {
+					Skip(fmt.Sprintf("This test need 2 Numa nodes. The number of numa nodes on node %s < 2", cnfnode.Name))
+				}
+				
+				getCCX := nodes.GetL3SharedCPUs(&cnfnode)
+				cpus, err := getCCX(0)
+				Expect(err).ToNot(HaveOccurred())
+				cpuGroupSize = cpus.Size()
+				if len(numaInfo[0]) == cpuGroupSize {
+					Skip("This test requires systems where L3 cache is shared amount subset of cpus")
+				}
+			}
+			/*
+			// Modify the profile such that we give 1 whole ccx to reserved cpus
+			By("Modifying the profile")
+			for _, node := range workerRTNodes {
+				numaCoreSiblings, err = nodes.GetCoreSiblings(context.TODO(), &node)
+				Expect(err).ToNot(HaveOccurred())
+			}
+			// Get cpu siblings from core 0-7
+			// Reason: The default profile that is applied generally take 4 cpus and those 4 cpus
+			// are taken without taking in to account the cpu topology.
+			// By reserving the first 8 core siblings to Reserved cpus, we will not have to worry
+			// about polluting cacheId used for Reserved cpus
+			for reservedCores := 0; reservedCores < 8; reservedCores++ {
+				cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, reservedCores)
+				reserved = append(reserved, cpusiblings...)
+			}
+			reservedCpus := strings.Join(reserved, ",")
+			for key := range numaCoreSiblings {
+				for k := range numaCoreSiblings[key] {
+					cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, k)
+					isolated = append(isolated, cpusiblings...)
+				}
+			}
+			isolatedCpus := strings.Join(isolated, ",")
+			reservedSet := performancev2.CPUSet(reservedCpus)
+			isolatedSet := performancev2.CPUSet(isolatedCpus)
+			profile.Spec.CPU = &performancev2.CPU{
+				Reserved: &reservedSet,
+				Isolated: &isolatedSet,
+			}
+			profile.Spec.NUMA = &performancev2.NUMA{
+				TopologyPolicy: &policy,
+			}
+			By("Updating Performance profile")
+			profiles.UpdateWithRetry(profile)
+
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(ctx, profile)
+
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.WaitForTuningUpdated(ctx, profile)*/
+			
+			testNS := *namespaces.TestingNamespace
+			Expect(testclient.DataPlaneClient.Create(ctx, &testNS)).ToNot(HaveOccurred())
+			DeferCleanup(func() {
+				Expect(testclient.DataPlaneClient.Delete(ctx, &testNS)).ToNot(HaveOccurred())
+				Expect(namespaces.WaitForDeletion(testutils.NamespaceTesting, 5*time.Minute)).ToNot(HaveOccurred())
+			})			
+		})
+		
+		It("[test_id:77725] Align Guaranteed pod requesting 16 cpus to the whole CCX if available", Label("llc1"), func() {
+			ctx := context.Background()
+			targetNode := workerRTNodes[0]
+			cpusetCfg := &controller.CpuSet{}
+			deploymentName := "test-deployment"
+			rl := &corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("16"),
+				corev1.ResourceMemory: resource.MustParse("100Mi"),
+			}
+			dp, err := createDeployment(ctx, deploymentName, &targetNode, rl)
+			Expect(err).ToNot(HaveOccurred())
+			podList := &corev1.PodList{}
+			listOptions := &client.ListOptions{Namespace: testutils.NamespaceTesting, LabelSelector: labels.SelectorFromSet(dp.Spec.Selector.MatchLabels)}
+			Eventually(func() bool {
+				isReady, err := deployments.IsReady(ctx, testclient.Client, listOptions, podList, dp)
+				Expect(err).ToNot(HaveOccurred())
+				return isReady
+			},  time.Minute, time.Second).Should(BeTrue())
+			Expect(testclient.Client.List(ctx, podList, listOptions)).To(Succeed())
+			Expect(len(podList.Items)).To(Equal(1), "Expected exactly one pod in the list")
+			testpod := podList.Items[0]
+			err = getter.Container(ctx, &testpod, testpod.Spec.Containers[0].Name, cpusetCfg)
+			Expect(err).ToNot(HaveOccurred())
+			cgroupCpuset, err := cpuset.Parse(cpusetCfg.Cpus)
+			Expect(err).ToNot(HaveOccurred())
+			getCCX := nodes.GetL3SharedCPUs(&targetNode)
+			// fetch ccx to which cpu used by pod is part of 
+			cpus, err := getCCX(cgroupCpuset.List()[0])
+			
+			Expect(err).ToNot(HaveOccurred())
+			Expect(cgroupCpuset).To(Equal(cpus))
+			defer func() {
+				// delete deployment
+				testlog.Infof("Deleting Deployment %v", deploymentName)
+				err := testclient.DataPlaneClient.Delete(ctx, dp)
+				Expect(err).ToNot(HaveOccurred())
+			}()
+		})
+	})
 })
 
 // create Machine config to create text file required to enable prefer-align-cpus-by-uncorecache policy option
@@ -238,4 +375,39 @@ func addContent(ignitionConfig *igntypes.Config, content []byte, dst string, mod
 			Mode: &mode,
 		},
 	})
+}
+
+
+func makePod(ns string, opts ...func(pod *corev1.Pod)) *corev1.Pod {
+	p := pods.GetTestPod()
+	p.Namespace = ns
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p
+}
+
+func withRequests(rl *corev1.ResourceList) func(p *corev1.Pod) {
+	return func(p *corev1.Pod) {
+		p.Spec.Containers[0].Resources.Requests = *rl
+	}
+}
+
+func withLimits(rl *corev1.ResourceList) func(p *corev1.Pod) {
+	return func(p *corev1.Pod) {
+		p.Spec.Containers[0].Resources.Limits = *rl
+	}
+}
+
+// create a deployment to deploy pods 
+func createDeployment(ctx context.Context, deploymentName string, targetNode *corev1.Node, podResources *corev1.ResourceList) (*appsv1.Deployment, error) {
+	testNode := make(map[string]string)
+	var err error 
+	testNode["kubernetes.io/hostname"] = targetNode.Name
+	p := makePod(testutils.NamespaceTesting, withRequests(podResources),withLimits(podResources))
+	dp := deployments.Make(deploymentName, testutils.NamespaceTesting,
+		deployments.WithPodTemplate(p),
+		deployments.WithNodeSelector(testNode))
+	err = testclient.Client.Create(ctx, dp)
+	return dp, err 
 }
