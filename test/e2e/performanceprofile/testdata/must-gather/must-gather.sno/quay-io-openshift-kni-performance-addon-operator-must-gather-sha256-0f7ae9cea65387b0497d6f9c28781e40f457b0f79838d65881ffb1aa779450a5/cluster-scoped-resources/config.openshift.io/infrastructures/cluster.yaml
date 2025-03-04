@@ -2,7 +2,7 @@
 apiVersion: config.openshift.io/v1
 kind: Infrastructure
 metadata:
-  creationTimestamp: "2024-07-22T20:12:41Z"
+  creationTimestamp: "2025-03-13T10:51:25Z"
   generation: 1
   managedFields:
   - apiVersion: config.openshift.io/v1
@@ -18,7 +18,7 @@ metadata:
           f:type: {}
     manager: cluster-bootstrap
     operation: Update
-    time: "2024-07-22T20:12:41Z"
+    time: "2025-03-13T10:51:25Z"
   - apiVersion: config.openshift.io/v1
     fieldsType: FieldsV1
     fieldsV1:
@@ -38,22 +38,22 @@ metadata:
     manager: cluster-bootstrap
     operation: Update
     subresource: status
-    time: "2024-07-22T20:12:41Z"
+    time: "2025-03-13T10:51:25Z"
   name: cluster
-  resourceVersion: "536"
-  uid: 7bac1d45-c184-422f-aaa2-c92a6b5ecf5f
+  resourceVersion: "426"
+  uid: c8f612d9-fc81-4aa8-b9d4-ea213042e872
 spec:
   cloudConfig:
     name: ""
   platformSpec:
     type: None
 status:
-  apiServerInternalURI: https://api-int.cnfdt6.lab.eng.tlv2.redhat.com:6443
-  apiServerURL: https://api.cnfdt6.lab.eng.tlv2.redhat.com:6443
+  apiServerInternalURI: https://api-int.sno.myocp4.com:6443
+  apiServerURL: https://api.sno.myocp4.com:6443
   controlPlaneTopology: SingleReplica
   cpuPartitioning: None
   etcdDiscoveryDomain: ""
-  infrastructureName: cnfdt6-97cpm
+  infrastructureName: sno-8jnw5
   infrastructureTopology: SingleReplica
   platform: None
   platformStatus:
