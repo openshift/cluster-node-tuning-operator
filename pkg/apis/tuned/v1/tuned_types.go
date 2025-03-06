@@ -204,6 +204,10 @@ type ProfileStatus struct {
 	// +patchStrategy=merge
 	// +optional
 	Conditions []StatusCondition `json:"conditions,omitempty"  patchStrategy:"merge" patchMergeKey:"type"`
+
+	// If set, this represents the .metadata.generation that the conditions were set based upon.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty" protobuf:"varint,1,opt,name=observedGeneration"`
 }
 
 // StatusCondition represents a partial state of the per-node Profile application.

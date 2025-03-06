@@ -140,6 +140,10 @@ spec:
                       type:
                         description: type specifies the aspect reported by this condition.
                         type: string
+                observedGeneration:
+                  description: If set, this represents the .metadata.generation that the conditions were set based upon.
+                  type: integer
+                  format: int64
                 tunedProfile:
                   description: the current profile in use by the Tuned daemon
                   type: string
