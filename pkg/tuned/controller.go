@@ -1366,6 +1366,7 @@ func (c *Controller) updateTunedProfileStatus(ctx context.Context, change Change
 
 	profile.Status.TunedProfile = activeProfile
 	profile.Status.Conditions = statusConditions
+	profile.Status.ObservedGeneration = profile.Generation
 	_, err = c.clients.Tuned.TunedV1().Profiles(operandNamespace).UpdateStatus(ctx, profile, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update Profile %s status: %v", profile.Name, err)
