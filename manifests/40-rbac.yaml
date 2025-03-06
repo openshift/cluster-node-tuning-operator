@@ -31,7 +31,7 @@ rules:
   resources: ["tuneds"]
   verbs: ["create","get","delete","list","update","watch","patch"]
 - apiGroups: ["tuned.openshift.io"]
-  resources: ["tuneds/finalizers"]
+  resources: ["tuneds/finalizers","tuneds/status"]
   verbs: ["update"]
 - apiGroups: ["tuned.openshift.io"]
   resources: ["profiles"]

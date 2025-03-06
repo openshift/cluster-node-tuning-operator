@@ -7,12 +7,12 @@ import (
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 )
 
-// setStatusCondition returns the result of setting the specified condition in
+// SetStatusCondition returns the result of setting the specified condition in
 // the given slice of conditions.
-func setStatusCondition(oldConditions []tunedv1.ProfileStatusCondition, condition *tunedv1.ProfileStatusCondition) []tunedv1.ProfileStatusCondition {
+func SetStatusCondition(oldConditions []tunedv1.StatusCondition, condition *tunedv1.StatusCondition) []tunedv1.StatusCondition {
 	condition.LastTransitionTime = metav1.Now()
 
-	newConditions := []tunedv1.ProfileStatusCondition{}
+	newConditions := []tunedv1.StatusCondition{}
 
 	found := false
 	for _, c := range oldConditions {
@@ -36,9 +36,9 @@ func setStatusCondition(oldConditions []tunedv1.ProfileStatusCondition, conditio
 	return newConditions
 }
 
-// conditionsEqual returns true if and only if the provided slices of conditions
+// ConditionsEqual returns true if and only if the provided slices of conditions
 // (ignoring LastTransitionTime) are equal.
-func conditionsEqual(oldConditions, newConditions []tunedv1.ProfileStatusCondition) bool {
+func ConditionsEqual(oldConditions, newConditions []tunedv1.StatusCondition) bool {
 	if len(newConditions) != len(oldConditions) {
 		return false
 	}
@@ -65,11 +65,11 @@ func conditionsEqual(oldConditions, newConditions []tunedv1.ProfileStatusConditi
 	return true
 }
 
-// InitializeStatusConditions returns a slice of tunedv1.ProfileStatusCondition
+// InitializeStatusConditions returns a slice of tunedv1.StatusCondition
 // initialized to an unknown state.
-func InitializeStatusConditions() []tunedv1.ProfileStatusCondition {
+func InitializeStatusConditions() []tunedv1.StatusCondition {
 	now := metav1.Now()
-	return []tunedv1.ProfileStatusCondition{
+	return []tunedv1.StatusCondition{
 		{
 			Type:               tunedv1.TunedProfileApplied,
 			Status:             corev1.ConditionUnknown,
@@ -85,19 +85,19 @@ func InitializeStatusConditions() []tunedv1.ProfileStatusCondition {
 
 // computeStatusConditions takes the set of Bits 'status', old conditions
 // 'conditions', an optional 'message' to put in the relevant condition field,
-// and returns an updated slice of tunedv1.ProfileStatusCondition.
+// and returns an updated slice of tunedv1.StatusCondition.
 // 'status' contains all the information necessary for creating a new slice of
 // conditions apart from LastTransitionTime, which is set based on checking the
 // old conditions.
-func computeStatusConditions(status Bits, message string, conditions []tunedv1.ProfileStatusCondition) []tunedv1.ProfileStatusCondition {
+func computeStatusConditions(status Bits, message string, conditions []tunedv1.StatusCondition) []tunedv1.StatusCondition {
 	if (status & scUnknown) != 0 {
 		return InitializeStatusConditions()
 	}
 
-	tunedProfileAppliedCondition := tunedv1.ProfileStatusCondition{
+	tunedProfileAppliedCondition := tunedv1.StatusCondition{
 		Type: tunedv1.TunedProfileApplied,
 	}
-	tunedDegradedCondition := tunedv1.ProfileStatusCondition{
+	tunedDegradedCondition := tunedv1.StatusCondition{
 		Type: tunedv1.TunedDegraded,
 	}
 
@@ -142,8 +142,8 @@ func computeStatusConditions(status Bits, message string, conditions []tunedv1.P
 		tunedDegradedCondition.Message = "No warning or error messages observed applying the TuneD daemon profile."
 	}
 
-	conditions = setStatusCondition(conditions, &tunedProfileAppliedCondition)
-	conditions = setStatusCondition(conditions, &tunedDegradedCondition)
+	conditions = SetStatusCondition(conditions, &tunedProfileAppliedCondition)
+	conditions = SetStatusCondition(conditions, &tunedDegradedCondition)
 
 	return conditions
 }

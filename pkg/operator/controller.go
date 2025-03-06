@@ -417,6 +417,11 @@ func (c *Controller) sync(key wqKey) error {
 	// Tuned CR changed, this can affect all profiles, list them and trigger profile updates
 	klog.V(2).Infof("sync(): Tuned %s", key.name)
 
+	err = c.validateTunedCRs()
+	if err != nil {
+		return err
+	}
+
 	err = c.enqueueProfileUpdates()
 	if err != nil {
 		return err
@@ -500,6 +505,7 @@ func (c *Controller) syncTunedDefault() (*tunedv1.Tuned, error) {
 	if err != nil {
 		return cr, fmt.Errorf("failed to update Tuned %s: %v", crMf.Name, err)
 	}
+
 	return cr, nil
 }
 
@@ -613,14 +619,18 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	var computed ComputedProfile
 	if ntoconfig.InHyperShift() {
 		computed, err = c.pc.calculateProfileHyperShift(nodeName)
-		if err != nil {
-			return err
-		}
 	} else {
 		computed, err = c.pc.calculateProfile(nodeName)
-		if err != nil {
-			return err
-		}
+	}
+	switch err.(type) {
+	case nil:
+	case *DuplicateProfileError:
+		// Stop.  We have TuneD profiles with the same name and different contents.
+		// Do not spam the logs with this error, it will be reported during Tuned CR
+		// updates and periodic resync/validation.
+		return nil
+	default:
+		return err
 	}
 
 	metrics.ProfileCalculated(profileMf.Name, computed.TunedProfileName)

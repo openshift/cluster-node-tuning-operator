@@ -133,6 +133,14 @@ spec:
       for: 30m
       labels:
         severity: warning
+    - alert: NTOInvalidTunedExist
+      annotations:
+        description: Invalid custom Tuned resource exists. View your custom Tuned resources and operator logs for further details.
+        summary: Invalid custom Tuned resource exists.
+      expr: nto_invalid_tuned_exist_info == 1
+      for: 30m
+      labels:
+        severity: warning
     - alert: NTODegraded
       annotations:
         description: The Node Tuning Operator is degraded. Review the "node-tuning" ClusterOperator object for further details.
