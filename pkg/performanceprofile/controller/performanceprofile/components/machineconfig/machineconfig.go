@@ -8,12 +8,14 @@ import (
 	"io"
 	"io/fs"
 	"path/filepath"
+	"strconv"
 	"text/template"
 
 	assets "github.com/openshift/cluster-node-tuning-operator/assets/performanceprofile"
 
 	"github.com/coreos/go-systemd/unit"
 	igntypes "github.com/coreos/ignition/v2/config/v3_2/types"
+	"github.com/docker/go-units"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/cpuset"
@@ -420,15 +422,15 @@ func getSystemdContent(options []*unit.UnitOption) (string, error) {
 }
 
 // GetHugepagesSizeKilobytes retruns hugepages size in kilobytes
+// Validation ensures that hugepagesSize is compatible with the platform architecture,
+// so encountering an error here is unexpected.
 func GetHugepagesSizeKilobytes(hugepagesSize performancev2.HugePageSize) (string, error) {
-	switch hugepagesSize {
-	case "1G":
-		return "1048576", nil
-	case "2M":
-		return "2048", nil
-	default:
-		return "", fmt.Errorf("can not convert size %q to kilobytes", hugepagesSize)
+	size, err := units.RAMInBytes(string(hugepagesSize))
+	if err != nil {
+		return "", fmt.Errorf("failed to parse hugepages size: %w", err)
 	}
+
+	return strconv.FormatInt(size/1024, 10), nil
 }
 
 func getTemplatedOvsFile(fsys fs.FS, templateName string, name string) ([]byte, error) {
