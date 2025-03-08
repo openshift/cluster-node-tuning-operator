@@ -1,0 +1,11 @@
+apiVersion: node.k8s.io/v1
+handler: high-performance
+kind: RuntimeClass
+metadata:
+  creationTimestamp: null
+  labels:
+    performance.openshift.io/weak-owner-reference-name: manual
+  name: performance-manual
+scheduling:
+  nodeSelector:
+    node-role.kubernetes.io/worker-cnf: ""

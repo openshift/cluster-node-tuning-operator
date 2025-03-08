@@ -94,6 +94,30 @@ var _ = Describe("Machine Config", func() {
 		})
 	})
 
+	Context("machine config creation with disabled RPS", func() {
+		It("should create machine config with no trace of RPS", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			profile.Annotations = map[string]string{}
+			profile.Annotations[performancev2.PerformanceProfileEnableRpsAnnotation] = "false"
+
+			mc, err := New(profile, &components.MachineConfigOptions{})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+
+			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
+			Expect(err).ToNot(HaveOccurred())
+
+			for _, f := range result.Storage.Files {
+				Expect(f.Node.Path).To(Not(ContainSubstring("rps")), "rps configuration %s should not be present", f.Node.Path)
+			}
+
+			for _, f := range result.Systemd.Units {
+				Expect(f.Name).To(Not(ContainSubstring("rps")), "rps systemd unit %s should not be present", f.Name)
+			}
+		})
+	})
+
 	Context("with hugepages with specified NUMA node and offlinedCPUs", func() {
 		var manifest string
 
