@@ -58,6 +58,9 @@ const (
 
 	// TunedDeferred should be added in tests that test tuned deferred updates annotation
 	TunedDeferred Feature = "tuned-deferred"
+
+	// KernelPageSize Feature should be added in tests where we are testing for arm
+	KernelPageSize Feature = "kernel-pagesize"
 )
 
 // Tier is a label to classify tests under specific grade/level
