@@ -40,6 +40,14 @@ func (c *Controller) validateTunedCRs() error {
 		tunedValid := true
 		message := "" // Do not add any unnecessary clutter when configuration is valid.
 
+		// Check for deprecated functionality first.
+		if c.pc.tunedMatchesPodLabels(tuned) {
+			tunedValid = false
+			allTunedValid = false
+			klog.Errorf("tuned/%s uses pod label matching", tuned.Name)
+			message = "Deprecated pod label matching detected."
+		}
+
 		switch e := errProfilesGet.(type) {
 		case nil:
 		case *DuplicateProfileError:
