@@ -362,6 +362,8 @@ var _ = ginkgo.Describe("Profile deferred", ginkgo.Label("deferred", "profile-st
 				}
 				return err
 			}).WithPolling(10 * time.Second).WithTimeout(5 * time.Minute).Should(gomega.Succeed())
+
+			ginkgo.Fail("XXX TEST TEST")
 		})
 
 		ginkgo.It("should be overridden by a immediate update by edit", func(ctx context.Context) {
