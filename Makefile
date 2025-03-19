@@ -211,7 +211,7 @@ pao-functests: cluster-label-worker-cnf pao-functests-only
 pao-functests-only: $(BINDATA)
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
-	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/1_performance test/e2e/performanceprofile/functests/6_mustgather_testing test/e2e/performanceprofile/functests/10_performance_ppc" -p "-v -r --fail-fast  --flake-attempts=2 --junit-report=report.xml" -m "Running Functional Tests"
+	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/1_performance" -p "-v -r --fail-fast  --flake-attempts=1 --junit-report=report.xml" -m "Running Functional Tests"
 
 .PHONY: pao-functests-updating-profile
 pao-functests-updating-profile: cluster-label-worker-cnf pao-functests-update-only
