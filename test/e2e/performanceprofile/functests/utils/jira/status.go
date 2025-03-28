@@ -2,10 +2,12 @@ package jira
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/pkg/errors"
 	"math/rand"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 )
 
@@ -29,40 +31,39 @@ type JiraIssueStatusResponse = struct {
 func RetrieveJiraStatus(key string) (*JiraIssueStatusResponse, error) {
 	local_params := url.Values{}
 	local_params.Set("fields", "summary,status")
-
 	fullUrl := JIRA_BASE_URL + "/rest/api/2/issue/" + key + "?" + local_params.Encode()
-	req, err := http.NewRequest("GET", fullUrl, nil)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create request for Jira status of %s", key)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create client to get jira status of %s", key)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusTooManyRequests {
-			for retryCount := 0; retryCount <= MAX_RETRIES; retryCount++ {
+	jiraResponse := JiraIssueStatusResponse{}
+	for retryCount := 0; retryCount <= MAX_RETRIES; retryCount++ {
+		req, err := http.NewRequest("GET", fullUrl, nil)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to create request for Jira status of %s", key)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to create client to get jira status of %s", key)
+		}
+		defer resp.Body.Close()
+		switch resp.StatusCode {
+		case 200:
+			decoder := json.NewDecoder(resp.Body)
+			err = decoder.Decode(&jiraResponse)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to decode jira status of %s", key)
+			}
+		case 429:
+			if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
+				retryTime, err := convertRetryAfterTime(retryAfter)
+				if err != nil {
+					return nil, err
+				}
+				time.Sleep(retryTime)
+			} else {
 				delay := retryWithBackOff(retryCount)
 				time.Sleep(delay)
-				resp, err = retryRequest(req)
-				if err != nil {
-					return nil, errors.Wrapf(err, "failed to create request for Jira status of %s", key)
-				}
-				defer resp.Body.Close()
-				if resp.StatusCode == http.StatusOK {
-					break
-				}
 			}
-		} else {
+		default:
 			return nil, errors.Errorf("failed to get jira status of %s: %d %s", key, resp.StatusCode, resp.Status)
 		}
-	}
-	jiraResponse := JiraIssueStatusResponse{}
-	decoder := json.NewDecoder(resp.Body)
-	err = decoder.Decode(&jiraResponse)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to decode jira status of %s", key)
 	}
 	return &jiraResponse, nil
 }
@@ -84,14 +85,18 @@ func retryWithBackOff(attempts int) time.Duration {
 	return delay
 }
 
-// retryRequest creates new http request
-func retryRequest(req *http.Request) (*http.Response, error) {
-	newReq, err := http.NewRequest("GET", req.URL.String(), nil)
-	if err != nil {
-		return nil, err
+// convertRetryAfterTime converts time in Retry-After in time.Duration
+// the format can be in the form of date or seconds
+func convertRetryAfterTime(retryAfter string) (time.Duration, error) {
+	if seconds, err := strconv.Atoi(retryAfter); err == nil {
+		return time.Duration(seconds) * time.Second, nil
 	}
-	// copy headers
-	newReq.Header = req.Header.Clone()
-	resp, err := http.DefaultClient.Do(newReq)
-	return resp, err
+	if t, err := http.ParseTime(retryAfter); err != nil {
+		wait := time.Until(t)
+		if wait > 0 {
+			return wait, nil
+		}
+		return 0, nil
+	}
+	return 0, fmt.Errorf("Invalid Retry-After time value %s", retryAfter)
 }
