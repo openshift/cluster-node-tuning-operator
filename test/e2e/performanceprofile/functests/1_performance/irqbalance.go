@@ -72,7 +72,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 
 	Context("Verify GloballyDisableIrqLoadBalancing Spec field", Label(string(label.Tier0)), func() {
 		It("[test_id:36150] Verify that IRQ load balancing is enabled/disabled correctly", func() {
-
+			testutils.KnownIssueJira("OCPBUGS-53466")
 			irqLoadBalancingDisabled := profile.Spec.GloballyDisableIrqLoadBalancing != nil && *profile.Spec.GloballyDisableIrqLoadBalancing
 
 			By(fmt.Sprintf("verifying the behavior with irqLoadBalancingDisabled=%v isolatedCPUSet=%v", irqLoadBalancingDisabled, isolatedCPUSet))
