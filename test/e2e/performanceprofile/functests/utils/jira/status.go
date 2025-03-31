@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 )
 
 const (
@@ -55,12 +57,15 @@ func RetrieveJiraStatus(key string) (*JiraIssueStatusResponse, error) {
 		case http.StatusTooManyRequests:
 			if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
 				retryTime, err := convertRetryAfterTime(retryAfter)
+				testlog.Infof("Using Retry-After header to retry after %s seconds", retryTime.String())
 				if err != nil {
 					return nil, err
 				}
 				time.Sleep(retryTime)
 			} else {
+				testlog.Info("No Retry-After header found using exponential backoff method to retry")
 				delay := retryWithBackOff(retryCount)
+				testlog.Infof("Wait for %s seconds before retry to fetch bug status", delay.String())
 				time.Sleep(delay)
 			}
 		default:
