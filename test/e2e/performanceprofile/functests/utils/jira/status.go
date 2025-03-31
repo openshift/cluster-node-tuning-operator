@@ -11,8 +11,10 @@ import (
 	"time"
 )
 
-const JIRA_BASE_URL = "https://issues.redhat.com"
-const MAX_RETRIES = 3
+const (
+	JIRA_BASE_URL = "https://issues.redhat.com"
+	MAX_RETRIES   = 3
+)
 
 type JiraIssueStatusResponseFieldsStatus = struct {
 	Name string `json:"name"`
@@ -44,13 +46,13 @@ func RetrieveJiraStatus(key string) (*JiraIssueStatusResponse, error) {
 		}
 		defer resp.Body.Close()
 		switch resp.StatusCode {
-		case 200:
+		case http.StatusOK:
 			decoder := json.NewDecoder(resp.Body)
 			err = decoder.Decode(&jiraResponse)
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed to decode jira status of %s", key)
 			}
-		case 429:
+		case http.StatusTooManyRequests:
 			if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
 				retryTime, err := convertRetryAfterTime(retryAfter)
 				if err != nil {
