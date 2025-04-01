@@ -47,7 +47,8 @@ else
      tuned-profiles-nfv-host tuned-profiles-openshift tuned-profiles-oracle tuned-profiles-postgresql tuned-profiles-realtime \
      tuned-profiles-sap tuned-profiles-sap-hana tuned-profiles-spectrumscale \
      $INSTALL_PKGS"
-  dnf install --setopt=tsflags=nodocs -y ${INSTALL_PKGS}
+  test "$OPENSHIFT_CI" && extra_opts="--disablerepo *-server-ose*" || extra_opts=""	# Workaround not to pull python3-perf from "ose" repos
+  dnf install --setopt=tsflags=nodocs -y $extra_opts ${INSTALL_PKGS}
 
 fi
 
