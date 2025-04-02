@@ -303,7 +303,6 @@ func topologyHTDisabled(info *topology.Info) *topology.Info {
 		cores := []*cpu.ProcessorCore{}
 		for _, processorCore := range node.Cores {
 			newCore := cpu.ProcessorCore{ID: processorCore.ID,
-				Index:      processorCore.Index,
 				NumThreads: 1,
 			}
 			// LogicalProcessors is a slice of ints representing the logical processor IDs assigned to
@@ -668,17 +667,7 @@ func (ghwHandler GHWHandler) IsHyperthreadingEnabled() (bool, error) {
 	}
 	// Since there is no way to disable flags per-processor (not system wide) we check the flags of the first available processor.
 	// A following implementation will leverage the /sys/devices/system/cpu/smt/active file which is the "standard" way to query HT.
-	return contains(cpuInfo.Processors[0].Capabilities, "ht"), nil
-}
-
-// contains checks if a string is present in a slice
-func contains(s []string, str string) bool {
-	for _, v := range s {
-		if v == str {
-			return true
-		}
-	}
-	return false
+	return cpuInfo.TotalCores != cpuInfo.TotalHardwareThreads, nil
 }
 
 // EnsureNodesHaveTheSameHardware returns an error if all the input nodes do not have the same hardware configuration and
@@ -731,8 +720,6 @@ func ensureSameTopology(topology1, topology2 *topology.Info, tolerations Tolerat
 		}
 
 		for j, core1 := range cores1 {
-			// skip comparing index because it's fine if they deffer; see https://github.com/jaypipes/ghw/issues/345#issuecomment-1620274077
-			// ghw.ProcessorCore.Index is completely removed starting v0.11.0
 			if core1.ID != cores2[j].ID {
 				// it was learned that core numbering can have different schemes even with
 				// a system from the same vendor. One case was observed on Intel Xeon Gold 6438N with 0-127
@@ -800,7 +787,6 @@ func updateExtendedCPUInfo(extCpuInfo *extendedCPUInfo, used cpuset.CPUSet, disa
 		for _, core := range socket.Cores {
 			c := &cpu.ProcessorCore{
 				ID:         core.ID,
-				Index:      core.Index,
 				NumThreads: 0,
 			}
 

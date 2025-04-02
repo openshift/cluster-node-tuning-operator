@@ -27,26 +27,6 @@ var kniEntries = []string{
 	"/host/sys/class/dmi/id/product_version",
 }
 
-var snapshotEntries = []string{"/host/proc/cmdline", "/host/sys/devices/system/node/online"}
-
-var expectedEntries = []string{
-	"/host/proc/cmdline",
-	"/host/proc/interrupts",
-	"/host/proc/irq/default_smp_affinity",
-	"/host/proc/irq/*/*affinity_list",
-	"/host/proc/irq/*/node",
-	"/host/proc/softirqs",
-	"/host/sys/devices/system/cpu/smt/active",
-	"/host/proc/sys/kernel/sched_domain/cpu*/domain*/flags",
-	"/host/sys/devices/system/cpu/offline",
-	"/host/sys/class/dmi/id/bios*",
-	"/host/sys/class/dmi/id/product_family",
-	"/host/sys/class/dmi/id/product_name",
-	"/host/sys/class/dmi/id/product_sku",
-	"/host/sys/class/dmi/id/product_version",
-	"/host/sys/devices/system/node/online",
-}
-
 func TestCollectMachineInfo(t *testing.T) {
 	//Check if collect machine info file is created correctly
 	knitOpts := &cmd.KnitOptions{}
@@ -77,13 +57,6 @@ func TestChroot(t *testing.T) {
 	entries := chrootFileSpecs(kniExpectedCloneContent(), "/host")
 	if !slices.Equal(entries, kniEntries) {
 		t.Errorf("The chroot file list does not match the expected value.")
-	}
-}
-
-func TestDeduplication(t *testing.T) {
-	resultEntries := dedupExpectedContent(kniEntries, snapshotEntries)
-	if len(expectedEntries) != len(resultEntries) {
-		t.Errorf("The deduplication did not work.")
 	}
 }
 

@@ -25,6 +25,10 @@ import (
 const (
 	mustGatherDirPath    = "../../../test/e2e/performanceprofile/testdata/must-gather/must-gather.bare-metal"
 	mustGatherSNODirPath = "../../../test/e2e/performanceprofile/testdata/must-gather/must-gather.sno"
+
+	sno     = "sno"
+	worker1 = "worker1.internal"
+	worker2 = "worker2.internal"
 )
 
 var _ = Describe("PerformanceProfileCreator: MCP and Node Matching", func() {
@@ -49,7 +53,7 @@ var _ = Describe("PerformanceProfileCreator: MCP and Node Matching", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(matchedNodes).ToNot(BeNil())
 			Expect(len(matchedNodes)).To(Equal(1))
-			Expect(matchedNodes[0].GetName()).To(Equal("worker1"))
+			Expect(matchedNodes[0].GetName()).To(Equal(worker1))
 		})
 		It("should find 1 machine in worker MCP", func() {
 			mcp, err := GetMCP(mustGatherDirPath, "worker")
@@ -59,7 +63,7 @@ var _ = Describe("PerformanceProfileCreator: MCP and Node Matching", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(matchedNodes).ToNot(BeNil())
 			Expect(len(matchedNodes)).To(Equal(1))
-			Expect(matchedNodes[0].GetName()).To(Equal("worker2"))
+			Expect(matchedNodes[0].GetName()).To(Equal(worker2))
 		})
 	})
 
@@ -126,7 +130,7 @@ var _ = Describe("PerformanceProfileCreator: MCP and Node Matching in SNO", func
 			Expect(err).ToNot(HaveOccurred())
 			Expect(matchedNodes).ToNot(BeNil())
 			Expect(len(matchedNodes)).To(Equal(1))
-			Expect(matchedNodes[0].GetName()).To(Equal("ocp47sno-master-0.demo.lab"))
+			Expect(matchedNodes[0].GetName()).To(Equal(sno))
 		})
 	})
 
@@ -204,7 +208,7 @@ var _ = Describe("PerformanceProfileCreator: Getting Nodes from Must Gather", fu
 			Expect(err).ToNot(HaveOccurred())
 			nodes, err := GetNodeList(mustGatherDirAbsolutePath)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(len(nodes)).To(Equal(5))
+			Expect(len(nodes)).To(Equal(3)) // Normally, this should be 5 (3 masters, 2 workers); however, 1 master installation with 2 workers was used.
 		})
 		It("fails to get Nodes due to misconfigured must-gather path", func() {
 			mustGatherDirAbsolutePath, err = filepath.Abs("foo-path")
@@ -222,7 +226,7 @@ var _ = Describe("PerformanceProfileCreator: Consuming GHW Snapshot from Must Ga
 
 	Context("Identifying Nodes Info of the nodes cluster", func() {
 		It("gets the Nodes Info successfully", func() {
-			node = newTestNode("worker1")
+			node = newTestNode(worker1)
 			mustGatherDirAbsolutePath, err = filepath.Abs(mustGatherDirPath)
 			Expect(err).ToNot(HaveOccurred())
 			handle, err := NewGHWHandler(mustGatherDirAbsolutePath, node)
@@ -259,98 +263,82 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 		BeforeEach(func() {
 			core0 := cpu.ProcessorCore{
 				ID:                0,
-				Index:             0,
 				NumThreads:        2,
 				LogicalProcessors: []int{0, 8},
 			}
 			core1 := cpu.ProcessorCore{
 				ID:                1,
-				Index:             1,
 				NumThreads:        2,
 				LogicalProcessors: []int{1, 9},
 			}
 			core2 := cpu.ProcessorCore{
 				ID:                2,
-				Index:             2,
 				NumThreads:        2,
 				LogicalProcessors: []int{2, 10},
 			}
 			core3 := cpu.ProcessorCore{
 				ID:                3,
-				Index:             3,
 				NumThreads:        2,
 				LogicalProcessors: []int{3, 11},
 			}
 			core4 := cpu.ProcessorCore{
 				ID:                4,
-				Index:             4,
 				NumThreads:        2,
 				LogicalProcessors: []int{4, 12},
 			}
 			core5 := cpu.ProcessorCore{
 				ID:                5,
-				Index:             5,
 				NumThreads:        2,
 				LogicalProcessors: []int{5, 13},
 			}
 			core6 := cpu.ProcessorCore{
 				ID:                6,
-				Index:             6,
 				NumThreads:        2,
 				LogicalProcessors: []int{6, 14},
 			}
 			core7 := cpu.ProcessorCore{
 				ID:                7,
-				Index:             7,
 				NumThreads:        2,
 				LogicalProcessors: []int{7, 15},
 			}
 
 			core8 := cpu.ProcessorCore{
 				ID:                8,
-				Index:             8,
 				NumThreads:        2,
 				LogicalProcessors: []int{16, 24},
 			}
 			core9 := cpu.ProcessorCore{
 				ID:                9,
-				Index:             9,
 				NumThreads:        2,
 				LogicalProcessors: []int{17, 25},
 			}
 			core10 := cpu.ProcessorCore{
 				ID:                10,
-				Index:             10,
 				NumThreads:        2,
 				LogicalProcessors: []int{18, 26},
 			}
 			core11 := cpu.ProcessorCore{
 				ID:                11,
-				Index:             11,
 				NumThreads:        2,
 				LogicalProcessors: []int{19, 27},
 			}
 			core12 := cpu.ProcessorCore{
 				ID:                12,
-				Index:             12,
 				NumThreads:        2,
 				LogicalProcessors: []int{20, 28},
 			}
 			core13 := cpu.ProcessorCore{
 				ID:                13,
-				Index:             13,
 				NumThreads:        2,
 				LogicalProcessors: []int{21, 29},
 			}
 			core14 := cpu.ProcessorCore{
 				ID:                14,
-				Index:             14,
 				NumThreads:        2,
 				LogicalProcessors: []int{22, 30},
 			}
 			core15 := cpu.ProcessorCore{
 				ID:                15,
-				Index:             15,
 				NumThreads:        2,
 				LogicalProcessors: []int{23, 31},
 			}
@@ -457,56 +445,47 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			// second system with different core IDs
 			core4node1 := cpu.ProcessorCore{
 				ID:                7,
-				Index:             4,
 				NumThreads:        2,
 				LogicalProcessors: []int{4, 12},
 			}
 			core5node1 := cpu.ProcessorCore{
 				ID:                4,
-				Index:             5,
 				NumThreads:        2,
 				LogicalProcessors: []int{5, 13},
 			}
 			core6node1 := cpu.ProcessorCore{
 				ID:                6,
-				Index:             6,
 				NumThreads:        2,
 				LogicalProcessors: []int{6, 14},
 			}
 			core7node1 := cpu.ProcessorCore{
 				ID:                5,
-				Index:             7,
 				NumThreads:        2,
 				LogicalProcessors: []int{7, 15},
 			}
 
 			core8node1 := cpu.ProcessorCore{
 				ID:                0,
-				Index:             8,
 				NumThreads:        2,
 				LogicalProcessors: []int{16, 24},
 			}
 			core9node1 := cpu.ProcessorCore{
 				ID:                1,
-				Index:             9,
 				NumThreads:        2,
 				LogicalProcessors: []int{17, 25},
 			}
 			core10node1 := cpu.ProcessorCore{
 				ID:                2,
-				Index:             10,
 				NumThreads:        2,
 				LogicalProcessors: []int{18, 26},
 			}
 			core11node1 := cpu.ProcessorCore{
 				ID:                3,
-				Index:             11,
 				NumThreads:        2,
 				LogicalProcessors: []int{19, 27},
 			}
 			core12node1 := cpu.ProcessorCore{
 				ID:                5,
-				Index:             12,
 				NumThreads:        2,
 				LogicalProcessors: []int{20, 28},
 			}
@@ -871,7 +850,7 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 	var err error
 
 	BeforeEach(func() {
-		node = newTestNode("worker1")
+		node = newTestNode(worker1)
 	})
 	Context("Check if reserved and isolated CPUs are properly populated in the performance profile", func() {
 		It("Ensure reserved CPUs populated are correctly when splitReservedCPUsAcrossNUMA is disabled and disableHT is disabled", func() {
@@ -1040,7 +1019,7 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 		})
 		It("Do not error out in case of a system where hyperthreading is not enabled initially, splitReservedCPUsAcrossNUMA is disabled, disableHT is enabled and number of reserved CPUs allocated are odd", func() {
-			node = newTestNode("ocp47sno-master-0.demo.lab")
+			node = newTestNode(sno)
 			reservedCPUCount = 3 // random number which results in odd number (3) of CPUs to be allocated
 			offlinedCPUCount = 0
 			splitReservedCPUsAcrossNUMA = false
@@ -1412,7 +1391,7 @@ var _ = Describe("PerformanceProfileCreator: Check if Hyperthreading enabled/dis
 
 	Context("Check if hyperthreading is enabled on the system or not", func() {
 		It("Ensure we detect correctly that hyperthreading is enabled on a system", func() {
-			node = newTestNode("worker1")
+			node = newTestNode(worker1)
 			mustGatherDirAbsolutePath, err = filepath.Abs(mustGatherDirPath)
 			Expect(err).ToNot(HaveOccurred())
 			handle, err = NewGHWHandler(mustGatherDirAbsolutePath, node)
@@ -1422,7 +1401,7 @@ var _ = Describe("PerformanceProfileCreator: Check if Hyperthreading enabled/dis
 			Expect(htEnabled).To(Equal(true))
 		})
 		It("Ensure we detect correctly that hyperthreading is disabled on a system", func() {
-			node = newTestNode("worker2")
+			node = newTestNode(worker2)
 			mustGatherDirAbsolutePath, err = filepath.Abs(mustGatherDirPath)
 			Expect(err).ToNot(HaveOccurred())
 			handle, err = NewGHWHandler(mustGatherDirAbsolutePath, node)
@@ -1444,51 +1423,51 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Functions getCPUsSplitA
 			{
 				ID: 0,
 				Cores: []*cpu.ProcessorCore{
-					{ID: 0, Index: 0, NumThreads: 2, LogicalProcessors: []int{0, 40}},
-					{ID: 4, Index: 6, NumThreads: 2, LogicalProcessors: []int{2, 42}},
-					{ID: 1, Index: 17, NumThreads: 2, LogicalProcessors: []int{4, 44}},
-					{ID: 3, Index: 18, NumThreads: 2, LogicalProcessors: []int{6, 46}},
-					{ID: 2, Index: 19, NumThreads: 2, LogicalProcessors: []int{8, 48}},
-					{ID: 12, Index: 1, NumThreads: 2, LogicalProcessors: []int{10, 50}},
-					{ID: 8, Index: 2, NumThreads: 2, LogicalProcessors: []int{12, 52}},
-					{ID: 11, Index: 3, NumThreads: 2, LogicalProcessors: []int{14, 54}},
-					{ID: 9, Index: 4, NumThreads: 2, LogicalProcessors: []int{16, 56}},
-					{ID: 10, Index: 5, NumThreads: 2, LogicalProcessors: []int{18, 58}},
-					{ID: 16, Index: 7, NumThreads: 2, LogicalProcessors: []int{20, 60}},
-					{ID: 20, Index: 8, NumThreads: 2, LogicalProcessors: []int{22, 62}},
-					{ID: 17, Index: 9, NumThreads: 2, LogicalProcessors: []int{24, 64}},
-					{ID: 19, Index: 10, NumThreads: 2, LogicalProcessors: []int{26, 66}},
-					{ID: 18, Index: 11, NumThreads: 2, LogicalProcessors: []int{28, 68}},
-					{ID: 28, Index: 12, NumThreads: 2, LogicalProcessors: []int{30, 70}},
-					{ID: 24, Index: 13, NumThreads: 2, LogicalProcessors: []int{32, 72}},
-					{ID: 27, Index: 14, NumThreads: 2, LogicalProcessors: []int{34, 74}},
-					{ID: 25, Index: 15, NumThreads: 2, LogicalProcessors: []int{36, 76}},
-					{ID: 26, Index: 16, NumThreads: 2, LogicalProcessors: []int{38, 78}},
+					{ID: 0, NumThreads: 2, LogicalProcessors: []int{0, 40}},
+					{ID: 4, NumThreads: 2, LogicalProcessors: []int{2, 42}},
+					{ID: 1, NumThreads: 2, LogicalProcessors: []int{4, 44}},
+					{ID: 3, NumThreads: 2, LogicalProcessors: []int{6, 46}},
+					{ID: 2, NumThreads: 2, LogicalProcessors: []int{8, 48}},
+					{ID: 12, NumThreads: 2, LogicalProcessors: []int{10, 50}},
+					{ID: 8, NumThreads: 2, LogicalProcessors: []int{12, 52}},
+					{ID: 11, NumThreads: 2, LogicalProcessors: []int{14, 54}},
+					{ID: 9, NumThreads: 2, LogicalProcessors: []int{16, 56}},
+					{ID: 10, NumThreads: 2, LogicalProcessors: []int{18, 58}},
+					{ID: 16, NumThreads: 2, LogicalProcessors: []int{20, 60}},
+					{ID: 20, NumThreads: 2, LogicalProcessors: []int{22, 62}},
+					{ID: 17, NumThreads: 2, LogicalProcessors: []int{24, 64}},
+					{ID: 19, NumThreads: 2, LogicalProcessors: []int{26, 66}},
+					{ID: 18, NumThreads: 2, LogicalProcessors: []int{28, 68}},
+					{ID: 28, NumThreads: 2, LogicalProcessors: []int{30, 70}},
+					{ID: 24, NumThreads: 2, LogicalProcessors: []int{32, 72}},
+					{ID: 27, NumThreads: 2, LogicalProcessors: []int{34, 74}},
+					{ID: 25, NumThreads: 2, LogicalProcessors: []int{36, 76}},
+					{ID: 26, NumThreads: 2, LogicalProcessors: []int{38, 78}},
 				},
 			},
 			{
 				ID: 1,
 				Cores: []*cpu.ProcessorCore{
-					{ID: 0, Index: 0, NumThreads: 2, LogicalProcessors: []int{1, 41}},
-					{ID: 4, Index: 11, NumThreads: 2, LogicalProcessors: []int{3, 43}},
-					{ID: 1, Index: 17, NumThreads: 2, LogicalProcessors: []int{5, 45}},
-					{ID: 3, Index: 18, NumThreads: 2, LogicalProcessors: []int{7, 47}},
-					{ID: 2, Index: 19, NumThreads: 2, LogicalProcessors: []int{9, 49}},
-					{ID: 12, Index: 1, NumThreads: 2, LogicalProcessors: []int{11, 51}},
-					{ID: 8, Index: 2, NumThreads: 2, LogicalProcessors: []int{13, 53}},
-					{ID: 11, Index: 3, NumThreads: 2, LogicalProcessors: []int{15, 55}},
-					{ID: 9, Index: 4, NumThreads: 2, LogicalProcessors: []int{17, 57}},
-					{ID: 10, Index: 5, NumThreads: 2, LogicalProcessors: []int{19, 59}},
-					{ID: 16, Index: 6, NumThreads: 2, LogicalProcessors: []int{21, 61}},
-					{ID: 20, Index: 7, NumThreads: 2, LogicalProcessors: []int{23, 63}},
-					{ID: 17, Index: 8, NumThreads: 2, LogicalProcessors: []int{25, 65}},
-					{ID: 19, Index: 9, NumThreads: 2, LogicalProcessors: []int{27, 67}},
-					{ID: 18, Index: 10, NumThreads: 2, LogicalProcessors: []int{29, 69}},
-					{ID: 28, Index: 12, NumThreads: 2, LogicalProcessors: []int{31, 71}},
-					{ID: 24, Index: 13, NumThreads: 2, LogicalProcessors: []int{33, 73}},
-					{ID: 27, Index: 14, NumThreads: 2, LogicalProcessors: []int{35, 75}},
-					{ID: 25, Index: 15, NumThreads: 2, LogicalProcessors: []int{37, 77}},
-					{ID: 26, Index: 16, NumThreads: 2, LogicalProcessors: []int{39, 79}},
+					{ID: 0, NumThreads: 2, LogicalProcessors: []int{1, 41}},
+					{ID: 4, NumThreads: 2, LogicalProcessors: []int{3, 43}},
+					{ID: 1, NumThreads: 2, LogicalProcessors: []int{5, 45}},
+					{ID: 3, NumThreads: 2, LogicalProcessors: []int{7, 47}},
+					{ID: 2, NumThreads: 2, LogicalProcessors: []int{9, 49}},
+					{ID: 12, NumThreads: 2, LogicalProcessors: []int{11, 51}},
+					{ID: 8, NumThreads: 2, LogicalProcessors: []int{13, 53}},
+					{ID: 11, NumThreads: 2, LogicalProcessors: []int{15, 55}},
+					{ID: 9, NumThreads: 2, LogicalProcessors: []int{17, 57}},
+					{ID: 10, NumThreads: 2, LogicalProcessors: []int{19, 59}},
+					{ID: 16, NumThreads: 2, LogicalProcessors: []int{21, 61}},
+					{ID: 20, NumThreads: 2, LogicalProcessors: []int{23, 63}},
+					{ID: 17, NumThreads: 2, LogicalProcessors: []int{25, 65}},
+					{ID: 19, NumThreads: 2, LogicalProcessors: []int{27, 67}},
+					{ID: 18, NumThreads: 2, LogicalProcessors: []int{29, 69}},
+					{ID: 28, NumThreads: 2, LogicalProcessors: []int{31, 71}},
+					{ID: 24, NumThreads: 2, LogicalProcessors: []int{33, 73}},
+					{ID: 27, NumThreads: 2, LogicalProcessors: []int{35, 75}},
+					{ID: 25, NumThreads: 2, LogicalProcessors: []int{37, 77}},
+					{ID: 26, NumThreads: 2, LogicalProcessors: []int{39, 79}},
 				},
 			},
 		}
@@ -1497,51 +1476,51 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Functions getCPUsSplitA
 			{
 				ID: 0,
 				Cores: []*cpu.ProcessorCore{
-					{ID: 0, Index: 0, NumThreads: 1, LogicalProcessors: []int{0}},
-					{ID: 4, Index: 6, NumThreads: 1, LogicalProcessors: []int{2}},
-					{ID: 1, Index: 17, NumThreads: 1, LogicalProcessors: []int{4}},
-					{ID: 3, Index: 18, NumThreads: 1, LogicalProcessors: []int{6}},
-					{ID: 2, Index: 19, NumThreads: 1, LogicalProcessors: []int{8}},
-					{ID: 12, Index: 1, NumThreads: 1, LogicalProcessors: []int{10}},
-					{ID: 8, Index: 2, NumThreads: 1, LogicalProcessors: []int{12}},
-					{ID: 11, Index: 3, NumThreads: 1, LogicalProcessors: []int{14}},
-					{ID: 9, Index: 4, NumThreads: 1, LogicalProcessors: []int{16}},
-					{ID: 10, Index: 5, NumThreads: 1, LogicalProcessors: []int{18}},
-					{ID: 16, Index: 7, NumThreads: 1, LogicalProcessors: []int{20}},
-					{ID: 20, Index: 8, NumThreads: 1, LogicalProcessors: []int{22}},
-					{ID: 17, Index: 9, NumThreads: 1, LogicalProcessors: []int{24}},
-					{ID: 19, Index: 10, NumThreads: 1, LogicalProcessors: []int{26}},
-					{ID: 18, Index: 11, NumThreads: 1, LogicalProcessors: []int{28}},
-					{ID: 28, Index: 12, NumThreads: 1, LogicalProcessors: []int{30}},
-					{ID: 24, Index: 13, NumThreads: 1, LogicalProcessors: []int{32}},
-					{ID: 27, Index: 14, NumThreads: 1, LogicalProcessors: []int{34}},
-					{ID: 25, Index: 15, NumThreads: 1, LogicalProcessors: []int{36}},
-					{ID: 26, Index: 16, NumThreads: 1, LogicalProcessors: []int{38}},
+					{ID: 0, NumThreads: 1, LogicalProcessors: []int{0}},
+					{ID: 4, NumThreads: 1, LogicalProcessors: []int{2}},
+					{ID: 1, NumThreads: 1, LogicalProcessors: []int{4}},
+					{ID: 3, NumThreads: 1, LogicalProcessors: []int{6}},
+					{ID: 2, NumThreads: 1, LogicalProcessors: []int{8}},
+					{ID: 12, NumThreads: 1, LogicalProcessors: []int{10}},
+					{ID: 8, NumThreads: 1, LogicalProcessors: []int{12}},
+					{ID: 11, NumThreads: 1, LogicalProcessors: []int{14}},
+					{ID: 9, NumThreads: 1, LogicalProcessors: []int{16}},
+					{ID: 10, NumThreads: 1, LogicalProcessors: []int{18}},
+					{ID: 16, NumThreads: 1, LogicalProcessors: []int{20}},
+					{ID: 20, NumThreads: 1, LogicalProcessors: []int{22}},
+					{ID: 17, NumThreads: 1, LogicalProcessors: []int{24}},
+					{ID: 19, NumThreads: 1, LogicalProcessors: []int{26}},
+					{ID: 18, NumThreads: 1, LogicalProcessors: []int{28}},
+					{ID: 28, NumThreads: 1, LogicalProcessors: []int{30}},
+					{ID: 24, NumThreads: 1, LogicalProcessors: []int{32}},
+					{ID: 27, NumThreads: 1, LogicalProcessors: []int{34}},
+					{ID: 25, NumThreads: 1, LogicalProcessors: []int{36}},
+					{ID: 26, NumThreads: 1, LogicalProcessors: []int{38}},
 				},
 			},
 			{
 				ID: 1,
 				Cores: []*cpu.ProcessorCore{
-					{ID: 0, Index: 0, NumThreads: 1, LogicalProcessors: []int{1}},
-					{ID: 4, Index: 11, NumThreads: 1, LogicalProcessors: []int{3}},
-					{ID: 1, Index: 17, NumThreads: 1, LogicalProcessors: []int{5}},
-					{ID: 3, Index: 18, NumThreads: 1, LogicalProcessors: []int{7}},
-					{ID: 2, Index: 19, NumThreads: 1, LogicalProcessors: []int{9}},
-					{ID: 12, Index: 1, NumThreads: 1, LogicalProcessors: []int{11}},
-					{ID: 8, Index: 2, NumThreads: 1, LogicalProcessors: []int{13}},
-					{ID: 11, Index: 3, NumThreads: 1, LogicalProcessors: []int{15}},
-					{ID: 9, Index: 4, NumThreads: 1, LogicalProcessors: []int{17}},
-					{ID: 10, Index: 5, NumThreads: 1, LogicalProcessors: []int{19}},
-					{ID: 16, Index: 6, NumThreads: 1, LogicalProcessors: []int{21}},
-					{ID: 20, Index: 7, NumThreads: 1, LogicalProcessors: []int{23}},
-					{ID: 17, Index: 8, NumThreads: 1, LogicalProcessors: []int{25}},
-					{ID: 19, Index: 9, NumThreads: 1, LogicalProcessors: []int{27}},
-					{ID: 18, Index: 10, NumThreads: 1, LogicalProcessors: []int{29}},
-					{ID: 28, Index: 12, NumThreads: 1, LogicalProcessors: []int{31}},
-					{ID: 24, Index: 13, NumThreads: 1, LogicalProcessors: []int{33}},
-					{ID: 27, Index: 14, NumThreads: 1, LogicalProcessors: []int{35}},
-					{ID: 25, Index: 15, NumThreads: 1, LogicalProcessors: []int{37}},
-					{ID: 26, Index: 16, NumThreads: 1, LogicalProcessors: []int{39}},
+					{ID: 0, NumThreads: 1, LogicalProcessors: []int{1}},
+					{ID: 4, NumThreads: 1, LogicalProcessors: []int{3}},
+					{ID: 1, NumThreads: 1, LogicalProcessors: []int{5}},
+					{ID: 3, NumThreads: 1, LogicalProcessors: []int{7}},
+					{ID: 2, NumThreads: 1, LogicalProcessors: []int{9}},
+					{ID: 12, NumThreads: 1, LogicalProcessors: []int{11}},
+					{ID: 8, NumThreads: 1, LogicalProcessors: []int{13}},
+					{ID: 11, NumThreads: 1, LogicalProcessors: []int{15}},
+					{ID: 9, NumThreads: 1, LogicalProcessors: []int{17}},
+					{ID: 10, NumThreads: 1, LogicalProcessors: []int{19}},
+					{ID: 16, NumThreads: 1, LogicalProcessors: []int{21}},
+					{ID: 20, NumThreads: 1, LogicalProcessors: []int{23}},
+					{ID: 17, NumThreads: 1, LogicalProcessors: []int{25}},
+					{ID: 19, NumThreads: 1, LogicalProcessors: []int{27}},
+					{ID: 18, NumThreads: 1, LogicalProcessors: []int{29}},
+					{ID: 28, NumThreads: 1, LogicalProcessors: []int{31}},
+					{ID: 24, NumThreads: 1, LogicalProcessors: []int{33}},
+					{ID: 27, NumThreads: 1, LogicalProcessors: []int{35}},
+					{ID: 25, NumThreads: 1, LogicalProcessors: []int{37}},
+					{ID: 26, NumThreads: 1, LogicalProcessors: []int{39}},
 				},
 			},
 		}
@@ -1624,12 +1603,12 @@ var _ = Describe("PerformanceProfileCreator: Ensuring Nodes hardware equality", 
 			mustGatherDirAbsolutePath, err := filepath.Abs(mustGatherDirPath)
 			Expect(err).ToNot(HaveOccurred())
 
-			node1, err := getNode(mustGatherDirAbsolutePath, "worker1.yaml")
+			node1, err := getNode(mustGatherDirAbsolutePath, worker1+".yaml")
 			Expect(err).ToNot(HaveOccurred())
 			node1Handle, err := NewGHWHandler(mustGatherDirAbsolutePath, node1)
 			Expect(err).ToNot(HaveOccurred())
 
-			node2, err := getNode(mustGatherDirAbsolutePath, "worker1.yaml")
+			node2, err := getNode(mustGatherDirAbsolutePath, worker1+".yaml")
 			Expect(err).ToNot(HaveOccurred())
 			node2Handle, err := NewGHWHandler(mustGatherDirAbsolutePath, node2)
 			Expect(err).ToNot(HaveOccurred())
@@ -1648,12 +1627,12 @@ var _ = Describe("PerformanceProfileCreator: Ensuring Nodes hardware equality", 
 			mustGatherDirAbsolutePath, err := filepath.Abs(mustGatherDirPath)
 			Expect(err).ToNot(HaveOccurred())
 
-			node1, err := getNode(mustGatherDirAbsolutePath, "worker1.yaml")
+			node1, err := getNode(mustGatherDirAbsolutePath, worker1+".yaml")
 			Expect(err).ToNot(HaveOccurred())
 			node1Handle, err := NewGHWHandler(mustGatherDirAbsolutePath, node1)
 			Expect(err).ToNot(HaveOccurred())
 
-			node2, err := getNode(mustGatherDirAbsolutePath, "worker2.yaml")
+			node2, err := getNode(mustGatherDirAbsolutePath, worker2+".yaml")
 			Expect(err).ToNot(HaveOccurred())
 			node2Handle, err := NewGHWHandler(mustGatherDirAbsolutePath, node2)
 			Expect(err).ToNot(HaveOccurred())
@@ -1675,15 +1654,15 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Function ensureSameTopo
 		{
 			ID: 0,
 			Cores: []*cpu.ProcessorCore{
-				{ID: 0, Index: 0, NumThreads: 2, LogicalProcessors: []int{0, 1}},
-				{ID: 1, Index: 1, NumThreads: 2, LogicalProcessors: []int{2, 3}},
+				{ID: 0, NumThreads: 2, LogicalProcessors: []int{0, 1}},
+				{ID: 1, NumThreads: 2, LogicalProcessors: []int{2, 3}},
 			},
 		},
 		{
 			ID: 1,
 			Cores: []*cpu.ProcessorCore{
-				{ID: 2, Index: 2, NumThreads: 2, LogicalProcessors: []int{4, 5}},
-				{ID: 3, Index: 3, NumThreads: 2, LogicalProcessors: []int{6, 7}},
+				{ID: 2, NumThreads: 2, LogicalProcessors: []int{4, 5}},
+				{ID: 3, NumThreads: 2, LogicalProcessors: []int{6, 7}},
 			},
 		},
 	}
@@ -1698,15 +1677,15 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Function ensureSameTopo
 			{
 				ID: 0,
 				Cores: []*cpu.ProcessorCore{
-					{ID: 0, Index: 0, NumThreads: 2, LogicalProcessors: []int{0, 1}},
-					{ID: 1, Index: 1, NumThreads: 2, LogicalProcessors: []int{2, 3}},
+					{ID: 0, NumThreads: 2, LogicalProcessors: []int{0, 1}},
+					{ID: 1, NumThreads: 2, LogicalProcessors: []int{2, 3}},
 				},
 			},
 			{
 				ID: 1,
 				Cores: []*cpu.ProcessorCore{
-					{ID: 2, Index: 2, NumThreads: 2, LogicalProcessors: []int{4, 5}},
-					{ID: 3, Index: 3, NumThreads: 2, LogicalProcessors: []int{6, 7}},
+					{ID: 2, NumThreads: 2, LogicalProcessors: []int{4, 5}},
+					{ID: 3, NumThreads: 2, LogicalProcessors: []int{6, 7}},
 				},
 			},
 		}
@@ -1753,15 +1732,6 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Function ensureSameTopo
 			tols := TolerationSet{}
 			err := ensureSameTopology(&originTopology, &mutatedTopology, tols)
 			Expect(err).To(HaveOccurred())
-			_, ok := tols[DifferentCoreIDs]
-			Expect(ok).To(BeFalse())
-		})
-		It("same cores with different indices should still considered equivalent", func() {
-			mutatedTopology.Nodes[0].Cores[0].Index = 1
-			mutatedTopology.Nodes[0].Cores[1].Index = 0
-			tols := TolerationSet{}
-			err := ensureSameTopology(&originTopology, &mutatedTopology, tols)
-			Expect(err).ToNot(HaveOccurred())
 			_, ok := tols[DifferentCoreIDs]
 			Expect(ok).To(BeFalse())
 		})
@@ -1906,15 +1876,15 @@ var _ = Describe("PerformanceProfileCreator: Test Helper cpuAccumulator", func()
 		{
 			ID: 0,
 			Cores: []*cpu.ProcessorCore{
-				{ID: 0, Index: 0, NumThreads: 2, LogicalProcessors: []int{0, 1}},
-				{ID: 1, Index: 1, NumThreads: 2, LogicalProcessors: []int{2, 3}},
+				{ID: 0, NumThreads: 2, LogicalProcessors: []int{0, 1}},
+				{ID: 1, NumThreads: 2, LogicalProcessors: []int{2, 3}},
 			},
 		},
 		{
 			ID: 1,
 			Cores: []*cpu.ProcessorCore{
-				{ID: 2, Index: 2, NumThreads: 2, LogicalProcessors: []int{4, 5}},
-				{ID: 3, Index: 3, NumThreads: 2, LogicalProcessors: []int{6, 7}},
+				{ID: 2, NumThreads: 2, LogicalProcessors: []int{4, 5}},
+				{ID: 3, NumThreads: 2, LogicalProcessors: []int{6, 7}},
 			},
 		},
 	}

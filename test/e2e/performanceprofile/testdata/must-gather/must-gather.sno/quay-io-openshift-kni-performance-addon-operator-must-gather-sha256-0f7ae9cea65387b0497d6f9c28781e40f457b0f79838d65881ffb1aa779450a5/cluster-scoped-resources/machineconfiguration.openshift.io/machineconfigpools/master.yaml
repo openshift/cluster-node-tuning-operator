@@ -1,7 +1,8 @@
+---
 apiVersion: machineconfiguration.openshift.io/v1
 kind: MachineConfigPool
 metadata:
-  creationTimestamp: "2021-03-16T14:21:52Z"
+  creationTimestamp: "2025-03-13T11:10:39Z"
   generation: 2
   labels:
     machineconfiguration.openshift.io/mco-built-in: ""
@@ -19,35 +20,28 @@ metadata:
           f:pools.operator.machineconfiguration.openshift.io/master: {}
       f:spec:
         .: {}
-        f:configuration: {}
-        f:machineConfigSelector:
-          .: {}
-          f:matchLabels:
-            .: {}
-            f:machineconfiguration.openshift.io/role: {}
-        f:nodeSelector:
-          .: {}
-          f:matchLabels:
-            .: {}
-            f:node-role.kubernetes.io/master: {}
+        f:machineConfigSelector: {}
+        f:nodeSelector: {}
         f:paused: {}
     manager: machine-config-operator
     operation: Update
-    time: "2021-03-16T14:21:52Z"
+    time: "2025-03-13T11:10:39Z"
   - apiVersion: machineconfiguration.openshift.io/v1
     fieldsType: FieldsV1
     fieldsV1:
       f:spec:
-        f:configuration:
-          f:name: {}
-          f:source: {}
+        f:configuration: {}
+    manager: machine-config-controller
+    operation: Update
+    time: "2025-03-13T11:11:02Z"
+  - apiVersion: machineconfiguration.openshift.io/v1
+    fieldsType: FieldsV1
+    fieldsV1:
       f:status:
         .: {}
+        f:certExpirys: {}
         f:conditions: {}
-        f:configuration:
-          .: {}
-          f:name: {}
-          f:source: {}
+        f:configuration: {}
         f:degradedMachineCount: {}
         f:machineCount: {}
         f:observedGeneration: {}
@@ -56,14 +50,14 @@ metadata:
         f:updatedMachineCount: {}
     manager: machine-config-controller
     operation: Update
-    time: "2021-03-16T14:24:17Z"
+    subresource: status
+    time: "2025-03-13T11:11:15Z"
   name: master
-  resourceVersion: "7841"
-  selfLink: /apis/machineconfiguration.openshift.io/v1/machineconfigpools/master
-  uid: 163fb080-767f-43ec-a514-6b0ce0d8dc6d
+  resourceVersion: "9162"
+  uid: 25524e03-1f49-4e0d-9812-02ea39be8e10
 spec:
   configuration:
-    name: rendered-master-d1a10ddcc3f6f4769b2864b448ece168
+    name: rendered-master-2d32d6d5406a2c870597271b5b5383a5
     source:
     - apiVersion: machineconfiguration.openshift.io/v1
       kind: MachineConfig
@@ -74,6 +68,21 @@ spec:
     - apiVersion: machineconfiguration.openshift.io/v1
       kind: MachineConfig
       name: 01-master-kubelet
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 10-master-disable-eno2.yaml
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 15-master-hosts.yaml
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 30-master-dnsmasq.yaml
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 97-master-generated-kubelet
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 98-master-generated-kubelet
     - apiVersion: machineconfiguration.openshift.io/v1
       kind: MachineConfig
       name: 99-master-generated-registries
@@ -88,34 +97,56 @@ spec:
       node-role.kubernetes.io/master: ""
   paused: false
 status:
+  certExpirys:
+  - bundle: KubeAPIServerServingCAData
+    expiry: "2035-03-11T10:40:19Z"
+    subject: CN=admin-kubeconfig-signer,OU=openshift
+  - bundle: KubeAPIServerServingCAData
+    expiry: "2025-03-14T10:40:20Z"
+    subject: CN=kube-csr-signer_@1741863762
+  - bundle: KubeAPIServerServingCAData
+    expiry: "2025-03-14T10:40:20Z"
+    subject: CN=kubelet-signer,OU=openshift
+  - bundle: KubeAPIServerServingCAData
+    expiry: "2026-03-13T10:40:21Z"
+    subject: CN=kube-apiserver-to-kubelet-signer,OU=openshift
+  - bundle: KubeAPIServerServingCAData
+    expiry: "2026-03-13T10:40:20Z"
+    subject: CN=kube-control-plane-signer,OU=openshift
+  - bundle: KubeAPIServerServingCAData
+    expiry: "2035-03-11T10:40:19Z"
+    subject: CN=kubelet-bootstrap-kubeconfig-signer,OU=openshift
+  - bundle: KubeAPIServerServingCAData
+    expiry: "2026-03-13T11:10:11Z"
+    subject: CN=openshift-kube-apiserver-operator_node-system-admin-signer@1741864211
   conditions:
-  - lastTransitionTime: "2021-03-16T14:23:25Z"
+  - lastTransitionTime: "2025-03-13T11:11:02Z"
     message: ""
     reason: ""
     status: "False"
     type: RenderDegraded
-  - lastTransitionTime: "2021-03-16T14:24:17Z"
-    message: All nodes are updated with rendered-master-d1a10ddcc3f6f4769b2864b448ece168
-    reason: ""
-    status: "True"
-    type: Updated
-  - lastTransitionTime: "2021-03-16T14:24:17Z"
-    message: ""
-    reason: ""
-    status: "False"
-    type: Updating
-  - lastTransitionTime: "2021-03-16T14:24:17Z"
+  - lastTransitionTime: "2025-03-13T11:11:09Z"
     message: ""
     reason: ""
     status: "False"
     type: NodeDegraded
-  - lastTransitionTime: "2021-03-16T14:24:17Z"
+  - lastTransitionTime: "2025-03-13T11:11:09Z"
     message: ""
     reason: ""
     status: "False"
     type: Degraded
+  - lastTransitionTime: "2025-03-13T11:11:15Z"
+    message: All nodes are updated with MachineConfig rendered-master-2d32d6d5406a2c870597271b5b5383a5
+    reason: ""
+    status: "True"
+    type: Updated
+  - lastTransitionTime: "2025-03-13T11:11:15Z"
+    message: ""
+    reason: ""
+    status: "False"
+    type: Updating
   configuration:
-    name: rendered-master-d1a10ddcc3f6f4769b2864b448ece168
+    name: rendered-master-2d32d6d5406a2c870597271b5b5383a5
     source:
     - apiVersion: machineconfiguration.openshift.io/v1
       kind: MachineConfig
@@ -126,6 +157,21 @@ status:
     - apiVersion: machineconfiguration.openshift.io/v1
       kind: MachineConfig
       name: 01-master-kubelet
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 10-master-disable-eno2.yaml
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 15-master-hosts.yaml
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 30-master-dnsmasq.yaml
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 97-master-generated-kubelet
+    - apiVersion: machineconfiguration.openshift.io/v1
+      kind: MachineConfig
+      name: 98-master-generated-kubelet
     - apiVersion: machineconfiguration.openshift.io/v1
       kind: MachineConfig
       name: 99-master-generated-registries

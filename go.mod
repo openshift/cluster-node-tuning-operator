@@ -12,7 +12,7 @@ require (
 	github.com/docker/go-units v0.5.0
 	github.com/go-logr/stdr v1.2.2
 	github.com/google/go-cmp v0.6.0
-	github.com/jaypipes/ghw v0.8.1-0.20210605191321-eb162add542b
+	github.com/jaypipes/ghw v0.15.0
 	github.com/kevinburke/go-bindata v3.16.0+incompatible
 	github.com/onsi/ginkgo/v2 v2.20.1
 	github.com/onsi/gomega v1.34.2
@@ -111,7 +111,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.20.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/jaypipes/pcidb v1.0.0 // indirect
+	github.com/jaypipes/pcidb v1.0.1 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/karrick/godirwalk v1.17.0 // indirect
@@ -235,12 +235,4 @@ replace (
 	k8s.io/mount-utils => k8s.io/mount-utils v0.31.1
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.31.1
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.31.1
-)
-
-// All of the pinned dependencies below are basically issues that should be fixed either in this project or upstream.
-replace (
-	// TODO: investigate why and whether we still need this.
-	github.com/ajeddeloh/go-json => github.com/coreos/go-json v0.0.0-20200220154158-5ae607161559
-	// TODO: ProcessorCore.Index is removed entirely in jaypipes/ghw > v0.11.0; investigate how to fix this.
-	github.com/jaypipes/ghw => github.com/jaypipes/ghw v0.8.1-0.20210605191321-eb162add542b
 )

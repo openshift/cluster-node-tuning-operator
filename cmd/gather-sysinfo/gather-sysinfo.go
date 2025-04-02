@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/jaypipes/ghw/pkg/snapshot"
 	"github.com/openshift-kni/debug-tools/pkg/knit/cmd"
@@ -66,8 +67,6 @@ func collectMachineinfo(knitOpts *cmd.KnitOptions, destPath string) error {
 }
 
 func makeSnapshot(cmd *cobra.Command, knitOpts *cmd.KnitOptions, opts *snapshotOptions, args []string) error {
-	// ghw can't handle duplicates in CopyFilesInto, the operation will fail.
-	// Hence we need to make sure we just don't feed duplicates.
 	fileSpecs := dedupExpectedContent(kniExpectedCloneContent(), snapshot.ExpectedCloneContent())
 	if opts.dumpList {
 		for _, fileSpec := range fileSpecs {
@@ -136,19 +135,88 @@ func chrootFileSpecs(fileSpecs []string, root string) []string {
 	return entries
 }
 
-func dedupExpectedContent(fileSpecs, extraFileSpecs []string) []string {
-	specSet := make(map[string]int)
-	for _, fileSpec := range fileSpecs {
-		specSet[fileSpec]++
-	}
-	for _, extraFileSpec := range extraFileSpecs {
-		specSet[extraFileSpec]++
+// realpath resolves all symbolic links in the given pathname and returns the canonical path.
+// Return the resolved pathname or an error (e.g. too many links) if the path fails to resolve.
+func realpath(path string) (string, error) {
+	if len(path) == 0 {
+		return "", fmt.Errorf("empty path provided")
 	}
 
-	var retSpecs []string
-	for retSpec := range specSet {
-		retSpecs = append(retSpecs, retSpec)
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert to absolute path: %w", err)
 	}
+
+	resolvedPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve symbolic links: %w", err)
+	}
+
+	return filepath.Clean(resolvedPath), nil
+}
+
+// Deduplication in dedupExpectedContent() is not needed, but does not hurt.
+// However, it is important to feed ghw's CopyFilesInto() directory entries
+// closer to filesystem root prior to directory entries farther from the root.
+// Otherwise, ghw as of v0.15.0 will not handle this well.  Illustration.
+// Consider we have the following file specs:
+// 1) "/sys/devices/system/node/node0/cpu1/online"
+// 2) "/sys/devices/system/node/node0/cpu1/"
+// also consider that "/sys/devices/system/node/node0/cpu1" is a symbolic
+// link pointing to "../../cpu/cpu1".  Then, ghw's CopyFilesInto() will create
+// directory (instead of a link) "/sys/devices/system/node/node0/cpu1" and add
+// a regular file "online".  This is wrong, because we prefer the symbolic link
+// as it points to a directory which has many more entries.  The simplest fix for
+// this behaviour is to sort the file specs, so that the shorter entries come
+// first, i.e.:
+// 1) "/sys/devices/system/node/node0/cpu1/"
+// 2) "/sys/devices/system/node/node0/cpu1/online"
+func dedupExpectedContent(fileSpecs, extraFileSpecs []string) []string {
+	realpathSet := make(map[string]int)
+	secondarySet := make(map[string]int)
+
+	fileSpecs = append(fileSpecs, extraFileSpecs...)
+
+	for _, fileSpec := range fileSpecs {
+		matches, err := filepath.Glob(fileSpec)
+		if err != nil {
+			// Glob ignores file system errors such as I/O errors reading directories.
+			// The only possible returned error is when fileSpec is malformed.
+			log.Printf("fileSpec %q likely malformed, continuing: %v", fileSpec, err)
+			continue
+		}
+		for _, match := range matches {
+			realPath, err := realpath(match)
+			if err != nil {
+				// We failed to resolve the real path of "match".  Keep the "match" in the secondary set.
+				secondarySet[match]++
+			} else {
+				// "match" resolved to path fine.
+				if realPath == match {
+					realpathSet[match]++
+				}
+			}
+		}
+		for _, match := range matches {
+			// Keep the unresolved entries too, but in the secondary set.
+			if realpathSet[match] == 0 {
+				// We don't have this spec in the resolved set, add it.
+				secondarySet[match]++
+			}
+		}
+	}
+
+	var retSpecs, secondarySpecs []string
+	for entry := range realpathSet {
+		// Create resolved entries first.
+		retSpecs = append(retSpecs, entry)
+	}
+	for entry := range secondarySet {
+		secondarySpecs = append(secondarySpecs, entry)
+	}
+	sort.Strings(secondarySpecs)
+	retSpecs = append(retSpecs, secondarySpecs...)
+
 	return retSpecs
 }
 

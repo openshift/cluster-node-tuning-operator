@@ -8,13 +8,15 @@ package option
 
 import (
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 )
 
 const (
-	defaultChroot           = "/"
+	DefaultChroot = "/"
+)
+
+const (
 	envKeyChroot            = "GHW_CHROOT"
 	envKeyDisableWarnings   = "GHW_DISABLE_WARNINGS"
 	envKeyDisableTools      = "GHW_DISABLE_TOOLS"
@@ -32,7 +34,7 @@ type Alerter interface {
 }
 
 var (
-	NullAlerter = log.New(ioutil.Discard, "", 0)
+	NullAlerter = log.New(io.Discard, "", 0)
 )
 
 // EnvOrDefaultAlerter returns the default instance ghw will use to emit
@@ -42,7 +44,7 @@ var (
 func EnvOrDefaultAlerter() Alerter {
 	var dest io.Writer
 	if _, exists := os.LookupEnv(envKeyDisableWarnings); exists {
-		dest = ioutil.Discard
+		dest = io.Discard
 	} else {
 		// default
 		dest = os.Stderr
@@ -57,7 +59,7 @@ func EnvOrDefaultChroot() string {
 	if val, exists := os.LookupEnv(envKeyChroot); exists {
 		return val
 	}
-	return defaultChroot
+	return DefaultChroot
 }
 
 // EnvOrDefaultSnapshotPath returns the value of the GHW_SNAPSHOT_PATH environs variable
@@ -113,7 +115,7 @@ func EnvOrDefaultTools() bool {
 type Option struct {
 	// To facilitate querying of sysfs filesystems that are bind-mounted to a
 	// non-default root mountpoint, we allow users to set the GHW_CHROOT environ
-	// vairable to an alternate mountpoint. For instance, assume that the user of
+	// variable to an alternate mountpoint. For instance, assume that the user of
 	// ghw is a Golang binary being executed from an application container that has
 	// certain host filesystems bind-mounted into the container at /host. The user
 	// would ensure the GHW_CHROOT environ variable is set to "/host" and ghw will
@@ -133,6 +135,11 @@ type Option struct {
 	// PathOverrides optionally allows to override the default paths ghw uses internally
 	// to learn about the system resources.
 	PathOverrides PathOverrides
+
+	// Context may contain a pointer to a `Context` struct that is constructed
+	// during a call to the `context.WithContext` function. Only used internally.
+	// This is an interface to get around recursive package import issues.
+	Context interface{}
 }
 
 // SnapshotOptions contains options for handling of ghw snapshots
@@ -202,6 +209,8 @@ func WithPathOverrides(overrides PathOverrides) *Option {
 // a debug/troubleshoot aid more something users wants to do regularly.
 // Hence we allow that only via the environment variable for the time being.
 
+// Merge accepts one or more Options and merges them together, returning the
+// merged Option
 func Merge(opts ...*Option) *Option {
 	merged := &Option{}
 	for _, opt := range opts {
@@ -220,6 +229,9 @@ func Merge(opts ...*Option) *Option {
 		// intentionally only programmatically
 		if opt.PathOverrides != nil {
 			merged.PathOverrides = opt.PathOverrides
+		}
+		if opt.Context != nil {
+			merged.Context = opt.Context
 		}
 	}
 	// Set the default value if missing from mergeOpts
