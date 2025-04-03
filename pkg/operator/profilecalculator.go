@@ -683,6 +683,16 @@ func (pc *ProfileCalculator) tunedsUseNodeLabels(tunedSlice []*tunedv1.Tuned) bo
 	return false
 }
 
+// tunedMatchesPodLabels returns true if Tuned CRs 'tuned' uses Pod labels.
+func (pc *ProfileCalculator) tunedMatchesPodLabels(tuned *tunedv1.Tuned) bool {
+	for _, recommend := range tuned.Spec.Recommend {
+		if pc.tunedUsesPodLabels(recommend.Match) {
+			return true
+		}
+	}
+	return false
+}
+
 // tunedsUsePodLabels returns true if any of the Tuned CRs uses Pod labels.
 func (pc *ProfileCalculator) tunedsUsePodLabels(tunedSlice []*tunedv1.Tuned) bool {
 	for _, recommend := range TunedRecommend(tunedSlice) {
