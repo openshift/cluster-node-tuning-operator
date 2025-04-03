@@ -939,6 +939,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			guaranteedPod = makePod(ctx, workerRTNode, true)
 			err := testclient.Client.Create(ctx, guaranteedPod)
 			Expect(err).ToNot(HaveOccurred(), "Failed to create guaranteed pod")
+			guaranteedPod, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(guaranteedPod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+			Expect(err).ToNot(HaveOccurred())
 			defer func() {
 				if guaranteedPod != nil {
 					testlog.Infof("deleting pod %q", guaranteedPod.Name)
@@ -1078,7 +1080,6 @@ func getConfigJsonInfo(pod *corev1.Pod, containerName string, workerRTNode *core
 func makePod(ctx context.Context, workerRTNode *corev1.Node, guaranteed bool) *corev1.Pod {
 	testPod := pods.GetTestPod()
 	testPod.Namespace = testutils.NamespaceTesting
-	testPod.Spec.NodeName = workerRTNode.Name
 	testPod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
 	if guaranteed {
 		testPod.Spec.Containers[0].Resources = corev1.ResourceRequirements{
