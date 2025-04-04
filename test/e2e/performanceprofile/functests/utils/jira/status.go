@@ -2,12 +2,21 @@ package jira
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/pkg/errors"
+	"math/rand"
 	"net/http"
 	"net/url"
+	"strconv"
+	"time"
+
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 )
 
-const JIRA_BASE_URL = "https://issues.redhat.com"
+const (
+	JIRA_BASE_URL = "https://issues.redhat.com"
+	MAX_RETRIES   = 3
+)
 
 type JiraIssueStatusResponseFieldsStatus = struct {
 	Name string `json:"name"`
@@ -26,28 +35,75 @@ type JiraIssueStatusResponse = struct {
 func RetrieveJiraStatus(key string) (*JiraIssueStatusResponse, error) {
 	local_params := url.Values{}
 	local_params.Set("fields", "summary,status")
-
 	fullUrl := JIRA_BASE_URL + "/rest/api/2/issue/" + key + "?" + local_params.Encode()
-	req, err := http.NewRequest("GET", fullUrl, nil)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create request for Jira status of %s", key)
+	jiraResponse := JiraIssueStatusResponse{}
+	for retryCount := 0; retryCount <= MAX_RETRIES; retryCount++ {
+		req, err := http.NewRequest("GET", fullUrl, nil)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to create request for Jira status of %s", key)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to create client to get jira status of %s", key)
+		}
+		defer resp.Body.Close()
+		switch resp.StatusCode {
+		case http.StatusOK:
+			decoder := json.NewDecoder(resp.Body)
+			err = decoder.Decode(&jiraResponse)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to decode jira status of %s", key)
+			}
+		case http.StatusTooManyRequests:
+			if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
+				retryTime, err := convertRetryAfterTime(retryAfter)
+				testlog.Infof("Using Retry-After header to retry after %s seconds", retryTime.String())
+				if err != nil {
+					return nil, err
+				}
+				time.Sleep(retryTime)
+			} else {
+				testlog.Info("No Retry-After header found using exponential backoff method to retry")
+				delay := retryWithBackOff(retryCount)
+				testlog.Infof("Wait for %s seconds before retry to fetch bug status", delay.String())
+				time.Sleep(delay)
+			}
+		default:
+			return nil, errors.Errorf("failed to get jira status of %s: %d %s", key, resp.StatusCode, resp.Status)
+		}
 	}
-	ret, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create client to get jira status of %s", key)
-	}
-	defer ret.Body.Close()
+	return &jiraResponse, nil
+}
 
-	if ret.StatusCode != http.StatusOK {
-		return nil, errors.Errorf("failed to get jira status of %s: %d %s", key, ret.StatusCode, ret.Status)
-	}
+// retryWithBackOff use exponential backoff retries when we hit rate limit
+func retryWithBackOff(attempts int) time.Duration {
+	// we have a limit of 5 req/sec
+	initialDelay := 200 * time.Millisecond
+	maxDelay := 5 * time.Second
+	delay := initialDelay * (1 << attempts)
 
-	response := JiraIssueStatusResponse{}
-	decoder := json.NewDecoder(ret.Body)
-	err = decoder.Decode(&response)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to decode jira status of %s", key)
-	}
+	// add jitter
+	jitter := time.Duration(rand.Int63n(int64(delay / 2)))
+	delay += jitter
 
-	return &response, nil
+	if delay > maxDelay {
+		delay = maxDelay
+	}
+	return delay
+}
+
+// convertRetryAfterTime converts time in Retry-After in time.Duration
+// the format can be in the form of date or seconds
+func convertRetryAfterTime(retryAfter string) (time.Duration, error) {
+	if seconds, err := strconv.Atoi(retryAfter); err == nil {
+		return time.Duration(seconds) * time.Second, nil
+	}
+	if t, err := http.ParseTime(retryAfter); err != nil {
+		wait := time.Until(t)
+		if wait > 0 {
+			return wait, nil
+		}
+		return 0, nil
+	}
+	return 0, fmt.Errorf("Invalid Retry-After time value %s", retryAfter)
 }
