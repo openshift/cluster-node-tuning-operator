@@ -202,7 +202,9 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			rcuNocbsArgument := re.FindString(cmdline)
 			Expect(rcuNocbsArgument).To(ContainSubstring("rcu_nocbs="))
 			rcuNocbsCpu := strings.Split(rcuNocbsArgument, "=")[1]
-			Expect(rcuNocbsCpu).To(Equal(isolatedCPU))
+			rcuNocbsCPUSet, err := cpuset.Parse(rcuNocbsCpu)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(rcuNocbsCPUSet.Equals(isolatedCPUSet)).To(BeTrue(), "rcu_nocbs CPUs do not match isolated CPUs")
 
 			By("checking that new rcuo processes are running on non_isolated cpu")
 			cmd = []string{"pgrep", "rcuo"}
