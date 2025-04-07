@@ -5,6 +5,8 @@ Changes made include:*
 
 - Atomic writes; generated file cannot be read while partially complete.
 
+- Better encoding of files that contain characters in the Unicode format range.
+
 - Generated file reports file sizes.
 
 - Generated code is run through go fmt.
@@ -38,9 +40,14 @@ On Macs, you can install the binary using [Homebrew](https://brew.sh):
 brew install go-bindata
 ```
 
-Binary installs for every language are provided by `equinox.io`. Install
-go-bindata for your platform by following the instructions here:
-https://go.equinox.io/github.com/kevinburke/go-bindata/go-bindata
+You can also download a binary from the [releases page][releases]. Switch in
+your GOOS for the word "linux" below, and the latest version for the version
+listed below:
+
+```
+curl --silent --location --output /usr/local/bin/go-bindata https://github.com/kevinburke/go-bindata/releases/download/v3.11.0/go-bindata-linux-amd64
+chmod 755 /usr/local/bin/go-bindata
+```
 
 Alternatively, you can download the source code, if you have a working Go
 installation:
@@ -48,6 +55,8 @@ installation:
 ```
 go get -u github.com/kevinburke/go-bindata/...
 ```
+
+[releases]: https://github.com/kevinburke/go-bindata/releases
 
 ### Usage
 
@@ -135,9 +144,9 @@ For most use-cases this is not a problem, but if you ever try to alter the
 returned byte slice, a runtime panic is thrown. Use this mode only on target
 platforms where memory constraints are an issue.
 
-The default behaviour is to use the old code generation method. This
-prevents the two previously mentioned issues, but will employ at least one
-extra memcopy and thus increase memory requirements.
+The default behavior is to use the old code generation method. This prevents the
+two previously mentioned issues, but will employ at least one extra memcopy and
+thus increase memory requirements.
 
 For instance, consider the following two examples:
 
@@ -180,7 +189,7 @@ This feature is useful if you do not care for compression, or the supplied
 resource is already compressed. Doing it again would not add any value and may
 even increase the size of the data.
 
-The default behaviour of the program is to use compression.
+The default behavior of the program is to use compression.
 
 
 ### Path prefix stripping

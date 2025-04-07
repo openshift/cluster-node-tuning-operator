@@ -20,6 +20,7 @@ spec:
     containerRuntimeEndpoint: ""
     cpuManagerPolicy: static
     cpuManagerReconcilePeriod: 5s
+    crashLoopBackOff: {}
     evictionHard:
       imagefs.available: 15%
       memory.available: 100Mi
