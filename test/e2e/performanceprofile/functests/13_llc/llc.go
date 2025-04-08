@@ -15,6 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/cpuset"
@@ -123,7 +124,6 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
 			profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
 		}
-
 	})
 
 	AfterAll(func() {
@@ -224,7 +224,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			Expect(err).ToNot(HaveOccurred())
 			ctx := context.Background()
 			for _, cnfnode := range workerRTNodes {
-				numaInfo, err := nodes.GetNumaNodes(context.TODO(), &cnfnode)
+				numaInfo, err := nodes.GetNumaNodes(ctx, &cnfnode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get numa information from the node")
 				if len(numaInfo) < 2 {
 					Skip(fmt.Sprintf("This test need 2 Numa nodes. The number of numa nodes on node %s < 2", cnfnode.Name))
@@ -241,9 +241,10 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			// Modify the profile such that we give 1 whole ccx to reserved cpus
 			By("Modifying the profile")
 			for _, node := range workerRTNodes {
-				numaCoreSiblings, err = nodes.GetCoreSiblings(context.TODO(), &node)
+				numaCoreSiblings, err = nodes.GetCoreSiblings(ctx, &node)
 				Expect(err).ToNot(HaveOccurred())
 			}
+
 			// Get cpu siblings from core 0-7
 			// Assign one whole L3 Cache group for reserved cpus.
 			for reservedCores := 0; reservedCores < 8; reservedCores++ {
@@ -294,15 +295,14 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				corev1.ResourceCPU:    resource.MustParse("16"),
 				corev1.ResourceMemory: resource.MustParse("100Mi"),
 			}
-			podLabel["type"] = "telco"
+			podLabel["test-app"] = "telco1"
 			dp, err := createDeployment(ctx, deploymentName, podLabel, &targetNode, rl)
 			Expect(err).ToNot(HaveOccurred())
 			defer func() {
 				testlog.TaggedInfof("Cleanup", "Deleting Deployment %v", deploymentName)
 				err := testclient.DataPlaneClient.Delete(ctx, dp)
-				Expect(err).ToNot(HaveOccurred())
-				// Wait for some time for deployment to be deleted
-				time.Sleep(deploymentDeletionTime)
+				Expect(err).ToNot(HaveOccurred(), "Unable to delete deployment %v", deploymentName)
+				waitForDeploymentPodsDeletion(ctx, &targetNode, podLabel)
 			}()
 
 			podList := &corev1.PodList{}
@@ -340,7 +340,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				corev1.ResourceCPU:    resource.MustParse("16"),
 				corev1.ResourceMemory: resource.MustParse("100Mi"),
 			}
-			podLabel["type"] = "telco"
+			podLabel["test-app"] = "telco2"
 			dp, err := createDeployment(ctx, deploymentName, podLabel, &targetNode, rl)
 			Expect(err).ToNot(HaveOccurred())
 			testlog.TaggedInfof("Deployment", "Deployment %s created", deploymentName)
@@ -348,9 +348,8 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				// delete deployment
 				testlog.TaggedInfof("Cleanup", "Deleting Deployment %s", deploymentName)
 				err := testclient.DataPlaneClient.Delete(ctx, dp)
-				Expect(err).ToNot(HaveOccurred())
-				// Wait for some time for deployment to be deleted
-				time.Sleep(deploymentDeletionTime)
+				Expect(err).ToNot(HaveOccurred(), "Unable to delete deployment %v", deploymentName)
+				waitForDeploymentPodsDeletion(ctx, &targetNode, podLabel)
 			}()
 			podList := &corev1.PodList{}
 			listOptions := &client.ListOptions{Namespace: testutils.NamespaceTesting, LabelSelector: labels.SelectorFromSet(dp.Spec.Selector.MatchLabels)}
@@ -428,16 +427,15 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				corev1.ResourceCPU:    resource.MustParse("16"),
 				corev1.ResourceMemory: resource.MustParse("100Mi"),
 			}
-			podLabel["type"] = "telco"
+			podLabel["test-app"] = "telco3"
 			dp, err := createDeployment(ctx, deploymentName, podLabel, &targetNode, rl)
 			Expect(err).ToNot(HaveOccurred())
 			defer func() {
 				// delete deployment
 				testlog.TaggedInfof("Cleanup", "Deleting Deployment %v", deploymentName)
 				err := testclient.DataPlaneClient.Delete(ctx, dp)
-				Expect(err).ToNot(HaveOccurred())
-				// Wait for some time for deployment to be deleted
-				time.Sleep(deploymentDeletionTime)
+				Expect(err).ToNot(HaveOccurred(), "Unable to delete deployment %v", deploymentName)
+				waitForDeploymentPodsDeletion(ctx, &targetNode, podLabel)
 			}()
 			podList := &corev1.PodList{}
 			listOptions := &client.ListOptions{Namespace: testutils.NamespaceTesting, LabelSelector: labels.SelectorFromSet(dp.Spec.Selector.MatchLabels)}
@@ -521,7 +519,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 					corev1.ResourceMemory: resource.MustParse("100Mi"),
 				}
 				podLabel := make(map[string]string)
-				podLabel["type"] = fmt.Sprintf("telco%d", i)
+				podLabel["test-app"] = fmt.Sprintf("telcoApp-%d", i)
 				testlog.TaggedInfof("Deployment", "Creating Deployment %v", deploymentName)
 				dp, err := createDeployment(ctx, deploymentName, podLabel, &targetNode, rl)
 				Expect(err).ToNot(HaveOccurred())
@@ -531,15 +529,18 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				// delete deployment
 				for _, dp := range dpList {
 					testlog.TaggedInfof("Deployment", "Deleting Deployment %v", dp.Name)
-					err := testclient.DataPlaneClient.Delete(ctx, dp)
-					Expect(err).ToNot(HaveOccurred())
-					// Wait for some time for deployment to be deleted
-					time.Sleep(deploymentDeletionTime)
+					key := client.ObjectKeyFromObject(dp)
+					err := testclient.Client.Get(ctx, key, dp)
+					Expect(err).ToNot(HaveOccurred(), "Unable to fetch podlabels")
+					podLabels := dp.Spec.Template.ObjectMeta.Labels
+					err = testclient.DataPlaneClient.Delete(ctx, dp)
+					Expect(err).ToNot(HaveOccurred(), "Unable to delete deployment %v", dp.Name)
+					waitForDeploymentPodsDeletion(ctx, &targetNode, podLabels)
 				}
 			}()
 			for i := 0; i < 2; i++ {
 				podList := &corev1.PodList{}
-				podLabel["type"] = fmt.Sprintf("telco%d", i)
+				podLabel["test-app"] = fmt.Sprintf("telcoApp-%d", i)
 				listOptions := &client.ListOptions{Namespace: testutils.NamespaceTesting, LabelSelector: labels.SelectorFromSet(podLabel)}
 				Eventually(func() bool {
 					isReady, err := deployments.IsReady(ctx, testclient.Client, listOptions, podList, dpList[i])
@@ -653,4 +654,28 @@ func createDeployment(ctx context.Context, deploymentName string, podLabel map[s
 	dp.Spec.Template.ObjectMeta.Labels = podLabel
 	err = testclient.Client.Create(ctx, dp)
 	return dp, err
+}
+
+// Wait for deployment pods to be deleted
+func waitForDeploymentPodsDeletion(ctx context.Context, targetNode *corev1.Node, podLabel map[string]string) {
+	listOptions := &client.ListOptions{
+		Namespace:     testutils.NamespaceTesting,
+		FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": targetNode.Name}),
+		LabelSelector: labels.SelectorFromSet(labels.Set(podLabel)),
+	}
+	podList := &corev1.PodList{}
+	Eventually(func() bool {
+		if err := testclient.DataPlaneClient.List(context.TODO(), podList, listOptions); err != nil {
+			return false
+		}
+		if len(podList.Items) == 0 {
+			return false
+		}
+		return true
+	}).WithTimeout(time.Minute * 5).WithPolling(time.Second * 30).Should(BeTrue())
+	for _, pod := range podList.Items {
+		testlog.TaggedInfof("cleanup", "Deleting pod %s", pod.Name)
+		err := pods.WaitForDeletion(ctx, &pod, pods.DefaultDeletionTimeout*time.Second)
+		Expect(err).ToNot(HaveOccurred())
+	}
 }
