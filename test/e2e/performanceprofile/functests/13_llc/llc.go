@@ -336,6 +336,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			targetNode := workerRTNodes[0]
 			cpusetCfg := &controller.CpuSet{}
 			deploymentName := "test-deployment2"
+			getCCX := nodes.GetL3SharedCPUs(&targetNode)
 			rl := &corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("16"),
 				corev1.ResourceMemory: resource.MustParse("100Mi"),
@@ -366,7 +367,6 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			cgroupCpuset, err := cpuset.Parse(cpusetCfg.Cpus)
 			Expect(err).ToNot(HaveOccurred())
 			testlog.TaggedInfof("Pod", "pod %s using cpus %q", testpod.Name, cgroupCpuset.String())
-			getCCX := nodes.GetL3SharedCPUs(&targetNode)
 			// fetch ccx to which cpu used by pod is part of
 			cpus, err := getCCX(cgroupCpuset.List()[0])
 			testlog.TaggedInfof("L3 Cache Group", "L3 Cache group associated with Pod %s using cpu %d is %q: ", testpod.Name, cgroupCpuset.List()[0], cpus)
@@ -408,7 +408,6 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			cgroupCpuset, err = cpuset.Parse(cpusetCfg.Cpus)
 			testlog.TaggedInfof("Pod", "pod %s using cpus %q", testpod.Name, cgroupCpuset.String())
 			Expect(err).ToNot(HaveOccurred())
-			getCCX = nodes.GetL3SharedCPUs(&targetNode)
 			// fetch ccx to which cpu used by pod is part of
 			cpus, err = getCCX(cgroupCpuset.List()[0])
 			Expect(err).ToNot(HaveOccurred())
@@ -430,6 +429,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			podLabel["test-app"] = "telco3"
 			dp, err := createDeployment(ctx, deploymentName, podLabel, &targetNode, rl)
 			Expect(err).ToNot(HaveOccurred())
+			getCCX := nodes.GetL3SharedCPUs(&targetNode)
 			defer func() {
 				// delete deployment
 				testlog.TaggedInfof("Cleanup", "Deleting Deployment %v", deploymentName)
@@ -451,7 +451,6 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			Expect(err).ToNot(HaveOccurred())
 			cgroupCpuset, err := cpuset.Parse(cpusetCfg.Cpus)
 			Expect(err).ToNot(HaveOccurred())
-			getCCX := nodes.GetL3SharedCPUs(&targetNode)
 			// fetch ccx to which cpu used by pod is part of
 			cpus, err := getCCX(cgroupCpuset.List()[0])
 			Expect(err).ToNot(HaveOccurred())
@@ -496,7 +495,6 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			cgroupCpuset, err = cpuset.Parse(cpusetCfg.Cpus)
 			testlog.TaggedInfof("Pod", "pod %s using cpus %q", testpod.Name, cgroupCpuset.String())
 			Expect(err).ToNot(HaveOccurred())
-			getCCX = nodes.GetL3SharedCPUs(&targetNode)
 			// fetch ccx to which cpu used by pod is part of
 			cpus, err = getCCX(cgroupCpuset.List()[0])
 			Expect(err).ToNot(HaveOccurred())
@@ -512,6 +510,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			var cpusetList []cpuset.CPUSet
 			var dpList []*appsv1.Deployment
 			podLabel := make(map[string]string)
+			getCCX := nodes.GetL3SharedCPUs(&targetNode)
 			for i := 0; i < 2; i++ {
 				deploymentName := fmt.Sprintf("test-deployment%d", i)
 				rl := &corev1.ResourceList{
@@ -538,6 +537,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 					waitForDeploymentPodsDeletion(ctx, &targetNode, podLabels)
 				}
 			}()
+
 			for i := 0; i < 2; i++ {
 				podList := &corev1.PodList{}
 				podLabel["test-app"] = fmt.Sprintf("telcoApp-%d", i)
@@ -554,7 +554,6 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				podCpuset, err := cpuset.Parse(cpusetCfg.Cpus)
 				testlog.TaggedInfof("Pod", "Cpus used by pod %v are %v", testpod.Name, podCpuset.String())
 				Expect(err).ToNot(HaveOccurred())
-				getCCX := nodes.GetL3SharedCPUs(&targetNode)
 				// fetch ccx to which cpu used by pod is part of
 				cpus, err := getCCX(podCpuset.List()[0])
 				testlog.TaggedInfof("L3 Cache Group", "cpu id %d used Pod %s is part of CCX group %s", podCpuset.List()[0], testpod.Name, cpus.String())
