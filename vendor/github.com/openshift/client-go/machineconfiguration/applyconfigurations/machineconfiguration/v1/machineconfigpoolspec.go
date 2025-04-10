@@ -3,22 +3,22 @@
 package v1
 
 import (
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	intstr "k8s.io/apimachinery/pkg/util/intstr"
+	metav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// MachineConfigPoolSpecApplyConfiguration represents an declarative configuration of the MachineConfigPoolSpec type for use
+// MachineConfigPoolSpecApplyConfiguration represents a declarative configuration of the MachineConfigPoolSpec type for use
 // with apply.
 type MachineConfigPoolSpecApplyConfiguration struct {
-	MachineConfigSelector *v1.LabelSelector                                       `json:"machineConfigSelector,omitempty"`
-	NodeSelector          *v1.LabelSelector                                       `json:"nodeSelector,omitempty"`
+	MachineConfigSelector *metav1.LabelSelectorApplyConfiguration                 `json:"machineConfigSelector,omitempty"`
+	NodeSelector          *metav1.LabelSelectorApplyConfiguration                 `json:"nodeSelector,omitempty"`
 	Paused                *bool                                                   `json:"paused,omitempty"`
 	MaxUnavailable        *intstr.IntOrString                                     `json:"maxUnavailable,omitempty"`
 	Configuration         *MachineConfigPoolStatusConfigurationApplyConfiguration `json:"configuration,omitempty"`
 	PinnedImageSets       []PinnedImageSetRefApplyConfiguration                   `json:"pinnedImageSets,omitempty"`
 }
 
-// MachineConfigPoolSpecApplyConfiguration constructs an declarative configuration of the MachineConfigPoolSpec type for use with
+// MachineConfigPoolSpecApplyConfiguration constructs a declarative configuration of the MachineConfigPoolSpec type for use with
 // apply.
 func MachineConfigPoolSpec() *MachineConfigPoolSpecApplyConfiguration {
 	return &MachineConfigPoolSpecApplyConfiguration{}
@@ -27,16 +27,16 @@ func MachineConfigPoolSpec() *MachineConfigPoolSpecApplyConfiguration {
 // WithMachineConfigSelector sets the MachineConfigSelector field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the MachineConfigSelector field is set to the value of the last call.
-func (b *MachineConfigPoolSpecApplyConfiguration) WithMachineConfigSelector(value v1.LabelSelector) *MachineConfigPoolSpecApplyConfiguration {
-	b.MachineConfigSelector = &value
+func (b *MachineConfigPoolSpecApplyConfiguration) WithMachineConfigSelector(value *metav1.LabelSelectorApplyConfiguration) *MachineConfigPoolSpecApplyConfiguration {
+	b.MachineConfigSelector = value
 	return b
 }
 
 // WithNodeSelector sets the NodeSelector field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the NodeSelector field is set to the value of the last call.
-func (b *MachineConfigPoolSpecApplyConfiguration) WithNodeSelector(value v1.LabelSelector) *MachineConfigPoolSpecApplyConfiguration {
-	b.NodeSelector = &value
+func (b *MachineConfigPoolSpecApplyConfiguration) WithNodeSelector(value *metav1.LabelSelectorApplyConfiguration) *MachineConfigPoolSpecApplyConfiguration {
+	b.NodeSelector = value
 	return b
 }
 

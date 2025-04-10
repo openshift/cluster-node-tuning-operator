@@ -20,6 +20,7 @@ spec:
     cpuManagerPolicyOptions:
       full-pcpus-only: "true"
     cpuManagerReconcilePeriod: 5s
+    crashLoopBackOff: {}
     evictionHard:
       imagefs.available: 15%
       memory.available: 100Mi

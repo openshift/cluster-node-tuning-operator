@@ -15,9 +15,8 @@ import (
 	"unicode"
 )
 
-// Translate reads assets from an input directory, converts them
-// to Go code and writes new files to the output specified
-// in the given configuration.
+// Translate reads assets from an input directory, converts them to Go code and
+// writes new files to the output specified in the given configuration.
 func Translate(c *Config) error {
 	var toc []Asset
 
@@ -26,8 +25,8 @@ func Translate(c *Config) error {
 		return err
 	}
 
-	var knownFuncs = make(map[string]int)
-	var visitedPaths = make(map[string]bool)
+	knownFuncs := make(map[string]int)
+	visitedPaths := make(map[string]bool)
 	// Locate all the assets.
 	for _, input := range c.Input {
 		if err := findFiles(input.Path, c.Prefix, input.Recursive, &toc, c.Ignore, knownFuncs, visitedPaths); err != nil {
@@ -55,6 +54,8 @@ func Translate(c *Config) error {
 		if err != nil {
 			return err
 		}
+		relative = strings.TrimPrefix(relative, c.Prefix)
+		relative = strings.TrimPrefix(relative, "/")
 		if _, err = fmt.Fprintf(buf, "// %s (%s)\n", filepath.ToSlash(relative), bits(asset.Size)*byte_); err != nil {
 			return err
 		}
@@ -85,9 +86,9 @@ func Translate(c *Config) error {
 				toc[i].Path = strings.Replace(toc[i].Path, wd, "/test", 1)
 			}
 		}
-		err = writeDebug(buf, c, toc)
+		err = writeDebugFunctions(buf, c, toc)
 	} else {
-		err = writeRelease(buf, c, toc)
+		err = writeReleaseFunctions(buf, c, toc)
 	}
 	if err != nil {
 		return err
@@ -95,6 +96,13 @@ func Translate(c *Config) error {
 
 	// Write table of contents
 	if err := writeTOC(buf, toc); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(buf, `// AssetDebug is true if the assets were built with the debug flag enabled.
+const AssetDebug = %t
+
+`, c.Debug)
+	if err != nil {
 		return err
 	}
 	// Write hierarchical tree of assets
@@ -107,7 +115,7 @@ func Translate(c *Config) error {
 		return err
 	}
 
-	return safefileWriteFile(c.Output, buf.Bytes(), 0666)
+	return diffAndWrite(c.Output, buf.Bytes(), 0666)
 }
 
 // findFiles recursively finds all the file paths in the given directory tree.
@@ -217,9 +225,7 @@ func findFiles(dirOrFile, prefix string, recursive bool, toc *[]Asset, ignore []
 		}
 
 		// If we have a leading slash, get rid of it.
-		if len(asset.Name) > 0 && asset.Name[0] == '/' {
-			asset.Name = asset.Name[1:]
-		}
+		asset.Name = strings.TrimPrefix(asset.Name, "/")
 
 		// This shouldn't happen.
 		if len(asset.Name) == 0 {

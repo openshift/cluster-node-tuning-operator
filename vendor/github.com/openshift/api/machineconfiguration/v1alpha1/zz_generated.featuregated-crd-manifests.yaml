@@ -1,6 +1,6 @@
 machineconfignodes.machineconfiguration.openshift.io:
   Annotations: {}
-  ApprovedPRNumber: https://github.com/openshift/api/pull/1596
+  ApprovedPRNumber: https://github.com/openshift/api/pull/2256
   CRDName: machineconfignodes.machineconfiguration.openshift.io
   Capability: ""
   Category: ""
@@ -16,26 +16,36 @@ machineconfignodes.machineconfiguration.openshift.io:
     openshift.io/operator-managed: ""
   PluralName: machineconfignodes
   PrinterColumns:
+  - jsonPath: .spec.pool.name
+    name: PoolName
+    type: string
+  - jsonPath: .spec.configVersion.desired
+    name: DesiredConfig
+    type: string
+  - jsonPath: .status.configVersion.current
+    name: CurrentConfig
+    type: string
   - jsonPath: .status.conditions[?(@.type=="Updated")].status
     name: Updated
     type: string
   - jsonPath: .status.conditions[?(@.type=="UpdatePrepared")].status
     name: UpdatePrepared
+    priority: 1
     type: string
   - jsonPath: .status.conditions[?(@.type=="UpdateExecuted")].status
     name: UpdateExecuted
+    priority: 1
     type: string
   - jsonPath: .status.conditions[?(@.type=="UpdatePostActionComplete")].status
     name: UpdatePostActionComplete
+    priority: 1
     type: string
   - jsonPath: .status.conditions[?(@.type=="UpdateComplete")].status
     name: UpdateComplete
+    priority: 1
     type: string
   - jsonPath: .status.conditions[?(@.type=="Resumed")].status
     name: Resumed
-    type: string
-  - jsonPath: .status.conditions[?(@.type=="UpdateCompatible")].status
-    name: UpdateCompatible
     priority: 1
     type: string
   - jsonPath: .status.conditions[?(@.type=="AppliedFilesAndOS")].status
@@ -52,10 +62,6 @@ machineconfignodes.machineconfiguration.openshift.io:
     type: string
   - jsonPath: .status.conditions[?(@.type=="RebootedNode")].status
     name: RebootedNode
-    priority: 1
-    type: string
-  - jsonPath: .status.conditions[?(@.type=="ReloadedCRIO")].status
-    name: ReloadedCRIO
     priority: 1
     type: string
   - jsonPath: .status.conditions[?(@.type=="Uncordoned")].status

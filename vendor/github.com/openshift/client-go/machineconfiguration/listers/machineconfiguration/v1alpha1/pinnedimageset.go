@@ -3,10 +3,10 @@
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/openshift/api/machineconfiguration/v1alpha1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/tools/cache"
+	machineconfigurationv1alpha1 "github.com/openshift/api/machineconfiguration/v1alpha1"
+	labels "k8s.io/apimachinery/pkg/labels"
+	listers "k8s.io/client-go/listers"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // PinnedImageSetLister helps list PinnedImageSets.
@@ -14,39 +14,19 @@ import (
 type PinnedImageSetLister interface {
 	// List lists all PinnedImageSets in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1alpha1.PinnedImageSet, err error)
+	List(selector labels.Selector) (ret []*machineconfigurationv1alpha1.PinnedImageSet, err error)
 	// Get retrieves the PinnedImageSet from the index for a given name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1alpha1.PinnedImageSet, error)
+	Get(name string) (*machineconfigurationv1alpha1.PinnedImageSet, error)
 	PinnedImageSetListerExpansion
 }
 
 // pinnedImageSetLister implements the PinnedImageSetLister interface.
 type pinnedImageSetLister struct {
-	indexer cache.Indexer
+	listers.ResourceIndexer[*machineconfigurationv1alpha1.PinnedImageSet]
 }
 
 // NewPinnedImageSetLister returns a new PinnedImageSetLister.
 func NewPinnedImageSetLister(indexer cache.Indexer) PinnedImageSetLister {
-	return &pinnedImageSetLister{indexer: indexer}
-}
-
-// List lists all PinnedImageSets in the indexer.
-func (s *pinnedImageSetLister) List(selector labels.Selector) (ret []*v1alpha1.PinnedImageSet, err error) {
-	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1alpha1.PinnedImageSet))
-	})
-	return ret, err
-}
-
-// Get retrieves the PinnedImageSet from the index for a given name.
-func (s *pinnedImageSetLister) Get(name string) (*v1alpha1.PinnedImageSet, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, errors.NewNotFound(v1alpha1.Resource("pinnedimageset"), name)
-	}
-	return obj.(*v1alpha1.PinnedImageSet), nil
+	return &pinnedImageSetLister{listers.New[*machineconfigurationv1alpha1.PinnedImageSet](indexer, machineconfigurationv1alpha1.Resource("pinnedimageset"))}
 }

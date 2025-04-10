@@ -10,22 +10,20 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"unicode"
 	"unicode/utf8"
 )
 
-// writeRelease writes the release code file.
-func writeRelease(w io.Writer, c *Config, toc []Asset) error {
+// writeReleaseFunctions writes the release code file.
+func writeReleaseFunctions(w io.Writer, c *Config, toc []Asset) error {
 	err := writeReleaseHeader(w, c)
 	if err != nil {
 		return err
 	}
 
 	for i := range toc {
-		err = writeReleaseAsset(w, c, &toc[i])
-		if err != nil {
+		if err := writeReleaseAsset(w, c, &toc[i]); err != nil {
 			return err
 		}
 	}
@@ -79,7 +77,7 @@ func writeReleaseAsset(w io.Writer, c *Config, asset *Asset) error {
 		if c.NoMemCopy {
 			err = compressed_nomemcopy(w, asset, tr)
 		} else {
-			err = compressed_memcopy(w, asset, tr)
+			err = compressedMemcopy(w, asset, tr)
 		}
 	}
 	if err != nil {
@@ -87,7 +85,7 @@ func writeReleaseAsset(w io.Writer, c *Config, asset *Asset) error {
 	}
 	var digest [sha256.Size]byte
 	copy(digest[:], h.Sum(nil))
-	return asset_release_common(w, c, asset, digest)
+	return assetReleaseCommon(w, c, asset, digest)
 }
 
 var (
@@ -149,7 +147,6 @@ func header_compressed_nomemcopy(w io.Writer) error {
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -159,14 +156,14 @@ func header_compressed_nomemcopy(w io.Writer) error {
 func bindataRead(data, name string) ([]byte, error) {
 	gz, err := gzip.NewReader(strings.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("read %%q: %%v", name, err)
+		return nil, fmt.Errorf("read %%q: %`+wrappedError+`", name, err)
 	}
 
 	var buf bytes.Buffer
 	_, err = io.Copy(&buf, gz)
 
 	if err != nil {
-		return nil, fmt.Errorf("read %%q: %%v", name, err)
+		return nil, fmt.Errorf("read %%q: %`+wrappedError+`", name, err)
 	}
 
 	clErr := gz.Close()
@@ -188,7 +185,6 @@ func header_compressed_memcopy(w io.Writer) error {
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -198,7 +194,7 @@ func header_compressed_memcopy(w io.Writer) error {
 func bindataRead(data []byte, name string) ([]byte, error) {
 	gz, err := gzip.NewReader(bytes.NewBuffer(data))
 	if err != nil {
-		return nil, fmt.Errorf("read %%q: %%v", name, err)
+		return nil, fmt.Errorf("read %%q: %`+wrappedError+`", name, err)
 	}
 
 	var buf bytes.Buffer
@@ -206,7 +202,7 @@ func bindataRead(data []byte, name string) ([]byte, error) {
 	clErr := gz.Close()
 
 	if err != nil {
-		return nil, fmt.Errorf("read %%q: %%v", name, err)
+		return nil, fmt.Errorf("read %%q: %`+wrappedError+`", name, err)
 	}
 	if clErr != nil {
 		return nil, err
@@ -223,7 +219,6 @@ func header_uncompressed_nomemcopy(w io.Writer) error {
 	_, err := fmt.Fprintf(w, `import (
 	"crypto/sha256"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -251,7 +246,6 @@ func header_uncompressed_memcopy(w io.Writer) error {
 	_, err := fmt.Fprintf(w, `import (
 	"crypto/sha256"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -326,7 +320,7 @@ func %sBytes() ([]byte, error) {
 	return err
 }
 
-func compressed_memcopy(w io.Writer, asset *Asset, r io.Reader) error {
+func compressedMemcopy(w io.Writer, asset *Asset, r io.Reader) error {
 	_, err := fmt.Fprintf(w, `var _%s = []byte("`, asset.Func)
 	if err != nil {
 		return err
@@ -401,7 +395,7 @@ func uncompressed_memcopy(w io.Writer, asset *Asset, r io.Reader) error {
 		return err
 	}
 
-	b, err := ioutil.ReadAll(r)
+	b, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}
@@ -421,7 +415,7 @@ func %sBytes() ([]byte, error) {
 	return err
 }
 
-func asset_release_common(w io.Writer, c *Config, asset *Asset, digest [sha256.Size]byte) error {
+func assetReleaseCommon(w io.Writer, c *Config, asset *Asset, digest [sha256.Size]byte) error {
 	fi, err := os.Stat(asset.Path)
 	if err != nil {
 		return err

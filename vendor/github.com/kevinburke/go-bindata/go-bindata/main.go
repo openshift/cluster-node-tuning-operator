@@ -17,15 +17,13 @@ import (
 
 func main() {
 	cfg := parseArgs()
-	err := bindata.Translate(cfg)
-
-	if err != nil {
+	if err := bindata.Translate(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "bindata: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-// parseArgs create s a new, filled configuration instance
+// parseArgs creates a new, filled configuration instance
 // by reading and parsing command line options.
 //
 // This function exits the program with an error, if
@@ -62,7 +60,12 @@ func parseArgs() *bindata.Config {
 
 	patterns := make([]*regexp.Regexp, 0)
 	for _, pattern := range ignore {
-		patterns = append(patterns, regexp.MustCompile(pattern))
+		rx, err := regexp.Compile(pattern)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "could not parse --ignore flag %q as regex: %v\n", pattern, err)
+			os.Exit(1)
+		}
+		patterns = append(patterns, rx)
 	}
 	c.Ignore = patterns
 
