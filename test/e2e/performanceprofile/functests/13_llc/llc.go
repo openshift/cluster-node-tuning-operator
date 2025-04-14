@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -54,16 +55,16 @@ const (
 
 var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.OpenShift)), Ordered, func() {
 	var (
-		workerRTNodes      []corev1.Node
-		perfProfile        *performancev2.PerformanceProfile
-		performanceMCP     string
-		err                error
-		profileAnnotations map[string]string
-		poolName           string
-		llcPolicy          string
-		mc                 *machineconfigv1.MachineConfig
-		getter             cgroup.ControllersGetter
-		cgroupV2           bool
+		workerRTNodes               []corev1.Node
+		initialProfile, perfProfile        *performancev2.PerformanceProfile
+		performanceMCP              string
+		err                         error
+		profileAnnotations          map[string]string
+		poolName                    string
+		llcPolicy                   string
+		mc                          *machineconfigv1.MachineConfig
+		getter                      cgroup.ControllersGetter
+		cgroupV2                    bool
 	)
 
 	BeforeAll(func() {
@@ -78,6 +79,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 
 		perfProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
+		initialProfile = perfProfile.DeepCopy()
 
 		getter, err = cgroup.BuildGetter(ctx, testclient.DataPlaneClient, testclient.K8sClient)
 		Expect(err).ToNot(HaveOccurred())
@@ -134,13 +136,13 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 		perfProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		perfProfile.Annotations = nil
 		By("updating performance profile")
-		profiles.UpdateWithRetry(perfProfile)
+		profiles.UpdateWithRetry(initialProfile)
 
 		By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-		profilesupdate.WaitForTuningUpdating(ctx, perfProfile)
+		profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
 		By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-		profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
+		profilesupdate.WaitForTuningUpdated(ctx, initialProfile)
 
 		// delete the machine config pool
 		Expect(testclient.Client.Delete(ctx, mc)).To(Succeed())
@@ -213,9 +215,9 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 		})
 	})
 	Context("Functional Tests", func() {
+		var L3CacheGroupSize int
 		BeforeAll(func() {
 			var (
-				cpuGroupSize       int
 				numaCoreSiblings   map[int]map[int][]int
 				reserved, isolated []string
 				policy             = "single-numa-node"
@@ -233,8 +235,8 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				getCCX := nodes.GetL3SharedCPUs(&cnfnode)
 				cpus, err := getCCX(0)
 				Expect(err).ToNot(HaveOccurred())
-				cpuGroupSize = cpus.Size()
-				if len(numaInfo[0]) == cpuGroupSize {
+				L3CacheGroupSize = cpus.Size()
+				if len(numaInfo[0]) == L3CacheGroupSize {
 					Skip("This test requires systems where L3 cache is shared amount subset of cpus")
 				}
 			}
@@ -291,8 +293,10 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			targetNode := workerRTNodes[0]
 			cpusetCfg := &controller.CpuSet{}
 			deploymentName := "test-deployment1"
+			getCCX := nodes.GetL3SharedCPUs(&targetNode)
+
 			rl := &corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse("16"),
+				corev1.ResourceCPU:    resource.MustParse(strconv.Itoa(L3CacheGroupSize)),
 				corev1.ResourceMemory: resource.MustParse("100Mi"),
 			}
 			podLabel["test-app"] = "telco1"
@@ -320,7 +324,6 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			testpodCpuset, err := cpuset.Parse(cpusetCfg.Cpus)
 			testlog.TaggedInfof("Pod", "CPUs used by %q are: %q", testpod.Name, testpodCpuset.String())
 			Expect(err).ToNot(HaveOccurred())
-			getCCX := nodes.GetL3SharedCPUs(&targetNode)
 			// fetch ccx to which cpu used by pod is part of
 			cpus, err := getCCX(testpodCpuset.List()[0])
 			testlog.TaggedInfof("L3 Cache Group", "CPU Group sharing L3 Cache to which %s is alloted are: %s ", testpod.Name, cpus.String())
@@ -338,7 +341,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			deploymentName := "test-deployment2"
 			getCCX := nodes.GetL3SharedCPUs(&targetNode)
 			rl := &corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse("16"),
+				corev1.ResourceCPU:    resource.MustParse(strconv.Itoa(L3CacheGroupSize)),
 				corev1.ResourceMemory: resource.MustParse("100Mi"),
 			}
 			podLabel["test-app"] = "telco2"
@@ -413,23 +416,23 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			Expect(err).ToNot(HaveOccurred())
 			Expect(cgroupCpuset).To(Equal(cpus))
 			testlog.TaggedInfof("L3 Cache Group", "L3 Cache group associated with Pod %s using cpu %d is %q: ", testpod.Name, cgroupCpuset.List()[0], cpus)
-
 		})
 
 		It("[test_id:77725]  Verify guaranteed pod consumes the whole Uncore group after kubelet restart", func() {
 			ctx := context.Background()
 			podLabel := make(map[string]string)
 			targetNode := workerRTNodes[0]
+			getCCX := nodes.GetL3SharedCPUs(&targetNode)
+			// fetch size of shared cpus by passing cpuid 1
 			cpusetCfg := &controller.CpuSet{}
 			deploymentName := "test-deployment3"
 			rl := &corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse("16"),
+				corev1.ResourceCPU:    resource.MustParse(strconv.Itoa(L3CacheGroupSize)),
 				corev1.ResourceMemory: resource.MustParse("100Mi"),
 			}
 			podLabel["test-app"] = "telco3"
 			dp, err := createDeployment(ctx, deploymentName, podLabel, &targetNode, rl)
 			Expect(err).ToNot(HaveOccurred())
-			getCCX := nodes.GetL3SharedCPUs(&targetNode)
 			defer func() {
 				// delete deployment
 				testlog.TaggedInfof("Cleanup", "Deleting Deployment %v", deploymentName)
