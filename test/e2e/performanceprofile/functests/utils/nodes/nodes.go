@@ -386,22 +386,20 @@ func GetByCpuCapacity(nodesList []corev1.Node, cpuQty int) []corev1.Node {
 
 // GetAndRemoveCpuSiblingsFromMap function returns the cpus siblings associated with core
 // Also updates the map by deleting the cpu siblings returned
-func GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings map[int]map[int][]int, coreId int) []string {
-	var cpuSiblings []string
+func GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings map[int]map[int][]int, coreId int) cpuset.CPUSet {
+	var cpuSiblings []int
 	// Iterate over the  Numa node in the map
 	for node := range numaCoreSiblings {
 		// Check if the coreId exists in the Numa node
 		_, ok := numaCoreSiblings[node][coreId]
 		if ok {
 			// Iterate over the siblings of the coreId
-			for _, sibling := range numaCoreSiblings[node][coreId] {
-				cpuSiblings = append(cpuSiblings, strconv.Itoa(sibling))
-			}
-			// Delete the cpusiblings of that particular coreid
-			delete(numaCoreSiblings[node], coreId)
+			cpuSiblings = append(cpuSiblings, numaCoreSiblings[node][coreId]...)
 		}
+		// Delete the cpusiblings of that particular coreid
+		delete(numaCoreSiblings[node], coreId)
 	}
-	return cpuSiblings
+	return cpuset.New(cpuSiblings...)
 }
 
 // GetNumaRanges function Splits the numa Siblings in to multiple Ranges
