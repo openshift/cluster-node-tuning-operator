@@ -56,7 +56,7 @@ const (
 var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.OpenShift)), Ordered, func() {
 	var (
 		workerRTNodes               []corev1.Node
-		initialProfile, perfProfile        *performancev2.PerformanceProfile
+		initialProfile, perfProfile *performancev2.PerformanceProfile
 		performanceMCP              string
 		err                         error
 		profileAnnotations          map[string]string
@@ -287,8 +287,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			})
 		})
 
-		It("[test_id:77725] Align Guaranteed pod requesting 16 cpus to the whole CCX if available", func() {
-			ctx := context.Background()
+		It("[test_id:77725] Align Guaranteed pod requesting 16 cpus to the whole CCX if available", func(ctx context.Context) {
 			podLabel := make(map[string]string)
 			targetNode := workerRTNodes[0]
 			cpusetCfg := &controller.CpuSet{}
@@ -332,8 +331,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			Expect(testpodCpuset).To(Equal(cpus))
 		})
 
-		It("[test_id:77725] Verify guaranteed pod consumes the whole Uncore group after reboot", func() {
-			ctx := context.Background()
+		It("[test_id:77725] Verify guaranteed pod consumes the whole Uncore group after reboot", func(ctx context.Context) {
 			var err error
 			podLabel := make(map[string]string)
 			targetNode := workerRTNodes[0]
@@ -418,8 +416,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			testlog.TaggedInfof("L3 Cache Group", "L3 Cache group associated with Pod %s using cpu %d is %q: ", testpod.Name, cgroupCpuset.List()[0], cpus)
 		})
 
-		It("[test_id:77725]  Verify guaranteed pod consumes the whole Uncore group after kubelet restart", func() {
-			ctx := context.Background()
+		It("[test_id:77725]  Verify guaranteed pod consumes the whole Uncore group after kubelet restart", func(ctx context.Context) {
 			podLabel := make(map[string]string)
 			targetNode := workerRTNodes[0]
 			getCCX := nodes.GetL3SharedCPUs(&targetNode)
@@ -505,8 +502,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			testlog.TaggedInfof("L3 Cache Group", "L3 Cache group associated with Pod %s using cpu %d is: %q", testpod.Name, cgroupCpuset.List()[0], cpus)
 		})
 
-		It("[test_id:77726] Multiple Pods are not sharing same L3 cache", func() {
-			ctx := context.Background()
+		It("[test_id:77726] Multiple Pods are not sharing same L3 cache", func(ctx context.Context) {
 			targetNode := workerRTNodes[0]
 			// create 2 deployments creating 2 gu pods asking for 8 cpus each
 			cpusetCfg := &controller.CpuSet{}
