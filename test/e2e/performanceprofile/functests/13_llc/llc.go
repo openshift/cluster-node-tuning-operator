@@ -78,7 +78,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 
 		perfProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
-		//initialProfile = perfProfile.DeepCopy()
+		initialProfile = perfProfile.DeepCopy()
 
 		getter, err = cgroup.BuildGetter(ctx, testclient.DataPlaneClient, testclient.K8sClient)
 		Expect(err).ToNot(HaveOccurred())
@@ -241,13 +241,12 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 					Skip("This test requires systems where L3 cache is shared amount subset of cpus")
 				}
 			}
-			testlog.Info("Modifying profile with reserved cpus %s and isolated cpus %s", reserved.String(), isolated.String())
 			// Modify the profile such that we give 1 whole ccx to reserved cpus
 			By("Modifying the profile")
 			isolated = onlineCPUSet.Difference(reserved)
 			reservedSet := performancev2.CPUSet(reserved.String())
 			isolatedSet := performancev2.CPUSet(isolated.String())
-			testlog.Info("Modifying profile with reserved cpus %s and isolated cpus %s", reserved.String(), isolated.String())
+			testlog.Infof("Modifying profile with reserved cpus %s and isolated cpus %s", reserved.String(), isolated.String())
 			profile.Spec.CPU = &performancev2.CPU{
 				Reserved: &reservedSet,
 				Isolated: &isolatedSet,
@@ -272,7 +271,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			})
 		})
 
-		It("[test_id:77725] Align Guaranteed pod requesting L3Cache group size cpus", Label("llc1"), func(ctx context.Context) {
+		It("[test_id:77725] Align Guaranteed pod requesting L3Cache group size cpus", func(ctx context.Context) {
 			podLabel := make(map[string]string)
 			targetNode := workerRTNodes[0]
 			cpusetCfg := &controller.CpuSet{}
