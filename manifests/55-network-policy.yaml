@@ -1,0 +1,78 @@
+# NOTE: NetworkPolicy behaviour for hostNetwork pods (tuned) is undefined
+# https://kubernetes.io/docs/concepts/services-networking/network-policies/#networkpolicy-and-hostnetwork-pods
+# Add rules for tuned pods even though most network plugins are unable to
+# distinguish hostNetwork pod traffic from all other traffic.
+
+# The "default" policy for a namespace which denies all ingress and egress traffic.
+# This ensures that even pods that aren't selected by any other NetworkPolicy will
+# not be allowed ingress or egress traffic.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+
+# Allow access to the API server.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-api-server
+  namespace: openshift-cluster-node-tuning-operator
+spec:
+  egress:
+  - ports:
+    - port: 6443
+      protocol: TCP
+  podSelector:
+    matchExpressions:
+    - { key: name, operator: In, values: [cluster-node-tuning-operator, tuned] }
+  policyTypes:
+  - Egress
+
+# Allow access to the metrics server from openshift-monitoring namespace.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-metrics-traffic
+  namespace: openshift-cluster-node-tuning-operator
+spec:
+  ingress:
+  - ports:
+    - port: 60000
+      protocol: TCP
+    # In theory, only access from the openshift-monitoring namespace is needed.
+    # However, our e2e tests access the server from ns/openshift-cluster-node-tuning-operator.
+    # from:
+    # - namespaceSelector:
+    #     matchLabels:
+    #       name: openshift-monitoring
+  podSelector:
+    matchLabels:
+      name: cluster-node-tuning-operator
+  policyTypes:
+  - Ingress
+
+# Allow access to the webhook server.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-webhook-traffic
+  namespace: openshift-cluster-node-tuning-operator
+spec:
+  ingress:
+  - ports:
+    - port: 4343
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      name: cluster-node-tuning-operator
+  policyTypes:
+  - Ingress
