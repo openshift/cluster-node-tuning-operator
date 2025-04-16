@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -79,7 +78,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 
 		perfProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
-		initialProfile = perfProfile.DeepCopy()
+		//initialProfile = perfProfile.DeepCopy()
 
 		getter, err = cgroup.BuildGetter(ctx, testclient.DataPlaneClient, testclient.K8sClient)
 		Expect(err).ToNot(HaveOccurred())
@@ -128,11 +127,11 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 		}
 	})
 
-	AfterAll(func() {
+	AfterAll(func(ctx context.Context) {
 
 		// Delete machine config created to enable uncocre cache cpumanager policy option
 		// first make sure the profile doesn't have the annotation
-		ctx := context.Background()
+		By("Reverting Performance Profile")
 		perfProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		perfProfile.Annotations = nil
 		By("updating performance profile")
@@ -218,9 +217,9 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 		var L3CacheGroupSize int
 		BeforeAll(func() {
 			var (
-				numaCoreSiblings   map[int]map[int][]int
-				reserved, isolated []string
+				reserved, isolated cpuset.CPUSet
 				policy             = "single-numa-node"
+				onlineCPUSet       cpuset.CPUSet
 			)
 			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
@@ -233,36 +232,22 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				}
 
 				getCCX := nodes.GetL3SharedCPUs(&cnfnode)
-				cpus, err := getCCX(0)
+				reserved, err = getCCX(0)
 				Expect(err).ToNot(HaveOccurred())
-				L3CacheGroupSize = cpus.Size()
+				onlineCPUSet, err = nodes.GetOnlineCPUsSet(context.TODO(), &cnfnode)
+				Expect(err).ToNot(HaveOccurred())
+				L3CacheGroupSize = reserved.Size()
 				if len(numaInfo[0]) == L3CacheGroupSize {
 					Skip("This test requires systems where L3 cache is shared amount subset of cpus")
 				}
 			}
+			testlog.Info("Modifying profile with reserved cpus %s and isolated cpus %s", reserved.String(), isolated.String())
 			// Modify the profile such that we give 1 whole ccx to reserved cpus
 			By("Modifying the profile")
-			for _, node := range workerRTNodes {
-				numaCoreSiblings, err = nodes.GetCoreSiblings(ctx, &node)
-				Expect(err).ToNot(HaveOccurred())
-			}
-
-			// Get cpu siblings from core 0-7
-			// Assign one whole L3 Cache group for reserved cpus.
-			for reservedCores := 0; reservedCores < 8; reservedCores++ {
-				cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, reservedCores)
-				reserved = append(reserved, cpusiblings...)
-			}
-			reservedCpus := strings.Join(reserved, ",")
-			for key := range numaCoreSiblings {
-				for k := range numaCoreSiblings[key] {
-					cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, k)
-					isolated = append(isolated, cpusiblings...)
-				}
-			}
-			isolatedCpus := strings.Join(isolated, ",")
-			reservedSet := performancev2.CPUSet(reservedCpus)
-			isolatedSet := performancev2.CPUSet(isolatedCpus)
+			isolated = onlineCPUSet.Difference(reserved)
+			reservedSet := performancev2.CPUSet(reserved.String())
+			isolatedSet := performancev2.CPUSet(isolated.String())
+			testlog.Info("Modifying profile with reserved cpus %s and isolated cpus %s", reserved.String(), isolated.String())
 			profile.Spec.CPU = &performancev2.CPU{
 				Reserved: &reservedSet,
 				Isolated: &isolatedSet,
@@ -287,7 +272,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			})
 		})
 
-		It("[test_id:77725] Align Guaranteed pod requesting 16 cpus to the whole CCX if available", func(ctx context.Context) {
+		It("[test_id:77725] Align Guaranteed pod requesting L3Cache group size cpus", Label("llc1"), func(ctx context.Context) {
 			podLabel := make(map[string]string)
 			targetNode := workerRTNodes[0]
 			cpusetCfg := &controller.CpuSet{}
@@ -502,18 +487,19 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			testlog.TaggedInfof("L3 Cache Group", "L3 Cache group associated with Pod %s using cpu %d is: %q", testpod.Name, cgroupCpuset.List()[0], cpus)
 		})
 
-		It("[test_id:77726] Multiple Pods are not sharing same L3 cache", func(ctx context.Context) {
+		It("[test_id:77726] Multiple Pods can share same L3 cache", func(ctx context.Context) {
 			targetNode := workerRTNodes[0]
 			// create 2 deployments creating 2 gu pods asking for 8 cpus each
 			cpusetCfg := &controller.CpuSet{}
 			var cpusetList []cpuset.CPUSet
 			var dpList []*appsv1.Deployment
 			podLabel := make(map[string]string)
+			podCpuSize := strconv.Itoa(L3CacheGroupSize / 2)
 			getCCX := nodes.GetL3SharedCPUs(&targetNode)
 			for i := 0; i < 2; i++ {
 				deploymentName := fmt.Sprintf("test-deployment%d", i)
 				rl := &corev1.ResourceList{
-					corev1.ResourceCPU:    resource.MustParse("8"),
+					corev1.ResourceCPU:    resource.MustParse(podCpuSize),
 					corev1.ResourceMemory: resource.MustParse("100Mi"),
 				}
 				podLabel := make(map[string]string)
