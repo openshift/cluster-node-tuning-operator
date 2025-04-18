@@ -557,7 +557,7 @@ var _ = Describe("PerformanceProfile", func() {
 
 			errors := profile.validateHugePages(nodes)
 			Expect(errors).NotTo(BeEmpty(), "should have validation error when default huge pages size has invalid value")
-			Expect(errors[0].Error()).To(ContainSubstring("hugepages default size should be equal"))
+			Expect(errors[0].Error()).To(ContainSubstring("The compatible default huge page sizes for the selected kernel page size 4k are:"))
 		})
 
 		It("should reject on incorrect default hugepages size (aarch64)", func() {
@@ -573,7 +573,7 @@ var _ = Describe("PerformanceProfile", func() {
 
 			errors := profile.validateHugePages(nodes)
 			Expect(errors).NotTo(BeEmpty(), "should have validation error when default huge pages size has invalid value")
-			Expect(errors[0].Error()).To(ContainSubstring("hugepages default size should be equal"))
+			Expect(errors[0].Error()).To(ContainSubstring("The compatible default huge page sizes for the selected kernel page size 4k are:"))
 		})
 
 		It("should reject hugepages allocation with unexpected page size (x86)", func() {
@@ -591,7 +591,7 @@ var _ = Describe("PerformanceProfile", func() {
 			})
 			errors := profile.validateHugePages(nodes)
 			Expect(errors).NotTo(BeEmpty(), "should have validation error when page with invalid format presents")
-			Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page size should be equal to one of %v", x86ValidHugepagesSizes)))
+			Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("The compatible huge page sizes for the selected kernel page size 4k are: %v", x86ValidHugepagesSizes)))
 		})
 
 		It("should reject hugepages allocation with unexpected page size (aarch64)", func() {
@@ -613,7 +613,7 @@ var _ = Describe("PerformanceProfile", func() {
 			kernelPageSize := *profile.Spec.KernelPageSize
 			errors := profile.validateHugePages(nodes)
 			Expect(errors).NotTo(BeEmpty(), "should have validation error when page with invalid format presents")
-			Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page size should be equal to one of %v", aarch64HugePagesByKernelPageSize[string(kernelPageSize)])))
+			Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("The compatible huge page sizes for the selected kernel page size 4k are: %v", aarch64HugePagesByKernelPageSize[string(kernelPageSize)])))
 		})
 
 		It("should pass when no nodes are detected with a valid hugepage size", func() {
@@ -649,7 +649,7 @@ var _ = Describe("PerformanceProfile", func() {
 
 			errors := profile.validateHugePages(nodes)
 			Expect(errors).ToNot(BeEmpty())
-			Expect(errors[0].Error()).To(ContainSubstring(("the page size should be equal to one of")))
+			Expect(errors[0].Error()).To(ContainSubstring(("The compatible huge page sizes for the selected kernel page size 4k are:")))
 		})
 		Context("KernelPageSize with HugePages validation", func() {
 			var kernelToHugePageSizeByArch = map[string]map[string][]string{
@@ -694,8 +694,8 @@ var _ = Describe("PerformanceProfile", func() {
 					errors := profile.validateHugePages(nodes)
 					if expectError {
 						Expect(errors).ToNot(BeEmpty(), "should have validation error")
-						Expect(errors[0].Error()).To(ContainSubstring("hugepages default size should be equal"))
-						Expect(errors[1].Error()).To(ContainSubstring("the page size should be equal to one of"))
+						Expect(errors[0].Error()).To(ContainSubstring("The compatible default huge page sizes for the selected kernel page size %s are:", *profile.Spec.KernelPageSize))
+						Expect(errors[1].Error()).To(ContainSubstring("The compatible huge page sizes for the selected kernel page size %s are:", *profile.Spec.KernelPageSize))
 					} else {
 						Expect(errors).To(BeEmpty(), "should not have validation error")
 					}
@@ -964,7 +964,7 @@ var _ = Describe("PerformanceProfile", func() {
 			errorMsgs := make(map[string]void)
 			errorMsgs["reserved CPUs can not be empty"] = member
 			errorMsgs["you should provide only 1 MachineConfigLabel"] = member
-			errorMsgs[fmt.Sprintf("hugepages default size should be equal to one of %v. doc reference=%s", x86ValidHugepagesSizes, "https://docs.kernel.org/mm/vmemmap_dedup.html")] = member
+			errorMsgs[fmt.Sprintf("The compatible default huge page sizes for the selected kernel page size %s are: %v. doc reference=%s", *profile.Spec.KernelPageSize, x86ValidHugepagesSizes, "https://docs.kernel.org/mm/vmemmap_dedup.html")] = member
 			errorMsgs[fmt.Sprintf("KernelPageSize should be equal to one of: %v", kernelPageSize4k)] = member
 			errorMsgs["device name cannot be empty"] = member
 			errorMsgs[fmt.Sprintf("device vendor ID %s has an invalid format. Vendor ID should be represented as 0x<4 hexadecimal digits> (16 bit representation)", invalidVendor)] = member
