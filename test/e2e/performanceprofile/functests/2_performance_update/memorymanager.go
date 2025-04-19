@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/utils/cpuset"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -54,7 +55,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 
 	Context("Group Both Numa Nodes with restricted topology", Ordered, Label(string(label.Tier2)), func() {
 		var numaCoreSiblings map[int]map[int][]int
-		var reserved, isolated []string
+		var reserved, isolated cpuset.CPUSet
 		// Number of hugepages of size 2M created on both numa nodes
 		const hpCount = 20
 		testutils.CustomBeforeAll(func() {
@@ -82,18 +83,16 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			// Get cpu siblings from core 0, 1
 			for reservedCores := 0; reservedCores < 2; reservedCores++ {
 				cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, reservedCores)
-				reserved = append(reserved, cpusiblings...)
+				reserved = reserved.Union(cpusiblings)
 			}
-			reservedCpus := strings.Join(reserved, ",")
 			for key := range numaCoreSiblings {
 				for k := range numaCoreSiblings[key] {
 					cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, k)
-					isolated = append(isolated, cpusiblings...)
+					isolated = isolated.Union(cpusiblings)
 				}
 			}
-			isolatedCpus := strings.Join(isolated, ",")
-			reservedSet := performancev2.CPUSet(reservedCpus)
-			isolatedSet := performancev2.CPUSet(isolatedCpus)
+			reservedSet := performancev2.CPUSet(reserved.String())
+			isolatedSet := performancev2.CPUSet(isolated.String())
 
 			hpSize1G := performancev2.HugePageSize("1G")
 			hpSize2M := performancev2.HugePageSize("2M")
@@ -156,7 +155,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			mm2.hpgSize = profile.Spec.HugePages.Pages[0].Size
 			targetNode := &workerRTNodes[0]
 			mm2.memory = "200Mi"
-			mm2.cpu = fmt.Sprintf("%d", len(isolated)-2)
+			mm2.cpu = fmt.Sprintf("%d", isolated.Size()-2)
 			// no. of hugepages is 20 * 2 (numazones). 40Mi
 			// we are asking for 30Mi, so it needs 2 numazones combined to
 			// satisfy the requirement
@@ -177,7 +176,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			mm2.hpgSize = profile.Spec.HugePages.Pages[0].Size
 			targetNode := &workerRTNodes[0]
 			mm2.memory = "200Mi"
-			mm2.cpu = fmt.Sprintf("%d", len(isolated)-2)
+			mm2.cpu = fmt.Sprintf("%d", isolated.Size()-2)
 			mm2.noOfhpgs = "8Mi"
 			testPod := mm2.createPodTemplate(profile, false, targetNode)
 			// Initialize test pod, check if the pod uses both numa node  0 and 1
@@ -211,10 +210,10 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 
 	Context("Numa Nodes of same Hugepage size with different hugepages count and restricted policy", Ordered, Label(string(label.Tier2)), func() {
 		var numaCoreSiblings map[int]map[int][]int
-		var reserved, isolated, available_node0_cpus, available_node1_cpus []string
+		var reserved, isolated, available_node0_cpus, available_node1_cpus cpuset.CPUSet
 		var numaZone0HugepagesCount int = 10
 		var numaZone1HugepagesCount int = 20
-		numaZone := make(map[int]map[int][]string)
+		numaZone := make(map[int]map[int]cpuset.CPUSet)
 		testutils.CustomBeforeAll(func() {
 			var policy = "restricted"
 			workerRTNodes = getUpdatedNodes()
@@ -251,19 +250,18 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 					break
 				}
 				cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, reservedCores)
-				reserved = append(reserved, cpusiblings...)
+				reserved = reserved.Union(cpusiblings)
 				count++
 			}
-			reservedCpus := strings.Join(reserved, ",")
 
 			for key := range numaCoreSiblings {
 				if numaZone[key] == nil {
-					numaZone[key] = make(map[int][]string)
+					numaZone[key] = make(map[int]cpuset.CPUSet)
 				}
 				for k := range numaCoreSiblings[key] {
 					cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, k)
-					isolated = append(isolated, cpusiblings...)
-					numaZone[key][k] = append(numaZone[key][k], cpusiblings...)
+					isolated = isolated.Union(cpusiblings)
+					numaZone[key][k] = numaZone[key][k].Union(cpusiblings)
 				}
 			}
 
@@ -272,16 +270,15 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			// are assigned to reserved.
 			// Get available cpus in numa node 0 and numa node 1
 			for core := range numaZone[0] {
-				available_node0_cpus = append(available_node0_cpus, numaZone[0][core]...)
+				available_node0_cpus = available_node0_cpus.Union(numaZone[0][core])
 			}
 
 			for core := range numaZone[1] {
-				available_node1_cpus = append(available_node1_cpus, numaZone[1][core]...)
+				available_node1_cpus = available_node1_cpus.Union(numaZone[1][core])
 			}
 
-			isolatedCpus := strings.Join(isolated, ",")
-			reservedSet := performancev2.CPUSet(reservedCpus)
-			isolatedSet := performancev2.CPUSet(isolatedCpus)
+			reservedSet := performancev2.CPUSet(reserved.String())
+			isolatedSet := performancev2.CPUSet(isolated.String())
 
 			// Enable Hugepages
 			hpSize2M := performancev2.HugePageSize("2M")
@@ -326,7 +323,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			// cpus of numa zone1 will be greater than numa zone0 because we used 4 cpus from numa zone0 for reserved.
 			// so number of cpus will be total number of available cpus on numazone0 + 2
 			// which can be satisfied by cpus of numa zone 1 only.
-			mm1.cpu = fmt.Sprintf("%d", len(available_node0_cpus)+2)
+			mm1.cpu = fmt.Sprintf("%d", available_node0_cpus.Size()+2)
 			// we are requesting 14Mi hugepages which again can be satisfied by numa zone 1
 			// since numa zone 0 has only 10Mi hugepages
 			mm1.noOfhpgs = "14Mi"
@@ -349,11 +346,11 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			targetNode := &workerRTNodes[0]
 			mm1.memory = "200Mi"
 			mm1.hpgSize = profile.Spec.HugePages.Pages[1].Size
-			var availableCpusOnZone1 = len(available_node1_cpus)
+			var availableCpusOnZone1 = available_node1_cpus.Size()
 			// cpus of numa zone1 will be greater than numa zone0 because  we used 4 cpus from numa zone0 for reserved.
 			// so number of cpus will be total number of available cpus on numazone 0 + 2
 			// which can be satisfied by cpus of numa zone 1 only.
-			mm1.cpu = fmt.Sprintf("%d", len(available_node0_cpus)+2)
+			mm1.cpu = fmt.Sprintf("%d", available_node0_cpus.Size()+2)
 			// Reduce the cpus taken for testPod1 from availablecpus on numa zone1
 			availableCpusOnZone1 = availableCpusOnZone1 - 2
 			// we are requesting 14Mi hugepages which again can be satisfed by numa zone 1
@@ -407,7 +404,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 
 	Context("Group Both Numa Nodes with single-numa-node topology", Ordered, Label(string(label.Tier2)), func() {
 		var numaCoreSiblings map[int]map[int][]int
-		var reserved, isolated []string
+		var reserved, isolated cpuset.CPUSet
 		var err error
 		// Number of hugepages of size 2M
 		const hpCount = 20
@@ -435,18 +432,16 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			// Get cpu siblings from core 0, 1
 			for reservedCores := 0; reservedCores < 2; reservedCores++ {
 				cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, reservedCores)
-				reserved = append(reserved, cpusiblings...)
+				reserved = reserved.Union(cpusiblings)
 			}
-			reservedCpus := strings.Join(reserved, ",")
 			for key := range numaCoreSiblings {
 				for k := range numaCoreSiblings[key] {
 					cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, k)
-					isolated = append(isolated, cpusiblings...)
+					isolated = isolated.Union(cpusiblings)
 				}
 			}
-			isolatedCpus := strings.Join(isolated, ",")
-			reservedSet := performancev2.CPUSet(reservedCpus)
-			isolatedSet := performancev2.CPUSet(isolatedCpus)
+			reservedSet := performancev2.CPUSet(reserved.String())
+			isolatedSet := performancev2.CPUSet(isolated.String())
 
 			// Enable Hugepages
 			hpSize2M := performancev2.HugePageSize("2M")
@@ -516,11 +511,11 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 
 	Context("Numa Nodes with different hugepage size and single-numa-node policy", Ordered, Label(string(label.Tier2)), func() {
 		var numaCoreSiblings map[int]map[int][]int
-		var reserved, isolated, available_node0_cpus, available_node1_cpus []string
+		var reserved, isolated, available_node0_cpus, available_node1_cpus cpuset.CPUSet
 		var numaZone0HugepagesCount int = 10
 		var numaZone1HugepagesCount int = 10
 		var err error
-		numaZone := make(map[int]map[int][]string)
+		numaZone := make(map[int]map[int]cpuset.CPUSet)
 		testutils.CustomBeforeAll(func() {
 			var policy = "single-numa-node"
 			workerRTNodes = getUpdatedNodes()
@@ -546,18 +541,17 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			// Get cpu siblings from core 0, 1
 			for reservedCores := 0; reservedCores < 2; reservedCores++ {
 				cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, reservedCores)
-				reserved = append(reserved, cpusiblings...)
+				reserved = reserved.Union(cpusiblings)
 			}
-			reservedCpus := strings.Join(reserved, ",")
 
 			for key := range numaCoreSiblings {
 				if numaZone[key] == nil {
-					numaZone[key] = make(map[int][]string)
+					numaZone[key] = make(map[int]cpuset.CPUSet)
 				}
 				for k := range numaCoreSiblings[key] {
 					cpusiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, k)
-					isolated = append(isolated, cpusiblings...)
-					numaZone[key][k] = append(numaZone[key][k], cpusiblings...)
+					isolated = isolated.Union(cpusiblings)
+					numaZone[key][k] = numaZone[key][k].Union(cpusiblings)
 				}
 			}
 
@@ -566,16 +560,15 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			// are assigned to reserved.
 			// Get available cpus in numa node 0 and numa node 1
 			for core := range numaZone[0] {
-				available_node0_cpus = append(available_node0_cpus, numaZone[0][core]...)
+				available_node0_cpus = available_node0_cpus.Union(numaZone[0][core])
 			}
 
 			for core := range numaZone[1] {
-				available_node1_cpus = append(available_node1_cpus, numaZone[1][core]...)
+				available_node1_cpus = available_node0_cpus.Union(numaZone[1][core])
 			}
 
-			isolatedCpus := strings.Join(isolated, ",")
-			reservedSet := performancev2.CPUSet(reservedCpus)
-			isolatedSet := performancev2.CPUSet(isolatedCpus)
+			reservedSet := performancev2.CPUSet(reserved.String())
+			isolatedSet := performancev2.CPUSet(isolated.String())
 
 			// Enable Hugepages
 			hpSize2M := performancev2.HugePageSize("2M")
@@ -617,7 +610,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			mm1.memory = "200Mi"
 			mm1.hpgSize = profile.Spec.HugePages.Pages[0].Size
 			targetNode := &workerRTNodes[0]
-			mm1.cpu = fmt.Sprintf("%d", len(available_node0_cpus)-2)
+			mm1.cpu = fmt.Sprintf("%d", available_node0_cpus.Size()-2)
 			mm1.hpgSize = "2M"
 			// we are requesting 8Mi hugepages which again can be satisfied by numa zone 0
 			mm1.noOfhpgs = "8Mi"
@@ -635,7 +628,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			mm2.noOfhpgs = "4Gi"
 			mm2.memory = "200Mi"
 			mm2.hpgSize = profile.Spec.HugePages.Pages[1].Size
-			mm2.cpu = fmt.Sprintf("%d", len(available_node1_cpus)-2)
+			mm2.cpu = fmt.Sprintf("%d", available_node1_cpus.Size()-2)
 			testPod2 := mm2.createPodTemplate(profile, true, targetNode)
 			// Initialize test pod, check if the pod uses Numa node 1
 			err = initializePod(context.TODO(), testPod2)
@@ -781,7 +774,7 @@ func GetMemoryNodes(ctx context.Context, testPod *corev1.Pod, targetNode *corev1
 	}
 	containerCgroup, err = cgroup.PidParser(out)
 	Expect(err).ToNot(HaveOccurred())
-	fmt.Println("Container Cgroup = ", containerCgroup)
+	testlog.Infof("cgroup path = %s", containerCgroup)
 	cgroupv2, err := cgroup.IsVersion2(context.TODO(), testclient.DataPlaneClient)
 	if err != nil {
 		return "", err
