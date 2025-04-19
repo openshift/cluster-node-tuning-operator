@@ -25,6 +25,7 @@ var _ = ginkgo.Describe("[basic][modules] Node Tuning Operator load kernel modul
 	ginkgo.Context("module loading", func() {
 		var (
 			node *coreapi.Node
+			pod  *coreapi.Pod
 		)
 
 		// Cleanup code to roll back cluster changes done by this test even if it fails in the middle of ginkgo.It()
@@ -35,6 +36,7 @@ var _ = ginkgo.Describe("[basic][modules] Node Tuning Operator load kernel modul
 				_, _, _ = util.ExecAndLogCommand("oc", "label", "node", "--overwrite", node.Name, nodeLabelModules+"-")
 			}
 			_, _, _ = util.ExecAndLogCommand("oc", "delete", "-n", ntoconfig.WatchNamespace(), "-f", profileModules)
+			_, _ = util.ExecCmdInPod(pod, "rmmod", moduleName)
 		})
 
 		ginkgo.It(fmt.Sprintf("modules: %s loaded", moduleName), func() {
@@ -51,7 +53,7 @@ var _ = ginkgo.Describe("[basic][modules] Node Tuning Operator load kernel modul
 
 			node = &nodes[0]
 			ginkgo.By(fmt.Sprintf("getting a TuneD Pod running on node %s", node.Name))
-			pod, err := util.GetTunedForNode(cs, node)
+			pod, err = util.GetTunedForNode(cs, node)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("labelling node %s with label %s", node.Name, nodeLabelModules))
@@ -59,8 +61,7 @@ var _ = ginkgo.Describe("[basic][modules] Node Tuning Operator load kernel modul
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			ginkgo.By(fmt.Sprintf("trying to remove the %s module if loaded", moduleName))
-			_, err = util.ExecCmdInPod(pod, "rmmod", moduleName)
-			gomega.Expect(err).To(gomega.HaveOccurred())
+			_, _ = util.ExecCmdInPod(pod, "rmmod", moduleName)
 
 			ginkgo.By(fmt.Sprintf("ensuring the %s module is not loaded", moduleName))
 			_, err = util.ExecCmdInPod(pod, cmdGrepModule...)
