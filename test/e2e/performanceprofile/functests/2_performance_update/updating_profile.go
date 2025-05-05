@@ -1047,9 +1047,13 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				}
 				sort.Ints(coreids)
 				Expect(len(coreids)).ToNot(Equal(0))
-				middleCoreIds := coreids[len(coreids)/2]
-				coresiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, middleCoreIds)
-				reserved = reserved.Union(coresiblings)
+				middleIndex := len(coreids) / 2
+				// we need at least 4 cpus for reserved cpus
+				middleCoreIds := coreids[middleIndex-2 : middleIndex+2]
+				for _, cores := range middleCoreIds {
+					coresiblings := nodes.GetAndRemoveCpuSiblingsFromMap(numaCoreSiblings, cores)
+					reserved = reserved.Union(coresiblings)
+				}
 			}
 			for numaNode := range numaCoreSiblings {
 				for coreids := range numaCoreSiblings[numaNode] {
