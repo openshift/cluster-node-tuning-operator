@@ -34,7 +34,7 @@ func GetPullTimeout() (time.Duration, error) {
 }
 
 // PrePull makes sure the image is pre-pulled on the relevant nodes.
-func PrePull(cli client.Client, pullSpec, namespace, tag string) (*appsv1.DaemonSet, error) {
+func PrePull(ctx context.Context, cli client.Client, pullSpec, namespace, tag string) (*appsv1.DaemonSet, error) {
 	name := PrePullPrefix + tag
 	ds := appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -82,10 +82,10 @@ func PrePull(cli client.Client, pullSpec, namespace, tag string) (*appsv1.Daemon
 	data, _ := json.Marshal(ds)
 	testlog.Infof("created daemonset %s/%s to prepull %q:\n%s", namespace, name, pullSpec, string(data))
 
-	err = testds.WaitToBeRunningWithTimeout(testclient.Client, ds.Namespace, ds.Name, prePullTimeout)
+	err = testds.WaitToBeRunningWithTimeout(ctx, testclient.Client, ds.Namespace, ds.Name, prePullTimeout)
 	if err != nil {
 		// if this fails, no big deal, we are just trying to make the troubleshooting easier
-		updatedDs, _ := testds.GetByName(testclient.Client, ds.Namespace, ds.Name)
+		updatedDs, _ := testds.GetByName(ctx, testclient.Client, ds.Namespace, ds.Name)
 		return updatedDs, err
 	}
 	testlog.Infof("prepulled %q in %v", pullSpec, time.Since(ts))

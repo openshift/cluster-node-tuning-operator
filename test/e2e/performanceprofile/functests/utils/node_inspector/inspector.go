@@ -89,7 +89,7 @@ func create(ctx context.Context) error {
 		}
 		testlog.Warningf("Node Inspector Daemonset %s already exists, this is not expected.", testutils.NodeInspectorName)
 	}
-	if err := daemonset.WaitToBeRunning(testclient.DataPlaneClient, testutils.NodeInspectorNamespace, testutils.NodeInspectorName); err != nil {
+	if err := daemonset.WaitToBeRunning(ctx, testclient.DataPlaneClient, testutils.NodeInspectorNamespace, testutils.NodeInspectorName); err != nil {
 		return err
 	}
 	initialized = true
@@ -128,7 +128,7 @@ func isRunning(ctx context.Context) (bool, error) {
 		}
 		return true, nil
 	}
-	return daemonset.IsRunning(testclient.DataPlaneClient, testutils.NodeInspectorNamespace, testutils.NodeInspectorName)
+	return daemonset.IsRunning(ctx, testclient.DataPlaneClient, testutils.NodeInspectorNamespace, testutils.NodeInspectorName)
 }
 
 // getDaemonPodByNode returns the daemon pod that runs on the specified node
