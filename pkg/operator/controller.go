@@ -87,6 +87,10 @@ type Controller struct {
 	// tracked as having kernel command-line conflict due to belonging
 	// to the same MCP.
 	bootcmdlineConflict map[string]bool
+
+	// mcLabelsAcrossMCP is the internal operator's cache of Profiles
+	// tracked as using machineConfigLabels that match across multiple MCPs.
+	mcLabelsAcrossMCP map[string]bool
 }
 
 type wqKey struct {
@@ -118,6 +122,7 @@ func NewController() (*Controller, error) {
 	}
 
 	controller.bootcmdlineConflict = map[string]bool{}
+	controller.mcLabelsAcrossMCP = map[string]bool{}
 
 	// Initial event to bootstrap CR if it doesn't exist.
 	controller.workqueue.AddRateLimited(wqKey{kind: wqKindTuned, name: tunedv1.TunedDefaultResourceName})
@@ -592,6 +597,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 
 	profileMf.Name = nodeName
 	delete(c.bootcmdlineConflict, nodeName)
+	delete(c.mcLabelsAcrossMCP, nodeName)
 	nodeLabels, err := c.pc.nodeLabelsGet(nodeName)
 	if err != nil {
 		// Remove Profiles for Nodes which no longer exist.
@@ -775,6 +781,7 @@ func (c *Controller) syncMachineConfig(labels map[string]string, profile *tunedv
 		// Log an error and do not requeue, this is a configuration issue.
 		klog.Errorf("profile %v uses machineConfigLabels that match across multiple MCPs (%v); this is not supported",
 			profile.Name, printMachineConfigPoolsNames(pools))
+		c.mcLabelsAcrossMCP[profile.Name] = true
 		return nil
 	}
 
