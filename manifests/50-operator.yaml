@@ -26,10 +26,11 @@ spec:
         runAsUser: 499
       serviceAccountName: cluster-node-tuning-operator
       nodeSelector:
-        node-role.kubernetes.io/master: ""
+        node-role.kubernetes.io/control-plane: ""
       priorityClassName: "system-cluster-critical"
       tolerations:
-      - key: node-role.kubernetes.io/master  # Just tolerate NoSchedule taint on master node. If there are other conditions like disk-pressure etc, let's not schedule the control-plane pods onto that node.
+      - key: node-role.kubernetes.io/master # This currently cannot be changed to control-plane, otherwise we get failed scheduling with "untolerated taint".
+        # Tolerate NoSchedule taint on control-plane. If there are other conditions like disk-pressure etc, let's not schedule the control-plane pods onto that node.
         operator: Exists
         effect: "NoSchedule"
       - key: "node.kubernetes.io/unreachable"
