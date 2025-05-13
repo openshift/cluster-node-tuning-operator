@@ -36,9 +36,9 @@ import (
 	"k8s.io/utils/ptr"
 
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
-	"github.com/openshift/cluster-node-tuning-operator/cmd/performance-profile-creator/cmd/pkg/hypershift"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/cmd/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/serialize"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/toleration"
 )

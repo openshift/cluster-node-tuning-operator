@@ -19,7 +19,7 @@ package main
 import (
 	"os"
 
-	"github.com/openshift/cluster-node-tuning-operator/cmd/performance-profile-creator/cmd"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/cmd"
 )
 
 func main() {
