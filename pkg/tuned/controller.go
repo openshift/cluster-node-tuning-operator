@@ -154,6 +154,8 @@ type Change struct {
 	provider string
 	// Should we turn the reapply_sysctl TuneD option on in tuned-main.conf file?
 	reapplySysctl bool
+	// What should be the value of the startup_udev_settle_wait TuneD option in tuned-main.conf file?
+	startupUdevSettleWait uint64
 	// The current recommended profile as calculated by the operator.
 	recommendedProfile string
 
@@ -186,6 +188,9 @@ func (ch Change) String() string {
 	}
 	if ch.reapplySysctl {
 		items = append(items, "reapplySysctl:true")
+	}
+	if ch.startupUdevSettleWait != 0 {
+		items = append(items, fmt.Sprintf("startupUdevSettleWait:%d", ch.startupUdevSettleWait))
 	}
 	if ch.recommendedProfile != "" {
 		items = append(items, fmt.Sprintf("recommendedProfile:%q", ch.recommendedProfile))
@@ -358,9 +363,15 @@ func (c *Controller) sync(key wqKeyKube) error {
 		} else {
 			klog.Infof("set log level %d", profile.Spec.Config.Verbosity)
 		}
+		// The default value of 'reapply_sysctl' is True in both NTO and TuneD.
 		change.reapplySysctl = true
 		if profile.Spec.Config.TuneDConfig.ReapplySysctl != nil {
 			change.reapplySysctl = *profile.Spec.Config.TuneDConfig.ReapplySysctl
+		}
+		// The default value of 'startup_udev_settle_wait' is 20 in NTO.
+		change.startupUdevSettleWait = 20
+		if profile.Spec.Config.TuneDConfig.StartupUdevSettleWait != nil {
+			change.startupUdevSettleWait = *profile.Spec.Config.TuneDConfig.StartupUdevSettleWait
 		}
 		change.deferredMode = util.GetDeferredUpdateAnnotation(profile.Annotations)
 		// Notify the event processor that the Profile k8s object containing information about which TuneD profile to apply changed.
@@ -1064,7 +1075,14 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 		}
 
 		// Does the current TuneD process have the reapply_sysctl option turned on?
-		if reapplySysctl := c.tunedMainCfg.Section("").Key("reapply_sysctl").MustBool(); reapplySysctl != change.reapplySysctl {
+		var reapplySysctl bool
+		if len(c.tunedMainCfg.Section("").Key("reapply_sysctl").Value()) == 0 {
+			// The default value of 'reapply_sysctl' is True when undefined.
+			reapplySysctl = true
+		} else {
+			reapplySysctl = c.tunedMainCfg.Section("").Key("reapply_sysctl").MustBool()
+		}
+		if reapplySysctl != change.reapplySysctl {
 			klog.V(4).Infof("reapplySysctl rewriting configuration file")
 			if err = iniCfgSetKey(c.tunedMainCfg, "reapply_sysctl", !reapplySysctl); err != nil {
 				return false, err
@@ -1074,6 +1092,21 @@ func (c *Controller) changeSyncerTuneD(change Change) (synced bool, err error) {
 				return false, fmt.Errorf("failed to write global TuneD configuration file: %w", err)
 			}
 			klog.V(4).Infof("reapplySysctl triggering tuned restart")
+			restart = true // A complete restart of the TuneD daemon is needed due to configuration change in tuned-main.conf file.
+		}
+
+		// Does the current TuneD process have the startup_udev_settle_wait option turned on?
+		// The default value of 'startup_udev_settle_wait' is 0 when the option is not defined, which matches the logic (value 0) below.
+		if startupUdevSettleWait := c.tunedMainCfg.Section("").Key("startup_udev_settle_wait").MustUint64(); startupUdevSettleWait != change.startupUdevSettleWait {
+			klog.V(4).Infof("startupUdevSettleWait rewriting configuration file")
+			if err = iniCfgSetKey(c.tunedMainCfg, "startup_udev_settle_wait", change.startupUdevSettleWait); err != nil {
+				return false, err
+			}
+			err = iniFileSave(tunedMainConfPath, c.tunedMainCfg)
+			if err != nil {
+				return false, fmt.Errorf("failed to write global TuneD configuration file: %w", err)
+			}
+			klog.V(4).Infof("startupUdevSettleWait triggering tuned restart")
 			restart = true // A complete restart of the TuneD daemon is needed due to configuration change in tuned-main.conf file.
 		}
 	}

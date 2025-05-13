@@ -18,10 +18,10 @@ limitations under the License.
 package v1
 
 import (
-	v1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/listers"
-	"k8s.io/client-go/tools/cache"
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	labels "k8s.io/apimachinery/pkg/labels"
+	listers "k8s.io/client-go/listers"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // TunedLister helps list Tuneds.
@@ -29,7 +29,7 @@ import (
 type TunedLister interface {
 	// List lists all Tuneds in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.Tuned, err error)
+	List(selector labels.Selector) (ret []*tunedv1.Tuned, err error)
 	// Tuneds returns an object that can list and get Tuneds.
 	Tuneds(namespace string) TunedNamespaceLister
 	TunedListerExpansion
@@ -37,17 +37,17 @@ type TunedLister interface {
 
 // tunedLister implements the TunedLister interface.
 type tunedLister struct {
-	listers.ResourceIndexer[*v1.Tuned]
+	listers.ResourceIndexer[*tunedv1.Tuned]
 }
 
 // NewTunedLister returns a new TunedLister.
 func NewTunedLister(indexer cache.Indexer) TunedLister {
-	return &tunedLister{listers.New[*v1.Tuned](indexer, v1.Resource("tuned"))}
+	return &tunedLister{listers.New[*tunedv1.Tuned](indexer, tunedv1.Resource("tuned"))}
 }
 
 // Tuneds returns an object that can list and get Tuneds.
 func (s *tunedLister) Tuneds(namespace string) TunedNamespaceLister {
-	return tunedNamespaceLister{listers.NewNamespaced[*v1.Tuned](s.ResourceIndexer, namespace)}
+	return tunedNamespaceLister{listers.NewNamespaced[*tunedv1.Tuned](s.ResourceIndexer, namespace)}
 }
 
 // TunedNamespaceLister helps list and get Tuneds.
@@ -55,15 +55,15 @@ func (s *tunedLister) Tuneds(namespace string) TunedNamespaceLister {
 type TunedNamespaceLister interface {
 	// List lists all Tuneds in the indexer for a given namespace.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.Tuned, err error)
+	List(selector labels.Selector) (ret []*tunedv1.Tuned, err error)
 	// Get retrieves the Tuned from the indexer for a given namespace and name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1.Tuned, error)
+	Get(name string) (*tunedv1.Tuned, error)
 	TunedNamespaceListerExpansion
 }
 
 // tunedNamespaceLister implements the TunedNamespaceLister
 // interface.
 type tunedNamespaceLister struct {
-	listers.ResourceIndexer[*v1.Tuned]
+	listers.ResourceIndexer[*tunedv1.Tuned]
 }

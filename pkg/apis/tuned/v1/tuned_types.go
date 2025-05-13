@@ -128,9 +128,12 @@ type OperandConfig struct {
 
 // Global configuration for the TuneD daemon as defined in tuned-main.conf
 type TuneDConfig struct {
-	// turn reapply_sysctl functionality on/off for the TuneD daemon: true/false
+	// turn reapply_sysctl functionality on/off for the TuneD daemon: true/false (default is true)
 	// +optional
 	ReapplySysctl *bool `json:"reapply_sysctl"`
+	// configure startup_udev_settle_wait timeout functionality for the TuneD daemon: unsigned integer (default is 20)
+	// +optional
+	StartupUdevSettleWait *uint64 `json:"startup_udev_settle_wait"`
 }
 
 // TunedStatus is the status for a Tuned resource.

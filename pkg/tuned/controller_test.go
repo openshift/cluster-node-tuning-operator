@@ -273,7 +273,7 @@ func TestChangeString(t *testing.T) {
 		{
 			name:     "full",
 			change:   fullChange(),
-			expected: fmt.Sprintf("%#v", fullChange()),
+			expected: fmt.Sprintf("%v", fullChange()),
 		},
 	}
 	for _, tt := range testCases {
@@ -288,16 +288,17 @@ func TestChangeString(t *testing.T) {
 
 func fullChange() Change {
 	return Change{
-		profile:            true,
-		profileStatus:      true,
-		tunedReload:        true,
-		nodeRestart:        true,
-		debug:              true,
-		provider:           "test-provider",
-		reapplySysctl:      true,
-		recommendedProfile: "test-profile",
-		deferredMode:       util.DeferAlways,
-		message:            "test-message",
+		profile:               true,
+		profileStatus:         true,
+		tunedReload:           true,
+		nodeRestart:           true,
+		debug:                 true,
+		provider:              "test-provider",
+		reapplySysctl:         true,
+		startupUdevSettleWait: 20,
+		recommendedProfile:    "test-profile",
+		deferredMode:          util.DeferAlways,
+		message:               "test-message",
 	}
 }
 
