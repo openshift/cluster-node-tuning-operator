@@ -20,6 +20,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/toleration"
 )
 
 const (
@@ -1614,10 +1615,10 @@ var _ = Describe("PerformanceProfileCreator: Ensuring Nodes hardware equality", 
 			Expect(err).ToNot(HaveOccurred())
 
 			nodeHandles := []*GHWHandler{node1Handle, node2Handle}
-			tols := TolerationSet{}
+			tols := toleration.Set{}
 			err = EnsureNodesHaveTheSameHardware(nodeHandles, tols)
 			Expect(err).ToNot(HaveOccurred())
-			_, ok := tols[DifferentCoreIDs]
+			_, ok := tols[toleration.DifferentCoreIDs]
 			Expect(ok).To(BeFalse())
 		})
 	})
@@ -1638,7 +1639,7 @@ var _ = Describe("PerformanceProfileCreator: Ensuring Nodes hardware equality", 
 			Expect(err).ToNot(HaveOccurred())
 
 			nodeHandles := []*GHWHandler{node1Handle, node2Handle}
-			err = EnsureNodesHaveTheSameHardware(nodeHandles, TolerationSet{})
+			err = EnsureNodesHaveTheSameHardware(nodeHandles, toleration.Set{})
 			Expect(err).To(HaveOccurred())
 		})
 	})
@@ -1697,50 +1698,50 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Function ensureSameTopo
 
 	Context("Check if ensureSameTopology is working correctly", func() {
 		It("nodes with similar topology should not return error", func() {
-			tols := TolerationSet{}
+			tols := toleration.Set{}
 			err := ensureSameTopology(&originTopology, &mutatedTopology, tols)
 			Expect(err).ToNot(HaveOccurred())
-			_, ok := tols[DifferentCoreIDs]
+			_, ok := tols[toleration.DifferentCoreIDs]
 			Expect(ok).To(BeFalse())
 		})
 		It("nodes with different architecture should return error", func() {
 			mutatedTopology.Architecture = topology.ARCHITECTURE_SMP
-			tols := TolerationSet{}
+			tols := toleration.Set{}
 			err := ensureSameTopology(&originTopology, &mutatedTopology, tols)
 			Expect(err).To(HaveOccurred())
-			_, ok := tols[DifferentCoreIDs]
+			_, ok := tols[toleration.DifferentCoreIDs]
 			Expect(ok).To(BeFalse())
 		})
 		It("nodes with different number of NUMA nodes should return error", func() {
 			mutatedTopology.Nodes = mutatedTopology.Nodes[1:]
-			tols := TolerationSet{}
+			tols := toleration.Set{}
 			err := ensureSameTopology(&originTopology, &mutatedTopology, tols)
 			Expect(err).To(HaveOccurred())
-			_, ok := tols[DifferentCoreIDs]
+			_, ok := tols[toleration.DifferentCoreIDs]
 			Expect(ok).To(BeFalse())
 		})
 		It("nodes with different number threads per core should return error", func() {
 			mutatedTopology.Nodes[1].Cores[1].NumThreads = 1
-			tols := TolerationSet{}
+			tols := toleration.Set{}
 			err := ensureSameTopology(&originTopology, &mutatedTopology, tols)
 			Expect(err).To(HaveOccurred())
-			_, ok := tols[DifferentCoreIDs]
+			_, ok := tols[toleration.DifferentCoreIDs]
 			Expect(ok).To(BeFalse())
 		})
 		It("nodes with different thread IDs should return error", func() {
 			mutatedTopology.Nodes[1].Cores[1].LogicalProcessors[1] = 15
-			tols := TolerationSet{}
+			tols := toleration.Set{}
 			err := ensureSameTopology(&originTopology, &mutatedTopology, tols)
 			Expect(err).To(HaveOccurred())
-			_, ok := tols[DifferentCoreIDs]
+			_, ok := tols[toleration.DifferentCoreIDs]
 			Expect(ok).To(BeFalse())
 		})
 		It("same cores with different Core IDs should still considered equivalent but with a warning", func() {
 			mutatedTopology.Nodes[0].Cores[0].ID = 3
-			tols := TolerationSet{}
+			tols := toleration.Set{}
 			err := ensureSameTopology(&originTopology, &mutatedTopology, tols)
 			Expect(err).ToNot(HaveOccurred())
-			val, ok := tols[DifferentCoreIDs]
+			val, ok := tols[toleration.DifferentCoreIDs]
 			Expect(ok).To(BeTrue())
 			Expect(val).To(BeTrue())
 
@@ -2002,4 +2003,10 @@ func getSiblingsListForCPUSet(sysinfo systemInfo, cpus cpuset.CPUSet) cpuset.CPU
 	}
 	siblingsInt := siblingsSet.UnsortedList()
 	return cpuset.New(siblingsInt...)
+}
+
+func newTestNode(nodeName string) *v1.Node {
+	n := v1.Node{}
+	n.Name = nodeName
+	return &n
 }
