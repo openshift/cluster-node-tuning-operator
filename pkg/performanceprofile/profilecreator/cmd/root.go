@@ -37,6 +37,7 @@ import (
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/autosize"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/cmd/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/serialize"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/toleration"
@@ -119,7 +120,6 @@ func NewRootCommand() *cobra.Command {
 	}
 
 	var requiredFlags = []string{
-		"reserved-cpu-count",
 		"rt-kernel",
 		"must-gather-dir-path",
 	}
@@ -164,10 +164,23 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("targeted nodes differ: %w", err)
 			}
+
+			params := autosize.Params{
+				NodePoolSize:     len(nodes),
+				OfflinedCPUCount: pcArgs.OfflinedCPUCount,
+			}
+			userSizing := autosize.Values{
+				ReservedCPUCount: pcArgs.ReservedCPUCount,
+			}
+			sizing, err := autosize.Compute(params, userSizing)
+			if err != nil {
+				return fmt.Errorf("failed to autosize the cluster values: %v", err)
+			}
+
 			// We make sure that the matched Nodes are the same
 			// Assumption here is moving forward matchedNodes[0] is representative of how all the nodes are
 			// same from hardware topology point of view
-			profileData, err := makeProfileDataFrom(nodesHandlers[0], pcArgs)
+			profileData, err := makeProfileDataFrom(nodesHandlers[0], pcArgs, sizing)
 			if err != nil {
 				return fmt.Errorf("failed to make profile data from node handler: %w", err)
 			}
@@ -299,12 +312,13 @@ func makeClusterData(mustGatherDirPath string, createForHypershift bool) (Cluste
 	return clusterData, nil
 }
 
-func makeProfileDataFrom(nodeHandler *profilecreator.GHWHandler, args *ProfileCreatorArgs) (*ProfileData, error) {
+func makeProfileDataFrom(nodeHandler *profilecreator.GHWHandler, args *ProfileCreatorArgs, sizing autosize.Values) (*ProfileData, error) {
 	systemInfo, err := nodeHandler.GatherSystemInfo()
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute get system information: %v", err)
 	}
-	reservedCPUs, isolatedCPUs, offlinedCPUs, err := profilecreator.CalculateCPUSets(systemInfo, args.ReservedCPUCount, args.OfflinedCPUCount, args.SplitReservedCPUsAcrossNUMA, args.DisableHT, args.PowerConsumptionMode == ultraLowLatency)
+
+	reservedCPUs, isolatedCPUs, offlinedCPUs, err := profilecreator.CalculateCPUSets(systemInfo, sizing.ReservedCPUCount, args.OfflinedCPUCount, args.SplitReservedCPUsAcrossNUMA, args.DisableHT, args.PowerConsumptionMode == ultraLowLatency)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute the reserved and isolated CPUs: %v", err)
 	}
@@ -413,7 +427,7 @@ type ProfileCreatorArgs struct {
 }
 
 func (pca *ProfileCreatorArgs) AddFlags(flags *pflag.FlagSet) {
-	flags.IntVar(&pca.ReservedCPUCount, "reserved-cpu-count", 0, "Number of reserved CPUs (required)")
+	flags.IntVar(&pca.ReservedCPUCount, "reserved-cpu-count", 0, "Number of reserved CPUs")
 	flags.IntVar(&pca.OfflinedCPUCount, "offlined-cpu-count", 0, "Number of offlined CPUs")
 	flags.BoolVar(&pca.SplitReservedCPUsAcrossNUMA, "split-reserved-cpus-across-numa", false, "Split the Reserved CPUs across NUMA nodes")
 	flags.StringVar(&pca.MCPName, "mcp-name", "", "MCP name corresponding to the target machines (required)")
