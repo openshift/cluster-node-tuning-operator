@@ -20,6 +20,7 @@ spec:
         openshift.io/required-scc: privileged
       labels:
         openshift-app: tuned
+        name: tuned
     spec:
       serviceAccountName: tuned
       containers:
