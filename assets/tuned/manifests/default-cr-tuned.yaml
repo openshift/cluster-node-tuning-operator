@@ -14,7 +14,7 @@ spec:
   - profile: "openshift-control-plane"
     priority: 30
     match:
-    - label: "node-role.kubernetes.io/master"
+    - label: "node-role.kubernetes.io/control-plane"
     - label: "node-role.kubernetes.io/infra"
 
   - profile: "openshift-node"
