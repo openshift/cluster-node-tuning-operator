@@ -53,8 +53,8 @@ Device defines a way to represent a network device in several options: device na
 | Field | Description | Scheme | Required |
 | ----- | ----------- | ------ | -------- |
 | interfaceName | Network device name to be matched. It uses a syntax of shell-style wildcards which are either positive or negative. | *string | false |
-| vendorID | Network device vendor ID represnted as a 16 bit Hexmadecimal number. | *string | false |
-| deviceID | Network device ID (model) represnted as a 16 bit hexmadecimal number. | *string | false |
+| vendorID | Network device vendor ID represented as a 16 bit Hexmadecimal number. | *string | false |
+| deviceID | Network device ID (model) represented as a 16 bit hexmadecimal number. | *string | false |
 
 [Back to TOC](#table-of-contents)
 
