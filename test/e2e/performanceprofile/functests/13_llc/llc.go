@@ -491,32 +491,36 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 		})
 
 		Context("With Multiple Pods", func() {
+			type L3UncoreCacheShareMode string
+			const (
+				L3UncoreCacheShareEqual   L3UncoreCacheShareMode = "equal"
+				L3UncoreCacheShareUnequal L3UncoreCacheShareMode = "unequal"
+			)
 			DescribeTable("Align multiple Guaranteed pods",
-				func(l3uncoreCacheSharing string) {
+				func(mode L3UncoreCacheShareMode) {
 					var (
-						ctx        context.Context = context.Background()
-						targetNode                 = workerRTNodes[0]
-						cpusetCfg                  = &controller.CpuSet{}
-						cpusetList []cpuset.CPUSet
-						podCpuList []string
-						dpList     []*appsv1.Deployment
+						ctx                   context.Context = context.Background()
+						targetNode                            = workerRTNodes[0]
+						cpusetCfg                             = &controller.CpuSet{}
+						cpusetList            []cpuset.CPUSet
+						podCpuRequirementList []string
+						dpList                []*appsv1.Deployment
 					)
 
 					podLabel := make(map[string]string)
-					switch l3uncoreCacheSharing {
-					case "equal":
-						podCpuList = []string{fmt.Sprintf("%d", L3CacheGroupSize/2), fmt.Sprintf("%d", L3CacheGroupSize/2)}
-					case "unequal":
-						podCpuList = []string{fmt.Sprintf("%d", L3CacheGroupSize), fmt.Sprintf("%d", L3CacheGroupSize/2)}
+					switch mode {
+					case L3UncoreCacheShareEqual:
+						podCpuRequirementList = []string{fmt.Sprintf("%d", L3CacheGroupSize/2), fmt.Sprintf("%d", L3CacheGroupSize/2)}
+					case L3UncoreCacheShareUnequal:
+						podCpuRequirementList = []string{fmt.Sprintf("%d", L3CacheGroupSize), fmt.Sprintf("%d", L3CacheGroupSize/2)}
 					}
 
 					for i := range 2 {
 						deploymentName := fmt.Sprintf("test-deployment%d", i)
 						rl := &corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse(podCpuList[i]),
+							corev1.ResourceCPU:    resource.MustParse(podCpuRequirementList[i]),
 							corev1.ResourceMemory: resource.MustParse("100Mi"),
 						}
-						podLabel := make(map[string]string)
 						podLabel["test-app"] = fmt.Sprintf("telcoApp-%d", i)
 						testlog.TaggedInfof("Deployment", "Creating Deployment %v", deploymentName)
 						dp, err := createDeployment(ctx, deploymentName, podLabel, &targetNode, rl)
@@ -560,57 +564,66 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 						cpusetList = append(cpusetList, cpus)
 						Expect(err).ToNot(HaveOccurred())
 						Expect(podCpuset.IsSubsetOf(cpus))
+						// verify retrieved pod cpus matches with our requirements
+						Expect(fmt.Sprintf("%d", podCpuset.Size())).To(Equal(podCpuRequirementList[i]))
 					}
 					// Here pods of both deployments can take the full core even as it will follow
 					// packed allocation
 					// From KEP: takeUncoreCache and takePartialUncore will still follow a "packed" allocation principle as the rest of the implementation.
 					// Uncore Cache IDs will be scanned in numerical order and assigned as possible. For takePartialUncore, CPUs will be assigned
 					// within the uncore cache in numerical order to follow a "packed" methodology.
-					if l3uncoreCacheSharing == "equal" {
+					if mode == L3UncoreCacheShareEqual {
 						Expect(cpusetList[0]).To(Equal(cpusetList[1]))
 					} else {
 						Expect(cpusetList[0]).ToNot(Equal(cpusetList[1]))
 					}
 				},
 
-				Entry("[test_id:77728] 2 pods where total number of cpus equal to L3CacheGroup size share same L3CacheSize", "equal"),
-				Entry("[test_id:77729] 2 pods with unequal cpurequests do not share same L3 cache size with 1 Pod requesting 1 full L3Cache Group and other requesting less than L3Cache GroupSize", "unequal"),
+				Entry("[test_id:77728] 2 pods where total number of cpus equal to L3CacheGroup size share same L3CacheSize", L3UncoreCacheShareEqual),
+				Entry("[test_id:77729] 2 pods with unequal cpurequests do not share same L3 cache size with 1 Pod requesting 1 full L3Cache Group and other requesting less than L3Cache GroupSize", L3UncoreCacheShareUnequal),
 			)
 		})
 
 		Context("Multiple Containers", func() {
-			DescribeTable("Verify CPU Allignmen with multiple containers",
-				func(deploymentName string, alignment string, sideCarContainerName []string) {
+			type alignment string
+			const (
+				partialAlignment               alignment = "partial"
+				fullAlignment                  alignment = "full"
+				partialAlignmentWithContainers alignment = "partialWithContainers"
+			)
+
+			DescribeTable("Verify CPU Alignment with multiple containers",
+				func(deploymentName string, alignmentType alignment, containerName []string) {
 					var (
-						ctx               context.Context = context.Background()
-						sideCarContainers []corev1.Container
-						cpuSize           int
-						cpusetCfg         = &controller.CpuSet{}
-						targetNode        = workerRTNodes[0]
+						ctx           context.Context = context.Background()
+						containerList []corev1.Container
+						cpuSize       int
+						cpusetCfg     = &controller.CpuSet{}
+						targetNode    = workerRTNodes[0]
 					)
 
 					podLabel := make(map[string]string)
 					podLabel["test-app"] = "telco"
 					nodeSelector := make(map[string]string)
 
-					switch alignment {
-					case "partialAlignmentWithSideCars":
+					switch alignmentType {
+					case partialAlignmentWithContainers:
 						// Main guaranteed container requesting L3CacheGroupSize -2 and other sidecar containers
 						// requesting 1.5 and 0.5
 						cpuSize = L3CacheGroupSize - 2
-						sideCarContainerCpuResources := []string{"1.5", "0.5"}
-						sideCarContainers = createSidecarContainers(sideCarContainerName, sideCarContainerCpuResources)
-					case "FullAlignment":
+						cpuResources := []string{"1.5", "0.5"}
+						containerList = createMultipleContainers(containerName, cpuResources)
+					case fullAlignment:
 						// with 2 guaranteed containers requesting half of L3CacheGroupSize
 						cpuSize = L3CacheGroupSize / 2
-						sideCarContainerCpuResources := []string{fmt.Sprintf("%d", cpuSize)}
-						sideCarContainers = createSidecarContainers(sideCarContainerName, sideCarContainerCpuResources)
-					case "PartialAlignment":
+						cpuResources := []string{fmt.Sprintf("%d", cpuSize)}
+						containerList = createMultipleContainers(containerName, cpuResources)
+					case partialAlignment:
 						// WIth 2 guaranteed containers, where 1 is requesting half of L3CacheGroupSize
 						// and another container requesting 2 less than the remaining cpus
 						cpuSize = L3CacheGroupSize / 2
-						sideCarContainerCpuResources := []string{fmt.Sprintf("%d", cpuSize-2)}
-						sideCarContainers = createSidecarContainers(sideCarContainerName, sideCarContainerCpuResources)
+						cpuResources := []string{fmt.Sprintf("%d", cpuSize-2)}
+						containerList = createMultipleContainers(containerName, cpuResources)
 					}
 					rl := &corev1.ResourceList{
 						corev1.ResourceCPU:    resource.MustParse(strconv.Itoa(cpuSize)),
@@ -624,7 +637,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 						deployments.WithNodeSelector(nodeSelector))
 					dp.Spec.Selector.MatchLabels = podLabel
 					dp.Spec.Template.ObjectMeta.Labels = podLabel
-					dp.Spec.Template.Spec.Containers = append(dp.Spec.Template.Spec.Containers, sideCarContainers...)
+					dp.Spec.Template.Spec.Containers = append(dp.Spec.Template.Spec.Containers, containerList...)
 					err = testclient.Client.Create(ctx, dp)
 					Expect(err).ToNot(HaveOccurred())
 					defer func() {
@@ -651,18 +664,18 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 					L3CacheGroupCpus, err := getCCX(containerWithIntegralCpu.List()[0])
 					Expect(err).ToNot(HaveOccurred())
 					Expect(containerWithIntegralCpu.IsSubsetOf(L3CacheGroupCpus)).To(BeTrue())
-					if alignment == "partialAlignmentWithSideCars" {
+					if alignmentType == partialAlignmentWithContainers {
 						expectedBurstablePodCpus := totalOnlineCpus.Difference(containerWithIntegralCpu)
 						err = getter.Container(ctx, &testpod, "log1", cpusetCfg)
 						Expect(err).ToNot(HaveOccurred())
 						containerWithnonIntegralCpu1, err := cpuset.Parse(cpusetCfg.Cpus)
 						Expect(err).ToNot(HaveOccurred())
-						Expect(containerWithnonIntegralCpu1).To(Equal(expectedBurstablePodCpus))
+						Expect(containerWithnonIntegralCpu1.Equals(expectedBurstablePodCpus)).To(BeTrue())
 						err = getter.Container(ctx, &testpod, "log2", cpusetCfg)
 						Expect(err).ToNot(HaveOccurred())
 						containerWithnonIntegralCpu2, err := cpuset.Parse(cpusetCfg.Cpus)
 						Expect(err).ToNot(HaveOccurred())
-						Expect(containerWithnonIntegralCpu2).To(Equal(expectedBurstablePodCpus))
+						Expect(containerWithnonIntegralCpu2.Equals(expectedBurstablePodCpus)).To(BeTrue())
 					} else {
 						err = getter.Container(ctx, &testpod, "test2", cpusetCfg)
 						Expect(err).ToNot(HaveOccurred())
@@ -672,14 +685,15 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 					}
 
 				},
-				Entry("[test-id:77730] With different QoS class containers have guaranteed Container pinned to single CCX", "test-deployment1", "partialAlignmentWithSideCars", []string{"log1", "log2"}),
-				Entry("[test-id:81670] With multiple guaranteed containers where total cpus requested is equal to single ccx size", "test-deployment2", "FullAlignment", []string{"test2"}),
-				Entry("[test-id:81671] With multiple guaranteed containers where total cpus requested is less than single ccx size", "test-deployment3", "PartialAlignment", []string{"test2"}),
+				Entry("[test-id:77730] With different QoS class containers have guaranteed Container pinned to single CCX", "test-deployment1", partialAlignmentWithContainers, []string{"log1", "log2"}),
+				Entry("[test-id:81670] With multiple guaranteed containers where total cpus requested is equal to single ccx size", "test-deployment2", fullAlignment, []string{"test2"}),
+				Entry("[test-id:81671] With multiple guaranteed containers where total cpus requested is less than single ccx size", "test-deployment3", partialAlignment, []string{"test2"}),
 			)
 		})
 	})
 
 	Context("Functional Tests with SMT Disabled", func() {
+		type podCpuResourceSize string
 		var (
 			L3CacheGroupSize   int
 			totalOnlineCpus    cpuset.CPUSet
@@ -687,6 +701,10 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			getCCX             func(cpuid int) (cpuset.CPUSet, error)
 			reserved, isolated cpuset.CPUSet
 			policy             = "single-numa-node"
+		)
+		const (
+			podCpuResourceEqualtoL3CacheSize  podCpuResourceSize = "equalto"
+			podCpuResourceLessthanL3CacheSize podCpuResourceSize = "lessthan"
 		)
 		BeforeAll(func() {
 			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
@@ -772,7 +790,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			})
 		})
 		DescribeTable("Align Guaranteed pod",
-			func(deploymentName string, podCpuResourcesSize string) {
+			func(deploymentName string, resourceSize podCpuResourceSize) {
 				var (
 					ctx context.Context = context.Background()
 					rl  *corev1.ResourceList
@@ -781,13 +799,13 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				targetNode := workerRTNodes[0]
 				cpusetCfg := &controller.CpuSet{}
 				getCCX := nodes.GetL3SharedCPUs(&targetNode)
-				switch podCpuResourcesSize {
-				case "equalToL3CacheSize":
+				switch resourceSize {
+				case podCpuResourceEqualtoL3CacheSize:
 					rl = &corev1.ResourceList{
 						corev1.ResourceCPU:    resource.MustParse(strconv.Itoa(L3CacheGroupSize)),
 						corev1.ResourceMemory: resource.MustParse("100Mi"),
 					}
-				case "lessThanL3CacheSize":
+				case podCpuResourceLessthanL3CacheSize:
 					rl = &corev1.ResourceList{
 						corev1.ResourceCPU:    resource.MustParse(strconv.Itoa(L3CacheGroupSize / 2)),
 						corev1.ResourceMemory: resource.MustParse("100Mi"),
@@ -823,14 +841,14 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				testlog.TaggedInfof("L3 Cache Group", "CPU Group sharing L3 Cache to which %s is alloted are: %s ", testpod.Name, cpus.String())
 				Expect(err).ToNot(HaveOccurred())
 				// All the cpus alloted to Pod should be equal to the cpus sharing L3 Cache group
-				if podCpuResourcesSize == "equalToL3CacheSize" {
+				if resourceSize == podCpuResourceEqualtoL3CacheSize {
 					Expect(testpodCpuset).To(Equal(cpus))
 				} else {
 					Expect(testpodCpuset.IsSubsetOf(cpus)).To(BeTrue())
 				}
 			},
-			Entry("[test_id:81672] requesting equal to L3Cache group size cpus", "test-deployment1", "equalToL3CacheSize"),
-			Entry("[test_id:81673] requesting less than L3Cache group size cpus", "test-deployment2", "lessThanL3CacheSize"),
+			Entry("[test_id:81672] requesting equal to L3Cache group size cpus", "test-deployment1", podCpuResourceEqualtoL3CacheSize),
+			Entry("[test_id:81673] requesting less than L3Cache group size cpus", "test-deployment2", podCpuResourceLessthanL3CacheSize),
 		)
 	})
 })
@@ -942,7 +960,7 @@ func waitForDeploymentPodsDeletion(ctx context.Context, targetNode *corev1.Node,
 	}
 }
 
-func createSidecarContainers(names []string, cpuResources []string) []corev1.Container {
+func createMultipleContainers(names []string, cpuResources []string) []corev1.Container {
 	var containers []corev1.Container
 	for i, name := range names {
 		cpu := cpuResources[i]
