@@ -1,4 +1,4 @@
-package __arm
+package __arm_test
 
 import (
 	"log"
