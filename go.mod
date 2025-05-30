@@ -185,20 +185,20 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	howett.net/plist v1.0.1 // indirect
 	k8s.io/apiserver v0.32.3 // indirect
-	k8s.io/cloud-provider v0.0.0 // indirect
+	k8s.io/cloud-provider v0.32.3 // indirect
 	k8s.io/component-base v0.32.3 // indirect
 	k8s.io/component-helpers v0.32.3 // indirect
 	k8s.io/controller-manager v0.32.3 // indirect
 	k8s.io/cri-api v0.32.3 // indirect
 	k8s.io/cri-client v0.32.3 // indirect
-	k8s.io/csi-translation-lib v0.0.0 // indirect
+	k8s.io/csi-translation-lib v0.32.3 // indirect
 	k8s.io/dynamic-resource-allocation v0.26.2 // indirect
 	k8s.io/gengo/v2 v2.0.0-20240911193312-2b36238f13e9 // indirect
 	k8s.io/kms v0.32.3 // indirect
 	k8s.io/kube-aggregator v0.32.3 // indirect
-	k8s.io/kube-openapi v0.32.3 // indirect
-	k8s.io/kube-scheduler v0.0.0 // indirect
-	k8s.io/mount-utils v0.0.0 // indirect
+	k8s.io/kube-openapi v0.0.0-20241105132330-32ad38e42d3f // indirect
+	k8s.io/kube-scheduler v0.32.3 // indirect
+	k8s.io/mount-utils v0.32.3 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.0 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
 	sigs.k8s.io/kube-storage-version-migrator v0.0.6-0.20230721195810-5c8923c5ff96 // indirect
