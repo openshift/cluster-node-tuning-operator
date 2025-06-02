@@ -28,11 +28,11 @@ type FakeTunedV1 struct {
 }
 
 func (c *FakeTunedV1) Profiles(namespace string) v1.ProfileInterface {
-	return &FakeProfiles{c, namespace}
+	return newFakeProfiles(c, namespace)
 }
 
 func (c *FakeTunedV1) Tuneds(namespace string) v1.TunedInterface {
-	return &FakeTuneds{c, namespace}
+	return newFakeTuneds(c, namespace)
 }
 
 // RESTClient returns a RESTClient that is used to communicate
