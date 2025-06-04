@@ -515,6 +515,8 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 						podCpuRequirementList = []string{fmt.Sprintf("%d", L3CacheGroupSize), fmt.Sprintf("%d", L3CacheGroupSize/2)}
 					}
 
+					// create 2 deployments with pod cpu requirements are different
+					// for each test case.
 					for i := range 2 {
 						deploymentName := fmt.Sprintf("test-deployment%d", i)
 						rl := &corev1.ResourceList{
@@ -546,6 +548,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 						podList := &corev1.PodList{}
 						podLabel["test-app"] = fmt.Sprintf("telcoApp-%d", i)
 						listOptions := &client.ListOptions{Namespace: testutils.NamespaceTesting, LabelSelector: labels.SelectorFromSet(podLabel)}
+						testlog.TaggedInfof("Deployment", "waiting for %q to be ready", dpList[i].Name)
 						Eventually(func() bool {
 							isReady, err := deployments.IsReady(ctx, testclient.Client, listOptions, podList, dpList[i])
 							Expect(err).ToNot(HaveOccurred())
@@ -557,7 +560,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 						Expect(err).ToNot(HaveOccurred())
 						podCpuset, err := cpuset.Parse(cpusetCfg.Cpus)
 						testlog.TaggedInfof("Pod", "Cpus used by pod %v are %v", testpod.Name, podCpuset.String())
-						Expect(err).ToNot(HaveOccurred())
+						Expect(err).ToNot(HaveOccurred(), "Unable to parse cpus from container")
 						// fetch ccx to which cpu used by pod is part of
 						cpus, err := getCCX(podCpuset.List()[0])
 						testlog.TaggedInfof("L3 Cache Group", "cpu id %d used Pod %s is part of CCX group %s", podCpuset.List()[0], testpod.Name, cpus.String())
@@ -619,7 +622,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 						cpuResources := []string{fmt.Sprintf("%d", cpuSize)}
 						containerList = createMultipleContainers(containerName, cpuResources)
 					case partialAlignment:
-						// WIth 2 guaranteed containers, where 1 is requesting half of L3CacheGroupSize
+						// With 2 guaranteed containers, where 1 is requesting half of L3CacheGroupSize
 						// and another container requesting 2 less than the remaining cpus
 						cpuSize = L3CacheGroupSize / 2
 						cpuResources := []string{fmt.Sprintf("%d", cpuSize-2)}
@@ -667,20 +670,20 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 					if alignmentType == partialAlignmentWithContainers {
 						expectedBurstablePodCpus := totalOnlineCpus.Difference(containerWithIntegralCpu)
 						err = getter.Container(ctx, &testpod, "log1", cpusetCfg)
-						Expect(err).ToNot(HaveOccurred())
+						Expect(err).ToNot(HaveOccurred(), "Unable to fetch container details from log1 pod")
 						containerWithnonIntegralCpu1, err := cpuset.Parse(cpusetCfg.Cpus)
-						Expect(err).ToNot(HaveOccurred())
+						Expect(err).ToNot(HaveOccurred(), "Unable to parse cpus used by container of log1 pod")
 						Expect(containerWithnonIntegralCpu1.Equals(expectedBurstablePodCpus)).To(BeTrue())
 						err = getter.Container(ctx, &testpod, "log2", cpusetCfg)
-						Expect(err).ToNot(HaveOccurred())
+						Expect(err).ToNot(HaveOccurred(), "Unable to fetch container details from log2 pod")
 						containerWithnonIntegralCpu2, err := cpuset.Parse(cpusetCfg.Cpus)
-						Expect(err).ToNot(HaveOccurred())
+						Expect(err).ToNot(HaveOccurred(), "Unable to parse cpus used by container of log2 pod")
 						Expect(containerWithnonIntegralCpu2.Equals(expectedBurstablePodCpus)).To(BeTrue())
 					} else {
 						err = getter.Container(ctx, &testpod, "test2", cpusetCfg)
-						Expect(err).ToNot(HaveOccurred())
+						Expect(err).ToNot(HaveOccurred(), "unable to get container details from test2 pod")
 						containerWithIntegralCpu2, err := cpuset.Parse(cpusetCfg.Cpus)
-						Expect(err).ToNot(HaveOccurred())
+						Expect(err).ToNot(HaveOccurred(), "unable to parse cpus used by container of test2 pod")
 						Expect(containerWithIntegralCpu2.IsSubsetOf(L3CacheGroupCpus)).To(BeTrue())
 					}
 
@@ -712,7 +715,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			ctx := context.Background()
 			for _, cnfnode := range workerRTNodes {
 				numaInfo, err := nodes.GetNumaNodes(ctx, &cnfnode)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).ToNot(HaveOccurred(), "Unable to fetch numa nodes")
 				coresiblings, err := nodes.GetCoreSiblings(ctx, &cnfnode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get numa information from the node")
 				nosmt = transformToNoSMT(coresiblings)
@@ -755,9 +758,9 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			for _, cnfnode := range workerRTNodes {
 				getCCX = nodes.GetL3SharedCPUs(&cnfnode)
 				reserved, err = getCCX(0)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).ToNot(HaveOccurred(), "Unable to fetch cpus used by L3 cache group 0 from node %q", &cnfnode.Name)
 				totalOnlineCpus, err = nodes.GetOnlineCPUsSet(ctx, &cnfnode)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).ToNot(HaveOccurred(), "Unable to fetch total online cpus from the %q", &cnfnode.Name)
 				L3CacheGroupSize = reserved.Size()
 			}
 			// Modify the profile such that we give 1 whole ccx to reserved cpus
@@ -980,7 +983,7 @@ func createMultipleContainers(names []string, cpuResources []string) []corev1.Co
 	return containers
 }
 
-// transformToNoSMT moves takes a map which contains cores and its siblings
+// transformToNoSMT takes a map which contains cores and its siblings
 // per numa node to move it to a map containing cpus per numa node
 func transformToNoSMT(input map[int]map[int][]int) map[int][]int {
 	result := make(map[int][]int)
