@@ -61,6 +61,9 @@ const (
 
 	// KernelPageSize Feature should be added in tests where we are testing for arm
 	KernelPageSize Feature = "kernel-pagesize"
+
+	// UnCoreCache Feature should be added in tests that test Pod Affinity of Cpu's that share same Last level cache
+	UnCoreCache Feature = "uncore-cache"
 )
 
 // Tier is a label to classify tests under specific grade/level
