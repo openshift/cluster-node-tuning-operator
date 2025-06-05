@@ -464,7 +464,7 @@ func WaitForPoolUpdatedMachineCount(cs *framework.ClientSet, pool string, count 
 // GetDefaultWorkerProfile returns name of the default out-of-the-box TuneD profile for a node.
 // See: assets/tuned/manifests/default-cr-tuned.yaml
 func GetDefaultWorkerProfile(node *corev1.Node) string {
-	_, master := node.Labels["node-role.kubernetes.io/master"]
+	_, master := node.Labels["node-role.kubernetes.io/control-plane"]
 	_, infra := node.Labels["node-role.kubernetes.io/infra"]
 
 	if master || infra {
