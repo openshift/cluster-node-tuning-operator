@@ -69,8 +69,9 @@ func buildServer(port int, caBundle string) *http.Server {
 	if caCertPool.AppendCertsFromPEM([]byte(caBundle)) {
 		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 		tlsConfig.ClientCAs = caCertPool
-		// Default minimum version is TLS 1.2, previous versions are insecure and deprecated.
-		tlsConfig.MinVersion = tls.VersionTLS12
+		// Default minimum version is TLS 1.3.  PQ algorithms will only be supported in TLS 1.3+.
+		// Hybrid key agreements for TLS 1.3 X25519MLKEM768 is supported by default in go 1.24.
+		tlsConfig.MinVersion = tls.VersionTLS13
 		tlsConfig.CipherSuites = []uint16{
 			// Drop
 			// - 64-bit block cipher 3DES as it is vulnerable to SWEET32 attack.

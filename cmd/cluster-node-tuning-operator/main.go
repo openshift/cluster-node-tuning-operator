@@ -121,6 +121,16 @@ func operatorRun() {
 		return
 	}
 
+	tlsOpts := []func(*tls.Config){
+		func(c *tls.Config) {
+			// CVE-2023-44487
+			c.NextProtos = []string{"http/1.1"}
+			// Default minimum version is TLS 1.3.  PQ algorithms will only be supported in TLS 1.3+.
+			// Hybrid key agreements for TLS 1.3 X25519MLKEM768 is supported by default in go 1.24.
+			c.MinVersion = tls.VersionTLS13
+		},
+	}
+
 	// We have two namespaces that we need to watch:
 	// 1. NTO namespace: for NTO resources.  Note this is not necessarily where the operator itself
 	//    runs, for example operator managing HyperShift hosted clusters.
@@ -147,7 +157,7 @@ func operatorRun() {
 			CertDir:  webhookCertDir,
 			CertName: webhookCertName,
 			KeyName:  webhookKeyName,
-			TLSOpts:  []func(config *tls.Config){func(c *tls.Config) { c.NextProtos = []string{"http/1.1"} }}, // CVE-2023-44487
+			TLSOpts:  tlsOpts,
 		}),
 	})
 
