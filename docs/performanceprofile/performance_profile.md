@@ -22,6 +22,7 @@ This document documents the PerformanceProfile API introduced by the Performance
 * [PerformanceProfileSpec](#performanceprofilespec)
 * [PerformanceProfileStatus](#performanceprofilestatus)
 * [RealTimeKernel](#realtimekernel)
+* [KernelPageSize](#kernelpagesize)
 * [WorkloadHints](#workloadhints)
 
 ## CPU
@@ -163,6 +164,7 @@ PerformanceProfileSpec defines the desired state of PerformanceProfile.
 | machineConfigPoolSelector | MachineConfigPoolSelector defines the MachineConfigPool label to use in the MachineConfigPoolSelector of resources like KubeletConfigs created by the operator. Defaults to \"machineconfiguration.openshift.io/role=&lt;same role as in NodeSelector label key&gt;\" | map[string]string | false |
 | nodeSelector | NodeSelector defines the Node label to use in the NodeSelectors of resources like Tuned created by the operator. It most likely should, but does not have to match the node label in the NodeSelector of the MachineConfigPool which targets this performance profile. In the case when machineConfigLabels or machineConfigPoolSelector are not set, we are expecting a certain NodeSelector format &lt;domain&gt;/&lt;role&gt;: \"\" in order to be able to calculate the default values for the former mentioned fields. | map[string]string | true |
 | realTimeKernel | RealTimeKernel defines a set of real time kernel related parameters. RT kernel won't be installed when not set. | *[RealTimeKernel](#realtimekernel) | false |
+| kernelPageSize | KernelPageSize defines the kernel page size. 4k is the default, 64k is only supported on aarch64 | *[kernelPageSize](#kernelpagesize) | false |
 | additionalKernelArgs | Additional kernel arguments. | []string | false |
 | numa | NUMA defines options related to topology aware affinities | *[NUMA](#numa) | false |
 | net | Net defines a set of network related features | *[Net](#net) | false |
@@ -190,6 +192,13 @@ RealTimeKernel defines the set of parameters relevant for the real time kernel.
 | Field | Description | Scheme | Required |
 | ----- | ----------- | ------ | -------- |
 | enabled | Enabled defines if the real time kernel packages should be installed. Defaults to \"false\" | *bool | false |
+
+[Back to TOC](#table-of-contents)
+
+## KernelPageSize
+
+KernelPageSize defines the kernel page size that will be used by the kernel.
+4k is the default value, 64k is only supported on aarch64 with realTimeKernel disabled.
 
 [Back to TOC](#table-of-contents)
 
