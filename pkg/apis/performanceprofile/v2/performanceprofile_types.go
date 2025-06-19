@@ -65,6 +65,10 @@ type PerformanceProfileSpec struct {
 	NodeSelector map[string]string `json:"nodeSelector"`
 	// RealTimeKernel defines a set of real time kernel related parameters. RT kernel won't be installed when not set.
 	RealTimeKernel *RealTimeKernel `json:"realTimeKernel,omitempty"`
+	// KernelPageSize defines the kernel page size. 4k is the default, 64k is only supported on aarch64
+	// +default="4k"
+	// +optional
+	KernelPageSize *KernelPageSize `json:"kernelPageSize,omitempty"`
 	// Additional kernel arguments.
 	// +optional
 	AdditionalKernelArgs []string `json:"additionalKernelArgs,omitempty"`
@@ -131,10 +135,20 @@ type HardwareTuning struct {
 	ReservedCpuFreq *CPUfrequency `json:"reservedCpuFreq,omitempty"`
 }
 
+// KernelPageSize defines the size of the kernel pages.
+// The allowed values for this depend on CPU architecture
+// For x86/amd64, the only valid value is 4k.
+// For aarch64, the valid values are 4k, 64k.
+type KernelPageSize string
+
 // HugePageSize defines size of huge pages
 // The allowed values for this depend on CPU architecture
-// For x86/amd64, the valid values are 2M and 1G
-// For aarch64, the valid values are 2M, 32M, and 512M
+// For x86/amd64, the valid values are 2M and 1G.
+// For aarch64, the valid huge page sizes depend on the kernel page size:
+// - With a 4k kernel page size: 64k, 2M, 32M, 1G
+// - With a 64k kernel page size: 2M, 512M, 16G
+//
+// Reference: https://docs.kernel.org/mm/vmemmap_dedup.html
 type HugePageSize string
 
 // HugePages defines a set of huge pages that we want to allocate at boot.

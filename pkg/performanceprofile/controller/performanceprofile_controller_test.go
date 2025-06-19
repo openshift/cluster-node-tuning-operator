@@ -46,6 +46,7 @@ import (
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/cpuset"
 	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -395,24 +396,31 @@ var _ = Describe("Controller", func() {
 					}
 				})
 
-				It("should update MC when RT kernel gets disabled", func() {
-					profile.Spec.RealTimeKernel.Enabled = pointer.Bool(false)
-					r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator)
+				DescribeTable("MachineConfig kernelType updates",
+					func(rtKernelEnabled bool, kernelPageSize *performancev2.KernelPageSize, expectedKernelType string) {
+						// Set up profile
+						profile.Spec.RealTimeKernel.Enabled = ptr.To(rtKernelEnabled)
+						profile.Spec.KernelPageSize = kernelPageSize
 
-					Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
+						r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator)
 
-					key := types.NamespacedName{
-						Name:      machineconfig.GetMachineConfigName(profile.Name),
-						Namespace: metav1.NamespaceNone,
-					}
+						Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
-					// verify MachineConfig update
-					mc := &mcov1.MachineConfig{}
-					err := r.Get(context.TODO(), key, mc)
-					Expect(err).ToNot(HaveOccurred())
+						// Verify MachineConfig update
+						key := types.NamespacedName{
+							Name:      machineconfig.GetMachineConfigName(profile.Name),
+							Namespace: metav1.NamespaceNone,
+						}
 
-					Expect(mc.Spec.KernelType).To(Equal(machineconfig.MCKernelDefault))
-				})
+						mc := &mcov1.MachineConfig{}
+						err := r.Get(context.TODO(), key, mc)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(mc.Spec.KernelType).To(Equal(expectedKernelType))
+					},
+					Entry("should set kernelType to default when RealTimeKernel is disabled", false, nil, machineconfig.MCKernelDefault),
+					Entry("should set kernelType to 64k-pages when RT kernel disabled and 64k kernel page size selected", false, ptr.To(performancev2.KernelPageSize("64k")), machineconfig.MCKernel64kPages),
+					Entry("should set kernelType to realtime when RT kernel is enabled", true, nil, machineconfig.MCKernelRT),
+				)
 
 				It("should update MC, KC and Tuned when CPU params change", func() {
 					reserved := performancev2.CPUSet("0-1")
@@ -496,84 +504,97 @@ var _ = Describe("Controller", func() {
 					Expect(cmdlineRealtimeWithoutCPUBalancing.MatchString(*t.Spec.Profile[0].Data)).To(BeTrue())
 				})
 
-				It("should update MC when Hugepages params change without node added", func() {
-					size := performancev2.HugePageSize("2M")
-					profile.Spec.HugePages = &performancev2.HugePages{
-						DefaultHugePagesSize: &size,
-						Pages: []performancev2.HugePage{
-							{
-								Count: 8,
-								Size:  size,
+				DescribeTable("should update MC when Hugepages params change without node added",
+					func(size performancev2.HugePageSize) {
+						profile.Spec.HugePages = &performancev2.HugePages{
+							DefaultHugePagesSize: &size,
+							Pages: []performancev2.HugePage{
+								{
+									Count: 8,
+									Size:  size,
+								},
 							},
-						},
-					}
+						}
 
-					r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator)
+						r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator)
+						Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
-					Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
+						By("Verifying Tuned profile update")
+						key := types.NamespacedName{
+							Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
+							Namespace: components.NamespaceNodeTuningOperator,
+						}
+						t := &tunedv1.Tuned{}
+						err := r.Get(context.TODO(), key, t)
+						Expect(err).ToNot(HaveOccurred())
+						expectedCmdline := fmt.Sprintf(`\s*cmdline_hugepages=\+\s*default_hugepagesz=%s\s+hugepagesz=%s\s+hugepages=8\s*`, size, size)
+						cmdlineHugepages := regexp.MustCompile(expectedCmdline)
+						Expect(cmdlineHugepages.MatchString(*t.Spec.Profile[0].Data)).To(BeTrue())
+					},
+					Entry("Hugepages size 2M", performancev2.HugePageSize("2M")),
+					Entry("Hugepages size 32M", performancev2.HugePageSize("32M")),
+					Entry("Hugepages size 512M", performancev2.HugePageSize("512M")),
+					Entry("Hugepages size 1G", performancev2.HugePageSize("1G")),
+				)
 
-					By("Verifying Tuned profile update")
-					key := types.NamespacedName{
-						Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
-						Namespace: components.NamespaceNodeTuningOperator,
-					}
-					t := &tunedv1.Tuned{}
-					err := r.Get(context.TODO(), key, t)
-					Expect(err).ToNot(HaveOccurred())
-					cmdlineHugepages := regexp.MustCompile(`\s*cmdline_hugepages=\+\s*default_hugepagesz=2M\s+hugepagesz=2M\s+hugepages=8\s*`)
-					Expect(cmdlineHugepages.MatchString(*t.Spec.Profile[0].Data)).To(BeTrue())
-				})
-
-				It("should update Tuned when Hugepages params change with node added", func() {
-					size := performancev2.HugePageSize("2M")
-					profile.Spec.HugePages = &performancev2.HugePages{
-						DefaultHugePagesSize: &size,
-						Pages: []performancev2.HugePage{
-							{
-								Count: 8,
-								Size:  size,
-								Node:  pointer.Int32(0),
+				DescribeTable("should update Tuned when Hugepages params change with node added",
+					func(size performancev2.HugePageSize) {
+						profile.Spec.HugePages = &performancev2.HugePages{
+							DefaultHugePagesSize: &size,
+							Pages: []performancev2.HugePage{
+								{
+									Count: 8,
+									Size:  size,
+									Node:  pointer.Int32(0),
+								},
 							},
-						},
-					}
+						}
 
-					r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator)
+						r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator)
+						Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
-					Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
+						By("Verifying Tuned update")
+						key := types.NamespacedName{
+							Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
+							Namespace: components.NamespaceNodeTuningOperator,
+						}
+						t := &tunedv1.Tuned{}
+						err := r.Get(context.TODO(), key, t)
+						Expect(err).ToNot(HaveOccurred())
+						cmdlineHugepages := regexp.MustCompile(`\s*cmdline_hugepages=\+\s*`)
+						Expect(cmdlineHugepages.MatchString(*t.Spec.Profile[0].Data)).To(BeTrue())
 
-					By("Verifying Tuned update")
-					key := types.NamespacedName{
-						Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
-						Namespace: components.NamespaceNodeTuningOperator,
-					}
-					t := &tunedv1.Tuned{}
-					err := r.Get(context.TODO(), key, t)
-					Expect(err).ToNot(HaveOccurred())
-					cmdlineHugepages := regexp.MustCompile(`\s*cmdline_hugepages=\+\s*`)
-					Expect(cmdlineHugepages.MatchString(*t.Spec.Profile[0].Data)).To(BeTrue())
+						By("Verifying MC update")
+						key = types.NamespacedName{
+							Name:      machineconfig.GetMachineConfigName(profile.Name),
+							Namespace: metav1.NamespaceNone,
+						}
+						mc := &mcov1.MachineConfig{}
+						err = r.Get(context.TODO(), key, mc)
+						Expect(err).ToNot(HaveOccurred())
 
-					By("Verifying MC update")
-					key = types.NamespacedName{
-						Name:      machineconfig.GetMachineConfigName(profile.Name),
-						Namespace: metav1.NamespaceNone,
-					}
-					mc := &mcov1.MachineConfig{}
-					err = r.Get(context.TODO(), key, mc)
-					Expect(err).ToNot(HaveOccurred())
+						config := &igntypes.Config{}
+						err = json.Unmarshal(mc.Spec.Config.Raw, config)
+						Expect(err).ToNot(HaveOccurred())
 
-					config := &igntypes.Config{}
-					err = json.Unmarshal(mc.Spec.Config.Raw, config)
-					Expect(err).ToNot(HaveOccurred())
+						hugepageSizeKiloBytes, err := machineconfig.GetHugepagesSizeKilobytes(size)
+						Expect(err).ToNot(HaveOccurred())
 
-					Expect(config.Systemd.Units).To(ContainElement(MatchFields(IgnoreMissing|IgnoreExtras, Fields{
-						"Contents": And(
-							ContainSubstring("Description=Hugepages"),
-							ContainSubstring("Environment=HUGEPAGES_COUNT=8"),
-							ContainSubstring("Environment=HUGEPAGES_SIZE=2048"),
-							ContainSubstring("Environment=NUMA_NODE=0"),
-						),
-					})))
-				})
+						Expect(config.Systemd.Units).To(ContainElement(MatchFields(IgnoreMissing|IgnoreExtras, Fields{
+							"Contents": And(
+								ContainSubstring("Description=Hugepages"),
+								ContainSubstring("Environment=HUGEPAGES_COUNT=8"),
+								ContainSubstring(fmt.Sprintf("Environment=HUGEPAGES_SIZE=%s", hugepageSizeKiloBytes)),
+								ContainSubstring("Environment=NUMA_NODE=0"),
+							),
+						})))
+					},
+
+					Entry("Hugepages size 2M", performancev2.HugePageSize("2M")),
+					Entry("Hugepages size 32M", performancev2.HugePageSize("32M")),
+					Entry("Hugepages size 512M", performancev2.HugePageSize("512M")),
+					Entry("Hugepages size 1G", performancev2.HugePageSize("1G")),
+				)
 
 				It("should update status with generated tuned", func() {
 					r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator)
