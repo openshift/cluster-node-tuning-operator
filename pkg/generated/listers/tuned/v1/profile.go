@@ -18,10 +18,10 @@ limitations under the License.
 package v1
 
 import (
-	v1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/listers"
-	"k8s.io/client-go/tools/cache"
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	labels "k8s.io/apimachinery/pkg/labels"
+	listers "k8s.io/client-go/listers"
+	cache "k8s.io/client-go/tools/cache"
 )
 
 // ProfileLister helps list Profiles.
@@ -29,7 +29,7 @@ import (
 type ProfileLister interface {
 	// List lists all Profiles in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.Profile, err error)
+	List(selector labels.Selector) (ret []*tunedv1.Profile, err error)
 	// Profiles returns an object that can list and get Profiles.
 	Profiles(namespace string) ProfileNamespaceLister
 	ProfileListerExpansion
@@ -37,17 +37,17 @@ type ProfileLister interface {
 
 // profileLister implements the ProfileLister interface.
 type profileLister struct {
-	listers.ResourceIndexer[*v1.Profile]
+	listers.ResourceIndexer[*tunedv1.Profile]
 }
 
 // NewProfileLister returns a new ProfileLister.
 func NewProfileLister(indexer cache.Indexer) ProfileLister {
-	return &profileLister{listers.New[*v1.Profile](indexer, v1.Resource("profile"))}
+	return &profileLister{listers.New[*tunedv1.Profile](indexer, tunedv1.Resource("profile"))}
 }
 
 // Profiles returns an object that can list and get Profiles.
 func (s *profileLister) Profiles(namespace string) ProfileNamespaceLister {
-	return profileNamespaceLister{listers.NewNamespaced[*v1.Profile](s.ResourceIndexer, namespace)}
+	return profileNamespaceLister{listers.NewNamespaced[*tunedv1.Profile](s.ResourceIndexer, namespace)}
 }
 
 // ProfileNamespaceLister helps list and get Profiles.
@@ -55,15 +55,15 @@ func (s *profileLister) Profiles(namespace string) ProfileNamespaceLister {
 type ProfileNamespaceLister interface {
 	// List lists all Profiles in the indexer for a given namespace.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1.Profile, err error)
+	List(selector labels.Selector) (ret []*tunedv1.Profile, err error)
 	// Get retrieves the Profile from the indexer for a given namespace and name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1.Profile, error)
+	Get(name string) (*tunedv1.Profile, error)
 	ProfileNamespaceListerExpansion
 }
 
 // profileNamespaceLister implements the ProfileNamespaceLister
 // interface.
 type profileNamespaceLister struct {
-	listers.ResourceIndexer[*v1.Profile]
+	listers.ResourceIndexer[*tunedv1.Profile]
 }

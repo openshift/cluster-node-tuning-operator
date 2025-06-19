@@ -18,7 +18,7 @@ limitations under the License.
 package externalversions
 
 import (
-	"fmt"
+	fmt "fmt"
 
 	v1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
