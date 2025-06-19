@@ -552,9 +552,9 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			DescribeTable("Align multiple Guaranteed pods",
 				func(mode L3UncoreCacheShareMode) {
 					var (
-						ctx                   context.Context = context.Background()
-						targetNode                            = workerRTNodes[0]
-						cpusetCfg                             = &controller.CpuSet{}
+						ctx                   = context.Background()
+						targetNode            = workerRTNodes[0]
+						cpusetCfg             = &controller.CpuSet{}
 						cpusetList            []cpuset.CPUSet
 						podCpuRequirementList []string
 						dpList                []*appsv1.Deployment
@@ -590,7 +590,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 							key := client.ObjectKeyFromObject(dp)
 							err := testclient.Client.Get(ctx, key, dp)
 							Expect(err).ToNot(HaveOccurred(), "Unable to fetch podlabels")
-							podLabels := dp.Spec.Template.ObjectMeta.Labels
+							podLabels := dp.Spec.Template.Labels
 							err = testclient.DataPlaneClient.Delete(ctx, dp)
 							Expect(err).ToNot(HaveOccurred(), "Unable to delete deployment %v", dp.Name)
 							waitForDeploymentPodsDeletion(ctx, &targetNode, podLabels)
@@ -651,7 +651,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			DescribeTable("Verify CPU Alignment with multiple containers",
 				func(deploymentName string, alignmentType alignment, containerName []string) {
 					var (
-						ctx           context.Context = context.Background()
+						ctx           = context.Background()
 						containerList []corev1.Container
 						cpuSize       int
 						cpusetCfg     = &controller.CpuSet{}
@@ -692,7 +692,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 						deployments.WithPodTemplate(p),
 						deployments.WithNodeSelector(nodeSelector))
 					dp.Spec.Selector.MatchLabels = podLabel
-					dp.Spec.Template.ObjectMeta.Labels = podLabel
+					dp.Spec.Template.Labels = podLabel
 					dp.Spec.Template.Spec.Containers = append(dp.Spec.Template.Spec.Containers, containerList...)
 					err = testclient.Client.Create(ctx, dp)
 					Expect(err).ToNot(HaveOccurred())
@@ -848,7 +848,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 		DescribeTable("Align Guaranteed pod",
 			func(deploymentName string, resourceSize podCpuResourceSize) {
 				var (
-					ctx context.Context = context.Background()
+					ctx = context.Background()
 					rl  *corev1.ResourceList
 				)
 				podLabel := make(map[string]string)
@@ -1062,7 +1062,7 @@ func createDeployment(ctx context.Context, deploymentName string, podLabel map[s
 		deployments.WithPodTemplate(p),
 		deployments.WithNodeSelector(testNode))
 	dp.Spec.Selector.MatchLabels = podLabel
-	dp.Spec.Template.ObjectMeta.Labels = podLabel
+	dp.Spec.Template.Labels = podLabel
 	err = testclient.Client.Create(ctx, dp)
 	return dp, err
 }

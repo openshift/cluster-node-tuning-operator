@@ -23,7 +23,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
-	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v1"
 	performancev1alpha1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v1alpha1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -95,7 +94,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Expect(err).NotTo(HaveOccurred())
 				for t := range tunedList.Items {
 					tunedItem := tunedList.Items[t]
-					ownerReferences := tunedItem.ObjectMeta.OwnerReferences
+					ownerReferences := tunedItem.OwnerReferences
 					for o := range ownerReferences {
 						if ownerReferences[o].Name == profile.Name && tunedItem.Name != tunedExpectedName {
 							return false
@@ -521,7 +520,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 	})
 
 	Context("Create second performance profiles on a cluster", Label(string(label.Tier0), string(label.OpenShift)), func() {
-		var secondMCP *mcov1.MachineConfigPool
+		var secondMCP *machineconfigv1.MachineConfigPool
 		var secondProfile *performancev2.PerformanceProfile
 		var newRole = "worker-new"
 
@@ -564,14 +563,14 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Values:   []string{"worker", newRole},
 			}
 
-			secondMCP = &mcov1.MachineConfigPool{
+			secondMCP = &machineconfigv1.MachineConfigPool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "second-mcp",
 					Labels: map[string]string{
 						machineconfigv1.MachineConfigRoleLabelKey: newRole,
 					},
 				},
-				Spec: mcov1.MachineConfigPoolSpec{
+				Spec: machineconfigv1.MachineConfigPoolSpec{
 					MachineConfigSelector: &metav1.LabelSelector{
 						MatchExpressions: []metav1.LabelSelectorRequirement{req},
 					},
@@ -1386,7 +1385,7 @@ func validateTunedActiveProfile(ctx context.Context, wrknodes []corev1.Node) {
 
 	for _, node := range wrknodes {
 		tuned := nodes.TunedForNode(&node, RunningOnSingleNode)
-		tunedName := tuned.ObjectMeta.Name
+		tunedName := tuned.Name
 		By(fmt.Sprintf("executing the command cat /etc/tuned/active_profile inside the pod %s", tunedName))
 		Eventually(func() string {
 			out, err = pods.WaitForPodOutput(ctx, testclient.K8sClient, tuned, []string{"cat", "/etc/tuned/active_profile"})

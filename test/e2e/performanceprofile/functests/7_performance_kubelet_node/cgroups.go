@@ -14,7 +14,6 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -612,7 +611,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": workerRTNode.Name}),
 					LabelSelector: labels.SelectorFromSet(labels.Set{"type": "telco"}),
 				}
-				podList := &v1.PodList{}
+				podList := &corev1.PodList{}
 				dpObj := client.ObjectKeyFromObject(dp)
 				Eventually(func() bool {
 					if err := testclient.DataPlaneClient.List(context.TODO(), podList, listOptions); err != nil {
@@ -677,7 +676,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": workerRTNode.Name}),
 					LabelSelector: labels.SelectorFromSet(labels.Set{"type": "telco"}),
 				}
-				podList = &v1.PodList{}
+				podList = &corev1.PodList{}
 				Eventually(func() bool {
 					if err := testclient.DataPlaneClient.List(context.TODO(), podList, listOptions); err != nil {
 						return false

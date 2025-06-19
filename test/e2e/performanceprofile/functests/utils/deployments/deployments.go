@@ -75,8 +75,8 @@ func WithReplicas(replicas int32) func(dp *appsv1.Deployment) {
 func WithPodTemplate(podTemplate *corev1.Pod) func(dp *appsv1.Deployment) {
 	return func(dp *appsv1.Deployment) {
 		dp.Spec.Template.Spec = podTemplate.Spec
-		dp.Spec.Template.ObjectMeta.Labels = podTemplate.ObjectMeta.Labels
-		dp.Spec.Selector.MatchLabels = podTemplate.ObjectMeta.Labels
+		dp.Spec.Template.Labels = podTemplate.Labels
+		dp.Spec.Selector.MatchLabels = podTemplate.Labels
 	}
 }
 

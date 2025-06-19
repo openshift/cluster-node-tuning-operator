@@ -60,15 +60,15 @@ func (c *Controller) syncHostedClusterTuneds() error {
 			klog.V(1).Infof("hosted cluster already contains Tuned %v from ConfigMap", tunedName)
 			if reflect.DeepEqual(cmTuned.Spec.Profile, hcTuned.Spec.Profile) &&
 				reflect.DeepEqual(cmTuned.Spec.Recommend, hcTuned.Spec.Recommend) &&
-				reflect.DeepEqual(cmTuned.ObjectMeta.Labels, hcTuned.ObjectMeta.Labels) {
-				klog.V(2).Infof("hosted cluster version of Tuned %v matches the ConfigMap %s config", tunedName, cmTuned.ObjectMeta.Name)
+				reflect.DeepEqual(cmTuned.Labels, hcTuned.Labels) {
+				klog.V(2).Infof("hosted cluster version of Tuned %v matches the ConfigMap %s config", tunedName, cmTuned.Name)
 			} else {
 				// This Tuned exists in the hosted cluster but is out-of-sync with the management configuration
 				newTuned := hcTuned.DeepCopy() // never update the objects from cache
 				newTuned.Spec.Profile = cmTuned.Spec.Profile
 				newTuned.Spec.Recommend = cmTuned.Spec.Recommend
 
-				klog.V(2).Infof("updating Tuned %v from ConfigMap %s", tunedName, cmTuned.ObjectMeta.Name)
+				klog.V(2).Infof("updating Tuned %v from ConfigMap %s", tunedName, cmTuned.Name)
 				_, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.WatchNamespace()).Update(context.TODO(), newTuned, metav1.UpdateOptions{})
 				if err != nil {
 					if errors.IsInvalid(err) {
@@ -83,7 +83,7 @@ func (c *Controller) syncHostedClusterTuneds() error {
 			delete(hcTunedMap, tunedName)
 			delete(cmTunedMap, tunedName)
 		} else {
-			klog.V(1).Infof("need to create Tuned %v based on ConfigMap %s", cmTuned.ObjectMeta.Name, tunedName)
+			klog.V(1).Infof("need to create Tuned %v based on ConfigMap %s", cmTuned.Name, tunedName)
 			// Create the Tuned in the hosted cluster from the config in ConfigMap
 			newTuned := cmTuned.DeepCopy()
 			_, err := c.clients.Tuned.TunedV1().Tuneds(ntoconfig.WatchNamespace()).Create(context.TODO(), newTuned, metav1.CreateOptions{})
@@ -135,31 +135,31 @@ func (c *Controller) getObjFromTunedConfigMap() ([]tunedv1.Tuned, error) {
 		if !ok {
 			tunedConfig, ok = cm.Data[tunedConfigMapConfigKeyDeprecated]
 			if !ok {
-				klog.Warningf("ConfigMap %s has no data in field %s or %s (deprecated). Expected Tuned manifests.", cm.ObjectMeta.Name, tuningConfigMapConfigKey, tunedConfigMapConfigKeyDeprecated)
+				klog.Warningf("ConfigMap %s has no data in field %s or %s (deprecated). Expected Tuned manifests.", cm.Name, tuningConfigMapConfigKey, tunedConfigMapConfigKeyDeprecated)
 				continue
 			} else {
-				klog.Infof("Deprecated key %s used in ConfigMap %s", tunedConfigMapConfigKeyDeprecated, cm.ObjectMeta.Name)
+				klog.Infof("Deprecated key %s used in ConfigMap %s", tunedConfigMapConfigKeyDeprecated, cm.Name)
 			}
 		}
 
 		cmNodePoolNamespacedName, ok := cm.Annotations[hypershiftNodePoolLabel]
 		if !ok {
-			klog.Warningf("failed to parseTunedManifests in ConfigMap %s, no label %s", cm.ObjectMeta.Name, hypershiftNodePoolLabel)
+			klog.Warningf("failed to parseTunedManifests in ConfigMap %s, no label %s", cm.Name, hypershiftNodePoolLabel)
 			continue
 		}
 		nodePoolName := parseNamespacedName(cmNodePoolNamespacedName)
 
 		tunedsFromConfigMap, err := parseTunedManifests([]byte(tunedConfig), nodePoolName)
 		if err != nil {
-			klog.Warningf("failed to parseTunedManifests in ConfigMap %s: %v", cm.ObjectMeta.Name, err)
+			klog.Warningf("failed to parseTunedManifests in ConfigMap %s: %v", cm.Name, err)
 			continue
 		}
 
 		tunedsFromConfigMapUnique := []tunedv1.Tuned{}
 		for j, t := range tunedsFromConfigMap {
-			tunedObjectName := tunedsFromConfigMap[j].ObjectMeta.Name
+			tunedObjectName := tunedsFromConfigMap[j].Name
 			if seenTunedObject[tunedObjectName] {
-				klog.Warningf("ignoring duplicate Tuned Profile %s in ConfigMap %s", tunedObjectName, cm.ObjectMeta.Name)
+				klog.Warningf("ignoring duplicate Tuned Profile %s in ConfigMap %s", tunedObjectName, cm.Name)
 				continue
 			}
 			seenTunedObject[tunedObjectName] = true
@@ -203,7 +203,7 @@ func parseTunedManifests(data []byte, nodePoolName string) ([]tunedv1.Tuned, err
 		}
 		// Make Tuned names unique if a Tuned is duplicated across NodePools
 		// for example, if one ConfigMap is referenced in multiple NodePools
-		t.SetName(MakeTunedUniqueName(t.ObjectMeta.Name, nodePoolName))
+		t.SetName(MakeTunedUniqueName(t.Name, nodePoolName))
 		klog.V(2).Infof("parseTunedManifests: name: %s", t.GetName())
 
 		// Propagate NodePool name from ConfigMap down to Tuned object
@@ -221,7 +221,7 @@ func mcConfigMapName(name string) string {
 
 func hashStruct(o interface{}) string {
 	hash := fnv.New32a()
-	hash.Write([]byte(fmt.Sprintf("%v", o)))
+	fmt.Fprintf(hash, "%v", o)
 	intHash := hash.Sum32()
 	return fmt.Sprintf("%08x", intHash)
 }

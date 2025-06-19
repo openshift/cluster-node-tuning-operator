@@ -109,7 +109,7 @@ var _ = Describe("Machine Config", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			for _, f := range result.Storage.Files {
-				Expect(f.Node.Path).To(Not(ContainSubstring("rps")), "rps configuration %s should not be present", f.Node.Path)
+				Expect(f.Path).To(Not(ContainSubstring("rps")), "rps configuration %s should not be present", f.Path)
 			}
 
 			for _, f := range result.Systemd.Units {
@@ -293,13 +293,13 @@ resources = { "cpushares" = 0, "cpuset" = "" }
 			Expect(result.Storage.Files).To(HaveLen(2))
 
 			for _, f := range result.Storage.Files {
-				nonEncodedContent, ok := expected[f.Node.Path]
-				Expect(ok).To(BeTrue(), "path %s is not present in expected map", f.Node.Path)
+				nonEncodedContent, ok := expected[f.Path]
+				Expect(ok).To(BeTrue(), "path %s is not present in expected map", f.Path)
 				encoded := base64.StdEncoding.EncodeToString(nonEncodedContent)
 				Expect(f.Contents.Source).ToNot(BeNil())
 				Expect(*f.Contents.Source).To(
 					Equal(fmt.Sprintf("%s,%s", defaultIgnitionContentSource, encoded)),
-					"path %s contains content mismatch", f.Node.Path)
+					"path %s contains content mismatch", f.Path)
 			}
 		})
 	})

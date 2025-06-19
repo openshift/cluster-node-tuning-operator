@@ -26,7 +26,6 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	profilecomponent "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
-	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 )
 
 const (
@@ -182,7 +181,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 	}
 
 	// add script files under the node /usr/local/bin directory
-	if profileutil.IsRpsEnabled(profile) {
+	if profilecomponent.IsRpsEnabled(profile) {
 		scripts = []string{hugepagesAllocation, setRPSMask, setCPUsOffline, clearIRQBalanceBannedCPUs}
 	} else {
 		// realtime is explicitly disabled by workload hint
@@ -208,7 +207,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 	addContent(ignitionConfig, crioConfigSnippetContent, crioConfSnippetDst, &crioConfdRuntimesMode)
 
 	// do not add RPS handling when realtime is explicitly disabled by workload hint
-	if profileutil.IsRpsEnabled(profile) {
+	if profilecomponent.IsRpsEnabled(profile) {
 		// configure default rps mask applied to all network devices
 		sysctlConfContent, err := renderSysctlConf(profile, filepath.Join("configs", defaultRPSMaskConfig))
 		if err != nil {
@@ -219,7 +218,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 		addContent(ignitionConfig, sysctlConfContent, sysctlConfDst, &sysctlConfFileMode)
 
 		// if RPS disabled for physical devices revert the default RPS mask to 0
-		if !profileutil.IsPhysicalRpsEnabled(profile) {
+		if !profilecomponent.IsPhysicalRpsEnabled(profile) {
 			// add rps udev rule
 			rpsRulesMode := 0644
 			var rpsRulesContent []byte

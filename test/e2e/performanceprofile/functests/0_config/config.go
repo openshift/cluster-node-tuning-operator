@@ -22,7 +22,6 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
@@ -172,7 +171,7 @@ func testProfile() (*performancev2.PerformanceProfile, error) {
 			APIVersion: performancev2.GroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: utils.PerformanceProfileName,
+			Name: testutils.PerformanceProfileName,
 		},
 		Spec: performancev2.PerformanceProfileSpec{
 			CPU: profileCpus,
@@ -211,7 +210,7 @@ func testProfile() (*performancev2.PerformanceProfile, error) {
 	// If the machineConfigPool is master, the automatic selector from PAO won't work
 	// since the machineconfiguration.openshift.io/role label is not applied to the
 	// master pool, hence we put an explicit selector here.
-	if utils.RoleWorkerCNF == "master" {
+	if testutils.RoleWorkerCNF == "master" {
 		profile.Spec.MachineConfigPoolSelector = map[string]string{
 			"pools.operator.machineconfiguration.openshift.io/master": "",
 		}

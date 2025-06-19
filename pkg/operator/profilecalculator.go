@@ -132,8 +132,8 @@ func (pc *ProfileCalculator) nodeChangeHandler(nodeName string) (bool, error) {
 		change = true
 	}
 
-	if node.ObjectMeta.Annotations != nil {
-		if bootcmdlineAnnotVal, bootcmdlineAnnotSet := node.ObjectMeta.Annotations[tunedv1.TunedBootcmdlineAnnotationKey]; bootcmdlineAnnotSet {
+	if node.Annotations != nil {
+		if bootcmdlineAnnotVal, bootcmdlineAnnotSet := node.Annotations[tunedv1.TunedBootcmdlineAnnotationKey]; bootcmdlineAnnotSet {
 			change = pc.state.bootcmdline[nodeName] != bootcmdlineAnnotVal
 			pc.state.bootcmdline[nodeName] = bootcmdlineAnnotVal
 		}
@@ -541,7 +541,7 @@ func (pc *ProfileCalculator) machineConfigLabelsMatch(machineConfigLabels map[st
 	for _, p := range pools {
 		selector, err := metav1.LabelSelectorAsSelector(p.Spec.MachineConfigSelector)
 		if err != nil {
-			klog.Errorf("invalid label selector %s in MachineConfigPool %s: %v", util.ObjectInfo(selector), p.ObjectMeta.Name, err)
+			klog.Errorf("invalid label selector %s in MachineConfigPool %s: %v", util.ObjectInfo(selector), p.Name, err)
 			continue
 		}
 

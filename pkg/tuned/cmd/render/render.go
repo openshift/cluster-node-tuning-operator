@@ -329,7 +329,7 @@ func renderMachineConfig(pool *mcfgv1.MachineConfigPool, bootcmdline string, mCo
 	if mc == nil { //not found
 		// Expect only one PerformanceProfile => one TuneD
 		mc = operator.NewMachineConfig(mcName, annotations, mcLabels, kernelArgs)
-		klog.Infof("rendered MachineConfig %s with%s", mc.ObjectMeta.Name, operator.MachineConfigGenerationLogLine(len(bootcmdline) != 0, bootcmdline))
+		klog.Infof("rendered MachineConfig %s with%s", mc.Name, operator.MachineConfigGenerationLogLine(len(bootcmdline) != 0, bootcmdline))
 		return mc, nil
 	}
 
@@ -339,16 +339,16 @@ func renderMachineConfig(pool *mcfgv1.MachineConfigPool, bootcmdline string, mCo
 	kernelArgsEq := util.StringSlicesEqual(mc.Spec.KernelArguments, kernelArgs)
 	if kernelArgsEq {
 		// No update needed
-		klog.Infof("renderMachineConfig: MachineConfig %s doesn't need updating", mc.ObjectMeta.Name)
+		klog.Infof("renderMachineConfig: MachineConfig %s doesn't need updating", mc.Name)
 		return nil, nil
 	}
 
 	mc = mc.DeepCopy() // never update the objects from cache
-	mc.ObjectMeta.Annotations = mcNew.ObjectMeta.Annotations
+	mc.Annotations = mcNew.Annotations
 	mc.Spec.KernelArguments = removeDuplicates(append(mc.Spec.KernelArguments, kernelArgs...))
 	mc.Spec.Config = mcNew.Spec.Config
 	l := operator.MachineConfigGenerationLogLine(!kernelArgsEq, bootcmdline)
-	klog.Infof("renderMachineConfig: updating MachineConfig %s with%s", mc.ObjectMeta.Name, l)
+	klog.Infof("renderMachineConfig: updating MachineConfig %s with%s", mc.Name, l)
 
 	return mc, nil
 }

@@ -64,7 +64,7 @@ func PidParser(lines []byte) (string, error) {
 		}
 		fields := bytes.Split(line, []byte(":"))
 		if len(fields) != 3 {
-			return "", fmt.Errorf("Error parsing cgroup: expected 3 fields but got %d:\n", len(fields))
+			return "", fmt.Errorf("error parsing cgroup: expected 3 fields but got %d", len(fields))
 		}
 
 		if bytes.Contains(fields[1], []byte("=")) {

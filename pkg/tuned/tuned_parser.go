@@ -244,7 +244,7 @@ func execCmd(command []string) (string, error) {
 
 	cmdReader, err := cmd.StdoutPipe()
 	if err != nil {
-		return "", fmt.Errorf("error creating StdoutPipe for command %v: %v\n", command, err)
+		return "", fmt.Errorf("error creating StdoutPipe for command %v: %v", command, err)
 	}
 
 	go func(chReader chan bool) {
@@ -297,13 +297,13 @@ func execCmd(command []string) (string, error) {
 	}(chSupervisor)
 
 	if err = cmd.Start(); err != nil {
-		return out, fmt.Errorf("error starting command %v: %v\n", command, err)
+		return out, fmt.Errorf("error starting command %v: %v", command, err)
 	}
 
 	<-chReader // Wait for the reader to prevent missing (part of) its output.  Do not move after cmd.Wait()!
 	if err = cmd.Wait(); err != nil {
 		// The command exited with non 0 exit status, e.g. terminated by a signal.
-		return out, fmt.Errorf("error waiting for command %v: %v\n", command, err)
+		return out, fmt.Errorf("error waiting for command %v: %v", command, err)
 	}
 
 	return out, nil
@@ -313,8 +313,8 @@ func execCmd(command []string) (string, error) {
 // arguments 'args'.  Returns the result/expansion of running the built-in.
 // If the execution of the built-in fails, returns the string 'onFail'.
 func execTuneDBuiltin(function string, args []string, onFail string) string {
-	switch {
-	case function == "exec":
+	switch function {
+	case "exec":
 		out, err := execCmd(args)
 		if err != nil {
 			klog.Errorf("error calling built-in exec: %v", err)
@@ -324,7 +324,7 @@ func execTuneDBuiltin(function string, args []string, onFail string) string {
 
 	// The virt-what script needed by "virt_check" must be run as root user.
 	// Exclude it from unit testing.
-	case function == "virt_check":
+	case "virt_check":
 		// Check whether running inside virtual machine (VM) or on bare metal.
 		// If running inside a VM expand to argument 1, otherwise expand to
 		// argument 2.  Note the expansion to argument 2 is done also on error

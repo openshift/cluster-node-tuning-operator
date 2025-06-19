@@ -26,7 +26,7 @@ const (
 
 This document documents the PerformanceProfile API introduced by the Performance controller.
 
-> This document is generated from code comments on the ` + "`PerformanceProfile`" + ` struct.  
+> This document is generated from code comments on the ` + "`PerformanceProfile`" + ` struct.
 > When contributing a change to this document please do so by changing those code comments.`
 )
 
@@ -134,7 +134,6 @@ func ParseDocumentationFrom(srcs []string) []KubeTypes {
 
 func astFrom(filePath string) *doc.Package {
 	fset := token.NewFileSet()
-	m := make(map[string]*ast.File)
 
 	f, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
 	if err != nil {
@@ -142,10 +141,13 @@ func astFrom(filePath string) *doc.Package {
 		return nil
 	}
 
-	m[filePath] = f
-	apkg, _ := ast.NewPackage(fset, m, nil, nil)
+	p, err := doc.NewFromFiles(fset, []*ast.File{f}, "")
+	if err != nil {
+		fmt.Println(err)
+		return nil
+	}
 
-	return doc.New(apkg, "", 0)
+	return p
 }
 
 func fmtRawDoc(rawDoc string) string {
