@@ -46,6 +46,7 @@ import (
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/cpuset"
 	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -395,24 +396,31 @@ var _ = Describe("Controller", func() {
 					}
 				})
 
-				It("should update MC when RT kernel gets disabled", func() {
-					profile.Spec.RealTimeKernel.Enabled = pointer.Bool(false)
-					r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator)
+				DescribeTable("MachineConfig kernelType updates",
+					func(rtKernelEnabled bool, kernelPageSize *performancev2.KernelPageSize, expectedKernelType string) {
+						// Set up profile
+						profile.Spec.RealTimeKernel.Enabled = ptr.To(rtKernelEnabled)
+						profile.Spec.KernelPageSize = kernelPageSize
 
-					Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
+						r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator)
 
-					key := types.NamespacedName{
-						Name:      machineconfig.GetMachineConfigName(profile.Name),
-						Namespace: metav1.NamespaceNone,
-					}
+						Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
-					// verify MachineConfig update
-					mc := &mcov1.MachineConfig{}
-					err := r.Get(context.TODO(), key, mc)
-					Expect(err).ToNot(HaveOccurred())
+						// Verify MachineConfig update
+						key := types.NamespacedName{
+							Name:      machineconfig.GetMachineConfigName(profile.Name),
+							Namespace: metav1.NamespaceNone,
+						}
 
-					Expect(mc.Spec.KernelType).To(Equal(machineconfig.MCKernelDefault))
-				})
+						mc := &mcov1.MachineConfig{}
+						err := r.Get(context.TODO(), key, mc)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(mc.Spec.KernelType).To(Equal(expectedKernelType))
+					},
+					Entry("should set kernelType to default when RealTimeKernel is disabled", false, nil, machineconfig.MCKernelDefault),
+					Entry("should set kernelType to 64k-pages when RT kernel disabled and 64k kernel page size selected", false, ptr.To(performancev2.KernelPageSize("64k")), machineconfig.MCKernel64kPages),
+					Entry("should set kernelType to realtime when RT kernel is enabled", true, nil, machineconfig.MCKernelRT),
+				)
 
 				It("should update MC, KC and Tuned when CPU params change", func() {
 					reserved := performancev2.CPUSet("0-1")

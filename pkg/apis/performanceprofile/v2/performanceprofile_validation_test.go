@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -713,6 +714,87 @@ var _ = Describe("PerformanceProfile", func() {
 					errors := profile.validateHugePages(nodes)
 					Expect(errors).NotTo(BeEmpty())
 					Expect(errors[0].Error()).To(ContainSubstring(fmt.Sprintf("the page with the size %q and without the specified NUMA node, has duplication", hugepagesSize1G)))
+				})
+			})
+		})
+	})
+
+	Describe("KernelPagesSize validation", func() {
+		var nodes corev1.NodeList
+		var err error
+
+		Context("validation on x86 arch", func() {
+			BeforeEach(func() {
+				nodeSpecs := []NodeSpecifications{}
+				nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node"})
+				validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+				nodes, err = profile.getNodesList()
+				Expect(err).To(BeNil())
+			})
+			It("should accept 4k pages kernel pages size", func() {
+				KernelPageSize := KernelPageSize(kernelPageSize4k)
+				profile.Spec.KernelPageSize = &KernelPageSize
+				errors := profile.validateKernelPageSize(nodes)
+				Expect(errors).To(BeEmpty(), "expected no validation errors for 4k kernel page size")
+			})
+			It("should reject invalid input values for pages kernel page size", func() {
+				invalidInputs := [3]string{"", "aaa", "64k"}
+				for _, input := range invalidInputs {
+					invalidKernelPageSize := KernelPageSize(input)
+					profile.Spec.KernelPageSize = &invalidKernelPageSize
+					errors := profile.validateKernelPageSize(nodes)
+					Expect(errors).NotTo(BeEmpty(), "should have validation error when kernel page size is invalid")
+					Expect(errors[0].Error()).To(ContainSubstring("KernelPageSize should be equal to one of"))
+				}
+			})
+		})
+		Context("validation on aarch64", func() {
+			BeforeEach(func() {
+				nodeSpecs := []NodeSpecifications{}
+				nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: aarch64, cpuCapacity: 1000, name: "node"})
+				validatorClient = GetFakeValidatorClient(nodeSpecs)
+				nodes, err = profile.getNodesList()
+				Expect(err).To(BeNil())
+
+			})
+			It("should accept 4k kernel page size", func() {
+				KernelPageSize := KernelPageSize(kernelPageSize4k)
+				profile.Spec.KernelPageSize = &KernelPageSize
+				errors := profile.validateKernelPageSize(nodes)
+				Expect(errors).To(BeEmpty(), "expected no validation errors for 4k kernel page size")
+			})
+			It("should reject invalid input values for pages kernel page size", func() {
+				invalidInputs := [4]string{"", "aaa", "4", "64"}
+				for _, input := range invalidInputs {
+					invalidKernelPageSize := KernelPageSize(input)
+					profile.Spec.KernelPageSize = &invalidKernelPageSize
+					errors := profile.validateKernelPageSize(nodes)
+					Expect(errors).NotTo(BeEmpty(), "should have validation error when kernel page size is invalid")
+					Expect(errors[0].Error()).To(ContainSubstring("KernelPageSize should be equal to one of"))
+				}
+			})
+			When("real time kernel disabled", func() {
+				It("should accept 64k page size", func() {
+					profile.Spec.RealTimeKernel = &RealTimeKernel{
+						Enabled: ptr.To(false),
+					}
+					KernelPageSize := KernelPageSize(kernelPageSize64k)
+					profile.Spec.KernelPageSize = &KernelPageSize
+					errors := profile.validateKernelPageSize(nodes)
+					Expect(errors).To(BeEmpty(), "expected no validation errors for 64k kernel page size")
+				})
+			})
+			When("real time kernel enabled", func() {
+				It("should reject 64k page size", func() {
+					profile.Spec.RealTimeKernel = &RealTimeKernel{
+						Enabled: ptr.To(true),
+					}
+					KernelPageSize := KernelPageSize(kernelPageSize64k)
+					profile.Spec.KernelPageSize = &KernelPageSize
+					errors := profile.validateKernelPageSize(nodes)
+					Expect(errors).ToNot(BeEmpty())
+					Expect(errors[0].Error()).To(ContainSubstring("64k pages are not supported on ARM64 with a real-time kernel yet"))
 				})
 			})
 		})
