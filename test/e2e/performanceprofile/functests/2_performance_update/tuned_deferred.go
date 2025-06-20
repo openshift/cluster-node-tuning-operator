@@ -33,6 +33,14 @@ import (
 	tunedutil "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
 )
 
+type TunedProfileConfig struct {
+	DeferMode         string
+	ProfileChangeType string // "first-time" or "in-place"
+	ExpectedBehavior  string // "deferred" or "immediate"
+	KernelSHMMNI      string // 4096 or 8192
+	ServiceStalld     string // "start, enabled"
+}
+
 var _ = Describe("Tuned Deferred tests of performance profile", Ordered, Label(string(label.TunedDeferred)), func() {
 	var (
 		workerCNFNodes []corev1.Node
@@ -41,13 +49,6 @@ var _ = Describe("Tuned Deferred tests of performance profile", Ordered, Label(s
 		tuned          *tunedv1.Tuned
 		initialPolicy  *string
 	)
-
-	type TunedProfileConfig struct {
-		DeferMode         string
-		ProfileChangeType string // "first-time" or "in-place"
-		ExpectedBehavior  string // "deferred" or "immediate"
-		KernelSHMMNI      string // 4096 or 8192
-	}
 
 	name := "performance-patch"
 
@@ -73,7 +74,7 @@ var _ = Describe("Tuned Deferred tests of performance profile", Ordered, Label(s
 	Context("Tuned Deferred status", func() {
 		DescribeTable("Validate Tuned DeferMode behavior",
 			func(tc TunedProfileConfig) {
-
+				var data string
 				if tc.ProfileChangeType == "first-time" {
 					tuned = getTunedProfile(name)
 
@@ -88,7 +89,12 @@ var _ = Describe("Tuned Deferred tests of performance profile", Ordered, Label(s
 							return profile.Spec.Config.TunedProfile == "openshift-node-performance-performance"
 						}, 2*time.Minute, 10*time.Second).Should(BeTrue(), "Tuned profile deletion did not complete in time")
 					}
-					tuned, err = createTunedObject(tc.DeferMode, tc.KernelSHMMNI, name)
+					if tc.KernelSHMMNI != "" {
+						data = createTunedData(tc)
+					} else if tc.ServiceStalld != "" {
+						data = createTunedData(tc)
+					}
+					tuned, err = createTunedObject(tc.DeferMode, data, name)
 					Expect(err).NotTo(HaveOccurred())
 
 				} else {
@@ -98,11 +104,19 @@ var _ = Describe("Tuned Deferred tests of performance profile", Ordered, Label(s
 					cfg, err := ini.Load(tunedData)
 					Expect(err).ToNot(HaveOccurred())
 
-					sysctlSection, err := cfg.GetSection("sysctl")
-					Expect(err).ToNot(HaveOccurred())
+					if tc.KernelSHMMNI != "" {
+						sysctlSection, err := cfg.GetSection("sysctl")
+						Expect(err).ToNot(HaveOccurred())
 
-					sysctlSection.Key("kernel.shmmni").SetValue(tc.KernelSHMMNI)
-					Expect(sysctlSection.Key("kernel.shmmni").String()).To(Equal(tc.KernelSHMMNI))
+						sysctlSection.Key("kernel.shmmni").SetValue(tc.KernelSHMMNI)
+						Expect(sysctlSection.Key("kernel.shmmni").String()).To(Equal(tc.KernelSHMMNI))
+					} else if tc.ServiceStalld != "" {
+						serviceSection, err := cfg.GetSection("service")
+						Expect(err).ToNot(HaveOccurred())
+
+						serviceSection.Key("service.stalld").SetValue(tc.ServiceStalld)
+						Expect(serviceSection.Key("service.stalld").String()).To(Equal(tc.ServiceStalld))
+					}
 
 					var updatedTunedData bytes.Buffer
 					_, err = cfg.WriteTo(&updatedTunedData)
@@ -121,7 +135,7 @@ var _ = Describe("Tuned Deferred tests of performance profile", Ordered, Label(s
 
 				switch tc.ExpectedBehavior {
 				case "immediate":
-					verifyImmediateApplication(tuned, workerCNFNodes, tc.KernelSHMMNI)
+					verifyImmediateApplication(tuned, workerCNFNodes, tc)
 				case "deferred":
 					Eventually(func() bool {
 						result, err := verifyDeferredApplication(tuned, workerCNFNodes, name)
@@ -129,7 +143,7 @@ var _ = Describe("Tuned Deferred tests of performance profile", Ordered, Label(s
 						return result
 					}, 1*time.Minute, 5*time.Second).Should(BeTrue(), "Timed out checking deferred condition message")
 					rebootNode(poolName)
-					verifyImmediateApplication(tuned, workerCNFNodes, tc.KernelSHMMNI)
+					verifyImmediateApplication(tuned, workerCNFNodes, tc)
 				}
 			},
 			Entry("[test_id:78115] Verify deferred Always with first-time profile change", TunedProfileConfig{
@@ -167,6 +181,18 @@ var _ = Describe("Tuned Deferred tests of performance profile", Ordered, Label(s
 				ProfileChangeType: "in-place",
 				ExpectedBehavior:  "immediate",
 				KernelSHMMNI:      "4096",
+			}),
+			Entry("Verify deferred Always with first-time profile change - service plugin", TunedProfileConfig{
+				DeferMode:         "always",
+				ProfileChangeType: "first-time",
+				ExpectedBehavior:  "deferred",
+				ServiceStalld:     "start",
+			}),
+			Entry("Verify deferred Always with in-place profile update - service plugin", TunedProfileConfig{
+				DeferMode:         "always",
+				ProfileChangeType: "in-place",
+				ExpectedBehavior:  "deferred",
+				ServiceStalld:     "start, enabled",
 			}),
 		)
 	})
@@ -229,19 +255,12 @@ func getTunedProfile(tunedName string) *tunedv1.Tuned {
 	return matchedTuned
 }
 
-func createTunedObject(deferMode string, KernelSHMMNI string, name string) (*tunedv1.Tuned, error) {
+func createTunedObject(deferMode string, data string, name string) (*tunedv1.Tuned, error) {
 	GinkgoHelper()
 
 	tunedName := name
 	ns := components.NamespaceNodeTuningOperator
 	priority := uint64(19)
-	data := fmt.Sprintf(`
-	[main]
-	summary=Configuration changes profile inherited from performance created tuned
-	include=openshift-node-performance-performance
-	[sysctl]
-	kernel.shmmni=%s
-	`, KernelSHMMNI)
 
 	// Create a Tuned object
 	tuned := &tunedv1.Tuned{
@@ -278,41 +297,80 @@ func createTunedObject(deferMode string, KernelSHMMNI string, name string) (*tun
 	return tuned, nil
 }
 
-func execSysctlOnWorkers(ctx context.Context, workerNodes []corev1.Node, sysctlMap map[string]string) {
+func createTunedData(tc TunedProfileConfig) string {
+	var data string
+	switch {
+	case tc.KernelSHMMNI != "":
+		data = fmt.Sprintf(`
+		[main]
+		summary=Configuration changes profile inherited from performance created tuned
+		include=openshift-node-performance-performance
+		[sysctl]
+		kernel.shmmni=%s
+		`, tc.KernelSHMMNI)
+
+	case tc.ServiceStalld != "":
+		data = fmt.Sprintf(`
+		[main]
+		summary=Configuration changes profile inherited from performance created tuned
+		include=openshift-node-performance-performance
+		[service]
+		service.stalld=%s
+		`, tc.ServiceStalld)
+		return data
+	}
+	return data
+}
+
+func verifyOnWorkers(ctx context.Context, workerNodes []corev1.Node, paramMap map[string]string) {
 	GinkgoHelper()
 
 	var err error
 	var out []byte
 	isSNO := false
 	for _, node := range workerNodes {
-		for param, expected := range sysctlMap {
+		for param, expected := range paramMap {
 			Eventually(func() bool {
-				By(fmt.Sprintf("executing the command \"sysctl -n %s\"", param))
-				tunedCmd := []string{"/bin/sh", "-c", "chroot /host sysctl -a | grep shmmni"}
+				var tunedCmd []string
+				switch param {
+				case "kernel.shmmni":
+					By(fmt.Sprintf("Checking sysctl value of %s", param))
+					tunedCmd = []string{"/bin/sh", "-c", fmt.Sprintf("chroot /host sysctl -n %s", param)}
+				case "service.stalld":
+					expected = "active"
+					By("Checking if 'stalld' service is active")
+					// This will return "active" if stalld is running
+					tunedCmd = []string{"/bin/sh", "-c", "chroot /host systemctl is-active stalld"}
+				}
 				tunedPod := nodes.TunedForNode(&node, isSNO)
 				out, err = pods.WaitForPodOutput(ctx, testclient.K8sClient, tunedPod, tunedCmd)
 				Expect(err).ToNot(HaveOccurred())
-				res := strings.TrimSpace(strings.SplitN(string(out), "=", 2)[1])
+				res := strings.TrimSpace(string(out))
 				if res != expected {
-					testlog.Errorf("parameter %s value is not %s.", out, expected)
+					testlog.Errorf("parameter %s returned '%s', expected '%s'", param, res, expected)
 				}
 				return res == expected
-			}, 2*time.Minute, 10*time.Second).Should(BeTrue(), "Timed out verifying kernel.shmmni on worker node")
+			}, 2*time.Minute, 10*time.Second).Should(BeTrue(),
+				fmt.Sprintf("Timed out verifying %s on worker node %s", param, node.Name))
 		}
 	}
 }
 
-func verifyImmediateApplication(tuned *tunedv1.Tuned, workerCNFNodes []corev1.Node, KernelSHMMNI string) {
+func verifyImmediateApplication(tuned *tunedv1.Tuned, workerCNFNodes []corev1.Node, tc TunedProfileConfig) {
 	// Use Eventually to wait until the performance profile status is updated
 	Eventually(func() bool {
 		profile, _ := tunedutil.GetProfile(context.TODO(), testclient.ControlPlaneClient, components.NamespaceNodeTuningOperator, workerCNFNodes[0].Name)
 		return profile.Spec.Config.TunedProfile == tuned.Name
 	}, 2*time.Minute, 10*time.Second).Should(BeTrue(), "Timed out waiting for profile.Spec.Config.TunedProfile to match tuned.Name")
 
-	sysctlMap := map[string]string{
-		"kernel.shmmni": KernelSHMMNI,
+	paramMap := make(map[string]string)
+	switch {
+	case tc.KernelSHMMNI != "":
+		paramMap["kernel.shmmni"] = tc.KernelSHMMNI
+	case tc.ServiceStalld != "":
+		paramMap["service.stalld"] = tc.ServiceStalld
 	}
-	execSysctlOnWorkers(context.TODO(), workerCNFNodes, sysctlMap)
+	verifyOnWorkers(context.TODO(), workerCNFNodes, paramMap)
 }
 
 func verifyDeferredApplication(tuned *tunedv1.Tuned, workerCNFNodes []corev1.Node, name string) (bool, error) {
@@ -338,6 +396,7 @@ func verifyDeferredApplication(tuned *tunedv1.Tuned, workerCNFNodes []corev1.Nod
 }
 
 func rebootNode(poolName string) {
+	fmt.Println("\n\n\n\n Rebooting NODE")
 	profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 	if err != nil {
 		testlog.Errorf("Unable to fetch latest performance profile err: %v", err)
