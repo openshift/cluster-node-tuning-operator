@@ -18,9 +18,9 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 
-	v1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	scheme "github.com/openshift/cluster-node-tuning-operator/pkg/generated/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -36,33 +36,34 @@ type TunedsGetter interface {
 
 // TunedInterface has methods to work with Tuned resources.
 type TunedInterface interface {
-	Create(ctx context.Context, tuned *v1.Tuned, opts metav1.CreateOptions) (*v1.Tuned, error)
-	Update(ctx context.Context, tuned *v1.Tuned, opts metav1.UpdateOptions) (*v1.Tuned, error)
+	Create(ctx context.Context, tuned *tunedv1.Tuned, opts metav1.CreateOptions) (*tunedv1.Tuned, error)
+	Update(ctx context.Context, tuned *tunedv1.Tuned, opts metav1.UpdateOptions) (*tunedv1.Tuned, error)
 	// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-	UpdateStatus(ctx context.Context, tuned *v1.Tuned, opts metav1.UpdateOptions) (*v1.Tuned, error)
+	UpdateStatus(ctx context.Context, tuned *tunedv1.Tuned, opts metav1.UpdateOptions) (*tunedv1.Tuned, error)
 	Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error
 	DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error
-	Get(ctx context.Context, name string, opts metav1.GetOptions) (*v1.Tuned, error)
-	List(ctx context.Context, opts metav1.ListOptions) (*v1.TunedList, error)
+	Get(ctx context.Context, name string, opts metav1.GetOptions) (*tunedv1.Tuned, error)
+	List(ctx context.Context, opts metav1.ListOptions) (*tunedv1.TunedList, error)
 	Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error)
-	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.Tuned, err error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *tunedv1.Tuned, err error)
 	TunedExpansion
 }
 
 // tuneds implements TunedInterface
 type tuneds struct {
-	*gentype.ClientWithList[*v1.Tuned, *v1.TunedList]
+	*gentype.ClientWithList[*tunedv1.Tuned, *tunedv1.TunedList]
 }
 
 // newTuneds returns a Tuneds
 func newTuneds(c *TunedV1Client, namespace string) *tuneds {
 	return &tuneds{
-		gentype.NewClientWithList[*v1.Tuned, *v1.TunedList](
+		gentype.NewClientWithList[*tunedv1.Tuned, *tunedv1.TunedList](
 			"tuneds",
 			c.RESTClient(),
 			scheme.ParameterCodec,
 			namespace,
-			func() *v1.Tuned { return &v1.Tuned{} },
-			func() *v1.TunedList { return &v1.TunedList{} }),
+			func() *tunedv1.Tuned { return &tunedv1.Tuned{} },
+			func() *tunedv1.TunedList { return &tunedv1.TunedList{} },
+		),
 	}
 }

@@ -18,13 +18,13 @@ limitations under the License.
 package v1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	apistunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	versioned "github.com/openshift/cluster-node-tuning-operator/pkg/generated/clientset/versioned"
 	internalinterfaces "github.com/openshift/cluster-node-tuning-operator/pkg/generated/informers/externalversions/internalinterfaces"
-	v1 "github.com/openshift/cluster-node-tuning-operator/pkg/generated/listers/tuned/v1"
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/generated/listers/tuned/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -35,7 +35,7 @@ import (
 // Tuneds.
 type TunedInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.TunedLister
+	Lister() tunedv1.TunedLister
 }
 
 type tunedInformer struct {
@@ -70,7 +70,7 @@ func NewFilteredTunedInformer(client versioned.Interface, namespace string, resy
 				return client.TunedV1().Tuneds(namespace).Watch(context.TODO(), options)
 			},
 		},
-		&tunedv1.Tuned{},
+		&apistunedv1.Tuned{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,9 +81,9 @@ func (f *tunedInformer) defaultInformer(client versioned.Interface, resyncPeriod
 }
 
 func (f *tunedInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&tunedv1.Tuned{}, f.defaultInformer)
+	return f.factory.InformerFor(&apistunedv1.Tuned{}, f.defaultInformer)
 }
 
-func (f *tunedInformer) Lister() v1.TunedLister {
-	return v1.NewTunedLister(f.Informer().GetIndexer())
+func (f *tunedInformer) Lister() tunedv1.TunedLister {
+	return tunedv1.NewTunedLister(f.Informer().GetIndexer())
 }
