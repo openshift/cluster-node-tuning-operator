@@ -149,7 +149,7 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 				_, _, err = util.ExecAndLogCommand("oc", "get", "tuned", "-n", ns)
 				_, _, err = util.ExecAndLogCommand("oc", "get", "profile", "-n", ns)
 //				_, _, err = util.ExecAndLogCommand("oc", "get", "performanceprofile/performance", "-n", ns, "-o", "yaml")
-				Expect(err).To(HaveOccurred())	// intentionally fail
+//				Expect(err).To(HaveOccurred())	// intentionally fail
 
 				profiles.WaitForCondition(testutils.NodeSelectorLabels, v1.ConditionAvailable, corev1.ConditionTrue)
 			}()
