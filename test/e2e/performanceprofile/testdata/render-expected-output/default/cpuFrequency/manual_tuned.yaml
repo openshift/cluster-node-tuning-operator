@@ -143,6 +143,7 @@ spec:
     operand:
       tunedConfig:
         reapply_sysctl: null
+        startup_udev_settle_wait: null
     priority: 20
     profile: openshift-node-performance-manual
 status: {}
