@@ -2,11 +2,15 @@ package deployments
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
@@ -89,4 +93,26 @@ func IsReady(ctx context.Context, cli client.Client, listOptions *client.ListOpt
 	}
 
 	return true, nil
+}
+
+// WaitForDesiredDeploymentStatus Wait for deployment comes to the desired status
+// This is useful when we reboot the nodes, we do not exactly know when the deployment will
+// be running, so in the test we check if the deployment has reached the desiredStatus before
+// quering its pods
+func WaitForDesiredDeploymentStatus(ctx context.Context, deployment *appsv1.Deployment, cli client.Client, namespace, name string, desiredStatus appsv1.DeploymentStatus) error {
+	return wait.PollUntilContextTimeout(ctx, 5*time.Second, 5*time.Minute, true, func(ctx context.Context) (bool, error) {
+		// get the latest deployment
+		deployment := &appsv1.Deployment{}
+		err := cli.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, deployment)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				return false, fmt.Errorf("deployment not found")
+			}
+			return false, err
+		}
+		if deployment.Status.Replicas == desiredStatus.Replicas && deployment.Status.AvailableReplicas == desiredStatus.AvailableReplicas {
+			return true, nil
+		}
+		return false, nil
+	})
 }
