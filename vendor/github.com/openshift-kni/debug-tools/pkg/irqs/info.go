@@ -27,7 +27,7 @@ import (
 	"strings"
 
 	"github.com/openshift-kni/debug-tools/pkg/fswrap"
-	cpuset "github.com/openshift-kni/debug-tools/pkg/k8s_imported"
+	cpuset "k8s.io/utils/cpuset"
 )
 
 const (

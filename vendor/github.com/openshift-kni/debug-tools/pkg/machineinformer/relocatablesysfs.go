@@ -18,6 +18,7 @@
 package machineinformer
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -30,7 +31,7 @@ import (
 
 	"github.com/google/cadvisor/utils/sysfs"
 
-	cpuset "github.com/openshift-kni/debug-tools/pkg/k8s_imported"
+	cpuset "k8s.io/utils/cpuset"
 )
 
 const (
@@ -54,6 +55,8 @@ const (
 
 	coreIDFilePath    = "/" + sysFsCPUTopology + "/core_id"
 	packageIDFilePath = "/" + sysFsCPUTopology + "/physical_package_id"
+	bookIDFilePath    = "/" + sysFsCPUTopology + "/book_id"
+	drawerIDFilePath  = "/" + sysFsCPUTopology + "/drawer_id"
 
 	// memory size calculations
 
@@ -67,6 +70,10 @@ const (
 	HugePagesNrFile = "nr_hugepages"
 
 	nodeDir = "/devices/system/node/"
+)
+
+var (
+	ErrNotImplemented = errors.New("not yet implemented")
 )
 
 // RelocatableSysFs allows to consume a sysfs tree whose root is not `/sys`.
@@ -260,8 +267,28 @@ func (fs RelocatableSysFs) GetNetworkStatValue(dev string, stat string) (uint64,
 }
 
 func (fs RelocatableSysFs) GetCaches(id int) ([]os.FileInfo, error) {
-	cpuPath := filepath.Join(fs.root, fmt.Sprintf("%s%d/cache", cacheDir, id))
+	cpuPath := filepath.Join(fs.root, fmt.Sprintf("%s%d", cacheDir, id), "cache")
 	return ioutil.ReadDir(cpuPath)
+}
+
+// TODO: sort out the root prepending
+func (fs RelocatableSysFs) GetBookID(cpuPath string) (string, error) {
+	bookIDFilePath := filepath.Join(cpuPath, bookIDFilePath)
+	bookID, err := os.ReadFile(bookIDFilePath)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(bookID)), nil
+}
+
+// TODO: sort out the root prepending
+func (fs RelocatableSysFs) GetDrawerID(cpuPath string) (string, error) {
+	drawerIDFilePath := filepath.Join(cpuPath, drawerIDFilePath)
+	drawerID, err := os.ReadFile(drawerIDFilePath)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(drawerID)), nil
 }
 
 func bitCount(i uint64) (count int) {
@@ -402,7 +429,7 @@ func isCPUOnline(path string, cpuID uint16) (bool, error) {
 		return false, err
 	}
 
-	for _, cpu := range cpus.ToSlice() {
+	for _, cpu := range cpus.List() {
 		if uint16(cpu) == cpuID {
 			return true, nil
 		}
