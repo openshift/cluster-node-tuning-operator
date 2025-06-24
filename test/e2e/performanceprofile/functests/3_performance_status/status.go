@@ -238,6 +238,8 @@ func createBadTuned(name, ns string) func() {
 	if hypershiftutils.IsHypershiftCluster() {
 		Expect(nodepools.AttachTuningObject(context.TODO(), testclient.ControlPlaneClient, badTuned)).To(Succeed())
 	}
+	By("createBadTuned) ------------")
+	_, _, err := util.ExecAndLogCommand("oc", "get", "tuned", "-n", "openshift-cluster-node-tuning-operator")
 
 	return func() {
 		GinkgoHelper()
