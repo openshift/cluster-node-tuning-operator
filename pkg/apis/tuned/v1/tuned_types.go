@@ -133,7 +133,8 @@ type TuneDConfig struct {
 	ReapplySysctl *bool `json:"reapply_sysctl"`
 	// configure startup_udev_settle_wait timeout functionality for the TuneD daemon: unsigned integer (default is 20)
 	// +optional
-	StartupUdevSettleWait *int `json:"startup_udev_settle_wait"`
+	//StartupUdevSettleWait *int `json:"startup_udev_settle_wait"`
+	ReapplySysctl2 *bool `json:"reapply_sysctl2"`
 	// StartupUdevSettleWait *uint64 `json:"startup_udev_settle_wait"`
 }
 
