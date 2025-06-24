@@ -191,6 +191,11 @@ func (in *TuneDConfig) DeepCopyInto(out *TuneDConfig) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.StartupUdevSettleWait != nil {
+		in, out := &in.StartupUdevSettleWait, &out.StartupUdevSettleWait
+		*out = new(int)
+		**out = **in
+	}
 	return
 }
 
