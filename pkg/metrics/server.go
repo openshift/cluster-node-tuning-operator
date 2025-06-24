@@ -13,6 +13,8 @@ import (
 	"os"
 	"time"
 
+	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
+
 	"k8s.io/klog/v2"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -47,7 +49,11 @@ func init() {
 // it does so only if the CA bundle changed from the current CA bundle on record.
 func DumpCA(caBundle string) {
 	if caBundle != server.caBundle {
-		server.caBundleCh <- caBundle
+		select {
+		case server.caBundleCh <- caBundle:
+		default:
+			klog.Infof("Metrics server CA channel not ready, skipping CA bundle update")
+		}
 	}
 }
 
@@ -126,6 +132,27 @@ func (Server) Start(ctx context.Context) error {
 // and restarted with the current files.  Every non-nil return from this function is fatal
 // and will restart the whole operator.
 func RunServer(port int, ctx context.Context) error {
+	if ntoconfig.InHyperShift() {
+		klog.Info("starting metrics server.")
+		handler := promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
+		router := http.NewServeMux()
+		router.Handle("/metrics", handler)
+		srv := &http.Server{
+			Addr:    fmt.Sprintf(":%d", port),
+			Handler: router,
+		}
+		go func() {
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				klog.Errorf("error from metrics server: %v", err)
+			}
+		}()
+		<-ctx.Done()
+		klog.Info("stopping insecure metrics server")
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return srv.Shutdown(shutdownCtx)
+	}
 	// Set up and start the file watcher.
 	watcher, err := fsnotify.NewWatcher()
 	if watcher == nil || err != nil {
