@@ -84,7 +84,7 @@ spec:
 
 
     name: openshift-node-performance-amd-x86-openshift-bootstrap-master
-  - data: |
+  - data: |+
       [main]
       summary=Platform specific tuning for aarch64
 
@@ -92,8 +92,6 @@ spec:
       # No cstate for ARM
       # No pstate args for ARM
 
-      # aarch64 specific tuning options
-      cmdline_iommu_arm=iommu.passthrough=1
     name: openshift-node-performance-arm-aarch64-openshift-bootstrap-master
   - data: |+
       [main]
