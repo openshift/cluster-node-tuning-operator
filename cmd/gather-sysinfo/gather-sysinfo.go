@@ -8,8 +8,8 @@ import (
 	"sort"
 
 	"github.com/jaypipes/ghw/pkg/snapshot"
-	"github.com/openshift-kni/debug-tools/pkg/knit/cmd"
-	"github.com/openshift-kni/debug-tools/pkg/knit/cmd/k8s"
+	"github.com/openshift-kni/debug-tools/pkg/cli/knit"
+	"github.com/openshift-kni/debug-tools/pkg/cli/knit/k8s"
 	"github.com/openshift-kni/debug-tools/pkg/machineinformer"
 	"github.com/spf13/cobra"
 )
@@ -23,7 +23,7 @@ type snapshotOptions struct {
 }
 
 func main() {
-	root := cmd.NewRootCommand(newSnapshotCommand,
+	root := knit.NewRootCommand(newSnapshotCommand,
 		k8s.NewPodResourcesCommand,
 		k8s.NewPodInfoCommand,
 	)
@@ -34,7 +34,7 @@ func main() {
 	}
 }
 
-func newSnapshotCommand(knitOpts *cmd.KnitOptions) *cobra.Command {
+func newSnapshotCommand(knitOpts *knit.KnitOptions) *cobra.Command {
 	opts := &snapshotOptions{}
 	snap := &cobra.Command{
 		Use:   "snapshot",
@@ -51,7 +51,7 @@ func newSnapshotCommand(knitOpts *cmd.KnitOptions) *cobra.Command {
 	return snap
 }
 
-func collectMachineinfo(knitOpts *cmd.KnitOptions, destPath string) error {
+func collectMachineinfo(knitOpts *knit.KnitOptions, destPath string) error {
 	outfile, err := os.Create(destPath)
 	if err != nil {
 		return err
@@ -66,7 +66,7 @@ func collectMachineinfo(knitOpts *cmd.KnitOptions, destPath string) error {
 	return nil
 }
 
-func makeSnapshot(cmd *cobra.Command, knitOpts *cmd.KnitOptions, opts *snapshotOptions, args []string) error {
+func makeSnapshot(cmd *cobra.Command, knitOpts *knit.KnitOptions, opts *snapshotOptions, args []string) error {
 	fileSpecs := dedupExpectedContent(kniExpectedCloneContent(), snapshot.ExpectedCloneContent())
 	if opts.dumpList {
 		for _, fileSpec := range fileSpecs {

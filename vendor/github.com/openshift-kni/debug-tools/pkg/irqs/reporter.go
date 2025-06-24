@@ -22,7 +22,7 @@ import (
 	"io"
 	"time"
 
-	cpuset "github.com/openshift-kni/debug-tools/pkg/k8s_imported"
+	cpuset "k8s.io/utils/cpuset"
 )
 
 type Reporter interface {
@@ -57,7 +57,7 @@ func (rt *reporterText) Delta(ts time.Time, prevStats, lastStats Stats) {
 		return
 	}
 	delta := prevStats.Delta(lastStats)
-	cpuids := rt.cpus.ToSlice()
+	cpuids := rt.cpus.List()
 	for _, cpuid := range cpuids {
 		counter, ok := delta[cpuid]
 		if !ok {
@@ -78,7 +78,7 @@ func (rt *reporterText) Summary(initTs time.Time, prevStats, lastStats Stats) {
 	}
 	timeDelta := time.Now().Sub(initTs)
 	delta := prevStats.Delta(lastStats)
-	cpuids := rt.cpus.ToSlice()
+	cpuids := rt.cpus.List()
 
 	fmt.Fprintf(rt.sink, "\nIRQ summary on cpus %v after %v\n", rt.cpus, timeDelta)
 	for _, cpuid := range cpuids {
@@ -141,7 +141,7 @@ func (rj *reporterJSON) Summary(initTs time.Time, prevStats, lastStats Stats) {
 
 func countersForCPUs(cpus cpuset.CPUSet, stats Stats) Stats {
 	res := make(Stats)
-	cpuids := cpus.ToSlice()
+	cpuids := cpus.List()
 
 	for _, cpuid := range cpuids {
 		counter, ok := stats[cpuid]

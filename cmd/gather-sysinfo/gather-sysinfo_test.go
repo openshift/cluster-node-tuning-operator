@@ -5,9 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openshift-kni/debug-tools/pkg/knit/cmd"
 	"github.com/spf13/cobra"
 	"k8s.io/utils/strings/slices"
+
+	"github.com/openshift-kni/debug-tools/pkg/cli/knit"
 )
 
 var kniEntries = []string{
@@ -29,7 +30,7 @@ var kniEntries = []string{
 
 func TestCollectMachineInfo(t *testing.T) {
 	//Check if collect machine info file is created correctly
-	knitOpts := &cmd.KnitOptions{}
+	knitOpts := &knit.KnitOptions{}
 	knitOpts.SysFSRoot = "/host/sys"
 
 	destFile := "./output"
@@ -61,7 +62,7 @@ func TestChroot(t *testing.T) {
 }
 
 func TestSnapshot(t *testing.T) {
-	knitOpts := &cmd.KnitOptions{}
+	knitOpts := &knit.KnitOptions{}
 
 	opts := &snapshotOptions{}
 	cmd := &cobra.Command{}

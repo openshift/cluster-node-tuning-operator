@@ -24,7 +24,7 @@ import (
 	"strconv"
 	"strings"
 
-	cpuset "github.com/openshift-kni/debug-tools/pkg/k8s_imported"
+	cpuset "k8s.io/utils/cpuset"
 
 	"github.com/openshift-kni/debug-tools/pkg/fswrap"
 )
@@ -149,7 +149,7 @@ func (handler *Handler) parseProcStatus(path string) (TIDInfo, error) {
 			if err != nil {
 				return info, err
 			}
-			info.Affinity = cpuIDs.ToSlice()
+			info.Affinity = cpuIDs.List()
 		}
 	}
 

@@ -21,9 +21,10 @@ import (
 	"io"
 	"time"
 
+	"k8s.io/klog/v2"
+
 	infov1 "github.com/google/cadvisor/info/v1"
 	"github.com/google/cadvisor/machine"
-	"k8s.io/klog/v2"
 )
 
 type Handle struct {
@@ -40,7 +41,7 @@ func (handle *Handle) Run() {
 
 	info, err = GetRaw(handle.RootDirectory)
 	if err != nil {
-		klog.Fatalf("Cannot get machine info: %v")
+		klog.Fatalf("Cannot get machine info: %v", info)
 	}
 
 	if !handle.RawOutput {

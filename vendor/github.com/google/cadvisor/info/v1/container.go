@@ -261,6 +261,26 @@ func (ci *ContainerInfo) StatsEndTime() time.Time {
 	return ret
 }
 
+// PSI statistics for an individual resource.
+type PSIStats struct {
+	// PSI data for all tasks of in the cgroup.
+	Full PSIData `json:"full,omitempty"`
+	// PSI data for some tasks in the cgroup.
+	Some PSIData `json:"some,omitempty"`
+}
+
+type PSIData struct {
+	// Total time duration for tasks in the cgroup have waited due to congestion.
+	// Unit: nanoseconds.
+	Total uint64 `json:"total"`
+	// The average (in %) tasks have waited due to congestion over a 10 second window.
+	Avg10 float64 `json:"avg10"`
+	// The average (in %) tasks have waited due to congestion over a 60 second window.
+	Avg60 float64 `json:"avg60"`
+	// The average (in %) tasks have waited due to congestion over a 300 second window.
+	Avg300 float64 `json:"avg300"`
+}
+
 // This mirrors kernel internal structure.
 type LoadStats struct {
 	// Number of sleeping tasks.
@@ -333,6 +353,9 @@ type CpuStats struct {
 	// Load is smoothed over the last 10 seconds. Instantaneous value can be read
 	// from LoadStats.NrRunning.
 	LoadAverage int32 `json:"load_average"`
+	// from LoadStats.NrUninterruptible
+	LoadDAverage int32    `json:"load_d_average"`
+	PSI          PSIStats `json:"psi"`
 }
 
 type PerDiskStats struct {
@@ -351,6 +374,7 @@ type DiskIoStats struct {
 	IoWaitTime     []PerDiskStats `json:"io_wait_time,omitempty"`
 	IoMerged       []PerDiskStats `json:"io_merged,omitempty"`
 	IoTime         []PerDiskStats `json:"io_time,omitempty"`
+	PSI            PSIStats       `json:"psi"`
 }
 
 type HugetlbStats struct {
@@ -393,6 +417,14 @@ type MemoryStats struct {
 	// Units: Bytes.
 	WorkingSet uint64 `json:"working_set"`
 
+	// The total amount of active file memory.
+	// Units: Bytes.
+	TotalActiveFile uint64 `json:"total_active_file"`
+
+	// The total amount of inactive file memory.
+	// Units: Bytes.
+	TotalInactiveFile uint64 `json:"total_inactive_file"`
+
 	Failcnt uint64 `json:"failcnt"`
 
 	// Size of kernel memory allocated in bytes.
@@ -401,6 +433,8 @@ type MemoryStats struct {
 
 	ContainerData    MemoryStatsMemoryData `json:"container_data,omitempty"`
 	HierarchicalData MemoryStatsMemoryData `json:"hierarchical_data,omitempty"`
+
+	PSI PSIStats `json:"psi"`
 }
 
 type CPUSetStats struct {
@@ -629,7 +663,7 @@ type TcpAdvancedStat struct {
 	// The number of retransmits failed, including FastRetrans, SlowStartRetrans
 	TCPRetransFail uint64
 
-	// he number of packets collapsed in receive queue due to low socket buffer
+	// The number of packets collapsed in receive queue due to low socket buffer
 	TCPRcvCollapsed uint64
 	// The number of DSACKs sent for old packets
 	TCPDSACKOldSent uint64
