@@ -1,0 +1,20 @@
+apiVersion: tuned.openshift.io/v1
+kind: Tuned
+metadata:
+  name: openshift-profile
+  namespace: openshift-cluster-node-tuning-operator
+spec:
+  profile:
+  - data: |
+      [main]
+      summary=Custom OpenShift profile
+      include=openshift-node
+    name: openshift-profile
+  recommend:
+  - match:
+    - label: tuned.openshift.io/udev-settle-wait
+    priority: 20
+    profile: openshift-profile
+    operand:
+      tunedConfig:
+        startup_udev_settle_wait: 10
