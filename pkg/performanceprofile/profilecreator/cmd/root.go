@@ -22,7 +22,6 @@ import (
 	"os"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
@@ -105,11 +104,10 @@ type ProfileData struct {
 // ClusterData collects the cluster wide information, each mcp points to a list of ghw node handlers
 type ClusterData map[string][]*profilecreator.GHWHandler
 
+// shortcut
+var Alert = profilecreator.Alert
+
 func init() {
-	log.SetOutput(os.Stderr)
-	log.SetFormatter(&log.TextFormatter{
-		DisableTimestamp: true,
-	})
 	utilruntime.Must(performancev2.AddToScheme(scheme))
 }
 
@@ -204,7 +202,7 @@ func makeNodesHandlers(mustGatherDirPath, poolName string, nodes []*corev1.Node)
 		sb.WriteString(node.Name + " ")
 	}
 	// NodePoolName is alias of MCPName
-	log.Infof("Nodes names targeted by %s pool are: %s", poolName, sb.String())
+	Alert("Nodes names targeted by %s pool are: %s", poolName, sb.String())
 	return handlers, nil
 }
 
@@ -314,8 +312,8 @@ func makeProfileDataFrom(nodeHandler *profilecreator.GHWHandler, args *ProfileCr
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute the reserved and isolated CPUs: %v", err)
 	}
-	log.Infof("%d reserved CPUs allocated: %v ", reservedCPUs.Size(), reservedCPUs.String())
-	log.Infof("%d isolated CPUs allocated: %v", isolatedCPUs.Size(), isolatedCPUs.String())
+	Alert("%d reserved CPUs allocated: %v ", reservedCPUs.Size(), reservedCPUs.String())
+	Alert("%d isolated CPUs allocated: %v", isolatedCPUs.Size(), isolatedCPUs.String())
 	kernelArgs := profilecreator.GetAdditionalKernelArgs(args.DisableHT)
 	profileData := &ProfileData{
 		reservedCPUs:              reservedCPUs.String(),

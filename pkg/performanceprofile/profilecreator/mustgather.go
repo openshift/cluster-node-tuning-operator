@@ -24,7 +24,6 @@ import (
 	"strings"
 
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
-	log "github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	k8syaml "k8s.io/apimachinery/pkg/util/yaml"
 )
@@ -68,7 +67,7 @@ func getMustGatherFullPathsWithFilter(mustGatherPath string, suffix string, filt
 		return "", fmt.Errorf("no match for the specified must gather directory path: %s and suffix: %s", mustGatherPath, suffix)
 	}
 	if len(paths) > 1 {
-		log.Warnf("Multiple matches for the specified must gather directory path: %s and suffix: %s", mustGatherPath, suffix)
+		Alert("Multiple matches for the specified must gather directory path: %s and suffix: %s", mustGatherPath, suffix)
 		return "", fmt.Errorf("Multiple matches for the specified must gather directory path: %s and suffix: %s.\n Expected only one performance-addon-operator-must-gather* directory, please check the must-gather tarball", mustGatherPath, suffix)
 	}
 	// returning one possible path

@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -95,13 +94,13 @@ func makeClusterInfoFromClusterData(cluster ClusterData) ClusterInfo {
 		for _, handle := range nodeHandlers {
 			topology, err := handle.SortedTopology()
 			if err != nil {
-				log.Infof("%s(Topology discovery error: %v)", handle.Node.GetName(), err)
+				Alert("%s(Topology discovery error: %v)", handle.Node.GetName(), err)
 				continue
 			}
 
 			htEnabled, err := handle.IsHyperthreadingEnabled()
 			if err != nil {
-				log.Infof("%s(HT discovery error: %v)", handle.Node.GetName(), err)
+				Alert("%s(HT discovery error: %v)", handle.Node.GetName(), err)
 			}
 
 			nInfo := NodeInfo{
@@ -136,7 +135,7 @@ func showClusterInfo(cInfo ClusterInfo, infoOpts *infoOptions) error {
 		fmt.Print(textInfo)
 		return nil
 	}
-	log.Infof("Cluster info:\n%s", textInfo)
+	Alert("Cluster info:\n%s", textInfo)
 	return nil
 }
 
