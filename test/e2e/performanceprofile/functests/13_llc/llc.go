@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 
@@ -32,6 +33,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/controller"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/deployments"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
@@ -52,7 +54,7 @@ const (
 	deploymentDeletionTime       = 1 * time.Minute
 )
 
-var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.OpenShift)), Ordered, func() {
+var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.OpenShift), string(label.UnCoreCache)), Ordered, func() {
 	var (
 		workerRTNodes               []corev1.Node
 		initialProfile, perfProfile *performancev2.PerformanceProfile
@@ -213,13 +215,16 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			})
 		})
 	})
-	Context("Functional Tests", func() {
-		var L3CacheGroupSize int
+	Context("Functional Tests with SMT Enabled", func() {
+		var (
+			L3CacheGroupSize int
+			totalOnlineCpus  cpuset.CPUSet
+			getCCX           func(cpuid int) (cpuset.CPUSet, error)
+		)
 		BeforeAll(func() {
 			var (
 				reserved, isolated cpuset.CPUSet
 				policy             = "single-numa-node"
-				onlineCPUSet       cpuset.CPUSet
 			)
 			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
@@ -231,10 +236,10 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 					Skip(fmt.Sprintf("This test need 2 Numa nodes. The number of numa nodes on node %s < 2", cnfnode.Name))
 				}
 
-				getCCX := nodes.GetL3SharedCPUs(&cnfnode)
+				getCCX = nodes.GetL3SharedCPUs(&cnfnode)
 				reserved, err = getCCX(0)
 				Expect(err).ToNot(HaveOccurred())
-				onlineCPUSet, err = nodes.GetOnlineCPUsSet(context.TODO(), &cnfnode)
+				totalOnlineCpus, err = nodes.GetOnlineCPUsSet(ctx, &cnfnode)
 				Expect(err).ToNot(HaveOccurred())
 				L3CacheGroupSize = reserved.Size()
 				if len(numaInfo[0]) == L3CacheGroupSize {
@@ -243,7 +248,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			}
 			// Modify the profile such that we give 1 whole ccx to reserved cpus
 			By("Modifying the profile")
-			isolated = onlineCPUSet.Difference(reserved)
+			isolated = totalOnlineCpus.Difference(reserved)
 			reservedSet := performancev2.CPUSet(reserved.String())
 			isolatedSet := performancev2.CPUSet(isolated.String())
 			testlog.Infof("Modifying profile with reserved cpus %s and isolated cpus %s", reserved.String(), isolated.String())
@@ -315,7 +320,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			Expect(testpodCpuset).To(Equal(cpus))
 		})
 
-		It("[test_id:77725] Verify guaranteed pod consumes the whole Uncore group after reboot", func(ctx context.Context) {
+		It("[test_id:77726] Verify guaranteed pod consumes the whole Uncore group after reboot", func(ctx context.Context) {
 			var err error
 			podLabel := make(map[string]string)
 			targetNode := workerRTNodes[0]
@@ -400,7 +405,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			testlog.TaggedInfof("L3 Cache Group", "L3 Cache group associated with Pod %s using cpu %d is %q: ", testpod.Name, cgroupCpuset.List()[0], cpus)
 		})
 
-		It("[test_id:77725]  Verify guaranteed pod consumes the whole Uncore group after kubelet restart", func(ctx context.Context) {
+		It("[test_id:81668]  Verify guaranteed pod consumes the whole Uncore group after kubelet restart", func(ctx context.Context) {
 			podLabel := make(map[string]string)
 			targetNode := workerRTNodes[0]
 			getCCX := nodes.GetL3SharedCPUs(&targetNode)
@@ -473,7 +478,6 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			Expect(testclient.Client.List(ctx, podList, listOptions)).To(Succeed())
 			Expect(len(podList.Items)).To(Equal(1), "Expected exactly one pod in the list")
 			testpod = podList.Items[0]
-
 			err = getter.Container(ctx, &testpod, testpod.Spec.Containers[0].Name, cpusetCfg)
 			Expect(err).ToNot(HaveOccurred())
 			cgroupCpuset, err = cpuset.Parse(cpusetCfg.Cpus)
@@ -486,73 +490,369 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			testlog.TaggedInfof("L3 Cache Group", "L3 Cache group associated with Pod %s using cpu %d is: %q", testpod.Name, cgroupCpuset.List()[0], cpus)
 		})
 
-		It("[test_id:77726] Multiple Pods can share same L3 cache", func(ctx context.Context) {
-			targetNode := workerRTNodes[0]
-			// create 2 deployments creating 2 gu pods asking for 8 cpus each
-			cpusetCfg := &controller.CpuSet{}
-			var cpusetList []cpuset.CPUSet
-			var dpList []*appsv1.Deployment
-			podLabel := make(map[string]string)
-			podCpuSize := strconv.Itoa(L3CacheGroupSize / 2)
-			getCCX := nodes.GetL3SharedCPUs(&targetNode)
-			for i := 0; i < 2; i++ {
-				deploymentName := fmt.Sprintf("test-deployment%d", i)
-				rl := &corev1.ResourceList{
-					corev1.ResourceCPU:    resource.MustParse(podCpuSize),
-					corev1.ResourceMemory: resource.MustParse("100Mi"),
+		Context("With Multiple Pods", func() {
+			type L3UncoreCacheShareMode string
+			const (
+				L3UncoreCacheShareEqual   L3UncoreCacheShareMode = "equal"
+				L3UncoreCacheShareUnequal L3UncoreCacheShareMode = "unequal"
+			)
+			DescribeTable("Align multiple Guaranteed pods",
+				func(mode L3UncoreCacheShareMode) {
+					var (
+						ctx                   context.Context = context.Background()
+						targetNode                            = workerRTNodes[0]
+						cpusetCfg                             = &controller.CpuSet{}
+						cpusetList            []cpuset.CPUSet
+						podCpuRequirementList []string
+						dpList                []*appsv1.Deployment
+					)
+
+					podLabel := make(map[string]string)
+					switch mode {
+					case L3UncoreCacheShareEqual:
+						podCpuRequirementList = []string{fmt.Sprintf("%d", L3CacheGroupSize/2), fmt.Sprintf("%d", L3CacheGroupSize/2)}
+					case L3UncoreCacheShareUnequal:
+						podCpuRequirementList = []string{fmt.Sprintf("%d", L3CacheGroupSize), fmt.Sprintf("%d", L3CacheGroupSize/2)}
+					}
+
+					// create 2 deployments with pod cpu requirements are different
+					// for each test case.
+					for i := range 2 {
+						deploymentName := fmt.Sprintf("test-deployment%d", i)
+						rl := &corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse(podCpuRequirementList[i]),
+							corev1.ResourceMemory: resource.MustParse("100Mi"),
+						}
+						podLabel["test-app"] = fmt.Sprintf("telcoApp-%d", i)
+						testlog.TaggedInfof("Deployment", "Creating Deployment %v", deploymentName)
+						dp, err := createDeployment(ctx, deploymentName, podLabel, &targetNode, rl)
+						Expect(err).ToNot(HaveOccurred())
+						dpList = append(dpList, dp)
+					}
+
+					defer func() {
+						// delete deployment
+						for _, dp := range dpList {
+							testlog.TaggedInfof("Deployment", "Deleting Deployment %v", dp.Name)
+							key := client.ObjectKeyFromObject(dp)
+							err := testclient.Client.Get(ctx, key, dp)
+							Expect(err).ToNot(HaveOccurred(), "Unable to fetch podlabels")
+							podLabels := dp.Spec.Template.ObjectMeta.Labels
+							err = testclient.DataPlaneClient.Delete(ctx, dp)
+							Expect(err).ToNot(HaveOccurred(), "Unable to delete deployment %v", dp.Name)
+							waitForDeploymentPodsDeletion(ctx, &targetNode, podLabels)
+						}
+					}()
+
+					for i := 0; i < 2; i++ {
+						podList := &corev1.PodList{}
+						podLabel["test-app"] = fmt.Sprintf("telcoApp-%d", i)
+						listOptions := &client.ListOptions{Namespace: testutils.NamespaceTesting, LabelSelector: labels.SelectorFromSet(podLabel)}
+						testlog.TaggedInfof("Deployment", "waiting for %q to be ready", dpList[i].Name)
+						Eventually(func() bool {
+							isReady, err := deployments.IsReady(ctx, testclient.Client, listOptions, podList, dpList[i])
+							Expect(err).ToNot(HaveOccurred())
+							return isReady
+						}, time.Minute, time.Second).Should(BeTrue())
+						Expect(testclient.Client.List(ctx, podList, listOptions)).To(Succeed())
+						testpod := podList.Items[0]
+						err = getter.Container(ctx, &testpod, testpod.Spec.Containers[0].Name, cpusetCfg)
+						Expect(err).ToNot(HaveOccurred())
+						podCpuset, err := cpuset.Parse(cpusetCfg.Cpus)
+						testlog.TaggedInfof("Pod", "Cpus used by pod %v are %v", testpod.Name, podCpuset.String())
+						Expect(err).ToNot(HaveOccurred(), "Unable to parse cpus from container")
+						// fetch ccx to which cpu used by pod is part of
+						cpus, err := getCCX(podCpuset.List()[0])
+						testlog.TaggedInfof("L3 Cache Group", "cpu id %d used Pod %s is part of CCX group %s", podCpuset.List()[0], testpod.Name, cpus.String())
+						cpusetList = append(cpusetList, cpus)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(podCpuset.IsSubsetOf(cpus))
+						// verify retrieved pod cpus matches with our requirements
+						Expect(fmt.Sprintf("%d", podCpuset.Size())).To(Equal(podCpuRequirementList[i]))
+					}
+					// Here pods of both deployments can take the full core even as it will follow
+					// packed allocation
+					// From KEP: takeUncoreCache and takePartialUncore will still follow a "packed" allocation principle as the rest of the implementation.
+					// Uncore Cache IDs will be scanned in numerical order and assigned as possible. For takePartialUncore, CPUs will be assigned
+					// within the uncore cache in numerical order to follow a "packed" methodology.
+					if mode == L3UncoreCacheShareEqual {
+						Expect(cpusetList[0]).To(Equal(cpusetList[1]))
+					} else {
+						Expect(cpusetList[0]).ToNot(Equal(cpusetList[1]))
+					}
+				},
+
+				Entry("[test_id:77728] 2 pods where total number of cpus equal to L3CacheGroup size share same L3CacheSize", L3UncoreCacheShareEqual),
+				Entry("[test_id:77729] 2 pods with unequal cpurequests do not share same L3 cache size with 1 Pod requesting 1 full L3Cache Group and other requesting less than L3Cache GroupSize", L3UncoreCacheShareUnequal),
+			)
+		})
+
+		Context("Multiple Containers", func() {
+			type alignment string
+			const (
+				partialAlignment               alignment = "partial"
+				fullAlignment                  alignment = "full"
+				partialAlignmentWithContainers alignment = "partialWithContainers"
+			)
+
+			DescribeTable("Verify CPU Alignment with multiple containers",
+				func(deploymentName string, alignmentType alignment, containerName []string) {
+					var (
+						ctx           context.Context = context.Background()
+						containerList []corev1.Container
+						cpuSize       int
+						cpusetCfg     = &controller.CpuSet{}
+						targetNode    = workerRTNodes[0]
+					)
+
+					podLabel := make(map[string]string)
+					podLabel["test-app"] = "telco"
+					nodeSelector := make(map[string]string)
+
+					switch alignmentType {
+					case partialAlignmentWithContainers:
+						// Main guaranteed container requesting L3CacheGroupSize -2 and other sidecar containers
+						// requesting 1.5 and 0.5
+						cpuSize = L3CacheGroupSize - 2
+						cpuResources := []string{"1.5", "0.5"}
+						containerList = createMultipleContainers(containerName, cpuResources)
+					case fullAlignment:
+						// with 2 guaranteed containers requesting half of L3CacheGroupSize
+						cpuSize = L3CacheGroupSize / 2
+						cpuResources := []string{fmt.Sprintf("%d", cpuSize)}
+						containerList = createMultipleContainers(containerName, cpuResources)
+					case partialAlignment:
+						// With 2 guaranteed containers, where 1 is requesting half of L3CacheGroupSize
+						// and another container requesting 2 less than the remaining cpus
+						cpuSize = L3CacheGroupSize / 2
+						cpuResources := []string{fmt.Sprintf("%d", cpuSize-2)}
+						containerList = createMultipleContainers(containerName, cpuResources)
+					}
+					rl := &corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse(strconv.Itoa(cpuSize)),
+						corev1.ResourceMemory: resource.MustParse("100Mi"),
+					}
+
+					p := makePod(testutils.NamespaceTesting, withRequests(rl), withLimits(rl))
+					nodeSelector["kubernetes.io/hostname"] = targetNode.Name
+					dp := deployments.Make(deploymentName, testutils.NamespaceTesting,
+						deployments.WithPodTemplate(p),
+						deployments.WithNodeSelector(nodeSelector))
+					dp.Spec.Selector.MatchLabels = podLabel
+					dp.Spec.Template.ObjectMeta.Labels = podLabel
+					dp.Spec.Template.Spec.Containers = append(dp.Spec.Template.Spec.Containers, containerList...)
+					err = testclient.Client.Create(ctx, dp)
+					Expect(err).ToNot(HaveOccurred())
+					defer func() {
+						testlog.TaggedInfof("Cleanup", "Deleting Deployment %v", deploymentName)
+						err := testclient.DataPlaneClient.Delete(ctx, dp)
+						Expect(err).ToNot(HaveOccurred())
+						waitForDeploymentPodsDeletion(ctx, &targetNode, podLabel)
+					}()
+					podList := &corev1.PodList{}
+					listOptions := &client.ListOptions{Namespace: testutils.NamespaceTesting, LabelSelector: labels.SelectorFromSet(dp.Spec.Selector.MatchLabels)}
+					Eventually(func() bool {
+						isReady, err := deployments.IsReady(ctx, testclient.Client, listOptions, podList, dp)
+						Expect(err).ToNot(HaveOccurred())
+						return isReady
+					}, time.Minute, time.Second).Should(BeTrue())
+					Expect(testclient.Client.List(ctx, podList, listOptions)).To(Succeed())
+					Expect(len(podList.Items)).To(Equal(1), "Expected exactly one pod in the list")
+					testpod := podList.Items[0]
+					err = getter.Container(ctx, &testpod, "test", cpusetCfg)
+					Expect(err).ToNot(HaveOccurred())
+					containerWithIntegralCpu, err := cpuset.Parse(cpusetCfg.Cpus)
+					Expect(err).ToNot(HaveOccurred())
+					// fetch ccx to which cpu used by pod is part of
+					L3CacheGroupCpus, err := getCCX(containerWithIntegralCpu.List()[0])
+					Expect(err).ToNot(HaveOccurred())
+					Expect(containerWithIntegralCpu.IsSubsetOf(L3CacheGroupCpus)).To(BeTrue())
+					if alignmentType == partialAlignmentWithContainers {
+						expectedBurstablePodCpus := totalOnlineCpus.Difference(containerWithIntegralCpu)
+						err = getter.Container(ctx, &testpod, "log1", cpusetCfg)
+						Expect(err).ToNot(HaveOccurred(), "Unable to fetch container details from log1 pod")
+						containerWithnonIntegralCpu1, err := cpuset.Parse(cpusetCfg.Cpus)
+						Expect(err).ToNot(HaveOccurred(), "Unable to parse cpus used by container of log1 pod")
+						Expect(containerWithnonIntegralCpu1.Equals(expectedBurstablePodCpus)).To(BeTrue())
+						err = getter.Container(ctx, &testpod, "log2", cpusetCfg)
+						Expect(err).ToNot(HaveOccurred(), "Unable to fetch container details from log2 pod")
+						containerWithnonIntegralCpu2, err := cpuset.Parse(cpusetCfg.Cpus)
+						Expect(err).ToNot(HaveOccurred(), "Unable to parse cpus used by container of log2 pod")
+						Expect(containerWithnonIntegralCpu2.Equals(expectedBurstablePodCpus)).To(BeTrue())
+					} else {
+						err = getter.Container(ctx, &testpod, "test2", cpusetCfg)
+						Expect(err).ToNot(HaveOccurred(), "unable to get container details from test2 pod")
+						containerWithIntegralCpu2, err := cpuset.Parse(cpusetCfg.Cpus)
+						Expect(err).ToNot(HaveOccurred(), "unable to parse cpus used by container of test2 pod")
+						Expect(containerWithIntegralCpu2.IsSubsetOf(L3CacheGroupCpus)).To(BeTrue())
+					}
+
+				},
+				Entry("[test-id:77730] With different QoS class containers have guaranteed Container pinned to single CCX", "test-deployment1", partialAlignmentWithContainers, []string{"log1", "log2"}),
+				Entry("[test-id:81670] With multiple guaranteed containers where total cpus requested is equal to single ccx size", "test-deployment2", fullAlignment, []string{"test2"}),
+				Entry("[test-id:81671] With multiple guaranteed containers where total cpus requested is less than single ccx size", "test-deployment3", partialAlignment, []string{"test2"}),
+			)
+		})
+	})
+
+	Context("Functional Tests with SMT Disabled", func() {
+		type podCpuResourceSize string
+		var (
+			L3CacheGroupSize   int
+			totalOnlineCpus    cpuset.CPUSet
+			nosmt              map[int][]int
+			getCCX             func(cpuid int) (cpuset.CPUSet, error)
+			reserved, isolated cpuset.CPUSet
+			policy             = "single-numa-node"
+		)
+		const (
+			podCpuResourceEqualtoL3CacheSize  podCpuResourceSize = "equalto"
+			podCpuResourceLessthanL3CacheSize podCpuResourceSize = "lessthan"
+		)
+		BeforeAll(func() {
+			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+			ctx := context.Background()
+			for _, cnfnode := range workerRTNodes {
+				numaInfo, err := nodes.GetNumaNodes(ctx, &cnfnode)
+				Expect(err).ToNot(HaveOccurred(), "Unable to fetch numa nodes")
+				coresiblings, err := nodes.GetCoreSiblings(ctx, &cnfnode)
+				Expect(err).ToNot(HaveOccurred(), "Unable to get numa information from the node")
+				nosmt = transformToNoSMT(coresiblings)
+				if len(numaInfo) < 2 {
+					Skip(fmt.Sprintf("This test need 2 Numa nodes. The number of numa nodes on node %s < 2", cnfnode.Name))
 				}
+				Expect(err).ToNot(HaveOccurred())
+			}
+			node0 := cpuset.New(nosmt[0]...)
+			node1 := cpuset.New(nosmt[1]...)
+			reserved = cpuset.New(nosmt[0][:4]...)
+			node0remaining := node0.Difference(reserved)
+			isolated = (node0remaining.Union(node1))
+			// Modify the profile such that we give 1 whole ccx to reserved cpus
+			By("Modifying the profile")
+			reservedSet := performancev2.CPUSet(reserved.String())
+			isolatedSet := performancev2.CPUSet(isolated.String())
+			testlog.Infof("Modifying profile with reserved cpus %s and isolated cpus %s", reserved.String(), isolated.String())
+			profile.Spec.CPU = &performancev2.CPU{
+				Reserved: &reservedSet,
+				Isolated: &isolatedSet,
+			}
+			profile.Spec.NUMA = &performancev2.NUMA{
+				TopologyPolicy: &policy,
+			}
+
+			profile.Spec.AdditionalKernelArgs = []string{"nosmt", "module_blacklist=irdma"}
+
+			By("Updating Performance profile")
+			profiles.UpdateWithRetry(profile)
+
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(ctx, profile)
+
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.WaitForTuningUpdated(ctx, profile)
+
+			// we are good till now but not good enough, we need to move all the
+			// reserved cpus to first L3CacheGroup to which cpu0 is part of
+			for _, cnfnode := range workerRTNodes {
+				getCCX = nodes.GetL3SharedCPUs(&cnfnode)
+				reserved, err = getCCX(0)
+				Expect(err).ToNot(HaveOccurred(), "Unable to fetch cpus used by L3 cache group 0 from node %q", &cnfnode.Name)
+				totalOnlineCpus, err = nodes.GetOnlineCPUsSet(ctx, &cnfnode)
+				Expect(err).ToNot(HaveOccurred(), "Unable to fetch total online cpus from the %q", &cnfnode.Name)
+				L3CacheGroupSize = reserved.Size()
+			}
+			// Modify the profile such that we give 1 whole ccx to reserved cpus
+			By("Modifying the profile")
+			isolated = totalOnlineCpus.Difference(reserved)
+			reservedSet = performancev2.CPUSet(reserved.String())
+			isolatedSet = performancev2.CPUSet(isolated.String())
+			testlog.Infof("Modifying profile with reserved cpus %s and isolated cpus %s", reserved.String(), isolated.String())
+			profile.Spec.CPU = &performancev2.CPU{
+				Reserved: &reservedSet,
+				Isolated: &isolatedSet,
+			}
+			profile.Spec.NUMA = &performancev2.NUMA{
+				TopologyPolicy: &policy,
+			}
+			By("Updating Performance profile")
+			profiles.UpdateWithRetry(profile)
+
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(ctx, profile)
+
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.WaitForTuningUpdated(ctx, profile)
+
+			testNS := *namespaces.TestingNamespace
+			Expect(testclient.DataPlaneClient.Create(ctx, &testNS)).ToNot(HaveOccurred())
+			DeferCleanup(func() {
+				Expect(testclient.DataPlaneClient.Delete(ctx, &testNS)).ToNot(HaveOccurred())
+				Expect(namespaces.WaitForDeletion(testutils.NamespaceTesting, 5*time.Minute)).ToNot(HaveOccurred())
+			})
+		})
+		DescribeTable("Align Guaranteed pod",
+			func(deploymentName string, resourceSize podCpuResourceSize) {
+				var (
+					ctx context.Context = context.Background()
+					rl  *corev1.ResourceList
+				)
 				podLabel := make(map[string]string)
-				podLabel["test-app"] = fmt.Sprintf("telcoApp-%d", i)
-				testlog.TaggedInfof("Deployment", "Creating Deployment %v", deploymentName)
+				targetNode := workerRTNodes[0]
+				cpusetCfg := &controller.CpuSet{}
+				getCCX := nodes.GetL3SharedCPUs(&targetNode)
+				switch resourceSize {
+				case podCpuResourceEqualtoL3CacheSize:
+					rl = &corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse(strconv.Itoa(L3CacheGroupSize)),
+						corev1.ResourceMemory: resource.MustParse("100Mi"),
+					}
+				case podCpuResourceLessthanL3CacheSize:
+					rl = &corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse(strconv.Itoa(L3CacheGroupSize / 2)),
+						corev1.ResourceMemory: resource.MustParse("100Mi"),
+					}
+				}
+				podLabel["test-app"] = "telco1"
 				dp, err := createDeployment(ctx, deploymentName, podLabel, &targetNode, rl)
 				Expect(err).ToNot(HaveOccurred())
-				dpList = append(dpList, dp)
-			}
-			defer func() {
-				// delete deployment
-				for _, dp := range dpList {
-					testlog.TaggedInfof("Deployment", "Deleting Deployment %v", dp.Name)
-					key := client.ObjectKeyFromObject(dp)
-					err := testclient.Client.Get(ctx, key, dp)
-					Expect(err).ToNot(HaveOccurred(), "Unable to fetch podlabels")
-					podLabels := dp.Spec.Template.ObjectMeta.Labels
-					err = testclient.DataPlaneClient.Delete(ctx, dp)
-					Expect(err).ToNot(HaveOccurred(), "Unable to delete deployment %v", dp.Name)
-					waitForDeploymentPodsDeletion(ctx, &targetNode, podLabels)
-				}
-			}()
+				defer func() {
+					testlog.TaggedInfof("Cleanup", "Deleting Deployment %v", deploymentName)
+					err := testclient.DataPlaneClient.Delete(ctx, dp)
+					Expect(err).ToNot(HaveOccurred(), "Unable to delete deployment %v", deploymentName)
+					waitForDeploymentPodsDeletion(ctx, &targetNode, podLabel)
+				}()
 
-			for i := 0; i < 2; i++ {
 				podList := &corev1.PodList{}
-				podLabel["test-app"] = fmt.Sprintf("telcoApp-%d", i)
-				listOptions := &client.ListOptions{Namespace: testutils.NamespaceTesting, LabelSelector: labels.SelectorFromSet(podLabel)}
+				listOptions := &client.ListOptions{Namespace: testutils.NamespaceTesting, LabelSelector: labels.SelectorFromSet(dp.Spec.Selector.MatchLabels)}
 				Eventually(func() bool {
-					isReady, err := deployments.IsReady(ctx, testclient.Client, listOptions, podList, dpList[i])
+					isReady, err := deployments.IsReady(ctx, testclient.Client, listOptions, podList, dp)
 					Expect(err).ToNot(HaveOccurred())
 					return isReady
 				}, time.Minute, time.Second).Should(BeTrue())
 				Expect(testclient.Client.List(ctx, podList, listOptions)).To(Succeed())
+				Expect(len(podList.Items)).To(Equal(1), "Expected exactly one pod in the list")
 				testpod := podList.Items[0]
 				err = getter.Container(ctx, &testpod, testpod.Spec.Containers[0].Name, cpusetCfg)
 				Expect(err).ToNot(HaveOccurred())
-				podCpuset, err := cpuset.Parse(cpusetCfg.Cpus)
-				testlog.TaggedInfof("Pod", "Cpus used by pod %v are %v", testpod.Name, podCpuset.String())
+				testpodCpuset, err := cpuset.Parse(cpusetCfg.Cpus)
+				testlog.TaggedInfof("Pod", "CPUs used by %q are: %q", testpod.Name, testpodCpuset.String())
 				Expect(err).ToNot(HaveOccurred())
 				// fetch ccx to which cpu used by pod is part of
-				cpus, err := getCCX(podCpuset.List()[0])
-				testlog.TaggedInfof("L3 Cache Group", "cpu id %d used Pod %s is part of CCX group %s", podCpuset.List()[0], testpod.Name, cpus.String())
-				cpusetList = append(cpusetList, cpus)
+				cpus, err := getCCX(testpodCpuset.List()[0])
+				testlog.TaggedInfof("L3 Cache Group", "CPU Group sharing L3 Cache to which %s is alloted are: %s ", testpod.Name, cpus.String())
 				Expect(err).ToNot(HaveOccurred())
-				Expect(podCpuset.IsSubsetOf(cpus))
-				cpusetList = append(cpusetList, cpus)
-			}
-			// Here pods of both deployments can take the full core even as it will follow
-			// packed allocation
-			// From KEP: takeUncoreCache and takePartialUncore will still follow a "packed" allocation principle as the rest of the implementation.
-			// Uncore Cache IDs will be scanned in numerical order and assigned as possible. For takePartialUncore, CPUs will be assigned
-			// within the uncore cache in numerical order to follow a "packed" methodology.
-			Expect(cpusetList[0]).To(Equal(cpusetList[1]))
-		})
+				// All the cpus alloted to Pod should be equal to the cpus sharing L3 Cache group
+				if resourceSize == podCpuResourceEqualtoL3CacheSize {
+					Expect(testpodCpuset).To(Equal(cpus))
+				} else {
+					Expect(testpodCpuset.IsSubsetOf(cpus)).To(BeTrue())
+				}
+			},
+			Entry("[test_id:81672] requesting equal to L3Cache group size cpus", "test-deployment1", podCpuResourceEqualtoL3CacheSize),
+			Entry("[test_id:81673] requesting less than L3Cache group size cpus", "test-deployment2", podCpuResourceLessthanL3CacheSize),
+		)
 	})
 })
 
@@ -648,7 +948,7 @@ func waitForDeploymentPodsDeletion(ctx context.Context, targetNode *corev1.Node,
 	}
 	podList := &corev1.PodList{}
 	Eventually(func() bool {
-		if err := testclient.DataPlaneClient.List(context.TODO(), podList, listOptions); err != nil {
+		if err := testclient.DataPlaneClient.List(ctx, podList, listOptions); err != nil {
 			return false
 		}
 		if len(podList.Items) == 0 {
@@ -661,4 +961,37 @@ func waitForDeploymentPodsDeletion(ctx context.Context, targetNode *corev1.Node,
 		err := pods.WaitForDeletion(ctx, &pod, pods.DefaultDeletionTimeout*time.Second)
 		Expect(err).ToNot(HaveOccurred())
 	}
+}
+
+func createMultipleContainers(names []string, cpuResources []string) []corev1.Container {
+	var containers []corev1.Container
+	for i, name := range names {
+		cpu := cpuResources[i]
+		container := corev1.Container{
+			Name:    name,
+			Image:   images.Test(),
+			Command: []string{"sleep", "10h"},
+			Resources: corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse(cpu),
+					corev1.ResourceMemory: resource.MustParse("100Mi"),
+				},
+			},
+		}
+		containers = append(containers, container)
+	}
+	return containers
+}
+
+// transformToNoSMT takes a map which contains cores and its siblings
+// per numa node to move it to a map containing cpus per numa node
+func transformToNoSMT(input map[int]map[int][]int) map[int][]int {
+	result := make(map[int][]int)
+	for key, innerMap := range input {
+		for _, values := range innerMap {
+			result[key] = append(result[key], values[0])
+		}
+		sort.Ints(result[key])
+	}
+	return result
 }
