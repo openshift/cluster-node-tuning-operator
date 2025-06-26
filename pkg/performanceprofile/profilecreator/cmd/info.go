@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -17,6 +17,7 @@ const (
 
 type infoOptions struct {
 	jsonOutput bool
+	textOutput bool
 }
 
 // NewInfoCommand return info command, which provides a list of the cluster nodes and their hardware topology.
@@ -31,6 +32,7 @@ func NewInfoCommand(pcArgs *ProfileCreatorArgs) *cobra.Command {
 		},
 	}
 	info.Flags().BoolVar(&opts.jsonOutput, "json", false, "output as JSON")
+	info.Flags().BoolVar(&opts.textOutput, "text", false, "output as plain text")
 	return info
 }
 
@@ -40,12 +42,8 @@ func executeInfoMode(mustGatherDirPath string, createForHypershift bool, infoOpt
 		return fmt.Errorf("failed to parse the cluster data: %w", err)
 	}
 	clusterInfo := makeClusterInfoFromClusterData(clusterData)
-	if infoOpts.jsonOutput {
-		if err := showClusterInfoJSON(clusterInfo); err != nil {
-			return fmt.Errorf("unable to show cluster info %w", err)
-		}
-	} else {
-		showClusterInfoLog(clusterInfo)
+	if err := showClusterInfo(clusterInfo, infoOpts); err != nil {
+		return fmt.Errorf("unable to show cluster info %w", err)
 	}
 	return nil
 }
@@ -96,13 +94,13 @@ func makeClusterInfoFromClusterData(cluster ClusterData) ClusterInfo {
 		for _, handle := range nodeHandlers {
 			topology, err := handle.SortedTopology()
 			if err != nil {
-				log.Infof("%s(Topology discovery error: %v)", handle.Node.GetName(), err)
+				Alert("%s(Topology discovery error: %v)", handle.Node.GetName(), err)
 				continue
 			}
 
 			htEnabled, err := handle.IsHyperthreadingEnabled()
 			if err != nil {
-				log.Infof("%s(HT discovery error: %v)", handle.Node.GetName(), err)
+				Alert("%s(HT discovery error: %v)", handle.Node.GetName(), err)
 			}
 
 			nInfo := NodeInfo{
@@ -128,21 +126,36 @@ func makeClusterInfoFromClusterData(cluster ClusterData) ClusterInfo {
 	return cInfo.Sort()
 }
 
-func showClusterInfoJSON(cInfo ClusterInfo) error {
-	return json.NewEncoder(os.Stdout).Encode(cInfo)
+func showClusterInfo(cInfo ClusterInfo, infoOpts *infoOptions) error {
+	if infoOpts.jsonOutput {
+		return json.NewEncoder(os.Stdout).Encode(cInfo)
+	}
+	textInfo := dumpClusterInfo(cInfo)
+	if infoOpts.textOutput {
+		fmt.Print(textInfo)
+		return nil
+	}
+	Alert("Cluster info:\n%s", textInfo)
+	return nil
 }
 
-func showClusterInfoLog(cInfo ClusterInfo) {
-	log.Infof("Cluster info:")
+func dumpClusterInfo(cInfo ClusterInfo) string {
+	var sb strings.Builder
 	for _, mcpInfo := range cInfo {
-		log.Infof("MCP '%s' nodes:", mcpInfo.Name)
+		fmt.Fprintf(&sb, "MCP '%s' nodes:", mcpInfo.Name)
+		sb.WriteString("\n")
 		for _, nInfo := range mcpInfo.Nodes {
-			log.Infof("Node: %s (NUMA cells: %d, HT: %v)", nInfo.Name, len(nInfo.NUMACells), nInfo.HTEnabled)
+			fmt.Fprintf(&sb, "Node: %s (NUMA cells: %d, HT: %v)", nInfo.Name, len(nInfo.NUMACells), nInfo.HTEnabled)
+			sb.WriteString("\n")
 			for _, cInfo := range nInfo.NUMACells {
-				log.Infof("NUMA cell %d : %v", cInfo.ID, cInfo.CoreList)
+				fmt.Fprintf(&sb, "NUMA cell %d : %v", cInfo.ID, cInfo.CoreList)
+				sb.WriteString("\n")
 			}
-			log.Infof("CPU(s): %d", nInfo.CPUsCount)
+			fmt.Fprintf(&sb, "CPU(s): %d", nInfo.CPUsCount)
+			sb.WriteString("\n")
 		}
-		log.Infof("---")
+		fmt.Fprintf(&sb, "---")
+		sb.WriteString("\n")
 	}
+	return sb.String()
 }
