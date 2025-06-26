@@ -29,7 +29,6 @@ import (
 	"github.com/jaypipes/ghw/pkg/cpu"
 	"github.com/jaypipes/ghw/pkg/option"
 	"github.com/jaypipes/ghw/pkg/topology"
-	log "github.com/sirupsen/logrus"
 
 	configv1 "github.com/openshift/api/config/v1"
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
@@ -96,7 +95,7 @@ func getMustGatherFullPathsWithFilter(mustGatherPath string, suffix string, filt
 		return "", fmt.Errorf("no match for the specified must gather directory path: %s and suffix: %s", mustGatherPath, suffix)
 	}
 	if len(paths) > 1 {
-		log.Infof("Multiple matches for the specified must gather directory path: %s and suffix: %s", mustGatherPath, suffix)
+		Alert("Multiple matches for the specified must gather directory path: %s and suffix: %s", mustGatherPath, suffix)
 		return "", fmt.Errorf("Multiple matches for the specified must gather directory path: %s and suffix: %s.\n Expected only one performance-addon-operator-must-gather* directory, please check the must-gather tarball", mustGatherPath, suffix)
 	}
 	// returning one possible path
@@ -504,7 +503,7 @@ func getOfflinedCPUs(extCpuInfo *extendedCPUInfo, offlinedCPUCount int, disableH
 	}
 
 	if lpOfflined < offlinedCPUCount {
-		log.Warnf("could not offline enough logical processors (required:%d, offlined:%d)", offlinedCPUCount, lpOfflined)
+		Alert("could not offline enough logical processors (required:%d, offlined:%d)", offlinedCPUCount, lpOfflined)
 	}
 	return offlined.Result(), nil
 }
@@ -513,7 +512,7 @@ func updateTopologyInfo(topoInfo *topology.Info, disableHTFlag bool, htEnabled b
 	//currently HT is enabled on the system and the user wants to disable HT
 
 	if htEnabled && disableHTFlag {
-		log.Infof("Updating Topology info because currently hyperthreading is enabled and the performance profile will disable it")
+		Alert("Updating Topology info because currently hyperthreading is enabled and the performance profile will disable it")
 		return topologyHTDisabled(topoInfo), nil
 	}
 	return topoInfo, nil
@@ -521,21 +520,21 @@ func updateTopologyInfo(topoInfo *topology.Info, disableHTFlag bool, htEnabled b
 
 func getReservedCPUs(topologyInfo *topology.Info, reservedCPUCount int, splitReservedCPUsAcrossNUMA bool, disableHTFlag bool, htEnabled bool) (cpuset.CPUSet, error) {
 	if htEnabled && disableHTFlag {
-		log.Infof("Currently hyperthreading is enabled and the performance profile will disable it")
+		Alert("Currently hyperthreading is enabled and the performance profile will disable it")
 		htEnabled = false
 	}
-	log.Infof("NUMA cell(s): %d", len(topologyInfo.Nodes))
+	Alert("NUMA cell(s): %d", len(topologyInfo.Nodes))
 	totalCPUs := 0
 	for id, node := range topologyInfo.Nodes {
 		coreList := []int{}
 		for _, core := range node.Cores {
 			coreList = append(coreList, core.LogicalProcessors...)
 		}
-		log.Infof("NUMA cell %d : %v", id, coreList)
+		Alert("NUMA cell %d : %v", id, coreList)
 		totalCPUs += len(coreList)
 	}
 
-	log.Infof("CPU(s): %d", totalCPUs)
+	Alert("CPU(s): %d", totalCPUs)
 
 	if splitReservedCPUsAcrossNUMA {
 		res, err := getCPUsSplitAcrossNUMA(reservedCPUCount, htEnabled, topologyInfo.Nodes)
@@ -616,7 +615,7 @@ func getCPUsSplitAcrossNUMA(reservedCPUCount int, htEnabled bool, topologyInfoNo
 	reservedPerNuma := reservedCPUCount / numaNodeNum
 	remainder := reservedCPUCount % numaNodeNum
 	if remainder != 0 {
-		log.Warnf("The reserved CPUs cannot be split equally across NUMA Nodes")
+		Alert("The reserved CPUs cannot be split equally across NUMA Nodes")
 	}
 	for numaID, node := range topologyInfoNodes {
 		if remainder != 0 {
@@ -732,7 +731,7 @@ func ensureSameTopology(topology1, topology2 *topology.Info, tols toleration.Set
 				// as the NUMA cells have same logical processors' count and IDs and same threads' number,
 				// core ID equality is treated as best effort. That is because when scheduling workloads,
 				// we care about the logical processors ids and their location on the NUMAs.
-				log.Warnf("the CPU core ids in NUMA node %d differ: %d vs %d", node1.ID, core1.ID, cores2[j].ID)
+				Alert("the CPU core ids in NUMA node %d differ: %d vs %d", node1.ID, core1.ID, cores2[j].ID)
 				tols[toleration.DifferentCoreIDs] = true
 			}
 			if core1.NumThreads != cores2[j].NumThreads {
@@ -753,7 +752,7 @@ func GetAdditionalKernelArgs(disableHT bool) []string {
 		kernelArgs = append(kernelArgs, noSMTKernelArg)
 	}
 	sort.Strings(kernelArgs)
-	log.Infof("Additional Kernel Args based on configuration: %v", kernelArgs)
+	Alert("Additional Kernel Args based on configuration: %v", kernelArgs)
 	return kernelArgs
 }
 

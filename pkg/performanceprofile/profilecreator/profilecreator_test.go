@@ -12,12 +12,12 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/klog/v2"
 	"k8s.io/utils/cpuset"
 
 	"github.com/jaypipes/ghw/pkg/cpu"
 	"github.com/jaypipes/ghw/pkg/topology"
 	mcfgv1 "github.com/openshift/api/machineconfiguration/v1"
-	log "github.com/sirupsen/logrus"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/toleration"
@@ -601,16 +601,16 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			reserved, isolated, offlined, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
 			Expect(err).ToNot(HaveOccurred())
 
-			log.Infof("Input:")
-			log.Infof("\treserved-cpu-count:\t\t%d", reservedCPUCount)
-			log.Infof("\tofflined-cpu-count:\t\t%d", offlinedCPUCount)
-			log.Infof("\tdisable-ht:\t\t\t%v", disableHT)
-			log.Infof("\tsplitReservedCPUsAcrossNUMA:\t%v", splitReservedCPUsAcrossNUMA)
-			log.Infof("\thighConsumptionMode:\t\t%v", highPowerConsumptionMode)
-			log.Infof("Output:")
-			log.Infof("\treserved: %s", reserved.String())
-			log.Infof("\tisolated: %s", isolated.String())
-			log.Infof("\tofflined: %s", offlined.String())
+			klog.Infof("Input:")
+			klog.Infof("\treserved-cpu-count:\t\t%d", reservedCPUCount)
+			klog.Infof("\tofflined-cpu-count:\t\t%d", offlinedCPUCount)
+			klog.Infof("\tdisable-ht:\t\t\t%v", disableHT)
+			klog.Infof("\tsplitReservedCPUsAcrossNUMA:\t%v", splitReservedCPUsAcrossNUMA)
+			klog.Infof("\thighConsumptionMode:\t\t%v", highPowerConsumptionMode)
+			klog.Infof("Output:")
+			klog.Infof("\treserved: %s", reserved.String())
+			klog.Infof("\tisolated: %s", isolated.String())
+			klog.Infof("\tofflined: %s", offlined.String())
 
 			Expect(offlined.Intersection(reserved).IsEmpty()).To(BeTrue())
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
@@ -647,16 +647,16 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			reserved, isolated, offlined, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
 			Expect(err).ToNot(HaveOccurred())
 
-			log.Infof("Input:")
-			log.Infof("\treserved-cpu-count:\t\t%d", reservedCPUCount)
-			log.Infof("\tofflined-cpu-count:\t\t%d", offlinedCPUCount)
-			log.Infof("\tdisable-ht:\t\t\t%v", disableHT)
-			log.Infof("\tsplitReservedCPUsAcrossNUMA:\t%v", splitReservedCPUsAcrossNUMA)
-			log.Infof("\thighConsumptionMode:\t\t%v", highPowerConsumptionMode)
-			log.Infof("Output:")
-			log.Infof("\treserved: %s", reserved.String())
-			log.Infof("\tisolated: %s", isolated.String())
-			log.Infof("\tofflined: %s", offlined.String())
+			klog.Infof("Input:")
+			klog.Infof("\treserved-cpu-count:\t\t%d", reservedCPUCount)
+			klog.Infof("\tofflined-cpu-count:\t\t%d", offlinedCPUCount)
+			klog.Infof("\tdisable-ht:\t\t\t%v", disableHT)
+			klog.Infof("\tsplitReservedCPUsAcrossNUMA:\t%v", splitReservedCPUsAcrossNUMA)
+			klog.Infof("\thighConsumptionMode:\t\t%v", highPowerConsumptionMode)
+			klog.Infof("Output:")
+			klog.Infof("\treserved: %s", reserved.String())
+			klog.Infof("\tisolated: %s", isolated.String())
+			klog.Infof("\tofflined: %s", offlined.String())
 
 			Expect(offlined.Intersection(reserved).IsEmpty()).To(BeTrue())
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
@@ -688,16 +688,16 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			reserved, isolated, offlined, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
 			Expect(err).ToNot(HaveOccurred())
 
-			log.Infof("Input:")
-			log.Infof("\treserved-cpu-count:\t\t%d", reservedCPUCount)
-			log.Infof("\tofflined-cpu-count:\t\t%d", offlinedCPUCount)
-			log.Infof("\tdisable-ht:\t\t\t%v", disableHT)
-			log.Infof("\tsplitReservedCPUsAcrossNUMA:\t%v", splitReservedCPUsAcrossNUMA)
-			log.Infof("\thighConsumptionMode:\t\t%v", highPowerConsumptionMode)
-			log.Infof("Output:")
-			log.Infof("\treserved: %s", reserved.String())
-			log.Infof("\tisolated: %s", isolated.String())
-			log.Infof("\tofflined: %s", offlined.String())
+			klog.Infof("Input:")
+			klog.Infof("\treserved-cpu-count:\t\t%d", reservedCPUCount)
+			klog.Infof("\tofflined-cpu-count:\t\t%d", offlinedCPUCount)
+			klog.Infof("\tdisable-ht:\t\t\t%v", disableHT)
+			klog.Infof("\tsplitReservedCPUsAcrossNUMA:\t%v", splitReservedCPUsAcrossNUMA)
+			klog.Infof("\thighConsumptionMode:\t\t%v", highPowerConsumptionMode)
+			klog.Infof("Output:")
+			klog.Infof("\treserved: %s", reserved.String())
+			klog.Infof("\tisolated: %s", isolated.String())
+			klog.Infof("\tofflined: %s", offlined.String())
 
 			Expect(offlined.Intersection(reserved).IsEmpty()).To(BeTrue())
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
@@ -729,16 +729,16 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			reserved, isolated, offlined, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
 			Expect(err).ToNot(HaveOccurred())
 
-			log.Infof("Input:")
-			log.Infof("\treserved-cpu-count:\t\t%d", reservedCPUCount)
-			log.Infof("\tofflined-cpu-count:\t\t%d", offlinedCPUCount)
-			log.Infof("\tdisable-ht:\t\t\t%v", disableHT)
-			log.Infof("\tsplitReservedCPUsAcrossNUMA:\t%v", splitReservedCPUsAcrossNUMA)
-			log.Infof("\thighConsumptionMode:\t\t%v", highPowerConsumptionMode)
-			log.Infof("Output:")
-			log.Infof("\treserved: %s", reserved.String())
-			log.Infof("\tisolated: %s", isolated.String())
-			log.Infof("\tofflined: %s", offlined.String())
+			klog.Infof("Input:")
+			klog.Infof("\treserved-cpu-count:\t\t%d", reservedCPUCount)
+			klog.Infof("\tofflined-cpu-count:\t\t%d", offlinedCPUCount)
+			klog.Infof("\tdisable-ht:\t\t\t%v", disableHT)
+			klog.Infof("\tsplitReservedCPUsAcrossNUMA:\t%v", splitReservedCPUsAcrossNUMA)
+			klog.Infof("\thighConsumptionMode:\t\t%v", highPowerConsumptionMode)
+			klog.Infof("Output:")
+			klog.Infof("\treserved: %s", reserved.String())
+			klog.Infof("\tisolated: %s", isolated.String())
+			klog.Infof("\tofflined: %s", offlined.String())
 
 			Expect(offlined.Intersection(reserved).IsEmpty()).To(BeTrue())
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
@@ -770,16 +770,16 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			reserved, isolated, offlined, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
 			Expect(err).ToNot(HaveOccurred())
 
-			log.Infof("Input:")
-			log.Infof("\treserved-cpu-count:\t\t%d", reservedCPUCount)
-			log.Infof("\tofflined-cpu-count:\t\t%d", offlinedCPUCount)
-			log.Infof("\tdisable-ht:\t\t\t%v", disableHT)
-			log.Infof("\tsplitReservedCPUsAcrossNUMA:\t%v", splitReservedCPUsAcrossNUMA)
-			log.Infof("\thighConsumptionMode:\t\t%v", highPowerConsumptionMode)
-			log.Infof("Output:")
-			log.Infof("\treserved: %s", reserved.String())
-			log.Infof("\tisolated: %s", isolated.String())
-			log.Infof("\tofflined: %s", offlined.String())
+			klog.Infof("Input:")
+			klog.Infof("\treserved-cpu-count:\t\t%d", reservedCPUCount)
+			klog.Infof("\tofflined-cpu-count:\t\t%d", offlinedCPUCount)
+			klog.Infof("\tdisable-ht:\t\t\t%v", disableHT)
+			klog.Infof("\tsplitReservedCPUsAcrossNUMA:\t%v", splitReservedCPUsAcrossNUMA)
+			klog.Infof("\thighConsumptionMode:\t\t%v", highPowerConsumptionMode)
+			klog.Infof("Output:")
+			klog.Infof("\treserved: %s", reserved.String())
+			klog.Infof("\tisolated: %s", isolated.String())
+			klog.Infof("\tofflined: %s", offlined.String())
 
 			Expect(offlined.Intersection(reserved).IsEmpty()).To(BeTrue())
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
@@ -811,16 +811,16 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			reserved, isolated, offlined, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
 			Expect(err).ToNot(HaveOccurred())
 
-			log.Infof("Input:")
-			log.Infof("\treserved-cpu-count:\t\t%d", reservedCPUCount)
-			log.Infof("\tofflined-cpu-count:\t\t%d", offlinedCPUCount)
-			log.Infof("\tdisable-ht:\t\t\t%v", disableHT)
-			log.Infof("\tsplitReservedCPUsAcrossNUMA:\t%v", splitReservedCPUsAcrossNUMA)
-			log.Infof("\thighConsumptionMode:\t\t%v", highPowerConsumptionMode)
-			log.Infof("Output:")
-			log.Infof("\treserved: %s", reserved.String())
-			log.Infof("\tisolated: %s", isolated.String())
-			log.Infof("\tofflined: %s", offlined.String())
+			klog.Infof("Input:")
+			klog.Infof("\treserved-cpu-count:\t\t%d", reservedCPUCount)
+			klog.Infof("\tofflined-cpu-count:\t\t%d", offlinedCPUCount)
+			klog.Infof("\tdisable-ht:\t\t\t%v", disableHT)
+			klog.Infof("\tsplitReservedCPUsAcrossNUMA:\t%v", splitReservedCPUsAcrossNUMA)
+			klog.Infof("\thighConsumptionMode:\t\t%v", highPowerConsumptionMode)
+			klog.Infof("Output:")
+			klog.Infof("\treserved: %s", reserved.String())
+			klog.Infof("\tisolated: %s", isolated.String())
+			klog.Infof("\tofflined: %s", offlined.String())
 
 			Expect(offlined.Intersection(reserved).IsEmpty()).To(BeTrue())
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
@@ -1156,9 +1156,9 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(offlinedCPUSet.Intersection(isolatedCPUSet).IsEmpty()).To(BeTrue())
 			Expect(offlinedCPUSet.Size()).To(Equal(offlinedCPUCount))
 
-			log.Infof("offlined:%s", offlinedCPUSet.String())
-			log.Infof("reserved:%s", reservedCPUSet.String())
-			log.Infof("isolated:%s", isolatedCPUSet.String())
+			klog.Infof("offlined:%s", offlinedCPUSet.String())
+			klog.Infof("reserved:%s", reservedCPUSet.String())
+			klog.Infof("isolated:%s", isolatedCPUSet.String())
 
 			totalCPUSet, err := GetTotalCPUSetFromGHW(handle, disableHT)
 			Expect(err).ToNot(HaveOccurred())
@@ -1196,9 +1196,9 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(offlinedCPUSet.Intersection(isolatedCPUSet).IsEmpty()).To(BeTrue())
 			Expect(offlinedCPUSet.Size()).To(Equal(offlinedCPUCount))
 
-			log.Infof("offlined:%s", offlinedCPUSet.String())
-			log.Infof("reserved:%s", reservedCPUSet.String())
-			log.Infof("isolated:%s", isolatedCPUSet.String())
+			klog.Infof("offlined:%s", offlinedCPUSet.String())
+			klog.Infof("reserved:%s", reservedCPUSet.String())
+			klog.Infof("isolated:%s", isolatedCPUSet.String())
 
 			totalCPUSet, err := GetTotalCPUSetFromGHW(handle, disableHT)
 			Expect(err).ToNot(HaveOccurred())
@@ -1232,9 +1232,9 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(offlinedCPUSet.Intersection(isolatedCPUSet).IsEmpty()).To(BeTrue())
 			Expect(offlinedCPUSet.Size()).To(Equal(offlinedCPUCount))
 
-			log.Infof("offlined:%s", offlinedCPUSet.String())
-			log.Infof("reserved:%s", reservedCPUSet.String())
-			log.Infof("isolated:%s", isolatedCPUSet.String())
+			klog.Infof("offlined:%s", offlinedCPUSet.String())
+			klog.Infof("reserved:%s", reservedCPUSet.String())
+			klog.Infof("isolated:%s", isolatedCPUSet.String())
 
 			totalCPUSet, err := GetTotalCPUSetFromGHW(handle, disableHT)
 			Expect(err).ToNot(HaveOccurred())
@@ -1268,9 +1268,9 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(offlinedCPUSet.Intersection(isolatedCPUSet).IsEmpty()).To(BeTrue())
 			Expect(offlinedCPUSet.Size()).To(Equal(offlinedCPUCount))
 
-			log.Infof("offlined:%s", offlinedCPUSet.String())
-			log.Infof("reserved:%s", reservedCPUSet.String())
-			log.Infof("isolated:%s", isolatedCPUSet.String())
+			klog.Infof("offlined:%s", offlinedCPUSet.String())
+			klog.Infof("reserved:%s", reservedCPUSet.String())
+			klog.Infof("isolated:%s", isolatedCPUSet.String())
 
 			totalCPUSet, err := GetTotalCPUSetFromGHW(handle, disableHT)
 			Expect(err).ToNot(HaveOccurred())
@@ -1304,9 +1304,9 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(offlinedCPUSet.Intersection(isolatedCPUSet).IsEmpty()).To(BeTrue())
 			Expect(offlinedCPUSet.Size()).To(Equal(offlinedCPUCount))
 
-			log.Infof("offlined:%s", offlinedCPUSet.String())
-			log.Infof("reserved:%s", reservedCPUSet.String())
-			log.Infof("isolated:%s", isolatedCPUSet.String())
+			klog.Infof("offlined:%s", offlinedCPUSet.String())
+			klog.Infof("reserved:%s", reservedCPUSet.String())
+			klog.Infof("isolated:%s", isolatedCPUSet.String())
 
 			totalCPUSet, err := GetTotalCPUSetFromGHW(handle, disableHT)
 			Expect(err).ToNot(HaveOccurred())
@@ -1339,9 +1339,9 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(offlinedCPUSet.Intersection(isolatedCPUSet).IsEmpty()).To(BeTrue())
 			Expect(offlinedCPUSet.Size()).To(Equal(offlinedCPUCount))
 
-			log.Infof("offlined:%s", offlinedCPUSet.String())
-			log.Infof("reserved:%s", reservedCPUSet.String())
-			log.Infof("isolated:%s", isolatedCPUSet.String())
+			klog.Infof("offlined:%s", offlinedCPUSet.String())
+			klog.Infof("reserved:%s", reservedCPUSet.String())
+			klog.Infof("isolated:%s", isolatedCPUSet.String())
 
 			totalCPUSet, err := GetTotalCPUSetFromGHW(handle, disableHT)
 			Expect(err).ToNot(HaveOccurred())
@@ -1369,9 +1369,9 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(offlinedCPUSet.Intersection(isolatedCPUSet).IsEmpty()).To(BeTrue())
 			Expect(offlinedCPUSet.Size()).To(Equal(offlinedCPUCount))
 
-			log.Infof("offlined:%s", offlinedCPUSet.String())
-			log.Infof("reserved:%s", reservedCPUSet.String())
-			log.Infof("isolated:%s", isolatedCPUSet.String())
+			klog.Infof("offlined:%s", offlinedCPUSet.String())
+			klog.Infof("reserved:%s", reservedCPUSet.String())
+			klog.Infof("isolated:%s", isolatedCPUSet.String())
 
 			totalCPUSet, err := GetTotalCPUSetFromGHW(handle, disableHT)
 			Expect(err).ToNot(HaveOccurred())
