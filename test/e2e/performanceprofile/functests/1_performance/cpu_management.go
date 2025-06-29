@@ -1395,16 +1395,16 @@ func checkSchedulingDomains(workerRTNode *corev1.Node, podCpus cpuset.CPUSet, te
 // This is required for running tests on disconnected environment where images are mirrored
 // in private registries.
 func busyCpuImageEnv() string {
-	qeImageRegistry := os.Getenv("IMAGE_REGISTRY")
-	busyCpusImage := os.Getenv("BUSY_CPUS_IMAGE")
+	qeImageRegistry, ok := os.LookupEnv("IMAGE_REGISTRY")
+	if !ok {
+		qeImageRegistry = "quay.io/ocp-edge-qe/"
+	}
 
-	if busyCpusImage == "" {
+	busyCpusImage, ok := os.LookupEnv("BUSY_CPUS_IMAGE")
+	if !ok {
 		busyCpusImage = "busycpus"
 	}
 
-	if qeImageRegistry == "" {
-		qeImageRegistry = "quay.io/ocp-edge-qe/"
-	}
 	return fmt.Sprintf("%s%s", qeImageRegistry, busyCpusImage)
 }
 
