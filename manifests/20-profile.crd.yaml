@@ -80,10 +80,6 @@ spec:
                         reapply_sysctl:
                           description: 'turn reapply_sysctl functionality on/off for the TuneD daemon: true/false (default is true)'
                           type: boolean
-                        startup_udev_settle_wait:
-                          description: 'configure startup_udev_settle_wait timeout functionality for the TuneD daemon: unsigned integer (default is 20)'
-                          type: integer
-                          format: int64
                     tunedProfile:
                       description: TuneD profile to apply
                       type: string

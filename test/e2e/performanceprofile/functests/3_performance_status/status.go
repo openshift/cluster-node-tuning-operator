@@ -7,17 +7,17 @@ import (
 
 	"github.com/onsi/gomega/gcustom"
 	types2 "github.com/onsi/gomega/types"
-//	tunedutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
+	tunedutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-//	nodev1 "k8s.io/api/node/v1"
+	nodev1 "k8s.io/api/node/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
-//	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	ign2types "github.com/coreos/ignition/config/v2_2/types"
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
@@ -28,7 +28,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	hypershiftutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
-//	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
@@ -54,68 +54,68 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 	})
 
 	Context("[rfe_id:28881][performance] Performance Addons detailed status", Label(string(label.Tier1)), func() {
-//		It("[test_id:30894] Tuned status name tied to Performance Profile", func() {
-//			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-//			Expect(err).ToNot(HaveOccurred())
-//			tunedList := &tunedv1.TunedList{}
-//			tunedName, err := tunedutils.GetName(context.TODO(), testclient.ControlPlaneClient, profile.Name)
-//			Expect(err).ToNot(HaveOccurred())
-//			tunedNamespacedName := types.NamespacedName{
-//				Name:      tunedName,
-//				Namespace: components.NamespaceNodeTuningOperator,
-//			}
-//			// on hypershift platform, we're getting the tuned object that was mirrored by NTO to the hosted cluster,
-//			// hence we're using the DataPlaneClient here.
-//			Eventually(func(g Gomega) {
-//				g.Expect(testclient.DataPlaneClient.List(context.TODO(), tunedList, &client.ListOptions{
-//					Namespace: tunedNamespacedName.Namespace,
-//				})).To(Succeed())
-//				Expect(tunedList.Items).To(MatchTunedName(tunedName))
-//			}).WithTimeout(time.Minute).WithPolling(time.Second * 10).Should(Succeed())
-//			Expect(*profile.Status.Tuned).ToNot(BeNil())
-//			Expect(*profile.Status.Tuned).To(Equal(tunedNamespacedName.String()))
-//		})
-//
-//		It("[test_id:33791] Should include the generated runtime class name", func() {
-//			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-//			Expect(err).ToNot(HaveOccurred())
-//
-//			key := types.NamespacedName{
-//				Name:      components.GetComponentName(profile.Name, components.ComponentNamePrefix),
-//				Namespace: metav1.NamespaceAll,
-//			}
-//			runtimeClass := &nodev1.RuntimeClass{}
-//			err = testclient.GetWithRetry(context.TODO(), testclient.DataPlaneClient, key, runtimeClass)
-//			Expect(err).ToNot(HaveOccurred(), "cannot find the RuntimeClass object "+key.String())
-//
-//			Expect(profile.Status.RuntimeClass).NotTo(BeNil())
-//			Expect(*profile.Status.RuntimeClass).To(Equal(runtimeClass.Name))
-//		})
-//
-//		It("[test_id:29673] Machine config pools status tied to Performance Profile", Label(string(label.OpenShift)), func() {
-//			// Creating bad MC that leads to degraded state
-//			By("Creating bad MachineConfig")
-//			badMC := createBadMachineConfig("bad-mc")
-//			err = testclient.ControlPlaneClient.Create(context.TODO(), badMC)
-//			Expect(err).ToNot(HaveOccurred())
-//
-//			By("Wait for MCP condition to be Degraded")
-//			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-//			Expect(err).ToNot(HaveOccurred())
-//			performanceMCP, err := mcps.GetByProfile(profile)
-//			Expect(err).ToNot(HaveOccurred())
-//			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolDegraded, corev1.ConditionTrue)
-//			mcpConditionReason := mcps.GetConditionReason(performanceMCP, machineconfigv1.MachineConfigPoolDegraded)
-//			profileConditionMessage := profiles.GetConditionMessage(testutils.NodeSelectorLabels, v1.ConditionDegraded)
-//			// Verify the status reason of performance profile
-//			Expect(profileConditionMessage).To(ContainSubstring(mcpConditionReason))
-//
-//			By("Deleting bad MachineConfig and waiting when Degraded state is removed")
-//			err = testclient.ControlPlaneClient.Delete(context.TODO(), badMC)
-//			Expect(err).ToNot(HaveOccurred())
-//
-//			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
-//		})
+		It("[test_id:30894] Tuned status name tied to Performance Profile", func() {
+			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+			tunedList := &tunedv1.TunedList{}
+			tunedName, err := tunedutils.GetName(context.TODO(), testclient.ControlPlaneClient, profile.Name)
+			Expect(err).ToNot(HaveOccurred())
+			tunedNamespacedName := types.NamespacedName{
+				Name:      tunedName,
+				Namespace: components.NamespaceNodeTuningOperator,
+			}
+			// on hypershift platform, we're getting the tuned object that was mirrored by NTO to the hosted cluster,
+			// hence we're using the DataPlaneClient here.
+			Eventually(func(g Gomega) {
+				g.Expect(testclient.DataPlaneClient.List(context.TODO(), tunedList, &client.ListOptions{
+					Namespace: tunedNamespacedName.Namespace,
+				})).To(Succeed())
+				Expect(tunedList.Items).To(MatchTunedName(tunedName))
+			}).WithTimeout(time.Minute).WithPolling(time.Second * 10).Should(Succeed())
+			Expect(*profile.Status.Tuned).ToNot(BeNil())
+			Expect(*profile.Status.Tuned).To(Equal(tunedNamespacedName.String()))
+		})
+
+		It("[test_id:33791] Should include the generated runtime class name", func() {
+			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+
+			key := types.NamespacedName{
+				Name:      components.GetComponentName(profile.Name, components.ComponentNamePrefix),
+				Namespace: metav1.NamespaceAll,
+			}
+			runtimeClass := &nodev1.RuntimeClass{}
+			err = testclient.GetWithRetry(context.TODO(), testclient.DataPlaneClient, key, runtimeClass)
+			Expect(err).ToNot(HaveOccurred(), "cannot find the RuntimeClass object "+key.String())
+
+			Expect(profile.Status.RuntimeClass).NotTo(BeNil())
+			Expect(*profile.Status.RuntimeClass).To(Equal(runtimeClass.Name))
+		})
+
+		It("[test_id:29673] Machine config pools status tied to Performance Profile", Label(string(label.OpenShift)), func() {
+			// Creating bad MC that leads to degraded state
+			By("Creating bad MachineConfig")
+			badMC := createBadMachineConfig("bad-mc")
+			err = testclient.ControlPlaneClient.Create(context.TODO(), badMC)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Wait for MCP condition to be Degraded")
+			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+			performanceMCP, err := mcps.GetByProfile(profile)
+			Expect(err).ToNot(HaveOccurred())
+			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolDegraded, corev1.ConditionTrue)
+			mcpConditionReason := mcps.GetConditionReason(performanceMCP, machineconfigv1.MachineConfigPoolDegraded)
+			profileConditionMessage := profiles.GetConditionMessage(testutils.NodeSelectorLabels, v1.ConditionDegraded)
+			// Verify the status reason of performance profile
+			Expect(profileConditionMessage).To(ContainSubstring(mcpConditionReason))
+
+			By("Deleting bad MachineConfig and waiting when Degraded state is removed")
+			err = testclient.ControlPlaneClient.Delete(context.TODO(), badMC)
+			Expect(err).ToNot(HaveOccurred())
+
+			mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+		})
 
 		It("[test_id:40402] Tuned profile status tied to Performance Profile", func() {
 			// During this test we're creating additional synthetic tuned CR by invoking the createrBadTuned function.
@@ -239,7 +239,7 @@ func createBadTuned(name, ns string) func() {
 		Expect(nodepools.AttachTuningObject(context.TODO(), testclient.ControlPlaneClient, badTuned)).To(Succeed())
 	}
 	By("createBadTuned) ------------")
-	_, _, err := util.ExecAndLogCommand("oc", "get", "tuned", "-n", "openshift-cluster-node-tuning-operator")
+	_, _, _ = util.ExecAndLogCommand("oc", "get", "tuned", "-n", "openshift-cluster-node-tuning-operator")
 
 	return func() {
 		GinkgoHelper()
