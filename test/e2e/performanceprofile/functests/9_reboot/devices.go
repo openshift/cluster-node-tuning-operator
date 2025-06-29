@@ -69,8 +69,8 @@ var _ = Describe("[disruptive][node][kubelet][devicemanager] Device management t
 	)
 
 	BeforeEach(func() {
-		targetNode = os.Getenv(targetNodeEnvVar)
-		if targetNode == "" {
+		targetNode, ok := os.LookupEnv(targetNodeEnvVar)
+		if !ok {
 			Skip(fmt.Sprintf("Need an explicit target node name, got none (env var: %q)", targetNodeEnvVar))
 		}
 		testlog.Infof("target node name: %q", targetNode)
