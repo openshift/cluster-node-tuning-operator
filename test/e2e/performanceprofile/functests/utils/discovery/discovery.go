@@ -21,7 +21,11 @@ type ConditionIterator func(performancev2.PerformanceProfile) bool
 
 // Enabled indicates whether test discovery mode is enabled.
 func Enabled() bool {
-	discoveryMode, _ := strconv.ParseBool(os.Getenv("DISCOVERY_MODE"))
+	discoveryModeStr, ok := os.LookupEnv("DISCOVERY_MODE")
+	if !ok {
+		return false
+	}
+	discoveryMode, _ := strconv.ParseBool(discoveryModeStr)
 	return discoveryMode
 }
 

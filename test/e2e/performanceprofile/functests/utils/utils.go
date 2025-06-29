@@ -72,8 +72,8 @@ func knownIssueIsFixedByStatus(status string) bool {
 // Check status of an issue in Jira and skip the test when the issue
 // is not yet resolved (Verified or Closed)
 func KnownIssueJira(key string) {
-	val := os.Getenv(SkipBzChecksEnvVar)
-	if val != "" {
+	val, ok := os.LookupEnv(SkipBzChecksEnvVar)
+	if ok && val != "" {
 		testlog.Infof(fmt.Sprintf("Skipping Jira issue %s status check", key))
 		return
 	}
@@ -96,8 +96,8 @@ func KnownIssueJira(key string) {
 // Check status of an issue in Bugzilla and skip the test when the issue
 // is not yet resolved (Verified or Closed)
 func KnownIssueBugzilla(bugId int) {
-	val := os.Getenv(SkipBzChecksEnvVar)
-	if val != "" {
+	val, ok := os.LookupEnv(SkipBzChecksEnvVar)
+	if ok && val != "" {
 		testlog.Infof(fmt.Sprintf("Skipping rhbz#%d status check", bugId))
 		return
 	}
