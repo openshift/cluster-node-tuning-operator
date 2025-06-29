@@ -33,6 +33,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	v1 "github.com/openshift/custom-resource-status/conditions/v1"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 )
 
 var _ = Describe("Status testing of performance profile", Ordered, func() {
@@ -127,16 +128,39 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 			// on openshift this is the namespace where NTO/PAO creates tuned objects
 			ns := components.NamespaceNodeTuningOperator
 
+			By("1) ------------")
+			_, _, err = util.ExecAndLogCommand("oc", "get", "tuned", "-n", ns)
+			_, _, err = util.ExecAndLogCommand("oc", "get", "profile", "-n", ns)
+//			_, _, err = util.ExecAndLogCommand("oc", "get", "performanceprofile/performance", "-n", ns, "-o", "yaml")
+
 			// Creating a bad Tuned object that leads to degraded state
 			cleanupFunc := createBadTuned(tunedName, ns)
 			defer func() {
+				By("2b) ------------")
+				_, _, err = util.ExecAndLogCommand("oc", "get", "tuned", "-n", ns)
+				_, _, err = util.ExecAndLogCommand("oc", "get", "profile", "-n", ns)
+
 				By("Deleting bad Tuned and waiting when Degraded state is removed")
 				cleanupFunc()
+
+				By("3) Sleeping 30")
+				time.Sleep(30 * time.Second)
+
+				_, _, err = util.ExecAndLogCommand("oc", "get", "tuned", "-n", ns)
+				_, _, err = util.ExecAndLogCommand("oc", "get", "profile", "-n", ns)
+//				_, _, err = util.ExecAndLogCommand("oc", "get", "performanceprofile/performance", "-n", ns, "-o", "yaml")
+//				Expect(err).To(HaveOccurred())	// intentionally fail
+
 				profiles.WaitForCondition(testutils.NodeSelectorLabels, v1.ConditionAvailable, corev1.ConditionTrue)
 			}()
 
 			By("Waiting for performance profile condition to be Degraded")
 			profiles.WaitForCondition(testutils.NodeSelectorLabels, v1.ConditionDegraded, corev1.ConditionTrue)
+
+			By("2) ------------")
+			_, _, err = util.ExecAndLogCommand("oc", "get", "tuned", "-n", ns)
+			_, _, err = util.ExecAndLogCommand("oc", "get", "profile", "-n", ns)
+//			_, _, err = util.ExecAndLogCommand("oc", "get", "performanceprofile/performance", "-n", ns, "-o", "yaml")
 		})
 	})
 })
@@ -214,6 +238,8 @@ func createBadTuned(name, ns string) func() {
 	if hypershiftutils.IsHypershiftCluster() {
 		Expect(nodepools.AttachTuningObject(context.TODO(), testclient.ControlPlaneClient, badTuned)).To(Succeed())
 	}
+	By("createBadTuned) ------------")
+	_, _, err := util.ExecAndLogCommand("oc", "get", "tuned", "-n", "openshift-cluster-node-tuning-operator")
 
 	return func() {
 		GinkgoHelper()
