@@ -18,8 +18,8 @@ limitations under the License.
 package versioned
 
 import (
-	"fmt"
-	"net/http"
+	fmt "fmt"
+	http "net/http"
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/generated/clientset/versioned/typed/tuned/v1"
 	discovery "k8s.io/client-go/discovery"
