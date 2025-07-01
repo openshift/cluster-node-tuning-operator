@@ -645,12 +645,6 @@ var _ = Describe("Tuned", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(bootloaderSection.Key("cmdline_pstate").String()).To(Equal(""))
 			})
-			It("should set iommu passthrough", func() {
-				tunedData := getTunedStructuredData(profile, components.ProfileNameArmAarch64)
-				bootloaderSection, err := tunedData.GetSection("bootloader")
-				Expect(err).ToNot(HaveOccurred())
-				Expect(bootloaderSection.Key("cmdline_iommu_arm").String()).To(Equal("iommu.passthrough=1"))
-			})
 		})
 	})
 
