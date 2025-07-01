@@ -5,5 +5,3 @@ summary=Platform specific tuning for aarch64
 # No cstate for ARM
 # No pstate args for ARM
 
-# aarch64 specific tuning options
-cmdline_iommu_arm=iommu.passthrough=1
