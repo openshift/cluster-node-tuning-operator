@@ -2,6 +2,7 @@ package kubeletconfig
 
 import (
 	"encoding/json"
+	"strconv"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -17,6 +18,10 @@ import (
 )
 
 const (
+	CPUManagerPolicyOptionPreferAlignCPUsByUncoreCache = "prefer-align-cpus-by-uncorecache"
+)
+
+const (
 	// experimentalKubeletSnippetAnnotation contains the annotation key that should be used to provide a KubeletConfig snippet with additional
 	// configurations you want to apply on top of the generated KubeletConfig resource.
 	// To find the specific argument see https://kubernetes.io/docs/reference/config-api/kubelet-config.v1beta1/.
@@ -27,35 +32,33 @@ const (
 	// 4. Reserved CPUs
 	// 5. Memory manager policy
 	// Please avoid specifying them and use the relevant API to configure these parameters.
-	experimentalKubeletSnippetAnnotation         = "kubeletconfig.experimental"
-	cpuManagerPolicyStatic                       = "static"
-	cpuManagerPolicyOptionFullPCPUsOnly          = "full-pcpus-only"
-	memoryManagerPolicyStatic                    = "Static"
-	defaultKubeReservedMemory                    = "500Mi"
-	defaultSystemReservedMemory                  = "500Mi"
-	defaultHardEvictionThresholdMemory           = "100Mi"
-	defaultHardEvictionThresholdNodefs           = "10%"
-	defaultHardEvictionThresholdImagefs          = "15%"
-	defaultHardEvictionThresholdNodefsInodesFree = "5%"
-	evictionHardMemoryAvailable                  = "memory.available"
-	evictionHardNodefsAvaialble                  = "nodefs.available"
-	evictionHardImagefsAvailable                 = "imagefs.available"
-	evictionHardNodefsInodesFree                 = "nodefs.inodesFree"
+	experimentalKubeletSnippetAnnotation = "kubeletconfig.experimental"
+	// experimentalKubeletPreferAlignCPUsByUncoreCacheAnnotation is an annotation which serves as master flag to control the `prefer-align-cpus-by-uncorecache`
+	// cpumanager option. While is still possible to do the required steps manually, so inject the option using `kubelet.experimental` and adding the
+	// enablement file using the MachineConfig, this master flag automates all the steps. Furthermore, it overrides the injected configuration both ways,
+	// so we can disable the injected value. When the feature graduates to GA upstream, we will add the proper support in our API and retire this annotation.
+	experimentalKubeletPreferAlignCPUsByUncoreCacheAnnotation = "kubeletconfig.prefer-align-cpus-by-uncorecache"
+	cpuManagerPolicyStatic                                    = "static"
+	cpuManagerPolicyOptionFullPCPUsOnly                       = "full-pcpus-only"
+	memoryManagerPolicyStatic                                 = "Static"
+	defaultKubeReservedMemory                                 = "500Mi"
+	defaultSystemReservedMemory                               = "500Mi"
+	defaultHardEvictionThresholdMemory                        = "100Mi"
+	defaultHardEvictionThresholdNodefs                        = "10%"
+	defaultHardEvictionThresholdImagefs                       = "15%"
+	defaultHardEvictionThresholdNodefsInodesFree              = "5%"
+	evictionHardMemoryAvailable                               = "memory.available"
+	evictionHardNodefsAvaialble                               = "nodefs.available"
+	evictionHardImagefsAvailable                              = "imagefs.available"
+	evictionHardNodefsInodesFree                              = "nodefs.inodesFree"
 )
 
 // New returns new KubeletConfig object for performance sensetive workflows
 func New(profile *performancev2.PerformanceProfile, opts *components.KubeletConfigOptions) (*machineconfigv1.KubeletConfig, error) {
 	name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
-	kubeletConfig := &kubeletconfigv1beta1.KubeletConfiguration{}
-	if v, ok := profile.Annotations[experimentalKubeletSnippetAnnotation]; ok {
-		if err := json.Unmarshal([]byte(v), kubeletConfig); err != nil {
-			return nil, err
-		}
-	}
-
-	kubeletConfig.TypeMeta = metav1.TypeMeta{
-		APIVersion: kubeletconfigv1beta1.SchemeGroupVersion.String(),
-		Kind:       "KubeletConfiguration",
+	kubeletConfig, err := NewFromExperimentalAnnotation(profile)
+	if err != nil {
+		return nil, err
 	}
 
 	kubeletConfig.CPUManagerPolicy = cpuManagerPolicyStatic
@@ -192,4 +195,35 @@ func addStringToQuantity(q *resource.Quantity, value string) error {
 	q.Add(v)
 
 	return nil
+}
+
+func NewFromExperimentalAnnotation(profile *performancev2.PerformanceProfile) (*kubeletconfigv1beta1.KubeletConfiguration, error) {
+	kubeletConfig := &kubeletconfigv1beta1.KubeletConfiguration{}
+
+	if v, ok := profile.Annotations[experimentalKubeletSnippetAnnotation]; ok {
+		if err := json.Unmarshal([]byte(v), kubeletConfig); err != nil {
+			return nil, err
+		}
+	}
+
+	// mae sure to setup properly the metadata
+	kubeletConfig.TypeMeta = metav1.TypeMeta{
+		APIVersion: kubeletconfigv1beta1.SchemeGroupVersion.String(),
+		Kind:       "KubeletConfiguration",
+	}
+	return kubeletConfig, nil
+}
+
+func IsPreferAlignCPUsByUncoreCacheEnabled(profile *performancev2.PerformanceProfile) (value bool, found bool) {
+	var rawVal string
+	rawVal, found = profile.Annotations[experimentalKubeletPreferAlignCPUsByUncoreCacheAnnotation]
+	if !found {
+		return false, false
+	}
+	var err error
+	value, err = strconv.ParseBool(rawVal)
+	if err != nil {
+		return false, false
+	}
+	return value, true
 }

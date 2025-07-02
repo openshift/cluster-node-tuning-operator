@@ -43,6 +43,19 @@ type Options struct {
 type MachineConfigOptions struct {
 	PinningMode      *apiconfigv1.CPUPartitioningMode
 	MixedCPUsEnabled bool
+	LLCFileEnabled   bool
+}
+
+func (mco *MachineConfigOptions) Clone() *MachineConfigOptions {
+	ret := MachineConfigOptions{
+		MixedCPUsEnabled: mco.MixedCPUsEnabled,
+		LLCFileEnabled:   mco.LLCFileEnabled,
+	}
+	if mco.PinningMode != nil {
+		ret.PinningMode = new(apiconfigv1.CPUPartitioningMode)
+		*ret.PinningMode = *mco.PinningMode
+	}
+	return &ret
 }
 
 type KubeletConfigOptions struct {
