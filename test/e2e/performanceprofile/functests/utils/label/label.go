@@ -55,6 +55,9 @@ const (
 	// ExperimentalAnnotation should be added in tests that test Kubelet changes using
 	// experimental annotation
 	ExperimentalAnnotations = "experimental-annotaions"
+
+	// KernelPageSize Feature should be added in tests where we are testing for arm
+	KernelPageSize Feature = "kernel-pagesize"
 )
 
 // Tier is a label to classify tests under specific grade/level

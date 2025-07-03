@@ -267,6 +267,11 @@ build-performance-profile-creator:
 	LDFLAGS="-s -w -X ${PACKAGE}/cmd/performance-profile-creator/version.Version=${REV} "; \
 	$(GO) build  -v $(LDFLAGS) -o $(OUT_DIR)/performance-profile-creator ./cmd/performance-profile-creator
 
+.PHONY: arm-kernel-pagesize
+arm-kernelpagesize: $(BINDATA)
+	@echo "Running ARM kernel page size tests"
+	hack/run-test.sh -t "test/e2e/performanceprofile/14_arm" -p "--v -r --fail-fast --flake-attempts=2" -m "Running Functional Tests" -r "--junit-report=/tmp/artifacts"
+
 .PHONY: performance-profile-creator-tests
 performance-profile-creator-tests: build-performance-profile-creator
 	@echo "Running Performance Profile Creator Tests"
