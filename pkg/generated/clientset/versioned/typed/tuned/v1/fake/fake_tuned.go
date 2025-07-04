@@ -18,129 +18,30 @@ limitations under the License.
 package fake
 
 import (
-	"context"
-
 	v1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	labels "k8s.io/apimachinery/pkg/labels"
-	types "k8s.io/apimachinery/pkg/types"
-	watch "k8s.io/apimachinery/pkg/watch"
-	testing "k8s.io/client-go/testing"
+	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/generated/clientset/versioned/typed/tuned/v1"
+	gentype "k8s.io/client-go/gentype"
 )
 
-// FakeTuneds implements TunedInterface
-type FakeTuneds struct {
+// fakeTuneds implements TunedInterface
+type fakeTuneds struct {
+	*gentype.FakeClientWithList[*v1.Tuned, *v1.TunedList]
 	Fake *FakeTunedV1
-	ns   string
 }
 
-var tunedsResource = v1.SchemeGroupVersion.WithResource("tuneds")
-
-var tunedsKind = v1.SchemeGroupVersion.WithKind("Tuned")
-
-// Get takes name of the tuned, and returns the corresponding tuned object, and an error if there is any.
-func (c *FakeTuneds) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.Tuned, err error) {
-	emptyResult := &v1.Tuned{}
-	obj, err := c.Fake.
-		Invokes(testing.NewGetActionWithOptions(tunedsResource, c.ns, name, options), emptyResult)
-
-	if obj == nil {
-		return emptyResult, err
+func newFakeTuneds(fake *FakeTunedV1, namespace string) tunedv1.TunedInterface {
+	return &fakeTuneds{
+		gentype.NewFakeClientWithList[*v1.Tuned, *v1.TunedList](
+			fake.Fake,
+			namespace,
+			v1.SchemeGroupVersion.WithResource("tuneds"),
+			v1.SchemeGroupVersion.WithKind("Tuned"),
+			func() *v1.Tuned { return &v1.Tuned{} },
+			func() *v1.TunedList { return &v1.TunedList{} },
+			func(dst, src *v1.TunedList) { dst.ListMeta = src.ListMeta },
+			func(list *v1.TunedList) []*v1.Tuned { return gentype.ToPointerSlice(list.Items) },
+			func(list *v1.TunedList, items []*v1.Tuned) { list.Items = gentype.FromPointerSlice(items) },
+		),
+		fake,
 	}
-	return obj.(*v1.Tuned), err
-}
-
-// List takes label and field selectors, and returns the list of Tuneds that match those selectors.
-func (c *FakeTuneds) List(ctx context.Context, opts metav1.ListOptions) (result *v1.TunedList, err error) {
-	emptyResult := &v1.TunedList{}
-	obj, err := c.Fake.
-		Invokes(testing.NewListActionWithOptions(tunedsResource, tunedsKind, c.ns, opts), emptyResult)
-
-	if obj == nil {
-		return emptyResult, err
-	}
-
-	label, _, _ := testing.ExtractFromListOptions(opts)
-	if label == nil {
-		label = labels.Everything()
-	}
-	list := &v1.TunedList{ListMeta: obj.(*v1.TunedList).ListMeta}
-	for _, item := range obj.(*v1.TunedList).Items {
-		if label.Matches(labels.Set(item.Labels)) {
-			list.Items = append(list.Items, item)
-		}
-	}
-	return list, err
-}
-
-// Watch returns a watch.Interface that watches the requested tuneds.
-func (c *FakeTuneds) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
-	return c.Fake.
-		InvokesWatch(testing.NewWatchActionWithOptions(tunedsResource, c.ns, opts))
-
-}
-
-// Create takes the representation of a tuned and creates it.  Returns the server's representation of the tuned, and an error, if there is any.
-func (c *FakeTuneds) Create(ctx context.Context, tuned *v1.Tuned, opts metav1.CreateOptions) (result *v1.Tuned, err error) {
-	emptyResult := &v1.Tuned{}
-	obj, err := c.Fake.
-		Invokes(testing.NewCreateActionWithOptions(tunedsResource, c.ns, tuned, opts), emptyResult)
-
-	if obj == nil {
-		return emptyResult, err
-	}
-	return obj.(*v1.Tuned), err
-}
-
-// Update takes the representation of a tuned and updates it. Returns the server's representation of the tuned, and an error, if there is any.
-func (c *FakeTuneds) Update(ctx context.Context, tuned *v1.Tuned, opts metav1.UpdateOptions) (result *v1.Tuned, err error) {
-	emptyResult := &v1.Tuned{}
-	obj, err := c.Fake.
-		Invokes(testing.NewUpdateActionWithOptions(tunedsResource, c.ns, tuned, opts), emptyResult)
-
-	if obj == nil {
-		return emptyResult, err
-	}
-	return obj.(*v1.Tuned), err
-}
-
-// UpdateStatus was generated because the type contains a Status member.
-// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeTuneds) UpdateStatus(ctx context.Context, tuned *v1.Tuned, opts metav1.UpdateOptions) (result *v1.Tuned, err error) {
-	emptyResult := &v1.Tuned{}
-	obj, err := c.Fake.
-		Invokes(testing.NewUpdateSubresourceActionWithOptions(tunedsResource, "status", c.ns, tuned, opts), emptyResult)
-
-	if obj == nil {
-		return emptyResult, err
-	}
-	return obj.(*v1.Tuned), err
-}
-
-// Delete takes name of the tuned and deletes it. Returns an error if one occurs.
-func (c *FakeTuneds) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
-	_, err := c.Fake.
-		Invokes(testing.NewDeleteActionWithOptions(tunedsResource, c.ns, name, opts), &v1.Tuned{})
-
-	return err
-}
-
-// DeleteCollection deletes a collection of objects.
-func (c *FakeTuneds) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
-	action := testing.NewDeleteCollectionActionWithOptions(tunedsResource, c.ns, opts, listOpts)
-
-	_, err := c.Fake.Invokes(action, &v1.TunedList{})
-	return err
-}
-
-// Patch applies the patch and returns the patched tuned.
-func (c *FakeTuneds) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.Tuned, err error) {
-	emptyResult := &v1.Tuned{}
-	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceActionWithOptions(tunedsResource, c.ns, name, pt, data, opts, subresources...), emptyResult)
-
-	if obj == nil {
-		return emptyResult, err
-	}
-	return obj.(*v1.Tuned), err
 }
