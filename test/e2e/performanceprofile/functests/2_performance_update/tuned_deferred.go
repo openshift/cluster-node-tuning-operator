@@ -33,6 +33,17 @@ import (
 	tunedutil "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
 )
 
+type TunedProfileConfig struct {
+	DeferMode         string
+	ProfileChangeType string // "first-time" or "in-place"
+	ExpectedBehavior  string // "deferred" or "immediate"
+	KernelSHMMNI      string // 4096 or 8192
+	ServiceStalld     string // "start, enabled"
+	CmdlineCPUPart    string // for bootloader
+	CmdlineIsolation  string // for bootloader
+	CmdlineIdlePoll   string // for bootloader
+}
+
 var _ = Describe("Tuned Deferred tests of performance profile", Ordered, Label(string(label.TunedDeferred)), func() {
 	var (
 		workerCNFNodes []corev1.Node
@@ -41,13 +52,6 @@ var _ = Describe("Tuned Deferred tests of performance profile", Ordered, Label(s
 		tuned          *tunedv1.Tuned
 		initialPolicy  *string
 	)
-
-	type TunedProfileConfig struct {
-		DeferMode         string
-		ProfileChangeType string // "first-time" or "in-place"
-		ExpectedBehavior  string // "deferred" or "immediate"
-		KernelSHMMNI      string // 4096 or 8192
-	}
 
 	name := "performance-patch"
 
@@ -73,7 +77,7 @@ var _ = Describe("Tuned Deferred tests of performance profile", Ordered, Label(s
 	Context("Tuned Deferred status", func() {
 		DescribeTable("Validate Tuned DeferMode behavior",
 			func(tc TunedProfileConfig) {
-
+				var data string
 				if tc.ProfileChangeType == "first-time" {
 					tuned = getTunedProfile(name)
 
@@ -88,7 +92,10 @@ var _ = Describe("Tuned Deferred tests of performance profile", Ordered, Label(s
 							return profile.Spec.Config.TunedProfile == "openshift-node-performance-performance"
 						}, 2*time.Minute, 10*time.Second).Should(BeTrue(), "Tuned profile deletion did not complete in time")
 					}
-					tuned, err = createTunedObject(tc.DeferMode, tc.KernelSHMMNI, name)
+					if tc.KernelSHMMNI != "" || tc.ServiceStalld != "" || tc.CmdlineCPUPart != "" || tc.CmdlineIsolation != "" || tc.CmdlineIdlePoll != "" {
+						data = createTunedData(tc)
+					}
+					tuned, err = createTunedObject(tc.DeferMode, data, name)
 					Expect(err).NotTo(HaveOccurred())
 
 				} else {
@@ -98,11 +105,34 @@ var _ = Describe("Tuned Deferred tests of performance profile", Ordered, Label(s
 					cfg, err := ini.Load(tunedData)
 					Expect(err).ToNot(HaveOccurred())
 
-					sysctlSection, err := cfg.GetSection("sysctl")
-					Expect(err).ToNot(HaveOccurred())
+					if tc.KernelSHMMNI != "" {
+						sysctlSection, err := cfg.GetSection("sysctl")
+						Expect(err).ToNot(HaveOccurred())
 
-					sysctlSection.Key("kernel.shmmni").SetValue(tc.KernelSHMMNI)
-					Expect(sysctlSection.Key("kernel.shmmni").String()).To(Equal(tc.KernelSHMMNI))
+						sysctlSection.Key("kernel.shmmni").SetValue(tc.KernelSHMMNI)
+						Expect(sysctlSection.Key("kernel.shmmni").String()).To(Equal(tc.KernelSHMMNI))
+					} else if tc.ServiceStalld != "" {
+						serviceSection, err := cfg.GetSection("service")
+						Expect(err).ToNot(HaveOccurred())
+
+						serviceSection.Key("service.stalld").SetValue(tc.ServiceStalld)
+						Expect(serviceSection.Key("service.stalld").String()).To(Equal(tc.ServiceStalld))
+					} else if tc.CmdlineCPUPart != "" {
+						bootloaderSection, err := cfg.GetSection("bootloader")
+						Expect(err).ToNot(HaveOccurred())
+						bootloaderSection.Key("cmdline_cpu_part").SetValue(tc.CmdlineCPUPart)
+						Expect(bootloaderSection.Key("cmdline_cpu_part").String()).To(Equal(tc.CmdlineCPUPart))
+					} else if tc.CmdlineIsolation != "" {
+						bootloaderSection, err := cfg.GetSection("bootloader")
+						Expect(err).ToNot(HaveOccurred())
+						bootloaderSection.Key("cmdline_isolation").SetValue(tc.CmdlineIsolation)
+						Expect(bootloaderSection.Key("cmdline_isolation").String()).To(Equal(tc.CmdlineIsolation))
+					} else if tc.CmdlineIdlePoll != "" {
+						bootloaderSection, err := cfg.GetSection("bootloader")
+						Expect(err).ToNot(HaveOccurred())
+						bootloaderSection.Key("cmdline_idle_poll").SetValue(tc.CmdlineIdlePoll)
+						Expect(bootloaderSection.Key("cmdline_idle_poll").String()).To(Equal(tc.CmdlineIdlePoll))
+					}
 
 					var updatedTunedData bytes.Buffer
 					_, err = cfg.WriteTo(&updatedTunedData)
@@ -113,15 +143,39 @@ var _ = Describe("Tuned Deferred tests of performance profile", Ordered, Label(s
 
 					testlog.Infof("Updating Tuned Profile Patch: %s", name)
 					Expect(testclient.ControlPlaneClient.Update(context.TODO(), tuned)).To(Succeed())
-					Eventually(func() string {
-						patch := getTunedProfile(name)
-						return *patch.Spec.Profile[0].Data
-					}, 1*time.Minute, 5*time.Second).Should(ContainSubstring(tc.KernelSHMMNI), "The updated tuned profile section did not contain the expected value")
+					// For in-place updates, we need to check if the substring is present in the updated profile data
+					// The actual value check happens in verifyImmediateApplication or verifyDeferredApplication
+					if tc.KernelSHMMNI != "" {
+						Eventually(func() string {
+							patch := getTunedProfile(name)
+							return *patch.Spec.Profile[0].Data
+						}, 1*time.Minute, 5*time.Second).Should(ContainSubstring(tc.KernelSHMMNI), "The updated tuned profile section did not contain the expected kernel.shmmni value")
+					} else if tc.ServiceStalld != "" {
+						Eventually(func() string {
+							patch := getTunedProfile(name)
+							return *patch.Spec.Profile[0].Data
+						}, 1*time.Minute, 5*time.Second).Should(ContainSubstring(tc.ServiceStalld), "The updated tuned profile section did not contain the expected service.stalld value")
+					} else if tc.CmdlineCPUPart != "" {
+						Eventually(func() string {
+							patch := getTunedProfile(name)
+							return *patch.Spec.Profile[0].Data
+						}, 1*time.Minute, 5*time.Second).Should(ContainSubstring(tc.CmdlineCPUPart), "The updated tuned profile section did not contain the expected cmdline_cpu_part value")
+					} else if tc.CmdlineIsolation != "" {
+						Eventually(func() string {
+							patch := getTunedProfile(name)
+							return *patch.Spec.Profile[0].Data
+						}, 1*time.Minute, 5*time.Second).Should(ContainSubstring(tc.CmdlineIsolation), "The updated tuned profile section did not contain the expected cmdline_isolation value")
+					} else if tc.CmdlineIdlePoll != "" {
+						Eventually(func() string {
+							patch := getTunedProfile(name)
+							return *patch.Spec.Profile[0].Data
+						}, 1*time.Minute, 5*time.Second).Should(ContainSubstring(tc.CmdlineIdlePoll), "The updated tuned profile section did not contain the expected cmdline_idle_poll value")
+					}
 				}
 
 				switch tc.ExpectedBehavior {
 				case "immediate":
-					verifyImmediateApplication(tuned, workerCNFNodes, tc.KernelSHMMNI)
+					verifyImmediateApplication(tuned, workerCNFNodes, tc)
 				case "deferred":
 					Eventually(func() bool {
 						result, err := verifyDeferredApplication(tuned, workerCNFNodes, name)
@@ -129,7 +183,7 @@ var _ = Describe("Tuned Deferred tests of performance profile", Ordered, Label(s
 						return result
 					}, 1*time.Minute, 5*time.Second).Should(BeTrue(), "Timed out checking deferred condition message")
 					rebootNode(poolName)
-					verifyImmediateApplication(tuned, workerCNFNodes, tc.KernelSHMMNI)
+					verifyImmediateApplication(tuned, workerCNFNodes, tc)
 				}
 			},
 			Entry("[test_id:78115] Verify deferred Always with first-time profile change", TunedProfileConfig{
@@ -167,6 +221,138 @@ var _ = Describe("Tuned Deferred tests of performance profile", Ordered, Label(s
 				ProfileChangeType: "in-place",
 				ExpectedBehavior:  "immediate",
 				KernelSHMMNI:      "4096",
+			}),
+			Entry("Verify deferred Always with first-time profile change - service plugin", TunedProfileConfig{
+				DeferMode:         "always",
+				ProfileChangeType: "first-time",
+				ExpectedBehavior:  "deferred",
+				ServiceStalld:     "start",
+			}),
+			Entry("Verify deferred Always with in-place profile update - service plugin", TunedProfileConfig{
+				DeferMode:         "always",
+				ProfileChangeType: "in-place",
+				ExpectedBehavior:  "deferred",
+				ServiceStalld:     "start, enabled",
+			}),
+		)
+	})
+
+	Context("Tuned Deferred status for Bootloader parameters", func() {
+		DescribeTable("Validate Tuned DeferMode behavior for Bootloader parameters",
+			func(tc TunedProfileConfig) {
+				var data string
+				if tc.ProfileChangeType == "first-time" {
+					tuned = getTunedProfile(name)
+
+					// If profile is present
+					if tuned != nil {
+						testlog.Infof("Deleting Tuned Profile Patch: %s", name)
+						Expect(testclient.ControlPlaneClient.Delete(context.TODO(), tuned)).To(Succeed())
+						Eventually(func() bool {
+							profile, _ := tunedutil.GetProfile(context.TODO(), testclient.ControlPlaneClient, components.NamespaceNodeTuningOperator, workerCNFNodes[0].Name)
+							return profile.Spec.Config.TunedProfile == "openshift-node-performance-performance"
+						}, 2*time.Minute, 10*time.Second).Should(BeTrue(), "Tuned profile deletion did not complete in time")
+					}
+					data = createTunedData(tc)
+					tuned, err = createTunedObject(tc.DeferMode, data, name)
+					Expect(err).NotTo(HaveOccurred())
+
+				} else { // in-place update for bootloader parameters
+					tuned := getTunedProfile(name)
+					tunedData := []byte(*tuned.Spec.Profile[0].Data)
+
+					cfg, err := ini.Load(tunedData)
+					Expect(err).ToNot(HaveOccurred())
+
+					bootloaderSection, err := cfg.GetSection("bootloader")
+					Expect(err).ToNot(HaveOccurred())
+
+					if tc.CmdlineCPUPart != "" {
+						bootloaderSection.Key("cmdline_cpu_part").SetValue(tc.CmdlineCPUPart)
+						Expect(bootloaderSection.Key("cmdline_cpu_part").String()).To(Equal(tc.CmdlineCPUPart))
+					} else if tc.CmdlineIsolation != "" {
+						bootloaderSection.Key("cmdline_isolation").SetValue(tc.CmdlineIsolation)
+						Expect(bootloaderSection.Key("cmdline_isolation").String()).To(Equal(tc.CmdlineIsolation))
+					} else if tc.CmdlineIdlePoll != "" {
+						bootloaderSection.Key("cmdline_idle_poll").SetValue(tc.CmdlineIdlePoll)
+						Expect(bootloaderSection.Key("cmdline_idle_poll").String()).To(Equal(tc.CmdlineIdlePoll))
+					}
+
+					var updatedTunedData bytes.Buffer
+					_, err = cfg.WriteTo(&updatedTunedData)
+					Expect(err).ToNot(HaveOccurred())
+
+					updatedTunedDataBytes := updatedTunedData.Bytes()
+					tuned.Spec.Profile[0].Data = stringPtr(string(updatedTunedDataBytes))
+
+					testlog.Infof("Updating Tuned Profile Patch: %s", name)
+					Expect(testclient.ControlPlaneClient.Update(context.TODO(), tuned)).To(Succeed())
+
+					// Verify the profile data has been updated
+					if tc.CmdlineCPUPart != "" {
+						Eventually(func() string {
+							patch := getTunedProfile(name)
+							return *patch.Spec.Profile[0].Data
+						}, 1*time.Minute, 5*second).Should(ContainSubstring(tc.CmdlineCPUPart), "The updated tuned profile section did not contain the expected cmdline_cpu_part value")
+					} else if tc.CmdlineIsolation != "" {
+						Eventually(func() string {
+							patch := getTunedProfile(name)
+							return *patch.Spec.Profile[0].Data
+						}, 1*time.Minute, 5*second).Should(ContainSubstring(tc.CmdlineIsolation), "The updated tuned profile section did not contain the expected cmdline_isolation value")
+					} else if tc.CmdlineIdlePoll != "" {
+						Eventually(func() string {
+							patch := getTunedProfile(name)
+							return *patch.Spec.Profile[0].Data
+						}, 1*time.Minute, 5*second).Should(ContainSubstring(tc.CmdlineIdlePoll), "The updated tuned profile section did not contain the expected cmdline_idle_poll value")
+					}
+				}
+
+				// Bootloader parameters always require deferred application
+				Expect(tc.ExpectedBehavior).To(Equal("deferred"), "Bootloader parameters should always be deferred")
+
+				Eventually(func() bool {
+					result, err := verifyDeferredApplication(tuned, workerCNFNodes, name)
+					Expect(err).To(BeNil())
+					return result
+				}, 1*time.Minute, 5*time.Second).Should(BeTrue(), "Timed out checking deferred condition message for bootloader parameter")
+				rebootNode(poolName)
+				verifyImmediateApplication(tuned, workerCNFNodes, tc)
+			},
+			Entry("Verify deferred Always with first-time profile change - cmdline_cpu_part", TunedProfileConfig{
+				DeferMode:         "always",
+				ProfileChangeType: "first-time",
+				ExpectedBehavior:  "deferred",
+				CmdlineCPUPart:    "+nohz=on rcu_nocbs=1,2",
+			}),
+			Entry("Verify deferred Always with in-place profile update - cmdline_cpu_part", TunedProfileConfig{
+				DeferMode:         "always",
+				ProfileChangeType: "in-place",
+				ExpectedBehavior:  "deferred",
+				CmdlineCPUPart:    "+nohz=on rcu_nocbs=3,4",
+			}),
+			Entry("Verify deferred Always with first-time profile change - cmdline_isolation", TunedProfileConfig{
+				DeferMode:         "always",
+				ProfileChangeType: "first-time",
+				ExpectedBehavior:  "deferred",
+				CmdlineIsolation:  "+isolcpus=managed_irq,5",
+			}),
+			Entry("Verify deferred Always with in-place profile update - cmdline_isolation", TunedProfileConfig{
+				DeferMode:         "always",
+				ProfileChangeType: "in-place",
+				ExpectedBehavior:  "deferred",
+				CmdlineIsolation:  "+isolcpus=domain,managed_irq,6",
+			}),
+			Entry("Verify deferred Always with first-time profile change - cmdline_idle_poll", TunedProfileConfig{
+				DeferMode:         "always",
+				ProfileChangeType: "first-time",
+				ExpectedBehavior:  "deferred",
+				CmdlineIdlePoll:   "+idle=poll",
+			}),
+			Entry("Verify deferred Always with in-place profile update - cmdline_idle_poll", TunedProfileConfig{
+				DeferMode:         "always",
+				ProfileChangeType: "in-place",
+				ExpectedBehavior:  "deferred",
+				CmdlineIdlePoll:   "+processor.max_cstate=0",
 			}),
 		)
 	})
@@ -229,19 +415,12 @@ func getTunedProfile(tunedName string) *tunedv1.Tuned {
 	return matchedTuned
 }
 
-func createTunedObject(deferMode string, KernelSHMMNI string, name string) (*tunedv1.Tuned, error) {
+func createTunedObject(deferMode string, data string, name string) (*tunedv1.Tuned, error) {
 	GinkgoHelper()
 
 	tunedName := name
 	ns := components.NamespaceNodeTuningOperator
 	priority := uint64(19)
-	data := fmt.Sprintf(`
-	[main]
-	summary=Configuration changes profile inherited from performance created tuned
-	include=openshift-node-performance-performance
-	[sysctl]
-	kernel.shmmni=%s
-	`, KernelSHMMNI)
 
 	// Create a Tuned object
 	tuned := &tunedv1.Tuned{
@@ -278,41 +457,116 @@ func createTunedObject(deferMode string, KernelSHMMNI string, name string) (*tun
 	return tuned, nil
 }
 
-func execSysctlOnWorkers(ctx context.Context, workerNodes []corev1.Node, sysctlMap map[string]string) {
+func createTunedData(tc TunedProfileConfig) string {
+	var data string
+	switch {
+	case tc.KernelSHMMNI != "":
+		data = fmt.Sprintf(`
+		[main]
+		summary=Configuration changes profile inherited from performance created tuned
+		include=openshift-node-performance-performance
+		[sysctl]
+		kernel.shmmni=%s
+		`, tc.KernelSHMMNI)
+
+	case tc.ServiceStalld != "":
+		data = fmt.Sprintf(`
+		[main]
+		summary=Configuration changes profile inherited from performance created tuned
+		include=openshift-node-performance-performance
+		[service]
+		service.stalld=%s
+		`, tc.ServiceStalld)
+	case tc.CmdlineCPUPart != "" || tc.CmdlineIsolation != "" || tc.CmdlineIdlePoll != "":
+		bootloaderConfig := ""
+		if tc.CmdlineCPUPart != "" {
+			bootloaderConfig += fmt.Sprintf("cmdline_cpu_part=%s\n", tc.CmdlineCPUPart)
+		}
+		if tc.CmdlineIsolation != "" {
+			bootloaderConfig += fmt.Sprintf("cmdline_isolation=%s\n", tc.CmdlineIsolation)
+		}
+		if tc.CmdlineIdlePoll != "" {
+			bootloaderConfig += fmt.Sprintf("cmdline_idle_poll=%s\n", tc.CmdlineIdlePoll)
+		}
+
+		data = fmt.Sprintf(`
+		[main]
+		summary=Configuration changes profile inherited from performance created tuned
+		include=openshift-node-performance-performance
+		[bootloader]
+		%s`, bootloaderConfig)
+	}
+	return data
+}
+
+func verifyOnWorkers(ctx context.Context, workerNodes []corev1.Node, paramMap map[string]string) {
 	GinkgoHelper()
 
 	var err error
 	var out []byte
 	isSNO := false
 	for _, node := range workerNodes {
-		for param, expected := range sysctlMap {
+		for param, expected := range paramMap {
 			Eventually(func() bool {
-				By(fmt.Sprintf("executing the command \"sysctl -n %s\"", param))
-				tunedCmd := []string{"/bin/sh", "-c", "chroot /host sysctl -a | grep shmmni"}
+				var tunedCmd []string
+				switch param {
+				case "kernel.shmmni":
+					By(fmt.Sprintf("Checking sysctl value of %s", param))
+					tunedCmd = []string{"/bin/sh", "-c", fmt.Sprintf("chroot /host sysctl -n %s", param)}
+				case "service.stalld":
+					expected = "active" // For service.stalld, we check if the service is active
+					By("Checking if 'stalld' service is active")
+					tunedCmd = []string{"/bin/sh", "-c", "chroot /host systemctl is-active stalld"}
+				case "cmdline_cpu_part", "cmdline_isolation", "cmdline_idle_poll":
+					By(fmt.Sprintf("Checking kernel command line for %s", param))
+					tunedCmd = []string{"/bin/sh", "-c", "chroot /host cat /proc/cmdline"}
+				}
+
 				tunedPod := nodes.TunedForNode(&node, isSNO)
 				out, err = pods.WaitForPodOutput(ctx, testclient.K8sClient, tunedPod, tunedCmd)
 				Expect(err).ToNot(HaveOccurred())
-				res := strings.TrimSpace(strings.SplitN(string(out), "=", 2)[1])
-				if res != expected {
-					testlog.Errorf("parameter %s value is not %s.", out, expected)
+				res := strings.TrimSpace(string(out))
+
+				// For bootloader parameters, we check if the expected string is contained within the full cmdline
+				if strings.HasPrefix(param, "cmdline_") {
+					if !strings.Contains(res, expected) {
+						testlog.Errorf("Kernel command line '%s' does not contain expected value '%s' for parameter %s", res, expected, param)
+						return false
+					}
+					return true
+				} else {
+					if res != expected {
+						testlog.Errorf("parameter %s returned '%s', expected '%s'", param, res, expected)
+					}
+					return res == expected
 				}
-				return res == expected
-			}, 2*time.Minute, 10*time.Second).Should(BeTrue(), "Timed out verifying kernel.shmmni on worker node")
+			}, 2*time.Minute, 10*time.Second).Should(BeTrue(),
+				fmt.Sprintf("Timed out verifying %s on worker node %s", param, node.Name))
 		}
 	}
 }
 
-func verifyImmediateApplication(tuned *tunedv1.Tuned, workerCNFNodes []corev1.Node, KernelSHMMNI string) {
+func verifyImmediateApplication(tuned *tunedv1.Tuned, workerCNFNodes []corev1.Node, tc TunedProfileConfig) {
 	// Use Eventually to wait until the performance profile status is updated
 	Eventually(func() bool {
 		profile, _ := tunedutil.GetProfile(context.TODO(), testclient.ControlPlaneClient, components.NamespaceNodeTuningOperator, workerCNFNodes[0].Name)
 		return profile.Spec.Config.TunedProfile == tuned.Name
 	}, 2*time.Minute, 10*time.Second).Should(BeTrue(), "Timed out waiting for profile.Spec.Config.TunedProfile to match tuned.Name")
 
-	sysctlMap := map[string]string{
-		"kernel.shmmni": KernelSHMMNI,
+	paramMap := make(map[string]string)
+	switch {
+	case tc.KernelSHMMNI != "":
+		paramMap["kernel.shmmni"] = tc.KernelSHMMNI
+	case tc.ServiceStalld != "":
+		paramMap["service.stalld"] = tc.ServiceStalld
+	case tc.CmdlineCPUPart != "":
+		paramMap["cmdline_cpu_part"] = tc.CmdlineCPUPart
+	case tc.CmdlineIsolation != "":
+		paramMap["cmdline_isolation"] = tc.CmdlineIsolation
+	case tc.CmdlineIdlePoll != "":
+		paramMap["cmdline_idle_poll"] = tc.CmdlineIdlePoll
 	}
-	execSysctlOnWorkers(context.TODO(), workerCNFNodes, sysctlMap)
+	verifyOnWorkers(context.TODO(), workerCNFNodes, paramMap)
 }
 
 func verifyDeferredApplication(tuned *tunedv1.Tuned, workerCNFNodes []corev1.Node, name string) (bool, error) {
@@ -338,6 +592,7 @@ func verifyDeferredApplication(tuned *tunedv1.Tuned, workerCNFNodes []corev1.Nod
 }
 
 func rebootNode(poolName string) {
+	fmt.Println("\n\n\n\n Rebooting NODE")
 	profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 	if err != nil {
 		testlog.Errorf("Unable to fetch latest performance profile err: %v", err)
