@@ -144,7 +144,7 @@ spec:
                           properties:
                             reapply_sysctl:
                               description: 'turn reapply_sysctl functionality on/off
-                                for the TuneD daemon: true/false'
+                                for the TuneD daemon: true/false (default is true)'
                               type: boolean
                           type: object
                         verbosity:
