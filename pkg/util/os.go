@@ -1,7 +1,9 @@
 package util
 
 import (
+	"fmt"
 	"os"
+	"strings"
 )
 
 // Delete a file if it exists.  Returns nil if 'file' does not exist.
@@ -24,4 +26,23 @@ func Symlink(target, linkName string) error {
 	}
 
 	return nil
+}
+
+// AddToPath adds 'path' to PATH environment variable unless it exists.
+// Returns nil unless os.Setenv() call fails.
+func AddToPath(path string) error {
+	pathSeparator := string(os.PathListSeparator)
+	currentPath := os.Getenv("PATH")
+
+	paths := strings.Split(currentPath, pathSeparator)
+	for _, p := range paths {
+		if p == path {
+			// 'path' already exists in PATH
+			return nil
+		}
+	}
+
+	newPath := fmt.Sprintf("%s%s%s", currentPath, pathSeparator, path)
+
+	return os.Setenv("PATH", newPath)
 }
