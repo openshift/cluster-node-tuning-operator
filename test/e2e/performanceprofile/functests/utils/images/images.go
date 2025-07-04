@@ -9,15 +9,15 @@ var registry string
 var cnfTestsImage string
 
 func init() {
-	registry = os.Getenv("IMAGE_REGISTRY")
-	cnfTestsImage = os.Getenv("CNF_TESTS_IMAGE")
-
-	if cnfTestsImage == "" {
-		cnfTestsImage = "cnf-tests:4.14"
+	var ok bool
+	registry, ok = os.LookupEnv("IMAGE_REGISTRY")
+	if !ok {
+		registry = "quay.io/openshift-kni/"
 	}
 
-	if registry == "" {
-		registry = "quay.io/openshift-kni/"
+	cnfTestsImage, ok = os.LookupEnv("CNF_TESTS_IMAGE")
+	if !ok {
+		cnfTestsImage = "cnf-tests:4.14"
 	}
 }
 

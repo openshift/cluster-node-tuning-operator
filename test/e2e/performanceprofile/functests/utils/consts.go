@@ -33,17 +33,18 @@ var NTOImage string
 var MustGatherDir string
 
 func init() {
-	RoleWorkerCNF = os.Getenv("ROLE_WORKER_CNF")
-	if RoleWorkerCNF == "" {
+	var ok bool
+	RoleWorkerCNF, ok = os.LookupEnv("ROLE_WORKER_CNF")
+	if !ok {
 		RoleWorkerCNF = "worker-cnf"
 	}
 
-	PerformanceProfileName = os.Getenv("PERF_TEST_PROFILE")
-	if PerformanceProfileName == "" {
+	PerformanceProfileName, ok = os.LookupEnv("PERF_TEST_PROFILE")
+	if !ok {
 		PerformanceProfileName = "performance"
 	}
 
-	NodesSelector = os.Getenv("NODES_SELECTOR")
+	NodesSelector, _ = os.LookupEnv("NODES_SELECTOR")
 
 	if !hypershift.IsHypershiftCluster() {
 		NodeSelectorLabels = map[string]string{
@@ -55,13 +56,12 @@ func init() {
 		}
 	}
 
-	NTOImage = os.Getenv("NTO_IMAGE")
-
-	if NTOImage == "" {
+	NTOImage, ok = os.LookupEnv("NTO_IMAGE")
+	if !ok {
 		NTOImage = "quay.io/openshift/origin-cluster-node-tuning-operator:latest"
 	}
 
-	MustGatherDir = os.Getenv("MUSTGATHER_DIR")
+	MustGatherDir, _ = os.LookupEnv("MUSTGATHER_DIR")
 
 	if discovery.Enabled() {
 		profile, err := discovery.GetDiscoveryPerformanceProfile(NodesSelector)
