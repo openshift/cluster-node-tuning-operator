@@ -6,9 +6,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
-	"k8s.io/kubernetes/pkg/kubelet/eviction"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/yaml"
+
+	k8seviction "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/k8simported/eviction"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	testutils "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/utils/testing"
@@ -159,7 +160,7 @@ var _ = Describe("Kubelet Config", func() {
 			Expect(manifest).To(ContainSubstring("nodefs.inodesFree: 10%"))
 		})
 
-		It("should set the default kubelet config", func() {
+		It("should set the default kubelet config eviction thresholds", func() {
 			profile := testutils.NewPerformanceProfile("test")
 			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
 			kc, err := New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{selectorKey: selectorValue}})
@@ -169,10 +170,18 @@ var _ = Describe("Kubelet Config", func() {
 
 			manifest := string(y)
 
-			memoryAvaialable := "memory.available: " + eviction.DefaultEvictionHard[evictionHardMemoryAvailable]
-			nodefsAvailable := "nodefs.available: " + eviction.DefaultEvictionHard[evictionHardNodefsAvaialble]
-			imagefsAvailable := "imagefs.available: " + eviction.DefaultEvictionHard[evictionHardImagefsAvailable]
-			nodefsInodesFree := "nodefs.inodesFree: " + eviction.DefaultEvictionHard[evictionHardNodefsInodesFree]
+			// When this test fails, compare whether the defaults in kubernetes documentation
+			// are still the same:
+			// https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/#hard-eviction-thresholds
+			// Eventually we should replace the hardcoded default with MergeDefaultEvictionSettings
+			// which was introduced in k8s 1.33 https://github.com/kubernetes/kubernetes/pull/127577
+			// NOTE: you can use `hack/update-k8s-eviction-defaults.sh` to fetch the updated defaults
+			// NOTE: in the unlikely but possible case k8s changes source code layout, we will need to update
+			//       the `hack/update-k8s-eviction-defaults.sh` script.
+			memoryAvaialable := "memory.available: " + k8seviction.DefaultEvictionHard[evictionHardMemoryAvailable]
+			nodefsAvailable := "nodefs.available: " + k8seviction.DefaultEvictionHard[evictionHardNodefsAvaialble]
+			imagefsAvailable := "imagefs.available: " + k8seviction.DefaultEvictionHard[evictionHardImagefsAvailable]
+			nodefsInodesFree := "nodefs.inodesFree: " + k8seviction.DefaultEvictionHard[evictionHardNodefsInodesFree]
 
 			Expect(manifest).To(ContainSubstring(memoryAvaialable))
 			Expect(manifest).To(ContainSubstring(nodefsAvailable))
