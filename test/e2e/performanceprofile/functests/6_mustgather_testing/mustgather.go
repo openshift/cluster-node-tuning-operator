@@ -88,7 +88,7 @@ var _ = Describe("[rfe_id: 50649] Performance Addon Operator Must Gather", Label
 
 			workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes)
 			Expect(err).ToNot(HaveOccurred())
-			cnfWorkerNode := workerRTNodes[0].ObjectMeta.Name
+			cnfWorkerNode := workerRTNodes[0].Name
 
 			// find the path of sysinfo.tgz of the correct node
 			snapShotName := ""

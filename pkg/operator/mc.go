@@ -54,7 +54,7 @@ func printMachineConfigPoolsNames(pools []*mcfgv1.MachineConfigPool) string {
 		if pool == nil {
 			continue
 		}
-		poolNames = append(poolNames, pool.ObjectMeta.Name)
+		poolNames = append(poolNames, pool.Name)
 	}
 	sort.Strings(poolNames)
 
@@ -80,7 +80,7 @@ func GetMachineConfigNameForPools(pools []*mcfgv1.MachineConfigPool) string {
 		if pool == nil {
 			continue
 		}
-		poolNames = append(poolNames, pool.ObjectMeta.Name)
+		poolNames = append(poolNames, pool.Name)
 	}
 	// See OCPBUGS-24792: the slice of MCP objects can be passed in random order.
 	sort.Strings(poolNames)
@@ -156,7 +156,7 @@ func (pc *ProfileCalculator) getPoolsForNode(node *corev1.Node) ([]*mcfgv1.Machi
 	for _, p := range pl {
 		selector, err := metav1.LabelSelectorAsSelector(p.Spec.NodeSelector)
 		if err != nil {
-			klog.Errorf("invalid label selector %s in MachineConfigPool %s: %v", util.ObjectInfo(selector), p.ObjectMeta.Name, err)
+			klog.Errorf("invalid label selector %s in MachineConfigPool %s: %v", util.ObjectInfo(selector), p.Name, err)
 			continue
 		}
 
@@ -176,11 +176,12 @@ func (pc *ProfileCalculator) getPoolsForNode(node *corev1.Node) ([]*mcfgv1.Machi
 	var master, worker *mcfgv1.MachineConfigPool
 	var custom []*mcfgv1.MachineConfigPool
 	for _, pool := range pools {
-		if pool.Name == "master" {
+		switch pool.Name {
+		case "master":
 			master = pool
-		} else if pool.Name == "worker" {
+		case "worker":
 			worker = pool
-		} else {
+		default:
 			custom = append(custom, pool)
 		}
 	}
@@ -217,7 +218,7 @@ func (pc *ProfileCalculator) getPoolsForNode(node *corev1.Node) ([]*mcfgv1.Machi
 func (pc *ProfileCalculator) getNodesForPool(pool *mcfgv1.MachineConfigPool) ([]*corev1.Node, error) {
 	selector, err := metav1.LabelSelectorAsSelector(pool.Spec.NodeSelector)
 	if err != nil {
-		return nil, fmt.Errorf("invalid label selector %s in MachineConfigPool %s: %v", util.ObjectInfo(selector), pool.ObjectMeta.Name, err)
+		return nil, fmt.Errorf("invalid label selector %s in MachineConfigPool %s: %v", util.ObjectInfo(selector), pool.Name, err)
 	}
 
 	initialNodes, err := pc.listers.Nodes.List(selector)

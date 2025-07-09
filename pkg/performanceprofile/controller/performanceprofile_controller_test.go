@@ -14,7 +14,6 @@ import (
 
 	igntypes "github.com/coreos/ignition/config/v2_2/types"
 	apiconfigv1 "github.com/openshift/api/config/v1"
-	configv1 "github.com/openshift/api/config/v1"
 	apifeatures "github.com/openshift/api/features"
 	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -1143,7 +1142,7 @@ func newFakeReconciler(instance client.Object, initObjects ...runtime.Object) *P
 	initObjects = append(initObjects, instance)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithStatusSubresource(instance).WithRuntimeObjects(initObjects...).WithInterceptorFuncs(MCPInterceptor()).Build()
 	fakeRecorder := record.NewFakeRecorder(10)
-	fakeFeatureGateAccessor := featuregates.NewHardcodedFeatureGateAccessForTesting(nil, []configv1.FeatureGateName{apifeatures.FeatureGateMixedCPUsAllocation}, make(chan struct{}), nil)
+	fakeFeatureGateAccessor := featuregates.NewHardcodedFeatureGateAccessForTesting(nil, []apiconfigv1.FeatureGateName{apifeatures.FeatureGateMixedCPUsAllocation}, make(chan struct{}), nil)
 	fg, _ := fakeFeatureGateAccessor.CurrentFeatureGates()
 	return &PerformanceProfileReconciler{
 		Client:            fakeClient,
@@ -1163,7 +1162,7 @@ func newFakeReconcilerForHypershift(instance client.Object, initObjects ...runti
 		hostedControlPlaneNamespace)
 	fakeHostedClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(hostedClusterObjects...).Build()
 	fakeRecorder := record.NewFakeRecorder(10)
-	fakeFeatureGateAccessor := featuregates.NewHardcodedFeatureGateAccessForTesting(nil, []configv1.FeatureGateName{apifeatures.FeatureGateMixedCPUsAllocation}, make(chan struct{}), nil)
+	fakeFeatureGateAccessor := featuregates.NewHardcodedFeatureGateAccessForTesting(nil, []apiconfigv1.FeatureGateName{apifeatures.FeatureGateMixedCPUsAllocation}, make(chan struct{}), nil)
 	fg, _ := fakeFeatureGateAccessor.CurrentFeatureGates()
 	return &PerformanceProfileReconciler{
 		Client:            fakeHostedClient,

@@ -146,11 +146,12 @@ func getPoolsForNode(node *corev1.Node, clusterPools []*mcfgv1.MachineConfigPool
 	var master, worker *mcfgv1.MachineConfigPool
 	var custom []*mcfgv1.MachineConfigPool
 	for _, pool := range pools {
-		if pool.Name == "master" {
+		switch pool.Name {
+		case "master":
 			master = pool
-		} else if pool.Name == "worker" {
+		case "worker":
 			worker = pool
-		} else {
+		default:
 			custom = append(custom, pool)
 		}
 	}
@@ -183,7 +184,7 @@ func getPoolsForNode(node *corev1.Node, clusterPools []*mcfgv1.MachineConfigPool
 // isWindows checks if given node is a Windows node or a Linux node
 func isWindows(node *corev1.Node) bool {
 	windowsOsValue := "windows"
-	if value, ok := node.ObjectMeta.Labels["kubernetes.io/os"]; ok {
+	if value, ok := node.Labels["kubernetes.io/os"]; ok {
 		return value == windowsOsValue
 	}
 	// All the nodes should have a OS label populated by kubelet, if not just to maintain

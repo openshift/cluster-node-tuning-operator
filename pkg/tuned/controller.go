@@ -336,8 +336,8 @@ func (c *Controller) eventProcessorKube() {
 }
 
 func (c *Controller) sync(key wqKeyKube) error {
-	switch {
-	case key.kind == wqKindProfile:
+	switch key.kind {
+	case wqKindProfile:
 		var change Change
 		if key.name != c.nodeName {
 			return nil
@@ -428,8 +428,8 @@ func ProfilesExtract(profiles []tunedv1.TunedProfile, recommendedProfile string)
 // explicit dependencies, so it's easier to test. To be used only internally.
 func profilesExtractPathWithDeps(profilesRootDir string, profiles []tunedv1.TunedProfile, recommendedProfile string, recommendedProfileDeps map[string]bool) (ExtractedProfiles, error) {
 	var (
-		change    bool            = false
-		extracted map[string]bool = map[string]bool{} // TuneD profile names present in TuneD CR and successfully extracted to tunedProfilesDirCustom
+		change    = false
+		extracted = map[string]bool{} // TuneD profile names present in TuneD CR and successfully extracted to tunedProfilesDirCustom
 	)
 
 	for index, profile := range profiles {
@@ -791,7 +791,7 @@ func (c *Controller) tunedStop() error {
 		}
 	} else {
 		// This should never happen!
-		return fmt.Errorf("cannot find the TuneD process!")
+		return fmt.Errorf("cannot find the TuneD process")
 	}
 	// Wait for TuneD process to stop -- this will enable node-level tuning rollback.
 	select {
@@ -847,11 +847,11 @@ func (c *Controller) tunedReload() error {
 				tunedStart()
 				return nil
 			}
-			return fmt.Errorf("error sending SIGHUP to PID %d: %v\n", c.tunedCmd.Process.Pid, err)
+			return fmt.Errorf("error sending SIGHUP to PID %d: %v", c.tunedCmd.Process.Pid, err)
 		}
 	} else {
 		// This should never happen!
-		return fmt.Errorf("cannot find the TuneD process!")
+		return fmt.Errorf("cannot find the TuneD process")
 	}
 
 	return nil
@@ -1256,13 +1256,13 @@ func (c *Controller) updateNodeAnnotations(node *corev1.Node, annotations map[st
 	)
 	node = node.DeepCopy() // never update the objects from cache
 
-	if node.ObjectMeta.Annotations == nil {
-		node.ObjectMeta.Annotations = map[string]string{}
+	if node.Annotations == nil {
+		node.Annotations = map[string]string{}
 	}
 
 	for k, v := range annotations {
-		change = change || node.ObjectMeta.Annotations[k] != v
-		node.ObjectMeta.Annotations[k] = v
+		change = change || node.Annotations[k] != v
+		node.Annotations[k] = v
 	}
 
 	if !change {
@@ -1274,7 +1274,7 @@ func (c *Controller) updateNodeAnnotations(node *corev1.Node, annotations map[st
 	// Profiles's status, use the kubelet's credentials to write to the Node's resource.
 	_, err = c.kubeclient.CoreV1().Nodes().Update(context.TODO(), node, metav1.UpdateOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to update Node %s: %v", node.ObjectMeta.Name, err)
+		return fmt.Errorf("failed to update Node %s: %v", node.Name, err)
 	}
 	klog.Infof("updated Node %v annotation", node.Name)
 
@@ -1308,11 +1308,11 @@ func (c *Controller) updateTunedProfile(change Change) (err error) {
 		return err
 	}
 
-	if node.ObjectMeta.Annotations == nil {
-		node.ObjectMeta.Annotations = map[string]string{}
+	if node.Annotations == nil {
+		node.Annotations = map[string]string{}
 	}
 
-	bootcmdlineAnnotVal, bootcmdlineAnnotSet := node.ObjectMeta.Annotations[tunedv1.TunedBootcmdlineAnnotationKey]
+	bootcmdlineAnnotVal, bootcmdlineAnnotSet := node.Annotations[tunedv1.TunedBootcmdlineAnnotationKey]
 	if !bootcmdlineAnnotSet || bootcmdlineAnnotVal != bootcmdline {
 		annotations := map[string]string{tunedv1.TunedBootcmdlineAnnotationKey: bootcmdline}
 		err = c.updateNodeAnnotations(node, annotations)
@@ -1610,7 +1610,7 @@ func retryLoop(c *Controller) (err error) {
 		errs       int
 		sleepRetry int64 = sleepRetryInit
 		// sum of the series: S_n = x(1)*(q^n-1)/(q-1) + add 60s for each changeWatcher() call
-		errsMaxWithinSeconds int64 = (sleepRetry*int64(math.Pow(2, errsMax)) - sleepRetry) + errsMax*60
+		errsMaxWithinSeconds = (sleepRetry*int64(math.Pow(2, errsMax)) - sleepRetry) + errsMax*60
 	)
 
 	defer func() {
@@ -1623,7 +1623,7 @@ func retryLoop(c *Controller) (err error) {
 			}
 		} else {
 			// This should never happen!
-			klog.Errorf("cannot find the TuneD process!")
+			klog.Errorf("cannot find the TuneD process")
 		}
 	}()
 

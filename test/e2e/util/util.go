@@ -422,8 +422,8 @@ func WaitForPoolMachineCount(cs *framework.ClientSet, pool string, count int32) 
 	var explain error
 
 	startTime := time.Now()
-	if err := wait.Poll(5*time.Second, 20*time.Minute, func() (bool, error) {
-		mcp, err := cs.MachineconfigurationV1().MachineConfigPools().Get(context.TODO(), pool, metav1.GetOptions{})
+	if err := wait.PollUntilContextTimeout(context.TODO(), 5*time.Second, 20*time.Minute, true, func(ctx context.Context) (bool, error) {
+		mcp, err := cs.MachineconfigurationV1().MachineConfigPools().Get(ctx, pool, metav1.GetOptions{})
 		if err != nil {
 			// This is not fatal.  On SNO, API server will be unavailable during reboots.
 			explain = err
@@ -444,8 +444,8 @@ func WaitForPoolUpdatedMachineCount(cs *framework.ClientSet, pool string, count 
 	var explain error
 
 	startTime := time.Now()
-	if err := wait.Poll(5*time.Second, 20*time.Minute, func() (bool, error) {
-		mcp, err := cs.MachineconfigurationV1().MachineConfigPools().Get(context.TODO(), pool, metav1.GetOptions{})
+	if err := wait.PollUntilContextTimeout(context.TODO(), 5*time.Second, 20*time.Minute, true, func(ctx context.Context) (bool, error) {
+		mcp, err := cs.MachineconfigurationV1().MachineConfigPools().Get(ctx, pool, metav1.GetOptions{})
 		if err != nil {
 			// This is not fatal.  On SNO, API server will be unavailable during reboots.
 			explain = err

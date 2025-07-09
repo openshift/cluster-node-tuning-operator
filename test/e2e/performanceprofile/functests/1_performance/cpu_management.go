@@ -989,9 +989,10 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			By("Getting Information for guaranteed POD containers")
 			GuPods := getConfigJsonInfo(guaranteedPod, "test", workerRTNode)
 			for _, pod := range GuPods {
-				if pod.Annotations.ContainerName == "test" {
+				switch pod.Annotations.ContainerName {
+				case "test":
 					guaranteedPodCpus, err = cpuset.Parse(pod.Linux.Resources.CPU.CPUs)
-				} else if pod.Annotations.ContainerName == "POD" {
+				case "POD":
 					guaranteedInitPodCpus, err = cpuset.Parse(pod.Linux.Resources.CPU.CPUs)
 				}
 				Expect(err).ToNot(HaveOccurred(), "Failed to parse GU POD cpus")
@@ -1000,9 +1001,10 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			By("Getting Information for BestEffort POD containers")
 			BEPods := getConfigJsonInfo(bestEffortPod, "test", workerRTNode)
 			for _, pod := range BEPods {
-				if pod.Annotations.ContainerName == "test" {
+				switch pod.Annotations.ContainerName {
+				case "test":
 					bestEffortPodCpus, err = cpuset.Parse(pod.Linux.Resources.CPU.CPUs)
-				} else if pod.Annotations.ContainerName == "POD" {
+				case "POD":
 					bestEffortInitPodCpus, err = cpuset.Parse(pod.Linux.Resources.CPU.CPUs)
 				}
 				Expect(err).ToNot(HaveOccurred(), "Failed to parse BE POD cpus")

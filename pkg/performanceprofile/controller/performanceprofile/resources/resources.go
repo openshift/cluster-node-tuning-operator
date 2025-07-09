@@ -256,7 +256,7 @@ func RemoveOutdatedTuned(ctx context.Context, cli client.Client, tuned *tunedv1.
 
 	for t := range tunedList.Items {
 		tunedItem := tunedList.Items[t]
-		ownerReferences := tunedItem.ObjectMeta.OwnerReferences
+		ownerReferences := tunedItem.OwnerReferences
 		for o := range ownerReferences {
 			if ownerReferences[o].Name == profileName && tunedItem.Name != tuned.Name {
 				if err := DeleteTuned(ctx, cli, tunedItem.Name, tunedItem.Namespace); err != nil {

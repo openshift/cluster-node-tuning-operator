@@ -412,7 +412,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 				By("updating the namespace to disable mixedcpus")
 				ns := getTestingNamespace()
 				//Remove the annotations to disable mixedcpus
-				ns.ObjectMeta.Annotations = nil
+				ns.Annotations = nil
 				Expect(testclient.DataPlaneClient.Update(ctx, &ns)).ToNot(HaveOccurred())
 				rl := &corev1.ResourceList{
 					corev1.ResourceCPU:    resource.MustParse("1"),
@@ -425,7 +425,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 					withRequests(rl),
 					withLimits(rl))
 				Expect(err).To(HaveOccurred())
-				expectedError := fmt.Sprintf("namespace %s is not allowed for workload.openshift.io/enable-shared-cpus resource request", ns.ObjectMeta.Name)
+				expectedError := fmt.Sprintf("namespace %s is not allowed for workload.openshift.io/enable-shared-cpus resource request", ns.Name)
 				Expect(err.Error()).To(ContainSubstring(expectedError))
 
 			})

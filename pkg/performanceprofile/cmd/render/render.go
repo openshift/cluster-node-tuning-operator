@@ -191,12 +191,13 @@ func render(ownerRefMode, inputDir, outputDir string) error {
 			return err
 		}
 
-		if ownerRefMode == ownerRefModeK8S {
+		switch ownerRefMode {
+		case ownerRefModeK8S:
 			err = addOwnerReference(components, pp)
 			if err != nil {
 				return err
 			}
-		} else if ownerRefMode == ownerRefModeLabelName {
+		case ownerRefModeLabelName:
 			err = addWeakOwnerReferenceLabel(components, pp)
 			if err != nil {
 				return err
@@ -299,7 +300,7 @@ func isLegacySNOWorkloadPinningMethod(mcs []*mcfgv1.MachineConfig, infra *apicfg
 		}
 
 		for _, file := range ign.Storage.Files {
-			if file.Node.Path == kubernetesPinningConfFile {
+			if file.Path == kubernetesPinningConfFile {
 				klog.Infof("mc (%s) contains file path (%s), using legacy signal for workload pinning", mc.Name, kubernetesPinningConfFile)
 				return true
 			}

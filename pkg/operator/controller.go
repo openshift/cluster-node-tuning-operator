@@ -33,7 +33,6 @@ import (
 
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoclient "github.com/openshift/cluster-node-tuning-operator/pkg/client"
-	"github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	tunedset "github.com/openshift/cluster-node-tuning-operator/pkg/generated/clientset/versioned"
 	tunedinformers "github.com/openshift/cluster-node-tuning-operator/pkg/generated/informers/externalversions"
@@ -383,7 +382,7 @@ func (c *Controller) sync(key wqKey) error {
 
 	// In HyperShift clusters, any Tuned changes should be overwritten by the tuned config
 	// in the management cluster
-	if config.InHyperShift() {
+	if ntoconfig.InHyperShift() {
 		err = c.syncHostedClusterTuneds()
 		if err != nil {
 			return fmt.Errorf("failed to sync hosted cluster Tuneds: %v", err)
@@ -534,7 +533,7 @@ func (c *Controller) syncDaemonSet(tuned *tunedv1.Tuned) error {
 	var update bool
 
 	dsMf := ntomf.TunedDaemonSet()
-	dsMf.ObjectMeta.OwnerReferences = getDefaultTunedRefs(tuned)
+	dsMf.OwnerReferences = getDefaultTunedRefs(tuned)
 
 	ds, err := c.listers.DaemonSets.Get(dsMf.Name)
 	if err != nil {
@@ -588,7 +587,7 @@ func (c *Controller) syncDaemonSet(tuned *tunedv1.Tuned) error {
 
 func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	profileMf := ntomf.TunedProfile()
-	profileMf.ObjectMeta.OwnerReferences = getDefaultTunedRefs(tuned)
+	profileMf.OwnerReferences = getDefaultTunedRefs(tuned)
 
 	profileMf.Name = nodeName
 	delete(c.bootcmdlineConflict, nodeName)
@@ -795,7 +794,7 @@ func (c *Controller) syncMachineConfig(labels map[string]string, profile *tunedv
 
 	if ok := c.allNodesAgreeOnBootcmdline(nodes); !ok {
 		// Log an error and do not requeue, this is a configuration issue.
-		klog.Errorf("not all %d Nodes in MCP %v agree on bootcmdline: %s", len(nodes), pools[0].ObjectMeta.Name, bootcmdline)
+		klog.Errorf("not all %d Nodes in MCP %v agree on bootcmdline: %s", len(nodes), pools[0].Name, bootcmdline)
 		return nil
 	}
 
@@ -816,9 +815,9 @@ func (c *Controller) syncMachineConfig(labels map[string]string, profile *tunedv
 			mc = NewMachineConfig(name, annotations, labels, kernelArguments)
 			_, err = c.clients.MC.MachineconfigurationV1().MachineConfigs().Create(context.TODO(), mc, metav1.CreateOptions{})
 			if err != nil {
-				return fmt.Errorf("failed to create MachineConfig %s: %v", mc.ObjectMeta.Name, err)
+				return fmt.Errorf("failed to create MachineConfig %s: %v", mc.Name, err)
 			}
-			klog.Infof("created MachineConfig %s with%s", mc.ObjectMeta.Name, MachineConfigGenerationLogLine(len(bootcmdline) != 0, bootcmdline))
+			klog.Infof("created MachineConfig %s with%s", mc.Name, MachineConfigGenerationLogLine(len(bootcmdline) != 0, bootcmdline))
 			return nil
 		}
 		return err
@@ -829,22 +828,22 @@ func (c *Controller) syncMachineConfig(labels map[string]string, profile *tunedv
 	kernelArgsEq := util.StringSlicesEqual(mc.Spec.KernelArguments, kernelArguments)
 	if kernelArgsEq {
 		// No update needed
-		klog.V(2).Infof("syncMachineConfig(): MachineConfig %s doesn't need updating", mc.ObjectMeta.Name)
+		klog.V(2).Infof("syncMachineConfig(): MachineConfig %s doesn't need updating", mc.Name)
 		return nil
 	}
 	mc = mc.DeepCopy() // never update the objects from cache
-	mc.ObjectMeta.Annotations = mcNew.ObjectMeta.Annotations
+	mc.Annotations = mcNew.Annotations
 	mc.Spec.KernelArguments = kernelArguments
 	mc.Spec.Config = mcNew.Spec.Config
 
 	l := MachineConfigGenerationLogLine(!kernelArgsEq, bootcmdline)
-	klog.V(2).Infof("syncMachineConfig(): updating MachineConfig %s with%s", mc.ObjectMeta.Name, l)
+	klog.V(2).Infof("syncMachineConfig(): updating MachineConfig %s with%s", mc.Name, l)
 	_, err = c.clients.MC.MachineconfigurationV1().MachineConfigs().Update(context.TODO(), mc, metav1.UpdateOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to update MachineConfig %s: %v", mc.ObjectMeta.Name, err)
+		return fmt.Errorf("failed to update MachineConfig %s: %v", mc.Name, err)
 	}
 
-	klog.Infof("updated MachineConfig %s with%s", mc.ObjectMeta.Name, l)
+	klog.Infof("updated MachineConfig %s with%s", mc.Name, l)
 
 	return nil
 }
@@ -857,11 +856,11 @@ func (c *Controller) allNodesAgreeOnBootcmdline(nodes []*corev1.Node) bool {
 	}
 
 	match := true
-	bootcmdline := c.pc.state.bootcmdline[nodes[0].ObjectMeta.Name]
+	bootcmdline := c.pc.state.bootcmdline[nodes[0].Name]
 	for _, node := range nodes[1:] {
-		if bootcmdline != c.pc.state.bootcmdline[node.ObjectMeta.Name] {
-			klog.V(2).Infof("found a conflicting bootcmdline %q for Node %q", c.pc.state.bootcmdline[node.ObjectMeta.Name], node.ObjectMeta.Name)
-			c.bootcmdlineConflict[node.ObjectMeta.Name] = true
+		if bootcmdline != c.pc.state.bootcmdline[node.Name] {
+			klog.V(2).Infof("found a conflicting bootcmdline %q for Node %q", c.pc.state.bootcmdline[node.Name], node.Name)
+			c.bootcmdlineConflict[node.Name] = true
 			match = false
 		}
 	}
@@ -906,14 +905,14 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 			// put the MC into a ConfigMap and create that instead
 			mcConfigMap, err = c.newConfigMapForMachineConfig(configMapName, nodePoolName, mc)
 			if err != nil {
-				klog.Errorf("failed to generate ConfigMap %s for MachineConfig %s: %v", configMapName, mc.ObjectMeta.Name, err)
+				klog.Errorf("failed to generate ConfigMap %s for MachineConfig %s: %v", configMapName, mc.Name, err)
 				return nil
 			}
 			_, err = c.clients.ManagementKube.CoreV1().ConfigMaps(ntoconfig.OperatorNamespace()).Create(context.TODO(), mcConfigMap, metav1.CreateOptions{})
 			if err != nil {
-				return fmt.Errorf("failed to create ConfigMap %s for MachineConfig %s: %v", configMapName, mc.ObjectMeta.Name, err)
+				return fmt.Errorf("failed to create ConfigMap %s for MachineConfig %s: %v", configMapName, mc.Name, err)
 			}
-			klog.Infof("created ConfigMap %s for MachineConfig %s with%s", configMapName, mc.ObjectMeta.Name, MachineConfigGenerationLogLine(len(bootcmdline) != 0, bootcmdline))
+			klog.Infof("created ConfigMap %s for MachineConfig %s with%s", configMapName, mc.Name, MachineConfigGenerationLogLine(len(bootcmdline) != 0, bootcmdline))
 			return nil
 		}
 		return err
@@ -942,18 +941,18 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 	// If mcfgs are equivalent don't update
 	if kernelArgsEq && cmLabelsAndAnnotationsCorrect {
 		// No update needed
-		klog.V(2).Infof("syncMachineConfigHyperShift(): MachineConfig %s doesn't need updating", mc.ObjectMeta.Name)
+		klog.V(2).Infof("syncMachineConfigHyperShift(): MachineConfig %s doesn't need updating", mc.Name)
 		return nil
 	}
 
 	// If mcfgs are not equivalent do update
 	mc = mc.DeepCopy() // never update the objects from cache
-	mc.ObjectMeta.Annotations = mcNew.ObjectMeta.Annotations
+	mc.Annotations = mcNew.Annotations
 	mc.Spec.KernelArguments = kernelArguments
 	mc.Spec.Config = mcNew.Spec.Config
 
 	l := MachineConfigGenerationLogLine(!kernelArgsEq, bootcmdline)
-	klog.V(2).Infof("syncMachineConfigHyperShift(): updating MachineConfig %s with%s", mc.ObjectMeta.Name, l)
+	klog.V(2).Infof("syncMachineConfigHyperShift(): updating MachineConfig %s with%s", mc.Name, l)
 
 	newData, err := c.serializeMachineConfig(mc)
 	if err != nil {
@@ -973,7 +972,7 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 		return fmt.Errorf("failed to update ConfigMap for MachineConfig %s: %v", mcConfigMap.Name, err)
 	}
 
-	klog.Infof("updated ConfigMap %s for MachineConfig %s with%s", mcConfigMap.Name, mc.ObjectMeta.Name, l)
+	klog.Infof("updated ConfigMap %s for MachineConfig %s with%s", mcConfigMap.Name, mc.Name, l)
 
 	return nil
 }
@@ -991,25 +990,25 @@ func (c *Controller) pruneMachineConfigs() error {
 	}
 
 	for _, mc := range mcList {
-		if mc.ObjectMeta.Annotations != nil {
-			if _, ok := mc.ObjectMeta.Annotations[GeneratedByControllerVersionAnnotationKey]; !ok {
+		if mc.Annotations != nil {
+			if _, ok := mc.Annotations[GeneratedByControllerVersionAnnotationKey]; !ok {
 				continue
 			}
 			// mc's annotations have the controller/operator key
 
-			if mcNames[mc.ObjectMeta.Name] {
+			if mcNames[mc.Name] {
 				continue
 			}
 			// This MachineConfig has this operator's annotations and it is not currently used by any
 			// Tuned CR; remove it and let MCO roll-back any changes
 
-			klog.V(2).Infof("pruneMachineConfigs(): deleting MachineConfig %s", mc.ObjectMeta.Name)
-			err = c.clients.MC.MachineconfigurationV1().MachineConfigs().Delete(context.TODO(), mc.ObjectMeta.Name, metav1.DeleteOptions{})
+			klog.V(2).Infof("pruneMachineConfigs(): deleting MachineConfig %s", mc.Name)
+			err = c.clients.MC.MachineconfigurationV1().MachineConfigs().Delete(context.TODO(), mc.Name, metav1.DeleteOptions{})
 			if err != nil {
 				// Unable to delete the MachineConfig
 				return err
 			}
-			klog.Infof("deleted MachineConfig %s", mc.ObjectMeta.Name)
+			klog.Infof("deleted MachineConfig %s", mc.Name)
 		}
 	}
 
@@ -1032,24 +1031,24 @@ func (c *Controller) pruneMachineConfigsHyperShift() error {
 	}
 
 	for _, cm := range cmList.Items {
-		if cm.ObjectMeta.Annotations != nil {
-			if _, ok := cm.ObjectMeta.Annotations[GeneratedByControllerVersionAnnotationKey]; !ok {
+		if cm.Annotations != nil {
+			if _, ok := cm.Annotations[GeneratedByControllerVersionAnnotationKey]; !ok {
 				continue
 			}
 			// mc's annotations have the controller/operator key
-			if mcNames[cm.ObjectMeta.Name] {
+			if mcNames[cm.Name] {
 				continue
 			}
 
 			// This ConfigMap has this operator's annotations and it is not currently used by any
 			// Tuned CR; remove it and let MCO roll-back any changes
-			klog.V(2).Infof("pruneMachineConfigsHyperShift(): deleting ConfigMap %s", cm.ObjectMeta.Name)
-			err = c.clients.ManagementKube.CoreV1().ConfigMaps(ntoconfig.OperatorNamespace()).Delete(context.TODO(), cm.ObjectMeta.Name, metav1.DeleteOptions{})
+			klog.V(2).Infof("pruneMachineConfigsHyperShift(): deleting ConfigMap %s", cm.Name)
+			err = c.clients.ManagementKube.CoreV1().ConfigMaps(ntoconfig.OperatorNamespace()).Delete(context.TODO(), cm.Name, metav1.DeleteOptions{})
 			if err != nil {
 				// Unable to delete the ConfigMap
 				return err
 			}
-			klog.Infof("deleted MachineConfig ConfigMap %s", cm.ObjectMeta.Name)
+			klog.Infof("deleted MachineConfig ConfigMap %s", cm.Name)
 		}
 	}
 
