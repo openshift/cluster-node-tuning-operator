@@ -18,31 +18,28 @@ package cmd
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	kubeletconfig "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/ptr"
-	"sigs.k8s.io/yaml"
 
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
-	"github.com/openshift/cluster-node-tuning-operator/cmd/performance-profile-creator/cmd/pkg/hypershift"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/cmd/hypershift"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/serialize"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/toleration"
 )
 
 const (
@@ -107,11 +104,10 @@ type ProfileData struct {
 // ClusterData collects the cluster wide information, each mcp points to a list of ghw node handlers
 type ClusterData map[string][]*profilecreator.GHWHandler
 
+// shortcut
+var Alert = profilecreator.Alert
+
 func init() {
-	log.SetOutput(os.Stderr)
-	log.SetFormatter(&log.TextFormatter{
-		DisableTimestamp: true,
-	})
 	utilruntime.Must(performancev2.AddToScheme(scheme))
 }
 
@@ -128,7 +124,7 @@ func NewRootCommand() *cobra.Command {
 		"must-gather-dir-path",
 	}
 
-	tolerations := profilecreator.TolerationSet{}
+	tols := toleration.Set{}
 
 	root := &cobra.Command{
 		Use:   "performance-profile-creator",
@@ -164,7 +160,7 @@ func NewRootCommand() *cobra.Command {
 				return err
 			}
 
-			err = profilecreator.EnsureNodesHaveTheSameHardware(nodesHandlers, tolerations)
+			err = profilecreator.EnsureNodesHaveTheSameHardware(nodesHandlers, tols)
 			if err != nil {
 				return fmt.Errorf("targeted nodes differ: %w", err)
 			}
@@ -175,12 +171,17 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to make profile data from node handler: %w", err)
 			}
-			tolerations[profilecreator.EnableHardwareTuning] = profileData.enableHardwareTuning
+			tols[toleration.EnableHardwareTuning] = profileData.enableHardwareTuning
 			profile, err := makePerformanceProfileFrom(*profileData)
 			if err != nil {
 				return err
 			}
-			return writeProfile(profile, tolerations)
+			profData, err := serialize.Profile(profile, tols)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Println(profData)
+			return err
 		},
 	}
 	pcArgs.AddFlags(root.PersistentFlags())
@@ -201,7 +202,7 @@ func makeNodesHandlers(mustGatherDirPath, poolName string, nodes []*corev1.Node)
 		sb.WriteString(node.Name + " ")
 	}
 	// NodePoolName is alias of MCPName
-	log.Infof("Nodes names targeted by %s pool are: %s", poolName, sb.String())
+	Alert("Nodes names targeted by %s pool are: %s", poolName, sb.String())
 	return handlers, nil
 }
 
@@ -311,8 +312,8 @@ func makeProfileDataFrom(nodeHandler *profilecreator.GHWHandler, args *ProfileCr
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute the reserved and isolated CPUs: %v", err)
 	}
-	log.Infof("%d reserved CPUs allocated: %v ", reservedCPUs.Size(), reservedCPUs.String())
-	log.Infof("%d isolated CPUs allocated: %v", isolatedCPUs.Size(), isolatedCPUs.String())
+	Alert("%d reserved CPUs allocated: %v ", reservedCPUs.Size(), reservedCPUs.String())
+	Alert("%d isolated CPUs allocated: %v", isolatedCPUs.Size(), isolatedCPUs.String())
 	kernelArgs := profilecreator.GetAdditionalKernelArgs(args.DisableHT)
 	profileData := &ProfileData{
 		reservedCPUs:              reservedCPUs.String(),
@@ -519,93 +520,6 @@ func makePerformanceProfileFrom(profileData ProfileData) (runtime.Object, error)
 		return cm, nil
 	}
 	return profile, nil
-}
-
-func writeProfile(obj runtime.Object, tolerations profilecreator.TolerationSet) error {
-	// write CSV to out dir
-	writer := strings.Builder{}
-	if err := MarshallObject(obj, &writer); err != nil {
-		return err
-	}
-
-	if tolerations[profilecreator.EnableHardwareTuning] {
-		if _, err := writer.Write([]byte(profilecreator.HardwareTuningMessage)); err != nil {
-			return err
-		}
-	}
-
-	if tolerations[profilecreator.DifferentCoreIDs] {
-		if _, err := writer.Write([]byte(profilecreator.DifferentCoreIDsMessage)); err != nil {
-			return err
-		}
-	}
-
-	fmt.Printf("%s", writer.String())
-	return nil
-}
-
-// MarshallObject mashals an object, usually a CSV into YAML
-func MarshallObject(obj interface{}, writer io.Writer) error {
-	jsonBytes, err := json.Marshal(obj)
-	if err != nil {
-		return err
-	}
-
-	var r unstructured.Unstructured
-	if err := json.Unmarshal(jsonBytes, &r.Object); err != nil {
-		return err
-	}
-
-	// remove status and metadata.creationTimestamp
-	unstructured.RemoveNestedField(r.Object, "metadata", "creationTimestamp")
-	unstructured.RemoveNestedField(r.Object, "template", "metadata", "creationTimestamp")
-	unstructured.RemoveNestedField(r.Object, "spec", "template", "metadata", "creationTimestamp")
-	unstructured.RemoveNestedField(r.Object, "status")
-
-	deployments, exists, err := unstructured.NestedSlice(r.Object, "spec", "install", "spec", "deployments")
-	if err != nil {
-		return err
-	}
-	if exists {
-		for _, obj := range deployments {
-			deployment := obj.(map[string]interface{})
-			unstructured.RemoveNestedField(deployment, "metadata", "creationTimestamp")
-			unstructured.RemoveNestedField(deployment, "spec", "template", "metadata", "creationTimestamp")
-			unstructured.RemoveNestedField(deployment, "status")
-		}
-		if err := unstructured.SetNestedSlice(r.Object, deployments, "spec", "install", "spec", "deployments"); err != nil {
-			return err
-		}
-	}
-
-	jsonBytes, err = json.Marshal(r.Object)
-	if err != nil {
-		return err
-	}
-
-	yamlBytes, err := yaml.JSONToYAML(jsonBytes)
-	if err != nil {
-		return err
-	}
-
-	// fix double quoted strings by removing unneeded single quotes...
-	s := string(yamlBytes)
-	s = strings.Replace(s, " '\"", " \"", -1)
-	s = strings.Replace(s, "\"'\n", "\"\n", -1)
-
-	yamlBytes = []byte(s)
-
-	_, err = writer.Write([]byte("---\n"))
-	if err != nil {
-		return err
-	}
-
-	_, err = writer.Write(yamlBytes)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func listNodesForPool(args *ProfileCreatorArgs) ([]*corev1.Node, error) {

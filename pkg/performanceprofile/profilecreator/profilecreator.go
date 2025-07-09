@@ -20,46 +20,24 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"path/filepath"
 	"reflect"
 	"sort"
-	"strings"
 
-	"github.com/jaypipes/ghw"
 	"github.com/jaypipes/ghw/pkg/cpu"
-	"github.com/jaypipes/ghw/pkg/option"
 	"github.com/jaypipes/ghw/pkg/topology"
-	log "github.com/sirupsen/logrus"
 
 	configv1 "github.com/openshift/api/config/v1"
-	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
-	v1 "k8s.io/api/core/v1"
 	k8syaml "k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/utils/cpuset"
+
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/toleration"
 )
 
 const (
-	// ClusterScopedResources defines the subpath, relative to the top-level must-gather directory.
-	// A top-level must-gather directory is of the following format:
-	// must-gather-dir/quay-io-openshift-kni-performance-addon-operator-must-gather-sha256-<Image SHA>
-	// Here we find the cluster-scoped definitions saved by must-gather
-	ClusterScopedResources = "cluster-scoped-resources"
-	// CoreNodes defines the subpath, relative to ClusterScopedResources, on which we find node-specific data
-	CoreNodes = "core/nodes"
-	// MCPools defines the subpath, relative to ClusterScopedResources, on which we find the machine config pool definitions
-	MCPools = "machineconfiguration.openshift.io/machineconfigpools"
-	// YAMLSuffix is the extension of the yaml files saved by must-gather
-	YAMLSuffix = ".yaml"
-	// Nodes defines the subpath, relative to top-level must-gather directory, on which we find node-specific data
-	Nodes = "nodes"
-	// SysInfoFileName defines the name of the file where ghw snapshot is stored
-	SysInfoFileName = "sysinfo.tgz"
 	// noSMTKernelArg is the kernel arg value to disable SMT in a system
 	noSMTKernelArg = "nosmt"
 	// allCores correspond to the value when all the processorCores need to be added to the generated CPUset
 	allCores = -1
-	// defines the sub path relative to ClusterScopedResources, on which OCP infrastructure object is
-	configOCPInfra = "config.openshift.io/infrastructures"
 )
 
 var (
@@ -74,221 +52,6 @@ var (
 	// hyperthread (logical core).
 	filterFirstLogicalProcessorInCore = func(index, lpID int) bool { return index != 0 }
 )
-
-func getMustGatherFullPathsWithFilter(mustGatherPath string, suffix string, filter string) (string, error) {
-	var paths []string
-
-	// don't assume directory names, only look for the suffix, filter out files having "filter" in their names
-	err := filepath.Walk(mustGatherPath, func(path string, info os.FileInfo, err error) error {
-		if strings.HasSuffix(path, suffix) {
-			if len(filter) == 0 || !strings.Contains(path, filter) {
-				paths = append(paths, path)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to get the path mustGatherPath:%s, suffix:%s %v", mustGatherPath, suffix, err)
-	}
-	if len(paths) == 0 {
-		return "", fmt.Errorf("no match for the specified must gather directory path: %s and suffix: %s", mustGatherPath, suffix)
-	}
-	if len(paths) > 1 {
-		log.Infof("Multiple matches for the specified must gather directory path: %s and suffix: %s", mustGatherPath, suffix)
-		return "", fmt.Errorf("Multiple matches for the specified must gather directory path: %s and suffix: %s.\n Expected only one performance-addon-operator-must-gather* directory, please check the must-gather tarball", mustGatherPath, suffix)
-	}
-	// returning one possible path
-	return paths[0], err
-}
-
-func getMustGatherFullPaths(mustGatherPath string, suffix string) (string, error) {
-	return getMustGatherFullPathsWithFilter(mustGatherPath, suffix, "")
-}
-
-func getNode(mustGatherDirPath, nodeName string) (*v1.Node, error) {
-	var node v1.Node
-	nodePathSuffix := path.Join(ClusterScopedResources, CoreNodes, nodeName)
-	path, err := getMustGatherFullPaths(mustGatherDirPath, nodePathSuffix)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get MachineConfigPool for %s: %v", nodeName, err)
-	}
-
-	src, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open %q: %v", path, err)
-	}
-	defer src.Close()
-
-	dec := k8syaml.NewYAMLOrJSONDecoder(src, 1024)
-	if err := dec.Decode(&node); err != nil {
-		return nil, fmt.Errorf("failed to decode %q: %v", path, err)
-	}
-	return &node, nil
-}
-
-// GetNodeList returns the list of nodes using the Node YAMLs stored in Must Gather
-func GetNodeList(mustGatherDirPath string) ([]*v1.Node, error) {
-	machines := make([]*v1.Node, 0)
-
-	nodePathSuffix := path.Join(ClusterScopedResources, CoreNodes)
-	nodePath, err := getMustGatherFullPaths(mustGatherDirPath, nodePathSuffix)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get Nodes from must gather directory: %v", err)
-	}
-	if nodePath == "" {
-		return nil, fmt.Errorf("failed to get Nodes from must gather directory: %v", err)
-	}
-
-	nodes, err := os.ReadDir(nodePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list mustGatherPath directories: %v", err)
-	}
-	for _, node := range nodes {
-		nodeName := node.Name()
-		node, err := getNode(mustGatherDirPath, nodeName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get Nodes %s: %v", nodeName, err)
-		}
-		machines = append(machines, node)
-	}
-	return machines, nil
-}
-
-// GetMCPList returns the list of MCPs using the mcp YAMLs stored in Must Gather
-func GetMCPList(mustGatherDirPath string) ([]*machineconfigv1.MachineConfigPool, error) {
-	pools := make([]*machineconfigv1.MachineConfigPool, 0)
-
-	mcpPathSuffix := path.Join(ClusterScopedResources, MCPools)
-	mcpPath, err := getMustGatherFullPaths(mustGatherDirPath, mcpPathSuffix)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get MCPs: %v", err)
-	}
-	if mcpPath == "" {
-		return nil, fmt.Errorf("failed to get MCPs path: %v", err)
-	}
-
-	mcpFiles, err := os.ReadDir(mcpPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list mustGatherPath directories: %v", err)
-	}
-	for _, mcp := range mcpFiles {
-		mcpName := strings.TrimSuffix(mcp.Name(), filepath.Ext(mcp.Name()))
-
-		mcp, err := GetMCP(mustGatherDirPath, mcpName)
-		// master pool relevant only when pods can be scheduled on masters, e.g. SNO
-		if mcpName != "master" && err != nil {
-			return nil, fmt.Errorf("can't obtain MCP %s: %v", mcpName, err)
-		}
-		pools = append(pools, mcp)
-	}
-	return pools, nil
-}
-
-// GetMCP returns an MCP object corresponding to a specified MCP Name
-func GetMCP(mustGatherDirPath, mcpName string) (*machineconfigv1.MachineConfigPool, error) {
-	var mcp machineconfigv1.MachineConfigPool
-
-	mcpPathSuffix := path.Join(ClusterScopedResources, MCPools, mcpName+YAMLSuffix)
-	mcpPath, err := getMustGatherFullPaths(mustGatherDirPath, mcpPathSuffix)
-	if err != nil {
-		return nil, fmt.Errorf("failed to obtain MachineConfigPool %s: %v", mcpName, err)
-	}
-	if mcpPath == "" {
-		return nil, fmt.Errorf("failed to obtain MachineConfigPool, mcp:%s does not exist: %v", mcpName, err)
-	}
-
-	src, err := os.Open(mcpPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open %q: %v", mcpPath, err)
-	}
-	defer src.Close()
-	dec := k8syaml.NewYAMLOrJSONDecoder(src, 1024)
-	if err := dec.Decode(&mcp); err != nil {
-		return nil, fmt.Errorf("failed to decode %q: %v", mcpPath, err)
-	}
-	return &mcp, nil
-}
-
-// NewGHWHandler is a handler to use ghw options corresponding to a node
-func NewGHWHandler(mustGatherDirPath string, node *v1.Node) (*GHWHandler, error) {
-	nodeName := node.GetName()
-	nodePathSuffix := path.Join(Nodes)
-	nodepath, err := getMustGatherFullPathsWithFilter(mustGatherDirPath, nodePathSuffix, ClusterScopedResources)
-	if err != nil {
-		return nil, fmt.Errorf("can't obtain the node path %s: %v", nodeName, err)
-	}
-	_, err = os.Stat(path.Join(nodepath, nodeName, SysInfoFileName))
-	if err != nil {
-		return nil, fmt.Errorf("can't obtain the path: %s for node %s: %v", nodeName, nodepath, err)
-	}
-	options := ghw.WithSnapshot(ghw.SnapshotOptions{
-		Path: path.Join(nodepath, nodeName, SysInfoFileName),
-	})
-	ghwHandler := &GHWHandler{snapShotOptions: options, Node: node}
-	return ghwHandler, nil
-}
-
-// GHWHandler is a wrapper around ghw to get the API object
-type GHWHandler struct {
-	snapShotOptions *option.Option
-	Node            *v1.Node
-}
-
-// CPU returns a CPUInfo struct that contains information about the CPUs on the host system
-func (ghwHandler GHWHandler) CPU() (*cpu.Info, error) {
-	return ghw.CPU(ghwHandler.snapShotOptions)
-}
-
-func (ghwHandler GHWHandler) SortedCPU() (*cpu.Info, error) {
-	cpuInfo, err := ghw.CPU(ghwHandler.snapShotOptions)
-	if err != nil {
-		return nil, fmt.Errorf("can't obtain cpuInfo info from GHW snapshot: %v", err)
-	}
-
-	sort.Slice(cpuInfo.Processors, func(x, y int) bool {
-		return cpuInfo.Processors[x].ID < cpuInfo.Processors[y].ID
-	})
-
-	for _, processor := range cpuInfo.Processors {
-		for _, core := range processor.Cores {
-			sort.Slice(core.LogicalProcessors, func(x, y int) bool {
-				return core.LogicalProcessors[x] < core.LogicalProcessors[y]
-			})
-		}
-
-		sort.Slice(processor.Cores, func(x, y int) bool {
-			return processor.Cores[x].ID < processor.Cores[y].ID
-		})
-	}
-
-	return cpuInfo, nil
-}
-
-// SortedTopology returns a TopologyInfo struct that contains information about the Topology sorted by numa ids and cpu ids on the host system
-func (ghwHandler GHWHandler) SortedTopology() (*topology.Info, error) {
-	topologyInfo, err := ghw.Topology(ghwHandler.snapShotOptions)
-	if err != nil {
-		return nil, fmt.Errorf("can't obtain topology info from GHW snapshot: %v", err)
-	}
-	sortTopology(topologyInfo)
-	return topologyInfo, nil
-}
-
-func sortTopology(topologyInfo *topology.Info) {
-	sort.Slice(topologyInfo.Nodes, func(x, y int) bool {
-		return topologyInfo.Nodes[x].ID < topologyInfo.Nodes[y].ID
-	})
-	for _, node := range topologyInfo.Nodes {
-		for _, core := range node.Cores {
-			sort.Slice(core.LogicalProcessors, func(x, y int) bool {
-				return core.LogicalProcessors[x] < core.LogicalProcessors[y]
-			})
-		}
-		sort.Slice(node.Cores, func(i, j int) bool {
-			return node.Cores[i].LogicalProcessors[0] < node.Cores[j].LogicalProcessors[0]
-		})
-	}
-}
 
 // topologyHTDisabled returns topologyinfo in case Hyperthreading needs to be disabled.
 // It receives a pointer to Topology.Info and deletes logicalprocessors from individual cores.
@@ -340,33 +103,6 @@ type systemInfo struct {
 	CpuInfo      *extendedCPUInfo
 	TopologyInfo *topology.Info
 	HtEnabled    bool
-}
-
-func (ghwHandler GHWHandler) GatherSystemInfo() (*systemInfo, error) {
-	cpuInfo, err := ghwHandler.SortedCPU()
-	if err != nil {
-		return nil, err
-	}
-
-	topologyInfo, err := ghwHandler.SortedTopology()
-	if err != nil {
-		return nil, err
-	}
-
-	htEnabled, err := ghwHandler.IsHyperthreadingEnabled()
-	if err != nil {
-		return nil, err
-	}
-
-	return &systemInfo{
-		CpuInfo: &extendedCPUInfo{
-			CpuInfo:                  cpuInfo,
-			NumLogicalProcessorsUsed: make(map[int]int, len(cpuInfo.Processors)),
-			LogicalProcessorsUsed:    make(map[int]struct{}),
-		},
-		TopologyInfo: topologyInfo,
-		HtEnabled:    htEnabled,
-	}, nil
 }
 
 // Calculates the resevered, isolated and offlined cpuSets.
@@ -502,7 +238,7 @@ func getOfflinedCPUs(extCpuInfo *extendedCPUInfo, offlinedCPUCount int, disableH
 	}
 
 	if lpOfflined < offlinedCPUCount {
-		log.Warnf("could not offline enough logical processors (required:%d, offlined:%d)", offlinedCPUCount, lpOfflined)
+		Alert("could not offline enough logical processors (required:%d, offlined:%d)", offlinedCPUCount, lpOfflined)
 	}
 	return offlined.Result(), nil
 }
@@ -511,7 +247,7 @@ func updateTopologyInfo(topoInfo *topology.Info, disableHTFlag bool, htEnabled b
 	//currently HT is enabled on the system and the user wants to disable HT
 
 	if htEnabled && disableHTFlag {
-		log.Infof("Updating Topology info because currently hyperthreading is enabled and the performance profile will disable it")
+		Alert("Updating Topology info because currently hyperthreading is enabled and the performance profile will disable it")
 		return topologyHTDisabled(topoInfo), nil
 	}
 	return topoInfo, nil
@@ -519,21 +255,21 @@ func updateTopologyInfo(topoInfo *topology.Info, disableHTFlag bool, htEnabled b
 
 func getReservedCPUs(topologyInfo *topology.Info, reservedCPUCount int, splitReservedCPUsAcrossNUMA bool, disableHTFlag bool, htEnabled bool) (cpuset.CPUSet, error) {
 	if htEnabled && disableHTFlag {
-		log.Infof("Currently hyperthreading is enabled and the performance profile will disable it")
+		Alert("Currently hyperthreading is enabled and the performance profile will disable it")
 		htEnabled = false
 	}
-	log.Infof("NUMA cell(s): %d", len(topologyInfo.Nodes))
+	Alert("NUMA cell(s): %d", len(topologyInfo.Nodes))
 	totalCPUs := 0
 	for id, node := range topologyInfo.Nodes {
 		coreList := []int{}
 		for _, core := range node.Cores {
 			coreList = append(coreList, core.LogicalProcessors...)
 		}
-		log.Infof("NUMA cell %d : %v", id, coreList)
+		Alert("NUMA cell %d : %v", id, coreList)
 		totalCPUs += len(coreList)
 	}
 
-	log.Infof("CPU(s): %d", totalCPUs)
+	Alert("CPU(s): %d", totalCPUs)
 
 	if splitReservedCPUsAcrossNUMA {
 		res, err := getCPUsSplitAcrossNUMA(reservedCPUCount, htEnabled, topologyInfo.Nodes)
@@ -614,7 +350,7 @@ func getCPUsSplitAcrossNUMA(reservedCPUCount int, htEnabled bool, topologyInfoNo
 	reservedPerNuma := reservedCPUCount / numaNodeNum
 	remainder := reservedCPUCount % numaNodeNum
 	if remainder != 0 {
-		log.Warnf("The reserved CPUs cannot be split equally across NUMA Nodes")
+		Alert("The reserved CPUs cannot be split equally across NUMA Nodes")
 	}
 	for numaID, node := range topologyInfoNodes {
 		if remainder != 0 {
@@ -672,7 +408,7 @@ func (ghwHandler GHWHandler) IsHyperthreadingEnabled() (bool, error) {
 
 // EnsureNodesHaveTheSameHardware returns an error if all the input nodes do not have the same hardware configuration and
 // updates the toleration set to consider as warnings/comments when publishing the generated profile
-func EnsureNodesHaveTheSameHardware(nodeHandlers []*GHWHandler, tolerations TolerationSet) error {
+func EnsureNodesHaveTheSameHardware(nodeHandlers []*GHWHandler, tols toleration.Set) error {
 	if len(nodeHandlers) < 1 {
 		return fmt.Errorf("no suitable nodes to compare")
 	}
@@ -687,7 +423,7 @@ func EnsureNodesHaveTheSameHardware(nodeHandlers []*GHWHandler, tolerations Tole
 		if err != nil {
 			return fmt.Errorf("can't obtain Topology info from GHW snapshot for %s: %v", handle.Node.GetName(), err)
 		}
-		if err := ensureSameTopology(firstTopology, topology, tolerations); err != nil {
+		if err := ensureSameTopology(firstTopology, topology, tols); err != nil {
 			return fmt.Errorf("nodes %s and %s have different topology: %v", firstHandle.Node.GetName(), handle.Node.GetName(), err)
 		}
 	}
@@ -695,7 +431,7 @@ func EnsureNodesHaveTheSameHardware(nodeHandlers []*GHWHandler, tolerations Tole
 	return nil
 }
 
-func ensureSameTopology(topology1, topology2 *topology.Info, tolerations TolerationSet) error {
+func ensureSameTopology(topology1, topology2 *topology.Info, tols toleration.Set) error {
 	// the assumption here is that both topologies are deep sorted (e.g. slices of numa nodes, cores, processors ..);
 	// see handle.SortedTopology()
 	if topology1.Architecture != topology2.Architecture {
@@ -730,8 +466,8 @@ func ensureSameTopology(topology1, topology2 *topology.Info, tolerations Tolerat
 				// as the NUMA cells have same logical processors' count and IDs and same threads' number,
 				// core ID equality is treated as best effort. That is because when scheduling workloads,
 				// we care about the logical processors ids and their location on the NUMAs.
-				log.Warnf("the CPU core ids in NUMA node %d differ: %d vs %d", node1.ID, core1.ID, cores2[j].ID)
-				tolerations[DifferentCoreIDs] = true
+				Alert("the CPU core ids in NUMA node %d differ: %d vs %d", node1.ID, core1.ID, cores2[j].ID)
+				tols[toleration.DifferentCoreIDs] = true
 			}
 			if core1.NumThreads != cores2[j].NumThreads {
 				return fmt.Errorf("number of threads for CPU %d in NUMA node %d differs: %d vs %d", core1.ID, node1.ID, core1.NumThreads, cores2[j].NumThreads)
@@ -751,7 +487,7 @@ func GetAdditionalKernelArgs(disableHT bool) []string {
 		kernelArgs = append(kernelArgs, noSMTKernelArg)
 	}
 	sort.Strings(kernelArgs)
-	log.Infof("Additional Kernel Args based on configuration: %v", kernelArgs)
+	Alert("Additional Kernel Args based on configuration: %v", kernelArgs)
 	return kernelArgs
 }
 

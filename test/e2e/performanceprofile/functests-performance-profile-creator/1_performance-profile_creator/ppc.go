@@ -13,8 +13,8 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	"github.com/openshift/cluster-node-tuning-operator/cmd/performance-profile-creator/cmd"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/cmd"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 )
 

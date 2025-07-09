@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -77,7 +75,7 @@ func GetNodesForPool(pool *mcfgv1.MachineConfigPool, clusterPools []*mcfgv1.Mach
 	for _, n := range clusterNodes {
 		p, err := getPrimaryPoolForNode(n, clusterPools)
 		if err != nil {
-			log.Warningf("can't get pool for node %q: %v", n.Name, err)
+			Alert("can't get pool for node %q: %v", n.Name, err)
 			continue
 		}
 		if p == nil {
@@ -121,7 +119,7 @@ func getPoolsForNode(node *corev1.Node, clusterPools []*mcfgv1.MachineConfigPool
 	if isWindows(node) {
 		// This is not an error, is this a Windows Node and it won't be managed by MCO. We're explicitly logging
 		// here at a high level to disambiguate this from other pools = nil  scenario
-		log.Infof("Node %v is a windows node so won't be managed by MCO", node.Name)
+		Alert("Node %v is a windows node so won't be managed by MCO", node.Name)
 		return nil, nil
 	}
 
