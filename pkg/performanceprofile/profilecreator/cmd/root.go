@@ -37,6 +37,7 @@ import (
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/autosize"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/cmd/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/serialize"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/profilecreator/toleration"
@@ -116,10 +117,10 @@ func NewRootCommand() *cobra.Command {
 	pcArgs := &ProfileCreatorArgs{
 		UserLevelNetworking:   ptr.To(false),
 		PerPodPowerManagement: ptr.To(false),
+		Autosize:              ptr.To(false),
 	}
 
 	var requiredFlags = []string{
-		"reserved-cpu-count",
 		"rt-kernel",
 		"must-gather-dir-path",
 	}
@@ -164,10 +165,26 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("targeted nodes differ: %w", err)
 			}
+
+			sizing := autosize.Values{
+				ReservedCPUCount: pcArgs.ReservedCPUCount,
+			}
+			if isAutosizeEnabled(pcArgs) {
+				params := autosize.Params{
+					OfflinedCPUCount:    pcArgs.OfflinedCPUCount,
+					UserLevelNetworking: (pcArgs.UserLevelNetworking != nil && *pcArgs.UserLevelNetworking),
+					MachineData:         nodesHandlers[0], // assume all nodes equal, pick the easiest
+				}
+				sizing, _, err = autosize.Compute(autosize.DefaultEnv(), params)
+				if err != nil {
+					return fmt.Errorf("failed to autosize the cluster values: %v", err)
+				}
+			}
+
 			// We make sure that the matched Nodes are the same
 			// Assumption here is moving forward matchedNodes[0] is representative of how all the nodes are
 			// same from hardware topology point of view
-			profileData, err := makeProfileDataFrom(nodesHandlers[0], pcArgs)
+			profileData, err := makeProfileDataFrom(nodesHandlers[0], pcArgs, sizing)
 			if err != nil {
 				return fmt.Errorf("failed to make profile data from node handler: %w", err)
 			}
@@ -221,6 +238,9 @@ func validateProfileCreatorFlags(pcArgs *ProfileCreatorArgs) error {
 	}
 	if pcArgs.MCPName != "" && pcArgs.NodePoolName != "" {
 		return fmt.Errorf("--mcp-name and --node-pool-name options cannot be used together")
+	}
+	if !isAutosizeEnabled(pcArgs) && pcArgs.ReservedCPUCount == 0 {
+		return fmt.Errorf("--reserved-cpu-count need to be set and greater than zero if autosizing (--autosize) is disabled")
 	}
 	if pcArgs.NodePoolName == "" {
 		// NodePoolName is an alias of MCPName
@@ -303,12 +323,13 @@ func makeClusterData(mustGatherDirPath string, createForHypershift bool) (Cluste
 	return clusterData, nil
 }
 
-func makeProfileDataFrom(nodeHandler *profilecreator.GHWHandler, args *ProfileCreatorArgs) (*ProfileData, error) {
+func makeProfileDataFrom(nodeHandler *profilecreator.GHWHandler, args *ProfileCreatorArgs, sizing autosize.Values) (*ProfileData, error) {
 	systemInfo, err := nodeHandler.GatherSystemInfo()
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute get system information: %v", err)
 	}
-	reservedCPUs, isolatedCPUs, offlinedCPUs, err := profilecreator.CalculateCPUSets(systemInfo, args.ReservedCPUCount, args.OfflinedCPUCount, args.SplitReservedCPUsAcrossNUMA, args.DisableHT, args.PowerConsumptionMode == ultraLowLatency)
+
+	reservedCPUs, isolatedCPUs, offlinedCPUs, err := profilecreator.CalculateCPUSets(systemInfo, sizing.ReservedCPUCount, args.OfflinedCPUCount, args.SplitReservedCPUsAcrossNUMA, args.DisableHT, args.PowerConsumptionMode == ultraLowLatency)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute the reserved and isolated CPUs: %v", err)
 	}
@@ -411,13 +432,14 @@ type ProfileCreatorArgs struct {
 	TMPolicy                    string `json:"topology-manager-policy"`
 	PerPodPowerManagement       *bool  `json:"per-pod-power-management,omitempty"`
 	EnableHardwareTuning        bool   `json:"enable-hardware-tuning,omitempty"`
+	Autosize                    *bool  `json:"autosize,omitempty"`
 	// internal only this argument not passed by the user
 	// but detected automatically
 	createForHypershift bool
 }
 
 func (pca *ProfileCreatorArgs) AddFlags(flags *pflag.FlagSet) {
-	flags.IntVar(&pca.ReservedCPUCount, "reserved-cpu-count", 0, "Number of reserved CPUs (required)")
+	flags.IntVar(&pca.ReservedCPUCount, "reserved-cpu-count", 0, "Number of reserved CPUs")
 	flags.IntVar(&pca.OfflinedCPUCount, "offlined-cpu-count", 0, "Number of offlined CPUs")
 	flags.BoolVar(&pca.SplitReservedCPUsAcrossNUMA, "split-reserved-cpus-across-numa", false, "Split the Reserved CPUs across NUMA nodes")
 	flags.StringVar(&pca.MCPName, "mcp-name", "", "MCP name corresponding to the target machines (required)")
@@ -431,6 +453,7 @@ func (pca *ProfileCreatorArgs) AddFlags(flags *pflag.FlagSet) {
 	flags.BoolVar(pca.PerPodPowerManagement, "per-pod-power-management", false, "Enable Per Pod Power Management")
 	flags.BoolVar(&pca.EnableHardwareTuning, "enable-hardware-tuning", false, "Enable setting maximum cpu frequencies")
 	flags.StringVar(&pca.NodePoolName, "node-pool-name", "", "Node pool name corresponding to the target machines (HyperShift only)")
+	flags.BoolVar(pca.Autosize, "autosize", false, "autosize the control plane")
 }
 
 func makePerformanceProfileFrom(profileData ProfileData) (runtime.Object, error) {
@@ -581,4 +604,8 @@ func setSelectorsFor(profileData *ProfileData, args *ProfileCreatorArgs) error {
 	profileData.nodeSelector = mcp.Spec.NodeSelector
 	profileData.mcpSelector = mcpSelector
 	return nil
+}
+
+func isAutosizeEnabled(pcArgs *ProfileCreatorArgs) bool {
+	return pcArgs.Autosize != nil && *pcArgs.Autosize
 }
