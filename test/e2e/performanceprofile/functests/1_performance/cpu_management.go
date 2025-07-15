@@ -354,7 +354,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 					// Check pod ready condition
 					for _, condition := range updatedPod.Status.Conditions {
 						if condition.Type == corev1.PodReady && condition.Status != corev1.ConditionTrue {
-							return fmt.Errorf("Pod ondition is not in Ready state after kubelet restart: condition: %v", updatedPod.Status.Conditions)
+							return fmt.Errorf("Pod condition is not in Ready state after kubelet restart: reason: %v, message: %v", condition.Reason, condition.Message)
+
 						}
 					}
 					return nil
