@@ -369,8 +369,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 				By("verify test pod comes back after kubelet restart")
 				Eventually(func() error {
-					updatedPod := &corev1.Pod{}
-					err := testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(testpod), updatedPod)
+					var updatedPod corev1.Pod
+					err := testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(testpod), &updatedPod)
 					if err != nil {
 						return fmt.Errorf("failed to get pod after restart: %v", err)
 					}
@@ -386,13 +386,11 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 					}
 					// Check pod ready condition
 					for _, condition := range updatedPod.Status.Conditions {
-						if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
-							testlog.Infof("post kubelet restart pod is ready with UID: %v", updatedPod.UID)
-							return nil
+						if condition.Type == corev1.PodReady && condition.Status != corev1.ConditionTrue {
+							return fmt.Errorf("Pod ondition is not in Ready state after kubelet restart: condition: %v", updatedPod.Status.Conditions)
 						}
 					}
-
-					return fmt.Errorf("pod ready condition not found or not true")
+					return nil
 				}).WithTimeout(5*time.Minute).WithPolling(10*time.Second).Should(Succeed(), "test pod should come back after kubelet restart")
 
 				By("fetch Default cpuset from cpu manager state after restart")
