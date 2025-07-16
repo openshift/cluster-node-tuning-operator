@@ -31,6 +31,12 @@ import (
 // We want to maximize x_w, or, equivalently, minimize x_c
 
 const (
+	// x86 limit. 256 hardware entries, of those 32 reserved. 256-32 = 224.
+	// see: https://en.wikipedia.org/wiki/Interrupt_request
+	maxIRQsPerPhysicalCore int = 224
+)
+
+const (
 	defaultPenaltyWeight                 float64 = 100.0
 	defaultReservedRatioInitial          float64 = 0.0625 // 1/16. determined empirically. Use only as initial value.
 	defaultReservedRatioMax              float64 = 0.25   // 1/4. determined empirically. This is the practical upper bound.
@@ -65,7 +71,7 @@ type Params struct {
 }
 
 func (p Params) String() string {
-	return fmt.Sprintf("cpus=%d offline=%v SMTLevel=%v devices=%d (userNetworking=%v)", p.totalCPUs, p.OfflinedCPUCount, p.smtLevel, p.DeviceCount, p.UserLevelNetworking)
+	return fmt.Sprintf("cpus=%d offline=%v SMTLevel=%v devices=%d (req=%v userNetworking=%v)", p.totalCPUs, p.OfflinedCPUCount, p.smtLevel, p.DeviceCount, p.MinCPUs(), p.UserLevelNetworking)
 }
 
 func setupMachineData(p *Params) error {
@@ -80,6 +86,13 @@ func setupMachineData(p *Params) error {
 	// NOTE: this assumes all cores are equal, but it's a limitation also shared by GHW. CPUs with P/E cores will be misrepresented.
 	p.smtLevel = int(cpus.TotalHardwareThreads / cpus.TotalCores)
 	return nil
+}
+
+func (p Params) MinCPUs() int {
+	if !p.UserLevelNetworking { // TODO explain why
+		return 0
+	}
+	return (p.DeviceCount + (maxIRQsPerPhysicalCore - 1)) / maxIRQsPerPhysicalCore
 }
 
 func (p Params) TotalCPUs() int {
@@ -192,6 +205,9 @@ func objective(p Params, x []float64) float64 {
 	var hardPenalty float64
 	// Don't exceed total CPUs
 	hardPenalty += defaultPenaltyWeight * math.Pow(math.Max(0, x_c+x_w-float64(p.TotalCPUs())), 2)
+
+	// Allocate as minimum what is needed to fit the desired amount of devices, thus IRQs
+	hardPenalty += defaultPenaltyWeight * math.Pow(math.Max(0, float64(p.MinCPUs())-x_c), 2)
 
 	// Meet the control plane/infra requirement to avoid the workload to starve
 	hardPenalty += defaultPenaltyWeight * math.Pow(math.Max(0, p.controlPlaneRequirement(x_w)-x_c), 2)

@@ -171,6 +171,7 @@ func NewRootCommand() *cobra.Command {
 			}
 			if isAutosizeEnabled(pcArgs) {
 				params := autosize.Params{
+					DeviceCount:         pcArgs.DeviceCount,
 					OfflinedCPUCount:    pcArgs.OfflinedCPUCount,
 					UserLevelNetworking: (pcArgs.UserLevelNetworking != nil && *pcArgs.UserLevelNetworking),
 					MachineData:         nodesHandlers[0], // assume all nodes equal, pick the easiest
@@ -433,6 +434,7 @@ type ProfileCreatorArgs struct {
 	PerPodPowerManagement       *bool  `json:"per-pod-power-management,omitempty"`
 	EnableHardwareTuning        bool   `json:"enable-hardware-tuning,omitempty"`
 	Autosize                    *bool  `json:"autosize,omitempty"`
+	DeviceCount                 int    `json:"device-count,omitempty"`
 	// internal only this argument not passed by the user
 	// but detected automatically
 	createForHypershift bool
@@ -454,6 +456,7 @@ func (pca *ProfileCreatorArgs) AddFlags(flags *pflag.FlagSet) {
 	flags.BoolVar(&pca.EnableHardwareTuning, "enable-hardware-tuning", false, "Enable setting maximum cpu frequencies")
 	flags.StringVar(&pca.NodePoolName, "node-pool-name", "", "Node pool name corresponding to the target machines (HyperShift only)")
 	flags.BoolVar(pca.Autosize, "autosize", false, "autosize the control plane")
+	flags.IntVar(&pca.DeviceCount, "device-count", 0, "Number of expected devices (TODO)")
 }
 
 func makePerformanceProfileFrom(profileData ProfileData) (runtime.Object, error) {
