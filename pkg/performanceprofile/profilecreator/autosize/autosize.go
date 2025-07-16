@@ -38,6 +38,7 @@ const (
 )
 
 var (
+	ErrInvalidParameters          = errors.New("invalid parameters")
 	ErrUnderallocatedControlPlane = errors.New("not enough CPUs for control plane")
 	ErrOverallocatedControlPlane  = errors.New("too many CPUs for control plane")
 	ErrInconsistentAllocation     = errors.New("inconsistent CPus allocation")
@@ -54,6 +55,7 @@ func DefaultEnv() Env {
 }
 
 type Params struct {
+	DeviceCount         int
 	OfflinedCPUCount    int
 	UserLevelNetworking bool
 	MachineData         *profilecreator.GHWHandler
@@ -63,7 +65,7 @@ type Params struct {
 }
 
 func (p Params) String() string {
-	return fmt.Sprintf("cpus=%d offline=%v SMTLevel=%v", p.totalCPUs, p.OfflinedCPUCount, p.smtLevel)
+	return fmt.Sprintf("cpus=%d offline=%v SMTLevel=%v devices=%d (userNetworking=%v)", p.totalCPUs, p.OfflinedCPUCount, p.smtLevel, p.DeviceCount, p.UserLevelNetworking)
 }
 
 func setupMachineData(p *Params) error {
@@ -143,9 +145,23 @@ func (vals Values) String() string {
 	return fmt.Sprintf("reserved=%v/isolated=%v", vals.ReservedCPUCount, vals.IsolatedCPUCount)
 }
 
+func CheckParameters(params Params) error {
+	if params.DeviceCount < 0 {
+		return ErrInvalidParameters
+	}
+	if params.OfflinedCPUCount < 0 {
+		return ErrInvalidParameters
+	}
+	// are we offlining everything? we need at least 1 physical core to do any work, including staying alive
+	if params.OfflinedCPUCount > (params.totalCPUs - params.smtLevel) {
+		return ErrInvalidParameters
+	}
+	return nil
+}
+
 // gonum doesn't support bounds yet so we have to make this an explicit step
 // https://github.com/gonum/gonum/issues/1725
-func Validate(params Params, vals Values) error {
+func CheckValues(params Params, vals Values) error {
 	Tc := params.TotalCPUs()
 	if vals.ReservedCPUCount < params.SMTLevel() {
 		return ErrUnderallocatedControlPlane
@@ -187,7 +203,11 @@ func objective(p Params, x []float64) float64 {
 }
 
 func Compute(env Env, params Params) (Values, Score, error) {
-	err := setupMachineData(&params)
+	err := CheckParameters(params)
+	if err != nil {
+		return params.DefaultAllocation(), Score{}, err
+	}
+	err = setupMachineData(&params)
 	if err != nil {
 		env.Log.Printf("Optimization failed: %v", err)
 		return params.DefaultAllocation(), Score{}, err
@@ -220,7 +240,7 @@ func Compute(env Env, params Params) (Values, Score, error) {
 	}
 	env.Log.Printf("Optimization result: %s", opt.String())
 
-	if err := Validate(params, opt); err != nil {
+	if err := CheckValues(params, opt); err != nil {
 		env.Log.Printf("Optimization invalid: %v", err)
 		return params.DefaultAllocation(), Score{}, err
 	}
