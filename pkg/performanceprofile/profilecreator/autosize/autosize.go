@@ -215,26 +215,38 @@ func Compute(env Env, params Params) (Values, Score, error) {
 		return params.DefaultAllocation(), Score{}, err
 	}
 
-	smtLevel := params.SMTLevel()
 	totCPUs := params.TotalCPUs()
 	score := Score{Cost: result.F}
-	x_cr := int(math.Round(result.Location.X[0]))
-	x_c := asMultipleOf(x_cr, smtLevel)
-	env.Log.Printf("Optimization value: Xc=%v -> Xc=%v (SMTLevel=%v)", x_cr, x_c, smtLevel)
+	x_c := int(math.Round(result.Location.X[0]))
 
-	vals := Values{
+	opt := Values{
 		ReservedCPUCount: x_c,
 		IsolatedCPUCount: totCPUs - x_c, // we can use x_w, but we just leverage invariants
 	}
-	env.Log.Printf("Optimization result: %s", vals.String())
+	env.Log.Printf("Optimization result: %s", opt.String())
 
-	if err := Validate(params, vals); err != nil {
+	if err := Validate(params, opt); err != nil {
 		env.Log.Printf("Optimization invalid: %v", err)
 		return params.DefaultAllocation(), Score{}, err
 	}
 
+	// postprocessing must be done after successfull validation
+	vals := postProcess(params, opt)
+	env.Log.Printf("Optimization postprocess. %s => %s", opt.String(), vals.String())
+
 	env.Log.Printf("Optimization done. Score: %v %s totalCPUs=%d", score.String(), vals.String(), totCPUs)
 	return vals, score, nil
+}
+
+func postProcess(params Params, vals Values) Values {
+	Tc := params.TotalCPUs()
+	sl := params.SMTLevel()
+	x_c := asMultipleOf(vals.ReservedCPUCount, sl)
+	ret := Values{
+		ReservedCPUCount: x_c,
+		IsolatedCPUCount: Tc - x_c,
+	}
+	return ret
 }
 
 func asMultipleOf(v, x int) int {
