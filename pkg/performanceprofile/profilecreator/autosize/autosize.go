@@ -183,9 +183,6 @@ func objective(p Params, x []float64) float64 {
 	// Must use positive CPU values (since gonum/optimize doesn't have simple bounds for all solvers)
 	hardPenalty += defaultPenaltyWeight*math.Pow(math.Max(0, -x_c), 2) + math.Pow(math.Max(0, -x_w), 2)
 
-	// Allocate in multiples of SMT level (usually 2) -- TODO: should be soft?
-	hardPenalty += defaultPenaltyWeight * math.Pow(math.Max(0, -float64(int(math.Round(x_c))%p.SMTLevel())), 2)
-
 	return target + hardPenalty
 }
 
@@ -217,11 +214,9 @@ func Compute(env Env, params Params) (Values, Score, error) {
 
 	totCPUs := params.TotalCPUs()
 	score := Score{Cost: result.F}
-	x_c := int(math.Round(result.Location.X[0]))
-
 	opt := Values{
-		ReservedCPUCount: x_c,
-		IsolatedCPUCount: totCPUs - x_c, // we can use x_w, but we just leverage invariants
+		ReservedCPUCount: int(math.Round(result.Location.X[0])),
+		IsolatedCPUCount: int(math.Round(result.Location.X[1])),
 	}
 	env.Log.Printf("Optimization result: %s", opt.String())
 
