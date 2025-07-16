@@ -91,7 +91,7 @@ func (p Params) SMTLevel() int {
 func (p Params) DefaultControlPlaneCores() int {
 	// intentionally overallocate to have a safe baseline
 	Tc := p.totalCPUs
-	return int(math.Round(float64(Tc) * defaultReservedRatioInitial)) // TODO handle SMT
+	return int(math.Round(float64(Tc) * defaultReservedRatioInitial))
 }
 
 // Get x_c, x_w as initial hardcoded value. Subject to optimization
@@ -147,7 +147,7 @@ func (vals Values) String() string {
 // https://github.com/gonum/gonum/issues/1725
 func Validate(params Params, vals Values) error {
 	Tc := params.TotalCPUs()
-	if vals.ReservedCPUCount < 1 { // TODO handle SMT
+	if vals.ReservedCPUCount < params.SMTLevel() {
 		return ErrUnderallocatedControlPlane
 	}
 	if vals.ReservedCPUCount > int(math.Round((float64(Tc) * defaultReservedRatioMax))) { // works, but likely unacceptable
