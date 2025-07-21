@@ -18,10 +18,10 @@ func TestARM(t *testing.T) {
 	ctrllog.SetLogger(stdr.New(log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile)))
 
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Kernel page size suite")
+	RunSpecs(t, "ARM suite")
 }
 
-var _ = ReportAfterSuite("kernel page size suite", func(r Report) {
+var _ = ReportAfterSuite("ARM suite", func(r Report) {
 	if qe_reporters.Polarion.Run {
 		reporters.ReportViaDeprecatedReporter(&qe_reporters.Polarion, r)
 	}
