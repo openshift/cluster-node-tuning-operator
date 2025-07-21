@@ -146,14 +146,22 @@ func render(ownerRefMode, inputDir, outputDir string) error {
 		klog.Warning("zero performance profiles were found")
 	}
 
-	var partitioningMode *apicfgv1.CPUPartitioningMode
+	var (
+		partitioningMode     *apicfgv1.CPUPartitioningMode
+		controlPlaneTopology apicfgv1.TopologyMode
+	)
 	if infra != nil {
 		partitioningMode = &infra.Status.CPUPartitioning
+		controlPlaneTopology = infra.Status.ControlPlaneTopology
 	}
 
 	if isLegacySNOWorkloadPinningMethod(mcConfigs, infra, partitioningMode) {
 		legacyAllNodes := apicfgv1.CPUPartitioningAllNodes
 		partitioningMode = &legacyAllNodes
+	}
+
+	if controlPlaneTopology == apicfgv1.HighlyAvailableArbiterMode {
+		defaultMCPNames = append(defaultMCPNames, "arbiter")
 	}
 
 	if err := genBootstrapWorkloadPinningManifests(partitioningMode, outputDir, defaultMCPNames...); err != nil {
