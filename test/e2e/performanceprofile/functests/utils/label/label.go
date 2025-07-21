@@ -18,6 +18,9 @@ const (
 
 	// SpecializedHardware is for tests that need special Hardware like SR-IOV devices, specific NICs, etc.
 	SpecializedHardware Kind = "specialized-hardware"
+
+	// ARM Feature should be added in tests that test ARM specific features
+	ARM Kind = "arm"
 )
 
 // Feature is a label indicates the feature that being tested.
