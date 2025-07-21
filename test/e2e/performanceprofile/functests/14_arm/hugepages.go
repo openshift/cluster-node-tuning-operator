@@ -36,7 +36,7 @@ const (
 	hugepageSize16G  = "16G"
 )
 
-var _ = Describe("hugepage configuration validation on aarch64", Ordered, Label(string(label.OpenShift), string(label.SpecializedHardware), string(label.KernelPageSize)), func() {
+var _ = Describe("hugepage configuration validation on aarch64", Ordered, Label(string(label.OpenShift), string(label.SpecializedHardware), string(label.KernelPageSize), string(label.ARM)), func() {
 	var (
 		workerRTNodes               []corev1.Node
 		perfProfile, initialProfile *performancev2.PerformanceProfile
