@@ -7,17 +7,22 @@ const (
 	NodePoolValidGeneratedPayloadConditionType = "ValidGeneratedPayload"
 	// NodePoolValidPlatformImageType signals if an OS image e.g. an AMI was found successfully based on the consumer input e.g. releaseImage.
 	// If the image is direct user input then this condition is meaningless.
-	// A failure here is unlikely to resolve without the changing user input.
+	// A failure here is unlikely to resolve without changing user input.
 	NodePoolValidPlatformImageType = "ValidPlatformImage"
 	// NodePoolValidReleaseImageConditionType signals if the input in nodePool.spec.release.image is valid.
-	// A failure here is unlikely to resolve without the changing user input.
+	// A failure here is unlikely to resolve without changing user input.
 	NodePoolValidReleaseImageConditionType = "ValidReleaseImage"
 	// NodePoolValidMachineConfigConditionType signals if the content within nodePool.spec.config is valid.
-	// A failure here is unlikely to resolve without the changing user input.
+	// A failure here is unlikely to resolve without changing user input.
 	NodePoolValidMachineConfigConditionType = "ValidMachineConfig"
 	// NodePoolValidTuningConfigConditionType signals if the content within nodePool.spec.tuningConfig is valid.
-	// A failure here is unlikely to resolve without the changing user input.
+	// A failure here is unlikely to resolve without changing user input.
 	NodePoolValidTuningConfigConditionType = "ValidTuningConfig"
+
+	// NodePoolValidPlatformConfigConditionType signals if the content within nodePool.spec.platform is valid.
+	// Image type validation is reported in 'NodePoolValidPlatformImageType' condition.
+	// A failure here is unlikely to resolve without changing user input.
+	NodePoolValidPlatformConfigConditionType = "ValidPlatformConfig"
 
 	// NodePoolUpdateManagementEnabledConditionType signals if the nodePool.spec.management input is valid.
 	// A failure here is unlikely to resolve without the changing user input.
@@ -68,6 +73,36 @@ const (
 	// NodePoolClusterNetworkCIDRConflictType signals if a NodePool's machine objects are colliding with the
 	// cluster network's CIDR range. This can indicate why some network functionality might be degraded.
 	NodePoolClusterNetworkCIDRConflictType = "ClusterNetworkCIDRConflict"
+
+	// KubeVirtNodesLiveMigratable indicates if all (VirtualMachines) nodes of the kubevirt
+	// hosted cluster can be live migrated without experiencing a node restart
+	NodePoolKubeVirtLiveMigratableType = "KubeVirtNodesLiveMigratable"
+)
+
+// PerformanceProfile Conditions
+const (
+
+	// NodePoolPerformanceProfileTuningConditionTypePrefix is a common prefix to all PerformanceProfile
+	// status conditions reported by NTO
+	NodePoolPerformanceProfileTuningConditionTypePrefix = "performance.operator.openshift.io"
+
+	// NodePoolPerformanceProfileTuningAvailableConditionType signals that the PerformanceProfile associated with the
+	// NodePool is available and its tunings were being applied successfully.
+	NodePoolPerformanceProfileTuningAvailableConditionType = NodePoolPerformanceProfileTuningConditionTypePrefix + "/Available"
+
+	// NodePoolPerformanceProfileTuningProgressingConditionType signals that the PerformanceProfile associated with the
+	// NodePool is in the middle of its tuning processing and its in progressing state.
+	NodePoolPerformanceProfileTuningProgressingConditionType = NodePoolPerformanceProfileTuningConditionTypePrefix + "/Progressing"
+
+	// NodePoolPerformanceProfileTuningUpgradeableConditionType signals that it's safe to
+	// upgrade the PerformanceProfile operator component
+	NodePoolPerformanceProfileTuningUpgradeableConditionType = NodePoolPerformanceProfileTuningConditionTypePrefix + "/Upgradeable"
+
+	// NodePoolPerformanceProfileTuningDegradedConditionType signals that the PerformanceProfile associated with the
+	// NodePool is failed to apply its tuning.
+	// This is usually happening because more lower-level components failed to apply successfully, like
+	// MachineConfig or KubeletConfig
+	NodePoolPerformanceProfileTuningDegradedConditionType = NodePoolPerformanceProfileTuningConditionTypePrefix + "/Degraded"
 )
 
 // Reasons
@@ -83,5 +118,7 @@ const (
 	NodePoolValidArchPlatform             = "ValidArchPlatform"
 	NodePoolInvalidArchPlatform           = "InvalidArchPlatform"
 	InvalidKubevirtMachineTemplate        = "InvalidKubevirtMachineTemplate"
+	InvalidOpenStackMachineTemplate       = "InvalidOpenStackMachineTemplate"
 	CIDRConflictReason                    = "CIDRConflict"
+	NodePoolKubeVirtLiveMigratableReason  = "KubeVirtNodesNotLiveMigratable"
 )

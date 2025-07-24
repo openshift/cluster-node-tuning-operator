@@ -104,13 +104,13 @@ func (r *KubernetesReporter) logPods(dirName string) {
 		if !r.namespaceToLog(pod.Namespace) {
 			continue
 		}
-		f, err := logFileFor(r.reportPath, dirName, pod.Namespace+"-pods_specs")
+		f, err := logFileFor(r.reportPath, dirName, pod.Namespace+"_"+pod.Name+"_pods_specs")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to open pods_specs file: %v\n", dirName)
 			return
 		}
 		defer f.Close()
-		fmt.Fprintf(f, fileSeparator)
+
 		j, err := json.MarshalIndent(pod, "", "    ")
 		if err != nil {
 			fmt.Println("Failed to marshal pods", err)
@@ -123,7 +123,7 @@ func (r *KubernetesReporter) logPods(dirName string) {
 func (r *KubernetesReporter) logNodes(dirName string) {
 	f, err := logFileFor(r.reportPath, dirName, "nodes")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to open nodes file: %v\n", dirName)
+		fmt.Fprintf(os.Stderr, "failed to open nodes file: %v: %v\n", dirName, err)
 		return
 	}
 	defer f.Close()
@@ -153,9 +153,9 @@ func (r *KubernetesReporter) logLogs(since time.Time, dirName string) {
 		if !r.namespaceToLog(pod.Namespace) {
 			continue
 		}
-		f, err := logFileFor(r.reportPath, dirName, pod.Namespace+"-pods_logs")
+		f, err := logFileFor(r.reportPath, dirName, pod.Namespace+"_"+pod.Name+"_pods_logs")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to open pods_logs file: %v\n", dirName)
+			fmt.Fprintf(os.Stderr, "failed to open pods_logs file: %v: %v\n", dirName, err)
 			return
 		}
 		defer f.Close()
@@ -229,18 +229,18 @@ func (r *KubernetesReporter) logEventsInNamespace(since time.Time, w io.Writer, 
 }
 
 func (r *KubernetesReporter) logCustomCR(cr runtimeclient.ObjectList, namespace *string, dirName string) {
-	f, err := logFileFor(r.reportPath, dirName, "crs")
+
+	fileName := getObjectKind(r.clients.Scheme(), cr)
+	if namespace != nil {
+		fileName = fmt.Sprintf("%s_%s", fileName, *namespace)
+	}
+
+	f, err := logFileFor(r.reportPath, dirName, fileName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to open crs file: %v\n", dirName)
 		return
 	}
 	defer f.Close()
-	fmt.Fprintf(f, fileSeparator)
-	if namespace != nil {
-		fmt.Fprintf(f, "Dumping %T in namespace %s\n", cr, *namespace)
-	} else {
-		fmt.Fprintf(f, "Dumping %T\n", cr)
-	}
 
 	options := []runtimeclient.ListOption{}
 	if namespace != nil {
@@ -277,4 +277,23 @@ func cleanDirName(dirName string) string {
 	res := strings.ReplaceAll(dirName, "/", "-")
 	res = strings.ReplaceAll(res, " ", "_")
 	return res
+}
+
+func getObjectKind(typer runtime.ObjectTyper, cr runtimeclient.ObjectList) string {
+	gvks, _, err := typer.ObjectKinds(cr)
+	if err != nil {
+		return "lostfound"
+	}
+
+	for _, gvk := range gvks {
+		if len(gvk.Kind) == 0 {
+			continue
+		}
+		if len(gvk.Version) == 0 || gvk.Version == runtime.APIVersionInternal {
+			continue
+		}
+		return gvk.Kind
+	}
+
+	return "lostfound"
 }
