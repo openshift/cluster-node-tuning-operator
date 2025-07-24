@@ -18,6 +18,7 @@ import (
 	"github.com/docker/go-units"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog/v2"
 	"k8s.io/utils/cpuset"
 	"k8s.io/utils/ptr"
 
@@ -152,12 +153,15 @@ func New(profile *performancev2.PerformanceProfile, opts *components.MachineConf
 	// Real time kernel with 64k-pages for aarch64 not yet supported and rejected in the validation webhook.
 	if enableRTKernel {
 		mc.Spec.KernelType = MCKernelRT
+		klog.V(4).InfoS("MachineConfig realtime kernel type", "MachineConfig", mc.Name)
 	} else if profile.Spec.KernelPageSize != nil && *profile.Spec.KernelPageSize == performancev2.KernelPageSize("64k") {
 		// During validation, we ensure that nodes are based on aarch64 when the administrator specifies 64k for this field.
 		// Hence, this assignment is guaranteed to be safe.
 		mc.Spec.KernelType = MCKernel64kPages
+		klog.V(4).InfoS("MachineConfig 64k-pages kernel type", "MachineConfig", mc.Name)
 	} else {
 		mc.Spec.KernelType = MCKernelDefault
+		klog.V(4).InfoS("MachineConfig default kernel type", "MachineConfig", mc.Name)
 	}
 
 	return mc, nil
