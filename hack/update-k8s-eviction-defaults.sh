@@ -21,7 +21,7 @@ set -o pipefail
 SCRIPT_ROOT=$(realpath "${0%/*}/..")
 pushd ${SCRIPT_ROOT}
 
-TAG=1.32.3
+TAG=1.33.3
 OS=$( go env GOOS )
 
 KUBETAG=${KUBETAG:-$TAG}
