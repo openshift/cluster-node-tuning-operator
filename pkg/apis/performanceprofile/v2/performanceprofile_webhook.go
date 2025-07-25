@@ -6,7 +6,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
-var _ webhook.Validator = &PerformanceProfile{}
+var _ webhook.CustomValidator = &PerformanceProfile{}
 
 // we need this variable only because our validate methods should have access to the client
 var validatorClient client.Client

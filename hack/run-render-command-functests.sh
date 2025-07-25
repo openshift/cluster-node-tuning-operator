@@ -22,4 +22,4 @@ echo "Running Functional Tests: ${GINKGO_SUITS}"
 # --fail-fast: ginkgo will stop the suite right after the first spec failure
 # --flake-attempts: rerun the test if it fails
 # --require-suite: fail if tests are not executed because of missing suite
-GOFLAGS=-mod=vendor ginkgo $NO_COLOR --v -r --fail-fast --flake-attempts=2 --require-suite ${GINKGO_SUITS} --junit-report=/tmp/artifacts
+GOFLAGS=-mod=vendor ginkgo $NO_COLOR --v -r --fail-fast --flake-attempts=2 --require-suite --junit-report=/tmp/artifacts ${GINKGO_SUITS}
