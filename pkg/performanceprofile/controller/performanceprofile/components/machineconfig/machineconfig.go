@@ -75,8 +75,8 @@ const (
 	ovsDynamicPinningTriggerFile     = "ovs-enable-dynamic-cpu-affinity"
 	ovsDynamicPinningTriggerHostFile = "/var/lib/ovn-ic/etc/enable_dynamic_cpu_affinity"
 
-	cpusetConfigure           = "cpuset-configure"
-	dynamicMemoryEnforcement  = "dynamic-memory-enforcement"
+	cpusetConfigure          = "cpuset-configure"
+	dynamicMemoryEnforcement = "dynamic-memory-enforcement"
 )
 
 const (
@@ -99,6 +99,7 @@ const (
 	systemdServiceCrio         = "crio.service"
 	systemdServiceTunedOneShot = "ocp-tuned-one-shot.service"
 	systemdServiceTypeOneshot  = "oneshot"
+	systemdServiceTypeSimple   = "simple"
 	systemdTargetMultiUser     = "multi-user.target"
 	systemdTrue                = "true"
 )
