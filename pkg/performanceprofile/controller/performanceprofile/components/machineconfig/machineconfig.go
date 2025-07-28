@@ -315,8 +315,9 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 		addContent(ignitionConfig, content, dst, &mode)
 	}
 
-	// Add dynamic memory enforcement service only if annotation is enabled
-	if profilecomponent.IsEnforceReservedMemoryEnabled(profile) {
+	// Add dynamic memory enforcement service only if annotation is enabled and workload partitioning is enabled
+	clusterHasWorkloadPartitioning := opts.PinningMode != nil && *opts.PinningMode == apiconfigv1.CPUPartitioningAllNodes
+	if profilecomponent.IsEnforceReservedMemoryEnabled(profile) && clusterHasWorkloadPartitioning {
 		dynamicMemoryEnforcementService, err := getSystemdContent(getDynamicMemoryEnforcementUnitOptions())
 		if err != nil {
 			return nil, err
@@ -610,7 +611,7 @@ func getDynamicMemoryEnforcementUnitOptions() []*unit.UnitOption {
 		// RemainAfterExit
 		unit.NewUnitOption(systemdSectionService, systemdRemainAfterExit, systemdTrue),
 		// ExecStart
-		unit.NewUnitOption(systemdSectionService, systemdExecStart, fmt.Sprintf("watch /usr/bin/python3 %s", getPythonScriptPath(dynamicMemoryEnforcement))),
+		unit.NewUnitOption(systemdSectionService, systemdExecStart, fmt.Sprintf("bash -c 'while true; do /usr/bin/python3 %s; sleep 2; done'", getPythonScriptPath(dynamicMemoryEnforcement))),
 		// [Install]
 		// WantedBy
 		unit.NewUnitOption(systemdSectionInstall, systemdWantedBy, systemdTargetMultiUser),
