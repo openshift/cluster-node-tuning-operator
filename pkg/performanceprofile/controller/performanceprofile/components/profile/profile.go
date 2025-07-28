@@ -95,3 +95,17 @@ func IsMixedCPUsEnabled(profile *performancev2.PerformanceProfile) bool {
 	}
 	return *profile.Spec.WorkloadHints.MixedCpus
 }
+
+// IsEnforceReservedMemoryEnabled checks if dynamic memory enforcement should be enabled
+func IsEnforceReservedMemoryEnabled(profile *performancev2.PerformanceProfile) bool {
+	if profile.Annotations == nil {
+		return false
+	}
+
+	isEnabled, ok := profile.Annotations[performancev2.PerformanceProfileEnforceReservedMemoryAnnotation]
+	if ok && isEnabled == "enable" {
+		return true
+	}
+
+	return false
+}

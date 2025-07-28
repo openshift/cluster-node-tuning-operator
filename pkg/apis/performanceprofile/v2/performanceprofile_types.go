@@ -34,6 +34,10 @@ const PerformanceProfileEnablePhysicalRpsAnnotation = "performance.openshift.io/
 // that ignores the removal of all RPS settings when realtime workload hint is explicitly set to false.
 const PerformanceProfileEnableRpsAnnotation = "performance.openshift.io/enable-rps"
 
+// PerformanceProfileEnforceReservedMemoryAnnotation enables dynamic memory enforcement
+// service that manages memory limits for kubepods slices.
+const PerformanceProfileEnforceReservedMemoryAnnotation = "enforce-reserved-memory.experimental"
+
 // PerformanceProfileSpec defines the desired state of PerformanceProfile.
 type PerformanceProfileSpec struct {
 	// CPU defines a set of CPU related parameters.

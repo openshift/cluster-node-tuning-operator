@@ -315,26 +315,28 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 		addContent(ignitionConfig, content, dst, &mode)
 	}
 
-	// Add dynamic memory enforcement service
-	dynamicMemoryEnforcementService, err := getSystemdContent(getDynamicMemoryEnforcementUnitOptions())
-	if err != nil {
-		return nil, err
-	}
+	// Add dynamic memory enforcement service only if annotation is enabled
+	if profilecomponent.IsEnforceReservedMemoryEnabled(profile) {
+		dynamicMemoryEnforcementService, err := getSystemdContent(getDynamicMemoryEnforcementUnitOptions())
+		if err != nil {
+			return nil, err
+		}
 
-	ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
-		Contents: &dynamicMemoryEnforcementService,
-		Enabled:  ptr.To(true),
-		Name:     getSystemdService(dynamicMemoryEnforcement),
-	})
+		ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
+			Contents: &dynamicMemoryEnforcementService,
+			Enabled:  ptr.To(true),
+			Name:     getSystemdService(dynamicMemoryEnforcement),
+		})
 
-	// Add the Python script for dynamic memory enforcement
-	pythonScriptContent, err := getDynamicMemoryEnforcementPythonScript()
-	if err != nil {
-		return nil, err
+		// Add the Python script for dynamic memory enforcement
+		pythonScriptContent, err := getDynamicMemoryEnforcementPythonScript()
+		if err != nil {
+			return nil, err
+		}
+		pythonScriptPath := getPythonScriptPath(dynamicMemoryEnforcement)
+		pythonMode := 0755 // Make it executable
+		addContent(ignitionConfig, pythonScriptContent, pythonScriptPath, &pythonMode)
 	}
-	pythonScriptPath := getPythonScriptPath(dynamicMemoryEnforcement)
-	pythonMode := 0755 // Make it executable
-	addContent(ignitionConfig, pythonScriptContent, pythonScriptPath, &pythonMode)
 
 	if profile.Spec.CPU.Offlined != nil {
 		offlinedCPUSList, err := cpuset.Parse(string(*profile.Spec.CPU.Offlined))
