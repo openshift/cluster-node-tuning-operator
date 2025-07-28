@@ -75,7 +75,8 @@ const (
 	ovsDynamicPinningTriggerFile     = "ovs-enable-dynamic-cpu-affinity"
 	ovsDynamicPinningTriggerHostFile = "/var/lib/ovn-ic/etc/enable_dynamic_cpu_affinity"
 
-	cpusetConfigure = "cpuset-configure"
+	cpusetConfigure           = "cpuset-configure"
+	dynamicMemoryEnforcement  = "dynamic-memory-enforcement"
 )
 
 const (
@@ -314,6 +315,27 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 		addContent(ignitionConfig, content, dst, &mode)
 	}
 
+	// Add dynamic memory enforcement service
+	dynamicMemoryEnforcementService, err := getSystemdContent(getDynamicMemoryEnforcementUnitOptions())
+	if err != nil {
+		return nil, err
+	}
+
+	ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
+		Contents: &dynamicMemoryEnforcementService,
+		Enabled:  ptr.To(true),
+		Name:     getSystemdService(dynamicMemoryEnforcement),
+	})
+
+	// Add the Python script for dynamic memory enforcement
+	pythonScriptContent, err := getDynamicMemoryEnforcementPythonScript()
+	if err != nil {
+		return nil, err
+	}
+	pythonScriptPath := getPythonScriptPath(dynamicMemoryEnforcement)
+	pythonMode := 0755 // Make it executable
+	addContent(ignitionConfig, pythonScriptContent, pythonScriptPath, &pythonMode)
+
 	if profile.Spec.CPU.Offlined != nil {
 		offlinedCPUSList, err := cpuset.Parse(string(*profile.Spec.CPU.Offlined))
 		if err != nil {
@@ -410,6 +432,14 @@ func MoveOvsIntoOwnSlice() (bool, string) {
 
 func getBashScriptPath(scriptName string) string {
 	return fmt.Sprintf("%s/%s.sh", bashScriptsDir, scriptName)
+}
+
+func getPythonScriptPath(scriptName string) string {
+	return fmt.Sprintf("%s/%s.py", bashScriptsDir, scriptName)
+}
+
+func getDynamicMemoryEnforcementPythonScript() ([]byte, error) {
+	return assets.Scripts.ReadFile(fmt.Sprintf("scripts/%s.py", dynamicMemoryEnforcement))
 }
 
 func getSystemdEnvironment(key string, value string) string {
@@ -562,6 +592,26 @@ func getRPSUnitOptions(rpsMask string) []*unit.UnitOption {
 		unit.NewUnitOption(systemdSectionService, systemdType, systemdServiceTypeOneshot),
 		// ExecStart
 		unit.NewUnitOption(systemdSectionService, systemdExecStart, cmd),
+	}
+}
+
+func getDynamicMemoryEnforcementUnitOptions() []*unit.UnitOption {
+	return []*unit.UnitOption{
+		// [Unit]
+		// Description
+		unit.NewUnitOption(systemdSectionUnit, systemdDescription, "Dynamic memory enforcement service"),
+		// Before
+		unit.NewUnitOption(systemdSectionUnit, systemdAfter, systemdServiceKubelet),
+		// [Service]
+		// Type
+		unit.NewUnitOption(systemdSectionService, systemdType, systemdServiceTypeSimple),
+		// RemainAfterExit
+		unit.NewUnitOption(systemdSectionService, systemdRemainAfterExit, systemdTrue),
+		// ExecStart
+		unit.NewUnitOption(systemdSectionService, systemdExecStart, fmt.Sprintf("watch /usr/bin/python3 %s", getPythonScriptPath(dynamicMemoryEnforcement))),
+		// [Install]
+		// WantedBy
+		unit.NewUnitOption(systemdSectionInstall, systemdWantedBy, systemdTargetMultiUser),
 	}
 }
 
