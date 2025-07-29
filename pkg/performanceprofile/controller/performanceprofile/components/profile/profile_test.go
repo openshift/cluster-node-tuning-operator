@@ -58,6 +58,56 @@ var _ = Describe("PerformanceProfile", func() {
 
 		})
 	})
+
+	Describe("RPS Configuration", func() {
+		Context("IsRpsEnabled", func() {
+			It("should return false by default", func() {
+				// No annotations, should default to false
+				result := IsRpsEnabled(profile)
+				Expect(result).To(BeFalse())
+			})
+
+			It("should return true when annotation is 'true'", func() {
+				profile.Annotations = map[string]string{
+					performancev2.PerformanceProfileEnableRpsAnnotation: "true",
+				}
+				result := IsRpsEnabled(profile)
+				Expect(result).To(BeTrue())
+			})
+
+			It("should return true when annotation is 'enable'", func() {
+				profile.Annotations = map[string]string{
+					performancev2.PerformanceProfileEnableRpsAnnotation: "enable",
+				}
+				result := IsRpsEnabled(profile)
+				Expect(result).To(BeTrue())
+			})
+
+			It("should return false when annotation is 'false'", func() {
+				profile.Annotations = map[string]string{
+					performancev2.PerformanceProfileEnableRpsAnnotation: "false",
+				}
+				result := IsRpsEnabled(profile)
+				Expect(result).To(BeFalse())
+			})
+
+			It("should return false when annotation is 'disable'", func() {
+				profile.Annotations = map[string]string{
+					performancev2.PerformanceProfileEnableRpsAnnotation: "disable",
+				}
+				result := IsRpsEnabled(profile)
+				Expect(result).To(BeFalse())
+			})
+
+			It("should return false when annotation has invalid value", func() {
+				profile.Annotations = map[string]string{
+					performancev2.PerformanceProfileEnableRpsAnnotation: "invalid",
+				}
+				result := IsRpsEnabled(profile)
+				Expect(result).To(BeFalse())
+			})
+		})
+	})
 })
 
 func setValidNodeSelector(profile *performancev2.PerformanceProfile) {

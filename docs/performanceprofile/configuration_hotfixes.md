@@ -10,27 +10,13 @@ Default tunings are applied with the [openshift-performance](../../assets/perfor
 
 ## RPS settings
 
-The default RPS settings for a performance profile are to set the RPS mask as the [reserved CPUs](performance_profile.md#cpu),\
+RPS (Receive Packet Steering) settings are now disabled by default for all performance profiles.\
+When enabled via annotation, RPS settings configure the RPS mask as the [reserved CPUs](performance_profile.md#cpu),\
 on the host level for all network devices excluding virtual(veth) devices and physical devices(pci)\
 and on the container level for all virtual network devices(veth).
-### RPS and workload hints
+### Enabling RPS
 
-When the realtime workload hint is explicitly disabled there is no need for any RPS settings to be applied since it is relevant only for the realtime use case.\
-The following will result in no RPS settings applied on the cluster at all:
-
-```yaml
-performance_profile.yaml
-apiVersion: performance.openshift.io/v2
-kind: PerformanceProfile
-metadata:
-  name: example-performanceprofile
-spec:
-  workloadHints:
-    realTime: false
-```
-
-In special cases where there is a need to explicitly specify the realtime workload hint as false but keep the RPS settings,
-an override annotation `performance.openshift.io/enable-rps` could be added to the performance profile that will keep the default [RPS settings](#rps-settings):
+To enable RPS settings, use the annotation `performance.openshift.io/enable-rps` with value `"true"` or `"enable"`:\
 
 ```yaml
 performance_profile.yaml
@@ -39,15 +25,57 @@ kind: PerformanceProfile
 metadata:
   name: example-performanceprofile
   annotations:
-     performance.openshift.io/enable-rps: "true"  
+     performance.openshift.io/enable-rps: "enable"
+spec:
+  # ... rest of profile spec
+```
+
+You can also use `"true"` as the value:
+
+```yaml
+performance_profile.yaml
+apiVersion: performance.openshift.io/v2
+kind: PerformanceProfile
+metadata:
+  name: example-performanceprofile
+  annotations:
+     performance.openshift.io/enable-rps: "true"
+spec:
+  # ... rest of profile spec
+```
+
+The following configurations will result in no RPS settings applied on the cluster:
+
+**Default behavior (no annotation):**
+```yaml
+performance_profile.yaml
+apiVersion: performance.openshift.io/v2
+kind: PerformanceProfile
+metadata:
+  name: example-performanceprofile
+spec:
+  # No annotation needed - RPS is disabled by default
+  workloadHints:
+    realTime: true
+```
+
+**Explicitly disabled with annotation:**
+```yaml
+performance_profile.yaml
+apiVersion: performance.openshift.io/v2
+kind: PerformanceProfile
+metadata:
+  name: example-performanceprofile
+  annotations:
+     performance.openshift.io/enable-rps: "disable"
 spec:
   workloadHints:
-    realTime: false
+    realTime: true
 ```
 
 ### Enable RPS on physical devices annotation
 
-In case there is a need to set RPS mask for physical(pci) devices as well on the host side an override annotation `performance.openshift.io/enable-physical-dev-rps` to the default [RPS settings](#rps-settings) could be added to the performance profile:
+To enable RPS mask for physical(pci) devices as well on the host side, both RPS must be enabled and the physical device annotation must be set:
 
 ```yaml
 performance_profile.yaml
@@ -56,11 +84,12 @@ kind: PerformanceProfile
 metadata:
   name: example-performanceprofile
   annotations:
+     performance.openshift.io/enable-rps: "enable"
      performance.openshift.io/enable-physical-dev-rps: "true"
 ```
 
-> Note: `performance.openshift.io/enable-physical-dev-rps` annotation can be applied only when realtime workload hint is 
-NOT explicitly set to false unless `performance.openshift.io/enable-rps` is set to true.
+> Note: `performance.openshift.io/enable-physical-dev-rps` annotation requires
+`performance.openshift.io/enable-rps` to be set to an enabling value ("true" or "enable").
 
 ## Additional kernel arguments
 

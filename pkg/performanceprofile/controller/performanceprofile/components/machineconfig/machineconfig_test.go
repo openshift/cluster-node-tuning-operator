@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"k8s.io/utils/ptr"
 
@@ -115,6 +116,54 @@ var _ = Describe("Machine Config", func() {
 			for _, f := range result.Systemd.Units {
 				Expect(f.Name).To(Not(ContainSubstring("rps")), "rps systemd unit %s should not be present", f.Name)
 			}
+		})
+
+		It("should create machine config with no trace of RPS when explicitly disabled with 'disable'", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			profile.Annotations = map[string]string{}
+			profile.Annotations[performancev2.PerformanceProfileEnableRpsAnnotation] = "disable"
+
+			mc, err := New(profile, &components.MachineConfigOptions{})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+
+			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
+			Expect(err).ToNot(HaveOccurred())
+
+			for _, f := range result.Storage.Files {
+				Expect(f.Path).To(Not(ContainSubstring("rps")), "rps configuration %s should not be present", f.Path)
+			}
+
+			for _, f := range result.Systemd.Units {
+				Expect(f.Name).To(Not(ContainSubstring("rps")), "rps systemd unit %s should not be present", f.Name)
+			}
+		})
+	})
+
+	Context("machine config creation with enabled RPS using alternative values", func() {
+		It("should create machine config with RPS configuration when enabled with 'enable'", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			profile.Annotations = map[string]string{}
+			profile.Annotations[performancev2.PerformanceProfileEnableRpsAnnotation] = "enable"
+
+			mc, err := New(profile, &components.MachineConfigOptions{})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+
+			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Should have RPS-related files and services
+			rpsFilesFound := false
+			for _, f := range result.Storage.Files {
+				if strings.Contains(f.Path, "rps") {
+					rpsFilesFound = true
+					break
+				}
+			}
+			Expect(rpsFilesFound).To(BeTrue(), "RPS configuration files should be present")
 		})
 	})
 
