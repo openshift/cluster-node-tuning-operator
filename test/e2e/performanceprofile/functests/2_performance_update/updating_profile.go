@@ -1022,6 +1022,21 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 
 		It("[test_id:56006]Verify systemd unit file gets updated when the reserved cpus are modified", func() {
+			// Enable RPS for this test since we're specifically testing RPS functionality
+			if profile.Annotations == nil {
+				profile.Annotations = make(map[string]string)
+			}
+			profile.Annotations[performancev2.PerformanceProfileEnableRpsAnnotation] = "enable"
+
+			By("Updating the performance profile to enable RPS")
+			profiles.UpdateWithRetry(profile)
+
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
+
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.WaitForTuningUpdated(context.TODO(), profile)
+
 			var reserved, isolated cpuset.CPUSet
 			var onlineCPUInt int
 			for _, node := range workerRTNodes {
@@ -1115,18 +1130,16 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			}
 		})
 
-		It("[test_id:54191]Verify RPS Mask is not applied when RealtimeHint is disabled", func() {
-			By("Modifying profile")
-			profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
-				HighPowerConsumption:  ptr.To(false),
-				RealTime:              ptr.To(false),
-				PerPodPowerManagement: ptr.To(false),
+		It("[test_id:54191]Verify RPS Mask is not applied by default", func() {
+			// This test verifies that RPS is disabled by default
+			// No need to modify workload hints since RPS is disabled by default now
+
+			// Ensure the profile doesn't have RPS enabled
+			if profile.Annotations != nil {
+				delete(profile.Annotations, performancev2.PerformanceProfileEnableRpsAnnotation)
 			}
 
-			profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-				Enabled: ptr.To(false),
-			}
-			By("Updating the performance profile")
+			By("Updating the performance profile to ensure RPS is disabled")
 			profiles.UpdateWithRetry(profile)
 
 			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))

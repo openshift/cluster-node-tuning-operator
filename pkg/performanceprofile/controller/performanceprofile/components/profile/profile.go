@@ -74,16 +74,15 @@ func IsRpsEnabled(profile *performancev2.PerformanceProfile) bool {
 	if profile.Annotations != nil {
 		// First check overrides
 		isRpsEnabled, ok := profile.Annotations[performancev2.PerformanceProfileEnableRpsAnnotation]
-		if ok && isRpsEnabled == "true" {
+		if ok && (isRpsEnabled == "true" || isRpsEnabled == "enable") {
 			return true
-		} else if ok && isRpsEnabled == "false" {
+		} else if ok && (isRpsEnabled == "false" || isRpsEnabled == "disable") {
 			return false
 		}
 	}
 
-	// The default behavior enables RPS for real time workloads
-	return profile.Spec.WorkloadHints == nil ||
-		profile.Spec.WorkloadHints.RealTime == nil || *profile.Spec.WorkloadHints.RealTime
+	// The default behavior is now to disable RPS
+	return false
 }
 
 func IsMixedCPUsEnabled(profile *performancev2.PerformanceProfile) bool {

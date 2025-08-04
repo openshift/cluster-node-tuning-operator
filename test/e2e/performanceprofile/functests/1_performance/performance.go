@@ -375,7 +375,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 		It("[test_id: 59572] Check RPS Mask is applied to at least one single rx queue on all veth interface", func() {
 			if !profileutil.IsRpsEnabled(profile) {
-				Skip("realTime Workload Hints is not enabled")
+				Skip("RPS is disabled by default - test skipped")
 			}
 			count := 0
 			expectedRPSCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
@@ -414,7 +414,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 		It("[test_id:55012] Should have the correct RPS configuration", func() {
 			if !profileutil.IsRpsEnabled(profile) {
-				Skip("realTime Workload Hints is not enabled")
+				Skip("RPS is disabled by default - test skipped")
 			}
 
 			expectedRPSCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
@@ -487,7 +487,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				}
 			}
 		})
-		It("[test_id:54190] Should not have RPS configuration set when realtime workload hint is explicitly set", func() {
+		It("[test_id:54190] Should not have RPS configuration set by default", func() {
 			if !profileutil.IsRpsEnabled(profile) {
 				for _, node := range workerRTNodes {
 					// Verify the systemd RPS services were not created

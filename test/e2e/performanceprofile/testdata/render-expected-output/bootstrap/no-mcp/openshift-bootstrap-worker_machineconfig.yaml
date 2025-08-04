@@ -29,13 +29,6 @@ spec:
         path: /usr/local/bin/hugepages-allocation.sh
         user: {}
       - contents:
-          source: data:text/plain;charset=utf-8;base64,IyEvdXNyL2Jpbi9lbnYgYmFzaAoKZnVuY3Rpb24gc2V0X3F1ZXVlX3Jwc19tYXNrKCkgewojIHJlcGxhY2UgeDJkIHdpdGggaHlwaGVuICgtKSB3aGljaCBpcyBhbiBlc2NhcGVkIGNoYXJhY3RlcgojIHRoYXQgd2FzIGFkZGVkIGJ5IHN5c3RlbWQtZXNjYXBlIGluIG9yZGVyIHRvIGVzY2FwZSB0aGUgc3lzdGVtZCB1bml0IG5hbWUgdGhhdCBpbnZva2VzIHRoaXMgc2NyaXB0CnBhdGg9JHtwYXRoL3gyZC8tfQojIHNldCBycHMgYWZmaW5pdHkgZm9yIHRoZSBxdWV1ZQplY2hvICIke21hc2t9IiAgMj4gL2Rldi9udWxsID4gIi9zeXMvJHtwYXRofS9ycHNfY3B1cyIKIyB3ZSByZXR1cm4gMCBiZWNhdXNlIHRoZSAnZWNobycgY29tbWFuZCBtaWdodCBmYWlsIGlmIHRoZSBkZXZpY2UgcGF0aCB0byB3aGljaCB0aGUgcXVldWUgYmVsb25ncyBoYXMgY2hhbmdlZC4KIyB0aGlzIGNhbiBoYXBwZW4gaW4gY2FzZSBvZiBTUkktT1YgZGV2aWNlcyByZW5hbWluZy4KcmV0dXJuIDAKfQoKZnVuY3Rpb24gc2V0X25ldF9kZXZfcnBzX21hc2soKSB7CiAgIyBpbiBjYXNlIG9mIGRldmljZSB3ZSB3YW50IHRvIGl0ZXJhdGUgdGhyb3VnaCBhbGwgcXVldWVzCmZvciBpIGluIC9zeXMvIiR7cGF0aH0iL3F1ZXVlcy9yeC0qOyBkbwogIGVjaG8gIiR7bWFza30iIDI+IC9kZXYvbnVsbCA+ICIke2l9L3Jwc19jcHVzIgpkb25lCiMgd2UgcmV0dXJuIDAgYmVjYXVzZSB0aGUgJ2VjaG8nIGNvbW1hbmQgbWlnaHQgZmFpbCBpZiB0aGUgZGV2aWNlIHBhdGggdG8gd2hpY2ggdGhlIHF1ZXVlIGJlbG9uZ3MgaGFzIGNoYW5nZWQuCiMgdGhpcyBjYW4gaGFwcGVuIGluIGNhc2Ugb2YgU1JJLU9WIGRldmljZXMgcmVuYW1pbmcuCnJldHVybiAwCiB9CgpwYXRoPSR7MX0KWyAtbiAiJHtwYXRofSIgXSB8fCB7IGVjaG8gIlRoZSBkZXZpY2UgcGF0aCBhcmd1bWVudCBpcyBtaXNzaW5nIiA+JjIgOyBleGl0IDE7IH0KCm1hc2s9JHsyfQpbIC1uICIke21hc2t9IiBdIHx8IHsgZWNobyAiVGhlIG1hc2sgYXJndW1lbnQgaXMgbWlzc2luZyIgPiYyIDsgZXhpdCAxOyB9CgppZiBbWyAiJHtwYXRofSIgPX4gInF1ZXVlcyIgXV07IHRoZW4KIHNldF9xdWV1ZV9ycHNfbWFzawplbHNlCiBzZXRfbmV0X2Rldl9ycHNfbWFzawpmaQo=
-          verification: {}
-        group: {}
-        mode: 448
-        path: /usr/local/bin/set-rps-mask.sh
-        user: {}
-      - contents:
           source: data:text/plain;charset=utf-8;base64,IyEvdXNyL2Jpbi9iYXNoCgpzZXQgLWV1byBwaXBlZmFpbAoKZm9yIGNwdSBpbiAke09GRkxJTkVfQ1BVUy8vLC8gfTsKICBkbwogICAgb25saW5lX2NwdV9maWxlPSIvc3lzL2RldmljZXMvc3lzdGVtL2NwdS9jcHUkY3B1L29ubGluZSIKICAgIGlmIFsgISAtZiAiJHtvbmxpbmVfY3B1X2ZpbGV9IiBdOyB0aGVuCiAgICAgIGVjaG8gIkVSUk9SOiAke29ubGluZV9jcHVfZmlsZX0gZG9lcyBub3QgZXhpc3QsIGFib3J0IHNjcmlwdCBleGVjdXRpb24iCiAgICAgIGV4aXQgMQogICAgZmkKICBkb25lCgplY2hvICJBbGwgY3B1cyBvZmZsaW5lZCBleGlzdHMsIHNldCB0aGVtIG9mZmxpbmUiCgpmb3IgY3B1IGluICR7T0ZGTElORV9DUFVTLy8sLyB9OwogIGRvCiAgICBvbmxpbmVfY3B1X2ZpbGU9Ii9zeXMvZGV2aWNlcy9zeXN0ZW0vY3B1L2NwdSRjcHUvb25saW5lIgogICAgZWNobyAwID4gIiR7b25saW5lX2NwdV9maWxlfSIKICAgIGVjaG8gIm9mZmxpbmUgY3B1IG51bSAkY3B1IgogIGRvbmUKCg==
           verification: {}
         group: {}
@@ -55,20 +48,6 @@ spec:
         group: {}
         mode: 420
         path: /etc/crio/crio.conf.d/99-runtimes.conf
-        user: {}
-      - contents:
-          source: data:text/plain;charset=utf-8;base64,IyBBcHBseSB0aGUgUlBTIG1hc2sgb24gdGhlIHZpcnR1YWwgaW50ZXJmYWNlcyBvZiB0aGUgaG9zdCBieSBkZWZhdWx0LCBiZWNhc3VlCiMgZnJvbSB0aGUgY29udGFpbmVyIHBlcnNwZWN0aXZlIHRoZSBSUFMgbWFzayB0aGUgd2lsbCBiZSBjb25zdWx0ZWQsIGlzIHRoZSBvbmUgb24gdGhlIFJYIHNpZGUgb2YgdGhlIHZldGggaW4gdGhlIGhvc3QuCiMgQ29uc2lkZXIgdGhlIGZvbGxvd2luZyBkaWFncmFtOgojIFBvZCBBIDx2ZXRoMSAtIHZldGgyPiBob3N0IDx2ZXRoMyAtIHZldGg0PiBQb2QgQgojICB2ZXRoMidzIFJQUyBhZmZpbml0eSBpcyB0aGUgb25lIGRldGVybWluaW5nIHRoZSBDUFVzIHRoYXQgYXJlIGhhbmRsaW5nIHRoZSBwYWNrZXQgcHJvY2Vzc2luZyB3aGVuIHNlbmRpbmcgZGF0YSBmcm9tIFBvZCBBIHRvIHBvZCBCLgojIEFkZGl0aW9uYWwgY29tbW9uIHNjZW5hcmlvczoKIyAxLiBQb2QgQSA9IHNlbmRlciwgaG9zdCA9IHJlY2VpdmVyCiMgIFRoZSBSUFMgYWZmaW5pdHkgb2YgdGhlIGhvc3Qgc2lkZSBzaG91bGQgYmUgY29uc3VsdGVkIChiZWNhdXNlIGl04oCZcyB0aGUgcmVjZWl2ZXIpIGFuZCBpdCBzaG91bGQgYmUgc2V0IHRvIGNwdXMgbm90IHNlbnNpdGl2ZSB0byBwcmVlbXB0aW9uIChyZXNlcnZlZCBwb29sKS4KIyAyLiBQb2QgQSA9IHJlY2VpdmVyLCBob3N0ID0gc2VuZGVyCiMgIEluIGNhc2Ugb2Ygbm8gUlBTIG1hc2sgb24gdGhlIHJlY2VpdmVyIHNpZGUsIHRoZSBzZW5kZXIgbmVlZHMgdG8gcGF5IHRoZSBwcmljZSBhbmQgZG8gYWxsIHRoZSBwcm9jZXNzaW5nIG9uIGl0cyBjb3Jlcy4KbmV0LmNvcmUucnBzX2RlZmF1bHRfbWFzayA9IDAwMDAwMDBjCg==
-          verification: {}
-        group: {}
-        mode: 420
-        path: /etc/sysctl.d/99-default-rps-mask.conf
-        user: {}
-      - contents:
-          source: data:text/plain;charset=utf-8;base64,U1VCU1lTVEVNPT0icXVldWVzIiwgQUNUSU9OPT0iYWRkIiwgRU5We0RFVlBBVEh9PT0iL2RldmljZXMvcGNpKi9xdWV1ZXMvcngqIiwgVEFHKz0ic3lzdGVtZCIsIFBST0dSQU09Ii9iaW4vc3lzdGVtZC1lc2NhcGUgLS1wYXRoIC0tdGVtcGxhdGU9dXBkYXRlLXJwc0Auc2VydmljZSAkZW52e0RFVlBBVEh9IiwgRU5We1NZU1RFTURfV0FOVFN9PSIlYyIKCiMgU1ItSU9WIGRldmljZXMgYXJlIG1vdmVkIChyZW5hbWVkKSwgaGVuY2Ugd2Ugd2FudCB0byBjYXRjaCB0aGlzIGV2ZW50IGFzIHdlbGwKU1VCU1lTVEVNPT0ibmV0IiwgQUNUSU9OPT0ibW92ZSIsIEVOVntERVZQQVRIfSE9Ii9kZXZpY2VzL3ZpcnR1YWwvbmV0LyoiLCBUQUcrPSJzeXN0ZW1kIiwgUFJPR1JBTT0iL2Jpbi9zeXN0ZW1kLWVzY2FwZSAtLXBhdGggLS10ZW1wbGF0ZT11cGRhdGUtcnBzQC5zZXJ2aWNlICRlbnZ7REVWUEFUSH0iLCBFTlZ7U1lTVEVNRF9XQU5UU309IiVjIgo=
-          verification: {}
-        group: {}
-        mode: 420
-        path: /etc/udev/rules.d/99-netdev-physical-rps.rules
         user: {}
       - contents:
           source: data:text/plain;charset=utf-8;base64,CltjcmlvLnJ1bnRpbWUud29ya2xvYWRzLm1hbmFnZW1lbnRdCmFjdGl2YXRpb25fYW5ub3RhdGlvbiA9ICJ0YXJnZXQud29ya2xvYWQub3BlbnNoaWZ0LmlvL21hbmFnZW1lbnQiCmFubm90YXRpb25fcHJlZml4ID0gInJlc291cmNlcy53b3JrbG9hZC5vcGVuc2hpZnQuaW8iCnJlc291cmNlcyA9IHsgImNwdXNoYXJlcyIgPSAwLCAiY3B1c2V0IiA9ICIyLTMiIH0K
@@ -128,14 +107,6 @@ spec:
         user: {}
     systemd:
       units:
-      - contents: |
-          [Unit]
-          Description=Sets network devices RPS mask
-
-          [Service]
-          Type=oneshot
-          ExecStart=/usr/local/bin/set-rps-mask.sh %I 0
-        name: update-rps@.service
       - contents: |
           [Unit]
           Description=Move services to reserved cpuset
