@@ -87,7 +87,7 @@ main() {
     MESSAGE="${HEADER_MESSAGE}: ${GINKGO_SUITS}"
     print ${MESSAGE}
 
-    GINKGO_FLAGS="${NO_COLOR} ${DRY_RUN} ${EXTRA_PARAMS} --require-suite ${GINKGO_SUITS} ${REPORT_PARAMS}"
+    GINKGO_FLAGS="${NO_COLOR} ${DRY_RUN} ${EXTRA_PARAMS} --require-suite ${REPORT_PARAMS} ${GINKGO_SUITS}"
     print "Command to run: GOFLAGS=-mod=vendor ginkgo ${GINKGO_FLAGS}"
 
     if [ "$ONLY_CLI_PRINT" = true ]; then

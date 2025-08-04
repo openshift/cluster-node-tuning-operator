@@ -81,18 +81,26 @@ var x86ValidKernelPageSizes = []string{
 
 var validatorContext = context.TODO()
 
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *PerformanceProfile) ValidateCreate() (admission.Warnings, error) {
-	klog.Infof("Create validation for the performance profile %q", r.Name)
+// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type
+func (r *PerformanceProfile) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+	profile, ok := obj.(*PerformanceProfile)
+	if !ok {
+		return admission.Warnings{}, fmt.Errorf("expected PerformanceProfile, got %T", obj)
+	}
+	klog.Infof("Create validation for the performance profile %q", profile.Name)
 
-	return r.validateCreateOrUpdate()
+	return profile.validateCreateOrUpdate()
 }
 
-// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *PerformanceProfile) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-	klog.Infof("Update validation for the performance profile %q", r.Name)
+// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type
+func (r *PerformanceProfile) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+	profile, ok := newObj.(*PerformanceProfile)
+	if !ok {
+		return admission.Warnings{}, fmt.Errorf("expected PerformanceProfile, got %T", newObj)
+	}
+	klog.Infof("Update validation for the performance profile %q", profile.Name)
 
-	return r.validateCreateOrUpdate()
+	return profile.validateCreateOrUpdate()
 }
 
 func (r *PerformanceProfile) validateCreateOrUpdate() (admission.Warnings, error) {
@@ -118,9 +126,13 @@ func (r *PerformanceProfile) validateCreateOrUpdate() (admission.Warnings, error
 		r.Name, allErrs)
 }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *PerformanceProfile) ValidateDelete() (admission.Warnings, error) {
-	klog.Infof("Delete validation for the performance profile %q", r.Name)
+// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type
+func (r *PerformanceProfile) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+	profile, ok := obj.(*PerformanceProfile)
+	if !ok {
+		return admission.Warnings{}, fmt.Errorf("expected PerformanceProfile, got %T", obj)
+	}
+	klog.Infof("Delete validation for the performance profile %q", profile.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
 	return admission.Warnings{}, nil
