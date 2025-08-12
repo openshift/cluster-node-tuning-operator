@@ -67,6 +67,8 @@ const (
 	ClusterVersionAvailable ConditionType = "ClusterVersionAvailable"
 	// ClusterVersionReleaseAccepted bubbles up Failing ReleaseAccepted from the CVO.
 	ClusterVersionReleaseAccepted ConditionType = "ClusterVersionReleaseAccepted"
+	// ClusterVersionRetrievedUpdates bubbles up RetrievedUpdates from the CVO.
+	ClusterVersionRetrievedUpdates ConditionType = "ClusterVersionRetrievedUpdates"
 
 	// UnmanagedEtcdAvailable indicates whether a user-managed etcd cluster is
 	// healthy.
@@ -99,6 +101,11 @@ const (
 	// A failure here may require external user intervention to resolve. E.g. oidc was deleted out of band.
 	ValidOIDCConfiguration ConditionType = "ValidOIDCConfiguration"
 
+	// ValidIDPConfiguration indicates if the Identity Provider configuration is valid.
+	// A failure here may require external user intervention to resolve
+	// e.g. the user-provided IDP configuration provided is invalid or the IDP is not reachable.
+	ValidIDPConfiguration ConditionType = "ValidIDPConfiguration"
+
 	// ValidReleaseImage indicates if the release image set in the spec is valid
 	// for the HostedCluster. For example, this can be set false if the
 	// HostedCluster itself attempts an unsupported version before 4.9 or an
@@ -110,6 +117,10 @@ const (
 	// hosting a guest cluster utilizing kubevirt platform is a sufficient value that will avoid
 	// performance degradation due to fragmentation of the double encapsulation in ovn-kubernetes
 	ValidKubeVirtInfraNetworkMTU ConditionType = "ValidKubeVirtInfraNetworkMTU"
+
+	// KubeVirtNodesLiveMigratable indicates if all nodes (VirtualMachines) of the kubevirt
+	// hosted cluster can be live migrated without experiencing a node restart
+	KubeVirtNodesLiveMigratable ConditionType = "KubeVirtNodesLiveMigratable"
 
 	// ValidAWSIdentityProvider indicates if the Identity Provider referenced
 	// in the cloud credentials is healthy. E.g. for AWS the idp ARN is referenced in the iam roles.
@@ -165,6 +176,10 @@ const (
 	// A failure here often means a software bug or a non-stable cluster.
 	ReconciliationSucceeded ConditionType = "ReconciliationSucceeded"
 
+	// EtcdRecoveryActive indicates that the Etcd cluster is failing and the
+	// recovery job was triggered.
+	EtcdRecoveryActive ConditionType = "EtcdRecoveryActive"
+
 	// ClusterSizeComputed indicates that a t-shirt size was computed for this HostedCluster.
 	// The last transition time for this condition is used to manage how quickly transitions occur.
 	ClusterSizeComputed = "ClusterSizeComputed"
@@ -174,6 +189,12 @@ const (
 	ClusterSizeTransitionPending = "ClusterSizeTransitionPending"
 	// ClusterSizeTransitionRequired exposes the next t-shirt size that the cluster will transition to.
 	ClusterSizeTransitionRequired = "ClusterSizeTransitionRequired"
+
+	// HostedClusterRestoredFromBackup indicates that the HostedCluster was restored from backup.
+	// This condition is set to true when the HostedCluster is restored from backup and the recovery process is complete.
+	// This condition is used to track the status of the recovery process and to determine if the HostedCluster
+	// is ready to be used after restoration.
+	HostedClusterRestoredFromBackup ConditionType = "HostedClusterRestoredFromBackup"
 )
 
 // Reasons.
@@ -192,6 +213,7 @@ const (
 	EtcdQuorumAvailableReason     = "QuorumAvailable"
 	EtcdWaitingForQuorumReason    = "EtcdWaitingForQuorum"
 	EtcdStatefulSetNotFoundReason = "StatefulSetNotFound"
+	EtcdRecoveryJobFailedReason   = "EtcdRecoveryJobFailed"
 
 	UnmanagedEtcdMisconfiguredReason = "UnmanagedEtcdMisconfigured"
 	UnmanagedEtcdAsExpected          = "UnmanagedEtcdAsExpected"
@@ -206,6 +228,7 @@ const (
 	PlatformCredentialsNotFoundReason     = "PlatformCredentialsNotFound"
 	InvalidImageReason                    = "InvalidImage"
 	InvalidIdentityProvider               = "InvalidIdentityProvider"
+	PayloadArchNotFoundReason             = "PayloadArchNotFound"
 
 	InvalidIAMRoleReason = "InvalidIAMRole"
 
@@ -222,6 +245,10 @@ const (
 	ReconciliationInvalidPausedUntilConditionReason = "InvalidPausedUntilValue"
 
 	KubeVirtSuboptimalMTUReason = "KubeVirtSuboptimalMTUDetected"
+
+	KubeVirtNodesLiveMigratableReason = "KubeVirtNodesNotLiveMigratable"
+
+	RecoveryFinishedReason = "RecoveryFinished"
 )
 
 // Messages.
