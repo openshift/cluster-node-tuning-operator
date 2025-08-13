@@ -19,7 +19,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/cpuset"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -84,7 +83,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 
 		performanceMCP, err = mcps.GetByProfile(profile)
 		Expect(err).ToNot(HaveOccurred())
-		
+
 		ovsSystemdServices = ovsSystemdServicesOnOvsSlice(ctx, workerRTNode)
 
 	})
@@ -460,7 +459,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					pidList, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
 					Expect(err).ToNot(HaveOccurred())
 					cpumaskList, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
-					Expect(err).ToNot(HaveOccurred())
+					Expect(err).ToNot(HaveOccurred())					
 					Eventually(func() bool {
 						for _, cpumask := range cpumaskList {
 							testlog.Warningf("ovs services cpu mask is %s instead of %s", cpumask.String(), onlineCPUSet.String())
@@ -510,14 +509,33 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				By("Waiting for mcp to be updated")
 				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
 
-				// After reboot we want the deployment to be ready before moving forward
-				desiredStatus := appsv1.DeploymentStatus{
-					Replicas:          3,
-					AvailableReplicas: 3,
+				// After reboot verify test pod created using deployment is running
+				// Get pods from the deployment
+				listOptions := &client.ListOptions{
+					Namespace:     dp.Namespace,
+					FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": workerRTNode.Name}),
+					LabelSelector: labels.SelectorFromSet(labels.Set{"type": "telco"}),
 				}
-
-				err = waitForCondition(dp, desiredStatus)
-				Expect(err).ToNot(HaveOccurred())
+				podList := &corev1.PodList{}
+				dpObj := client.ObjectKeyFromObject(dp)
+				Eventually(func() bool {
+					if err := testclient.DataPlaneClient.List(context.TODO(), podList, listOptions); err != nil {
+						return false
+					}
+					if err = testclient.DataPlaneClient.Get(context.TODO(), dpObj, dp); err != nil {
+						return false
+					}
+					if dp.Status.ReadyReplicas != int32(2) {
+						testlog.Warningf("Waiting for deployment: %q to have %d replicas ready, current number of replicas: %d", dpObj.String(), int32(2), dp.Status.ReadyReplicas)
+						return false
+					}
+					for _, s := range podList.Items[0].Status.ContainerStatuses {
+						if !s.Ready {
+							return false
+						}
+					}
+					return true
+				}, 5*time.Minute, 10*time.Second).Should(BeTrue())
 				ovnPodAfterReboot, err := ovnCnfNodePod(ctx, workerRTNode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get ovnPod")
 				ovnContainerIdsAfterReboot, err := ovnPodContainers(&ovnPodAfterReboot)
@@ -858,24 +876,6 @@ func newDeployment() *appsv1.Deployment {
 		},
 	}
 	return dp
-}
-
-// waitForCondition wait for deployment to be ready
-func waitForCondition(deployment *appsv1.Deployment, status appsv1.DeploymentStatus) error {
-	var err error
-	var val bool
-	err = wait.PollUntilContextTimeout(context.TODO(), 5*time.Second, 5*time.Minute, true, func(ctx context.Context) (bool, error) {
-		if err != nil {
-			if errors.IsNotFound(err) {
-				return false, fmt.Errorf("deployment not found")
-			}
-			return false, err
-		}
-		val = deployment.Status.Replicas == status.Replicas && deployment.Status.AvailableReplicas == status.AvailableReplicas
-		return val, err
-	})
-
-	return err
 }
 
 // ovsSystemdServicesOnOvsSlice returns the systemd services dependent on ovs.slice cgroup
