@@ -458,9 +458,9 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					// wait till the ovs process affinity is reverted back
 					pidList, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
 					Expect(err).ToNot(HaveOccurred())
-					cpumaskList, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
-					Expect(err).ToNot(HaveOccurred())					
 					Eventually(func() bool {
+						cpumaskList, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
+						Expect(err).ToNot(HaveOccurred(), "Unable to fetch affinity of ovs services")
 						for _, cpumask := range cpumaskList {
 							testlog.Warningf("ovs services cpu mask is %s instead of %s", cpumask.String(), onlineCPUSet.String())
 							// since cpuset.CPUSet contains map in its struct field we can't compare
@@ -472,7 +472,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 							}
 						}
 						return true
-					}, 2*time.Minute, 10*time.Second).Should(BeTrue())
+					}, 5*time.Minute, 10*time.Second).Should(BeTrue())
 				}()
 
 				ovnPod, err := ovnCnfNodePod(ctx, workerRTNode)
