@@ -221,6 +221,9 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 		When("align-cpus-by-uncorecache annotations is removed", func() {
 			It("[test_id:77723] should disable align-cpus-by-uncorecache cpumanager policy option", func() {
 				ctx := context.Background()
+				// Get latest profile
+				perfProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+				Expect(err).ToNot(HaveOccurred())
 				// Delete the Annotations
 				if perfProfile.Annotations != nil {
 					perfProfile.Annotations = nil
@@ -234,12 +237,23 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
 					profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
 				}
-
-				for _, node := range workerRTNodes {
-					kubeletconfig, err := nodes.GetKubeletConfig(ctx, &node)
-					Expect(err).ToNot(HaveOccurred())
-					Expect(kubeletconfig.CPUManagerPolicyOptions).ToNot(HaveKey("prefer-align-cpus-by-uncorecache"))
-				}
+				// Use Eventually in case of any delays in updating kubelet
+				Eventually(func() bool {
+					for _, node := range workerRTNodes {
+						kubeletconfig, err := nodes.GetKubeletConfig(ctx, &node)
+						if err != nil {
+							testlog.Errorf("Failed to get kubelet config from node %s: %v", node.Name, err)
+							return false
+						}
+						if kubeletconfig.CPUManagerPolicyOptions != nil {
+							if _, exists := kubeletconfig.CPUManagerPolicyOptions["prefer-align-cpus-by-uncorecache"]; exists {
+								testlog.Infof("Node %s still has prefer-align-cpus-by-uncorecache", node.Name)
+								return false
+							}
+						}
+					}
+					return true
+				}, 5*time.Minute, 30*time.Second).Should(BeTrue(), "prefer-align-cpus-by-uncore option should be removed from all nodes")
 			})
 		})
 
