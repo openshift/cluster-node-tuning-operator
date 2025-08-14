@@ -66,8 +66,11 @@ func buildServer(port int, caBundle string) *http.Server {
 
 	tlsConfig := &tls.Config{}
 	caCertPool := x509.NewCertPool()
+	var clientAuthHandler http.Handler = handler
+
 	if caCertPool.AppendCertsFromPEM([]byte(caBundle)) {
-		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+		// Request client certificates; verify in handler to return "401 Unauthorized" instead of a TLS alert.
+		tlsConfig.ClientAuth = tls.RequestClientCert
 		tlsConfig.ClientCAs = caCertPool
 		// Default minimum version is TLS 1.3.  PQ algorithms will only be supported in TLS 1.3+.
 		// Hybrid key agreements for TLS 1.3 X25519MLKEM768 is supported by default in go 1.24.
@@ -82,6 +85,35 @@ func buildServer(port int, caBundle string) *http.Server {
 			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
 		}
 		tlsConfig.NextProtos = []string{"http/1.1"} // CVE-2023-44487
+
+		// Wrap the handler to check for client certificates.
+		clientAuthHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+				// No client certificate provided, return 401 Unauthorized.
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			// With RequestClientCert we now have PeerCertificate(s) that have not
+			// been verified by the TLS layer.
+
+			intermediates := x509.NewCertPool()
+			for _, cert := range r.TLS.PeerCertificates[1:] {
+				intermediates.AddCert(cert)
+			}
+			verifyOpts := x509.VerifyOptions{
+				Roots:         caCertPool,
+				Intermediates: intermediates,
+				KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+			}
+			if _, err := r.TLS.PeerCertificates[0].Verify(verifyOpts); err != nil {
+				klog.Errorf("Client certificate verification failed: %v", err)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			// Valid client certificate received, serve metrics.
+			handler.ServeHTTP(w, r)
+		})
 	} else {
 		klog.Errorf("failed to parse root certificate bundle of the metrics server, client authentication will be disabled")
 	}
@@ -91,7 +123,7 @@ func buildServer(port int, caBundle string) *http.Server {
 
 	bindAddr := fmt.Sprintf(":%d", port)
 	router := http.NewServeMux()
-	router.Handle("/metrics", handler)
+	router.Handle("/metrics", clientAuthHandler)
 	srv := &http.Server{
 		Addr:      bindAddr,
 		Handler:   router,
