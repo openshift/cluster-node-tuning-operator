@@ -241,10 +241,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				Eventually(func() bool {
 					for _, node := range workerRTNodes {
 						kubeletconfig, err := nodes.GetKubeletConfig(ctx, &node)
-						if err != nil {
-							testlog.Errorf("Failed to get kubelet config from node %s: %v", node.Name, err)
-							return false
-						}
+						Expect(err).ToNot(HaveOccurred(), "Failed to get kubelet config from node %s", node.Name)
 						if kubeletconfig.CPUManagerPolicyOptions != nil {
 							if _, exists := kubeletconfig.CPUManagerPolicyOptions["prefer-align-cpus-by-uncorecache"]; exists {
 								testlog.Infof("Node %s still has prefer-align-cpus-by-uncorecache", node.Name)
