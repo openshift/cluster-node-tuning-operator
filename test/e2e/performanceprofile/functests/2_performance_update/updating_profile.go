@@ -1028,15 +1028,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			}
 			profile.Annotations[performancev2.PerformanceProfileEnableRpsAnnotation] = "enable"
 
-			By("Updating the performance profile to enable RPS")
-			profiles.UpdateWithRetry(profile)
-
-			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
-
-			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-			profilesupdate.WaitForTuningUpdated(context.TODO(), profile)
-
 			var reserved, isolated cpuset.CPUSet
 			var onlineCPUInt int
 			for _, node := range workerRTNodes {
@@ -1136,17 +1127,19 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 			// Ensure the profile doesn't have RPS enabled
 			if profile.Annotations != nil {
-				delete(profile.Annotations, performancev2.PerformanceProfileEnableRpsAnnotation)
+				if val, ok := profile.Annotations[performancev2.PerformanceProfileEnableRpsAnnotation]; ok && val == "enable" {
+					delete(profile.Annotations, performancev2.PerformanceProfileEnableRpsAnnotation)
+
+					By("Updating the performance profile to ensure RPS is disabled")
+					profiles.UpdateWithRetry(profile)
+
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+					profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
+
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.WaitForTuningUpdated(context.TODO(), profile)
+				}
 			}
-
-			By("Updating the performance profile to ensure RPS is disabled")
-			profiles.UpdateWithRetry(profile)
-
-			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
-
-			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-			profilesupdate.WaitForTuningUpdated(context.TODO(), profile)
 
 			for _, node := range workerRTNodes {
 				// Verify the systemd RPS services were not created
