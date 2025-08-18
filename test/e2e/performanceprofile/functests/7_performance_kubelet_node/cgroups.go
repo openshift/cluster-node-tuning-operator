@@ -22,8 +22,6 @@ import (
 	"k8s.io/utils/cpuset"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
-
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
@@ -32,7 +30,6 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/poolname"
@@ -54,7 +51,6 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 		workerRTNodes           []corev1.Node
 		profile, initialProfile *performancev2.PerformanceProfile
 		poolName                string
-		performanceMCP          string
 		ovsSliceCgroup          string
 		ctx                     context.Context = context.Background()
 		ovsSystemdServices      []string
@@ -79,9 +75,6 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 		poolName = poolname.GetByProfile(ctx, profile)
 
 		isCgroupV2, err = cgroup.IsVersion2(ctx, testclient.DataPlaneClient)
-		Expect(err).ToNot(HaveOccurred())
-
-		performanceMCP, err = mcps.GetByProfile(profile)
 		Expect(err).ToNot(HaveOccurred())
 
 		ovsSystemdServices = ovsSystemdServicesOnOvsSlice(ctx, workerRTNode)
@@ -503,11 +496,8 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				_, _ = nodes.ExecCommand(ctx, workerRTNode, []string{"sh", "-c", rebootCmd})
 				testlog.Info("Node Rebooted")
 
-				By("Rebooted node manually and waiting for mcp to get Updating status")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue)
-
-				By("Waiting for mcp to be updated")
-				mcps.WaitForCondition(performanceMCP, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
+				By("Waiting for node to be ready after reboot")
+				nodes.WaitForReadyOrFail("Reboot", workerRTNode.Name, 10*time.Minute, 30*time.Second)
 
 				// After reboot verify test pod created using deployment is running
 				// Get pods from the deployment
