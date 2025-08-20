@@ -24,6 +24,8 @@ import (
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/namespaces"
 	testpods "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 const serviceAccountSuffix = "sa"
@@ -108,9 +110,11 @@ func create(ctx context.Context) error {
 		testlog.Infof("✅ DaemonSet %s created successfully", testutils.NodeInspectorName)
 	}
 
-	testlog.Info("Waiting for node inspector DaemonSet to be running...")
-	if err := daemonset.WaitToBeRunning(ctx, testclient.DataPlaneClient, testutils.NodeInspectorNamespace, testutils.NodeInspectorName); err != nil {
-		return fmt.Errorf("failed to wait for DaemonSet %s to be running: %v", testutils.NodeInspectorName, err)
+	testlog.Info("Waiting for node inspector DaemonSet to be created and deployed...")
+	// Use a more lenient check - just ensure the DaemonSet exists and has been deployed
+	// We don't need ALL pods to be ready since ExecCommand now works per-node
+	if err := waitForDaemonSetDeployment(ctx, testclient.DataPlaneClient, testutils.NodeInspectorNamespace, testutils.NodeInspectorName); err != nil {
+		return fmt.Errorf("failed to wait for DaemonSet %s to be deployed: %v", testutils.NodeInspectorName, err)
 	}
 
 	testlog.Info("✅ Node inspector initialized successfully")
@@ -173,28 +177,84 @@ func getDaemonPodByNode(ctx context.Context, node *corev1.Node) (*corev1.Pod, er
 
 // ExecCommand executing the command on a daemon pod of the given node
 func ExecCommand(ctx context.Context, node *corev1.Node, command []string) ([]byte, error) {
-	// Ensure the node inspector is running
-	ok, err := isRunning(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check if node inspector is running: %v", err)
+	// Ensure the node inspector is initialized
+	if !initialized {
+		if err := initialize(ctx); err != nil {
+			return nil, fmt.Errorf("failed to initialize node inspector: %v", err)
+		}
 	}
-	if !ok {
-		// Provide detailed debugging information when node inspector is not running
+
+	// Get the specific pod for this node
+	pod, err := getDaemonPodByNode(ctx, node)
+	if err != nil {
+		// Provide detailed debugging information when pod is not found
 		debugInfo, debugErr := getDetailedDebugInfo(ctx, node)
 		if debugErr != nil {
 			testlog.Errorf("Failed to gather debug information: %v", debugErr)
-			return nil, fmt.Errorf("node inspector is not running (failed to gather debug info: %v)", debugErr)
+			return nil, fmt.Errorf("failed to get daemon pod for node %s (failed to gather debug info: %v)", node.Name, debugErr)
 		}
-		testlog.Errorf("Node inspector is not running. Debug information:\n%s", debugInfo)
-		return nil, fmt.Errorf("node inspector is not running. Check logs above for detailed debug information")
+		testlog.Errorf("Failed to get daemon pod for node %s. Debug information:\n%s", node.Name, debugInfo)
+		return nil, fmt.Errorf("failed to get daemon pod for node %s. Check logs above for detailed debug information", node.Name)
 	}
-	pod, err := getDaemonPodByNode(ctx, node)
-	if err != nil {
-		return nil, err
+
+	// Check if the specific pod's container is ready and running
+	if !isPodContainerReady(pod) {
+		// Provide detailed debugging information when container is not ready
+		debugInfo, debugErr := getDetailedDebugInfo(ctx, node)
+		if debugErr != nil {
+			testlog.Errorf("Failed to gather debug information: %v", debugErr)
+			return nil, fmt.Errorf("pod container for node %s is not ready (failed to gather debug info: %v)", node.Name, debugErr)
+		}
+		testlog.Errorf("Pod container for node %s is not ready. Debug information:\n%s", node.Name, debugInfo)
+		return nil, fmt.Errorf("pod container for node %s is not ready. Check logs above for detailed debug information", node.Name)
 	}
-	testlog.Infof("found daemon pod %s for node %s", pod.Name, node.Name)
+
+	testlog.Infof("found daemon pod %s for node %s (container ready: %v)", pod.Name, node.Name, isPodContainerReady(pod))
 
 	return testpods.WaitForPodOutput(ctx, testclient.K8sClient, pod, command)
+}
+
+// waitForDaemonSetDeployment waits for the DaemonSet to exist and start deploying pods
+// This is more lenient than WaitToBeRunning as it doesn't require all pods to be ready
+func waitForDaemonSetDeployment(ctx context.Context, cli client.Client, namespace, name string) error {
+	testlog.Infof("waiting for the daemonset %q %q to be deployed", namespace, name)
+	return wait.PollUntilContextTimeout(ctx, 10*time.Second, 2*time.Minute, true, func(derivedCtx context.Context) (bool, error) {
+		ds, err := daemonset.GetByName(derivedCtx, cli, namespace, name)
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				testlog.Warningf("daemonset %q %q not found - retrying", namespace, name)
+				return false, nil
+			}
+			return false, err
+		}
+
+		// Check if DaemonSet has been scheduled to at least some nodes
+		if ds.Status.DesiredNumberScheduled == 0 {
+			testlog.Warningf("DaemonSet %s/%s has 0 desired pods - no nodes match the selector", namespace, name)
+			return false, nil
+		}
+
+		// Check if at least some pods are running (not necessarily all)
+		if ds.Status.CurrentNumberScheduled > 0 {
+			testlog.Infof("DaemonSet %s/%s is deploying: Desired=%d, Current=%d, Ready=%d",
+				namespace, name, ds.Status.DesiredNumberScheduled, ds.Status.CurrentNumberScheduled, ds.Status.NumberReady)
+			return true, nil
+		}
+
+		testlog.Warningf("DaemonSet %s/%s: no pods scheduled yet", namespace, name)
+		return false, nil
+	})
+}
+
+// isPodContainerReady checks if the pod's main container is ready and running
+// This is more lenient than isPodReady as it only checks container status
+func isPodContainerReady(pod *corev1.Pod) bool {
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if containerStatus.Name == "node-daemon" {
+			return containerStatus.Ready && containerStatus.State.Running != nil
+		}
+	}
+	return false
 }
 
 // getDetailedDebugInfo gathers comprehensive debugging information about the node inspector state
