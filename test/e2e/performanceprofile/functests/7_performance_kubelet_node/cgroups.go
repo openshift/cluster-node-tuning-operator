@@ -460,7 +460,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 							// the structs directly. After the deployment is deleted, the cpu mask
 							// of ovs services should contain all cpus , which is generally 0-N (where
 							// N is total number of cpus, this should be easy to compare.
-							if cpumask.String() != onlineCPUSet.String() {
+							if !cpumask.Equals(onlineCPUSet) {
 								return false
 							}
 						}
