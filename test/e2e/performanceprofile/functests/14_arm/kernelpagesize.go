@@ -30,7 +30,7 @@ const (
 	kernelPageSizeBytes64k = "65536"
 )
 
-var _ = Describe("[rfe_id:80342] kernelPageSize configuration validation on aarch64", Ordered, Label(string(label.OpenShift), string(label.KernelPageSize), string(label.SpecializedHardware)), func() {
+var _ = Describe("[rfe_id:80342] kernelPageSize configuration validation on aarch64", Ordered, Label(string(label.OpenShift), string(label.KernelPageSize), string(label.SpecializedHardware), string(label.ARM)), func() {
 	var (
 		workerRTNodes               []corev1.Node
 		perfProfile, initialProfile *performancev2.PerformanceProfile
