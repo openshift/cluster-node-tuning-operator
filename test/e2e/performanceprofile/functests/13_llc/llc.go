@@ -917,6 +917,15 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			testPod *corev1.Pod
 		)
 
+		BeforeAll(func(ctx context.Context) {
+			testNS := *namespaces.TestingNamespace
+			Expect(testclient.DataPlaneClient.Create(ctx, &testNS)).ToNot(HaveOccurred())
+			DeferCleanup(func() {
+				Expect(testclient.DataPlaneClient.Delete(ctx, &testNS)).ToNot(HaveOccurred())
+				Expect(namespaces.WaitForDeletion(testutils.NamespaceTesting, 5*time.Minute)).ToNot(HaveOccurred())
+			})
+		})
+
 		BeforeEach(func() {
 			targetNodeName = workerRTNodes[0].Name // pick random node
 			var ok bool
