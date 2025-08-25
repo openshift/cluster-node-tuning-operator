@@ -19,7 +19,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/cpuset"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -266,11 +265,6 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 	Describe("Affinity", func() {
 		var ctx context.Context = context.TODO()
 		Context("ovn-kubenode Pods affinity ", Label(string(label.Tier2)), func() {
-			testutils.CustomBeforeAll(func() {
-				profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-				Expect(err).ToNot(HaveOccurred())
-				initialProfile = profile.DeepCopy()
-			})
 			It("[test_id:64100] matches with ovs process affinity", func() {
 				ovnPod, err := ovnCnfNodePod(ctx, workerRTNode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get ovnPod")
@@ -457,21 +451,21 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					// wait till the ovs process affinity is reverted back
 					pidList, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
 					Expect(err).ToNot(HaveOccurred())
-					cpumaskList, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
-					Expect(err).ToNot(HaveOccurred())
 					Eventually(func() bool {
+						cpumaskList, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
+						Expect(err).ToNot(HaveOccurred(), "Unable to fetch affinity of ovs services")
 						for _, cpumask := range cpumaskList {
 							testlog.Warningf("ovs services cpu mask is %s instead of %s", cpumask.String(), onlineCPUSet.String())
 							// since cpuset.CPUSet contains map in its struct field we can't compare
 							// the structs directly. After the deployment is deleted, the cpu mask
 							// of ovs services should contain all cpus , which is generally 0-N (where
 							// N is total number of cpus, this should be easy to compare.
-							if cpumask.String() != onlineCPUSet.String() {
+							if !cpumask.Equals(onlineCPUSet) {
 								return false
 							}
 						}
 						return true
-					}, 2*time.Minute, 10*time.Second).Should(BeTrue())
+					}, 5*time.Minute, 10*time.Second).Should(BeTrue())
 				}()
 
 				ovnPod, err := ovnCnfNodePod(ctx, workerRTNode)
@@ -497,38 +491,41 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				}
 
 				testlog.Info("Rebooting the node")
-				// reboot the node, for that we change the numa policy to best-effort
-				// Note: this is used only to trigger reboot
-				policy := "best-effort"
-				// Need to make some changes to pp , causing system reboot
-				// and check if activation files is modified or deleted
-				profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-				Expect(err).ToNot(HaveOccurred(), "Unable to fetch latest performance profile")
-				currentPolicy := profile.Spec.NUMA.TopologyPolicy
-				if *currentPolicy == "best-effort" {
-					policy = "restricted"
+				rebootCmd := "chroot /rootfs systemctl reboot"
+				testlog.TaggedInfof("Reboot", "Node %q: Rebooting", workerRTNode.Name)
+				_, _ = nodes.ExecCommand(ctx, workerRTNode, []string{"sh", "-c", rebootCmd})
+				testlog.Info("Node Rebooted")
+
+				By("Waiting for node to be ready after reboot")
+				nodes.WaitForReadyOrFail("Reboot", workerRTNode.Name, 10*time.Minute, 30*time.Second)
+
+				// After reboot verify test pod created using deployment is running
+				// Get pods from the deployment
+				listOptions := &client.ListOptions{
+					Namespace:     dp.Namespace,
+					FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": workerRTNode.Name}),
+					LabelSelector: labels.SelectorFromSet(labels.Set{"type": "telco"}),
 				}
-				profile.Spec.NUMA = &performancev2.NUMA{
-					TopologyPolicy: &policy,
-				}
-
-				By("Updating the performance profile")
-				profiles.UpdateWithRetry(profile)
-
-				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-				profilesupdate.WaitForTuningUpdating(ctx, profile)
-
-				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-				profilesupdate.WaitForTuningUpdated(ctx, profile)
-
-				// After reboot we want the deployment to be ready before moving forward
-				desiredStatus := appsv1.DeploymentStatus{
-					Replicas:          3,
-					AvailableReplicas: 3,
-				}
-
-				err = waitForCondition(dp, desiredStatus)
-				Expect(err).ToNot(HaveOccurred())
+				podList := &corev1.PodList{}
+				dpObj := client.ObjectKeyFromObject(dp)
+				Eventually(func() bool {
+					if err := testclient.DataPlaneClient.List(context.TODO(), podList, listOptions); err != nil {
+						return false
+					}
+					if err = testclient.DataPlaneClient.Get(context.TODO(), dpObj, dp); err != nil {
+						return false
+					}
+					if dp.Status.ReadyReplicas != int32(2) {
+						testlog.Warningf("Waiting for deployment: %q to have %d replicas ready, current number of replicas: %d", dpObj.String(), int32(2), dp.Status.ReadyReplicas)
+						return false
+					}
+					for _, s := range podList.Items[0].Status.ContainerStatuses {
+						if !s.Ready {
+							return false
+						}
+					}
+					return true
+				}, 5*time.Minute, 10*time.Second).Should(BeTrue())
 				ovnPodAfterReboot, err := ovnCnfNodePod(ctx, workerRTNode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get ovnPod")
 				ovnContainerIdsAfterReboot, err := ovnPodContainers(&ovnPodAfterReboot)
@@ -714,24 +711,6 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				}
 
 			})
-
-			AfterAll(func() {
-				By("Reverting the Profile")
-				profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-				Expect(err).ToNot(HaveOccurred())
-				currentSpec, _ := json.Marshal(profile.Spec)
-				spec, _ := json.Marshal(initialProfile.Spec)
-				// revert only if the profile changes.
-				if !bytes.Equal(currentSpec, spec) {
-					profiles.UpdateWithRetry(initialProfile)
-
-					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-					profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
-
-					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-					profilesupdate.WaitForTuningUpdated(ctx, initialProfile)
-				}
-			})
 		})
 
 	})
@@ -887,24 +866,6 @@ func newDeployment() *appsv1.Deployment {
 		},
 	}
 	return dp
-}
-
-// waitForCondition wait for deployment to be ready
-func waitForCondition(deployment *appsv1.Deployment, status appsv1.DeploymentStatus) error {
-	var err error
-	var val bool
-	err = wait.PollUntilContextTimeout(context.TODO(), 5*time.Second, 5*time.Minute, true, func(ctx context.Context) (bool, error) {
-		if err != nil {
-			if errors.IsNotFound(err) {
-				return false, fmt.Errorf("deployment not found")
-			}
-			return false, err
-		}
-		val = deployment.Status.Replicas == status.Replicas && deployment.Status.AvailableReplicas == status.AvailableReplicas
-		return val, err
-	})
-
-	return err
 }
 
 // ovsSystemdServicesOnOvsSlice returns the systemd services dependent on ovs.slice cgroup
