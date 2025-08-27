@@ -28,5 +28,6 @@ RUN dnf clean all && \
     useradd -r -u 499 cluster-node-tuning-operator
 ENTRYPOINT ["/usr/bin/cluster-node-tuning-operator"]
 LABEL io.k8s.display-name="OpenShift cluster-node-tuning-operator" \
-      io.k8s.description="This is a component of OpenShift and manages the lifecycle of node-level tuning." \
-      io.openshift.release.operator=true
+    io.k8s.description="This is a component of OpenShift and manages the lifecycle of node-level tuning." \
+    io.openshift.release.operator=true \
+    io.openshift.tags="openshift,tests,e2e,e2e-extension"
