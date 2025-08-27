@@ -76,7 +76,7 @@ update-tuned-submodule:
 	  git pull origin master && \
 	  git checkout $(TUNED_COMMIT))
 
-build: $(BINDATA) pkg/generated build-performance-profile-creator build-gather-sysinfo
+build: $(BINDATA) pkg/generated build-performance-profile-creator build-gather-sysinfo cluster-node-tuning-operator-test-ext
 	$(GO_BUILD_RECIPE)
 
 $(BINDATA): $(GOBINDATA_BIN) $(ASSETS)
@@ -309,3 +309,9 @@ pao-build-e2e:
 .PHONY: pao-clean-e2e
 pao-clean-e2e:
 	@rm -f _output/e2e-pao*.test
+
+
+.PHONY: cluster-node-tuning-operator-test-ext
+cluster-node-tuning-operator-test-ext:
+	@echo "Building cluster-node-tuning-operator-test-ext"
+	GO_COMPLIANCE_POLICY=exempt_all CGO_ENABLED=0 $(GO) build -mod=vendor -v -o $(OUT_DIR)/cluster-node-tuning-operator-test-ext ./cmd/cluster-node-tuning-operator-test-ext

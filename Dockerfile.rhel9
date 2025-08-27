@@ -2,11 +2,13 @@ FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.24-openshift-4.21 AS 
 WORKDIR /go/src/github.com/openshift/cluster-node-tuning-operator
 COPY . .
 RUN make build
+RUN gzip /go/src/github.com/openshift/cluster-node-tuning-operator/_output/cluster-node-tuning-operator-test-ext
 
 FROM registry.ci.openshift.org/ocp/4.21:base-rhel9
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/cluster-node-tuning-operator /usr/bin/
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/performance-profile-creator /usr/bin/
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/gather-sysinfo /usr/bin/
+COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/cluster-node-tuning-operator-test-ext.gz /usr/bin/
 
 ENV ASSETS_DIR=/root/assets
 COPY assets $ASSETS_DIR
@@ -24,5 +26,6 @@ RUN dnf clean all && \
     useradd -r -u 499 cluster-node-tuning-operator
 ENTRYPOINT ["/usr/bin/cluster-node-tuning-operator"]
 LABEL io.k8s.display-name="OpenShift cluster-node-tuning-operator" \
-      io.k8s.description="This is a component of OpenShift and manages the lifecycle of node-level tuning." \
-      io.openshift.release.operator=true
+    io.k8s.description="This is a component of OpenShift and manages the lifecycle of node-level tuning." \
+    io.openshift.release.operator=true \
+    io.openshift.tags="openshift,tests,e2e,e2e-extension"
