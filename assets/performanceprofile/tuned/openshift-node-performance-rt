@@ -6,3 +6,11 @@ summary=Real time profile to override unsupported settings
 #The openshift-node-performance profile inherits these kernel parameters from the network-latency profile. 
 #Therefore, if the real time kernel is detected they will be dropped, meaning won't be applied.
 drop=kernel.numa_balancing,net.core.busy_read,net.core.busy_poll
+
+{{if .RealTimeHint}}
+# cpu-partitioning and RealTimeHint for RHEL disable it (= 0)
+# OCP is too dynamic when partitioning and needs to evacuate
+# scheduled timers when starting a guaranteed workload (= 1)
+# But only when kernel-rt is in use or HRTIMERs break
+kernel.timer_migration=1
+{{end}}
