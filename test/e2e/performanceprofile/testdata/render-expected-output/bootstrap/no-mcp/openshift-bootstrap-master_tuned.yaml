@@ -33,10 +33,7 @@ spec:
       It can be racy if TuneD restarts for whatever reason.\n#> cpu-partitioning\nenabled=false\n\n\n[scheduler]\nruntime=0\ngroup.ksoftirqd=0:f:11:*:ksoftirqd.*\ngroup.rcuc=0:f:11:*:rcuc.*\ngroup.ktimers=0:f:11:*:ktimers.*\n\ndefault_irq_smp_affinity
       = ignore\nirq_process=false\n\n\n[sysctl]\n\n#> cpu-partitioning #RealTimeHint\nkernel.hung_task_timeout_secs=600\n#>
       cpu-partitioning #RealTimeHint\nkernel.nmi_watchdog=0\n#> RealTimeHint\nkernel.sched_rt_runtime_us=-1\n#>
-      cpu-partitioning  #RealTimeHint\nvm.stat_interval=10\n\n# cpu-partitioning and
-      RealTimeHint for RHEL disable it (= 0)\n# OCP is too dynamic when partitioning
-      and needs to evacuate\n#> scheduled timers when starting a guaranteed workload
-      (= 1)\nkernel.timer_migration=1\n#> network-latency\nnet.ipv4.tcp_fastopen=3\n\n#
+      cpu-partitioning  #RealTimeHint\nvm.stat_interval=10\n\n\n#> network-latency\nnet.ipv4.tcp_fastopen=3\n\n#
       If a workload mostly uses anonymous memory and it hits this limit, the entire\n#
       working set is buffered for I/O, and any more write buffering would require\n#
       swapping, so it's time to throttle writes until I/O can catch up.  Workloads\n#
@@ -63,7 +60,10 @@ spec:
   - data: "[main]\nsummary=Real time profile to override unsupported settings\n\n[sysctl]\n#Real
       time kernel doesn't support the following kernel parameters.\n#The openshift-node-performance
       profile inherits these kernel parameters from the network-latency profile. \n#Therefore,
-      if the real time kernel is detected they will be dropped, meaning won't be applied.\ndrop=kernel.numa_balancing,net.core.busy_read,net.core.busy_poll\n"
+      if the real time kernel is detected they will be dropped, meaning won't be applied.\ndrop=kernel.numa_balancing,net.core.busy_read,net.core.busy_poll\n\n\n#
+      cpu-partitioning and RealTimeHint for RHEL disable it (= 0)\n# OCP is too dynamic
+      when partitioning and needs to evacuate\n# scheduled timers when starting a
+      guaranteed workload (= 1)\n# But only when kernel-rt is in use or HRTIMERs break\nkernel.timer_migration=1\n\n"
     name: openshift-node-performance-rt-openshift-bootstrap-master
   - data: |+
       [main]

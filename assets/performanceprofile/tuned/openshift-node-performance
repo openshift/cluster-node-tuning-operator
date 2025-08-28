@@ -85,10 +85,7 @@ kernel.sched_rt_runtime_us=-1
 #> cpu-partitioning  #RealTimeHint
 vm.stat_interval=10
 {{end}}
-# cpu-partitioning and RealTimeHint for RHEL disable it (= 0)
-# OCP is too dynamic when partitioning and needs to evacuate
-#> scheduled timers when starting a guaranteed workload (= 1)
-kernel.timer_migration=1
+
 #> network-latency
 net.ipv4.tcp_fastopen=3
 
