@@ -47,9 +47,21 @@ func IsRunning(ctx context.Context, cli client.Client, namespace, name string) (
 		}
 		return false, err
 	}
+
+	// Enhanced logging for debugging
+	testlog.Infof("DaemonSet %s/%s status: Desired=%d, Current=%d, Ready=%d, Available=%d, Updated=%d",
+		namespace, name, ds.Status.DesiredNumberScheduled, ds.Status.CurrentNumberScheduled,
+		ds.Status.NumberReady, ds.Status.NumberAvailable, ds.Status.UpdatedNumberScheduled)
+
 	if isRunning := ds.Status.DesiredNumberScheduled > 0 && ds.Status.DesiredNumberScheduled == ds.Status.NumberReady; !isRunning {
+		if ds.Status.DesiredNumberScheduled == 0 {
+			testlog.Warningf("DaemonSet %s/%s has 0 desired pods - no nodes match the selector or all nodes are unschedulable", namespace, name)
+		} else if ds.Status.NumberReady < ds.Status.DesiredNumberScheduled {
+			testlog.Warningf("DaemonSet %s/%s: only %d/%d pods are ready", namespace, name, ds.Status.NumberReady, ds.Status.DesiredNumberScheduled)
+		}
 		return false, logEventsAndPhase(ctx, cli, ds)
 	}
+	testlog.Infof("DaemonSet %s/%s is running successfully", namespace, name)
 	return true, nil
 }
 
