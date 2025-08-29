@@ -39,6 +39,7 @@ const (
 
 const (
 	sysDevicesOnlineCPUs = "/sys/devices/system/cpu/online"
+	sysDevicesSMTActive  = "/sys/devices/system/cpu/smt/active"
 	cgroupRoot           = "/rootfs/sys/fs/cgroup"
 )
 
@@ -276,6 +277,26 @@ func GetSMTLevel(ctx context.Context, cpuID int, node *corev1.Node) (int, error)
 		return 0, err
 	}
 	return cpus.Size(), nil
+}
+
+// IsSMTActive returns whether SMT is active on the node.
+// It reads /sys/devices/system/cpu/smt/active: 1 = active, 0 = not active (disabled in BIOS or by OS).
+// Use this when only enabled/disabled is needed; use GetSMTLevel when the actual thread count is needed.
+func IsSMTActive(ctx context.Context, node *corev1.Node) (bool, error) {
+	cmd := []string{"cat", sysDevicesSMTActive}
+	out, err := ExecCommand(ctx, node, cmd)
+	if err != nil {
+		return false, err
+	}
+	s := strings.TrimSpace(testutils.ToString(out))
+	switch s {
+	case "1":
+		return true, nil
+	case "0":
+		return false, nil
+	default:
+		return false, fmt.Errorf("unexpected %s value: %q", sysDevicesSMTActive, s)
+	}
 }
 
 // GetNumaNodes returns the number of numa nodes and the associated cpus as list on the node
