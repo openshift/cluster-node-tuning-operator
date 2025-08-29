@@ -274,6 +274,13 @@ func GetSMTLevel(ctx context.Context, cpuID int, node *corev1.Node) int {
 	return cpus.Size()
 }
 
+// IsHyperthreadingEnabled checks if hyperthreading (SMT) is enabled on the node
+// Returns true if SMT level > 1, false otherwise
+func IsHyperthreadingEnabled(ctx context.Context, cpuID int, node *corev1.Node) bool {
+	smtLevel := GetSMTLevel(ctx, cpuID, node)
+	return smtLevel > 1
+}
+
 // GetNumaNodes returns the number of numa nodes and the associated cpus as list on the node
 func GetNumaNodes(ctx context.Context, node *corev1.Node) (map[int][]int, error) {
 	lscpuCmd := []string{"lscpu", "-e=node,core,cpu", "-J"}
