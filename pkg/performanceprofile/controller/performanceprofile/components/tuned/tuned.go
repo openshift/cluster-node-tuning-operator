@@ -240,6 +240,12 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 	}
 	IntelX86ProfileName := components.GetComponentName(profile.Name, components.ProfileNameIntelX86)
 
+	PowerPCProfileData, err := getProfileData(filepath.Join("tuned", components.ProfileNamePowerPC), templateArgs)
+	if err != nil {
+		return nil, err
+	}
+	PowerPCProfileName := components.GetComponentName(profile.Name, components.ProfileNamePowerPC)
+
 	profiles := []tunedv1.TunedProfile{
 		{
 			Name: &name,
@@ -260,6 +266,10 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 		{
 			Name: &IntelX86ProfileName,
 			Data: &IntelX86ProfileData,
+		},
+		{
+			Name: &PowerPCProfileName,
+			Data: &PowerPCProfileData,
 		},
 	}
 
