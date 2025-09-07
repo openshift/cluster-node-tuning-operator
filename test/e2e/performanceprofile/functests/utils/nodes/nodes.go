@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"sigs.k8s.io/yaml"
@@ -509,6 +510,7 @@ func isNodeReady(node corev1.Node) bool {
 
 // ContainerPid returns container process pid using crictl inspect command
 func ContainerPid(ctx context.Context, node *corev1.Node, containerId string) (string, error) {
+	GinkgoHelper()
 	var err error
 	var criInfo CrictlInfo
 	var cridata = []byte{}
