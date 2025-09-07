@@ -500,8 +500,9 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				testlog.TaggedInfof("Reboot", "Node %q: Rebooting", workerRTNode.Name)
 				_, _ = nodes.ExecCommand(ctx, workerRTNode, []string{"sh", "-c", rebootCmd})
 				testlog.Info("Node Rebooted")
-
-				By("Waiting for node to be ready after reboot")
+				By("Waiting for node to go into not ready state after reboot")
+				nodes.WaitForNotReadyOrFail("Reboot", workerRTNode.Name, 10*time.Minute, 30*time.Second)
+				By("Waiting for node to be ready again after reboot")
 				nodes.WaitForReadyOrFail("Reboot", workerRTNode.Name, 10*time.Minute, 30*time.Second)
 
 				// After reboot verify test pod created using deployment is running
