@@ -456,7 +456,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					pidList, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
 					Expect(err).ToNot(HaveOccurred())
 					Eventually(func() bool {
-						cpumaskList, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
+						pidToCPUs, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
 						Expect(err).ToNot(HaveOccurred(), "Unable to fetch affinity of ovs services")
 						for pid, cpumask := range pidToCPUs {
 							// since cpuset.CPUSet contains map in its struct field we can't compare
@@ -590,11 +590,10 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					// wait till the ovs process affinity is reverted back
 					pidList, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
 					Expect(err).ToNot(HaveOccurred())
-					cpumaskList, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
-					Expect(err).ToNot(HaveOccurred())
 					Eventually(func() bool {
-						for _, cpumask := range cpumaskList {
-							testlog.Warningf("ovs services cpu mask is %s instead of %s", cpumask.String(), onlineCPUSet.String())
+						pidToCPUs, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
+						Expect(err).ToNot(HaveOccurred())
+						for pid, cpumask := range pidToCPUs {
 							// since cpuset.CPUSet contains map in its struct field we can't compare
 							// the structs directly. After the deployment is delete, the cpu mask
 							// of ovs services should contain all cpus , which is generally 0-N (where
