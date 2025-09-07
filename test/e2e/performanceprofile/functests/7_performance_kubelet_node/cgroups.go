@@ -281,10 +281,11 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				testlog.Infof("Cpus used by ovn Containers are %s", ctnCpuset.String())
 				pidList, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
-				cpumaskList, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
+				pidToCPUs, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
-				for _, cpumask := range cpumaskList {
-					Expect(ctnCpuset).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", ctnCpuset.String(), cpumask.String())
+				for pid, cpumask := range pidToCPUs {
+					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask.String())
+					Expect(ctnCpuset).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ctnCpuset.String(), pid, cpumask.String())
 				}
 
 			})
@@ -332,10 +333,11 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				pidList, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 
-				cpumaskList, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
+				pidToCPUs, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
-				for _, cpumask := range cpumaskList {
-					Expect(ctnCpuset).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", ctnCpuset.String(), cpumask.String())
+				for pid, cpumask := range pidToCPUs {
+					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask.String())
+					Expect(ctnCpuset).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ctnCpuset.String(), pid, cpumask.String())
 				}
 				deleteTestPod(ctx, testpod)
 
@@ -406,10 +408,11 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				// We wait for 30 seconds for ovs process cpu affinity to be updated
 				time.Sleep(30 * time.Second)
 				// Verify ovs-vswitchd and ovsdb-server process affinity is updated
-				cpumaskList1, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
+				pidToCPUs, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
-				for _, cpumask := range cpumaskList1 {
-					Expect(ovnContainerCpuset1).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", ovnContainerCpuset1.String(), cpumask.String())
+				for pid, cpumask := range pidToCPUs {
+					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask.String())
+					Expect(ovnContainerCpuset1).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ovnContainerCpuset1.String(), pid, cpumask.String())
 				}
 				// Delete testpod1
 				testlog.Infof("Deleting pod %v", testpod1.Name)
@@ -423,10 +426,11 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				time.Sleep(30 * time.Second)
 
 				// Verify ovs-vswitchd and ovsdb-server process affinity is updated
-				cpumaskList2, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
+				pidToCPUs, err = getCPUMaskForPids(ctx, pidList, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
-				for _, cpumask := range cpumaskList2 {
-					Expect(ovnContainerCpuset2).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", ovnContainerCpuset2.String(), cpumask.String())
+				for pid, cpumask := range pidToCPUs {
+					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask.String())
+					Expect(ovnContainerCpuset2).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ovnContainerCpuset2.String(), pid, cpumask.String())
 				}
 				// Delete testpod2
 				deleteTestPod(context.TODO(), testpod2)
@@ -454,13 +458,13 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					Eventually(func() bool {
 						cpumaskList, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
 						Expect(err).ToNot(HaveOccurred(), "Unable to fetch affinity of ovs services")
-						for _, cpumask := range cpumaskList {
-							testlog.Warningf("ovs services cpu mask is %s instead of %s", cpumask.String(), onlineCPUSet.String())
+						for pid, cpumask := range pidToCPUs {
 							// since cpuset.CPUSet contains map in its struct field we can't compare
 							// the structs directly. After the deployment is deleted, the cpu mask
 							// of ovs services should contain all cpus , which is generally 0-N (where
 							// N is total number of cpus, this should be easy to compare.
 							if !cpumask.Equals(onlineCPUSet) {
+								testlog.Warningf("ovs servics pid %s cpu mask is %s instead of %s", pid, cpumask.String(), onlineCPUSet.String())
 								return false
 							}
 						}
@@ -484,10 +488,11 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				//wait for 30 seconds for ovs process to have its cpu affinity updated
 				time.Sleep(30 * time.Second)
 				// Verify ovs-vswitchd and ovsdb-server process affinity is updated
-				cpumaskList1, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
+				pidToCPUs1, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
-				for _, cpumask := range cpumaskList1 {
-					Expect(ovnContainerCpuset).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", ovnContainerCpuset.String(), cpumask.String())
+				for pid, cpumask := range pidToCPUs1 {
+					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask.String())
+					Expect(ovnContainerCpuset).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ovnContainerCpuset.String(), pid, cpumask.String())
 				}
 
 				testlog.Info("Rebooting the node")
@@ -541,10 +546,11 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				Expect(err).ToNot(HaveOccurred())
 
 				// Verify ovs-vswitchd and ovsdb-server process affinity is updated
-				cpumaskList2, err := getCPUMaskForPids(ctx, pidListAfterReboot, workerRTNode)
+				pidToCPUs2, err := getCPUMaskForPids(ctx, pidListAfterReboot, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
-				for _, cpumask := range cpumaskList2 {
-					Expect(ovnContainerCpusetAfterReboot).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices(%s)", ovnContainerCpusetAfterReboot.String(), cpumask.String())
+				for pid, cpumask := range pidToCPUs2 {
+					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask.String())
+					Expect(ovnContainerCpusetAfterReboot).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ovnContainerCpusetAfterReboot.String(), pid, cpumask.String())
 				}
 			})
 
@@ -594,6 +600,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 							// of ovs services should contain all cpus , which is generally 0-N (where
 							// N is total number of cpus, this should be easy to compare.
 							if cpumask.String() != onlineCPUSet.String() {
+								testlog.Warningf("ovs servics pid %s cpu mask is %s instead of %s", pid, cpumask.String(), onlineCPUSet.String())
 								return false
 							}
 						}
@@ -801,9 +808,8 @@ func ovnPodContainers(ovnKubeNodePod *corev1.Pod) ([]string, error) {
 }
 
 // getCPUMaskForPids returns cpu mask of ovs process pids
-func getCPUMaskForPids(ctx context.Context, pidList []string, targetNode *corev1.Node) ([]cpuset.CPUSet, error) {
-	var cpumaskList []cpuset.CPUSet
-
+func getCPUMaskForPids(ctx context.Context, pidList []string, targetNode *corev1.Node) (map[string]cpuset.CPUSet, error) {
+	pidToCPUSet := make(map[string]cpuset.CPUSet, len(pidList))
 	for _, pid := range pidList {
 		cmd := []string{"taskset", "-pc", pid}
 		out, err := nodes.ExecCommand(ctx, targetNode, cmd)
@@ -817,11 +823,10 @@ func getCPUMaskForPids(ctx context.Context, pidList []string, targetNode *corev1
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse cpuset: %s", err)
 		}
-
-		cpumaskList = append(cpumaskList, maskSet)
+		pidToCPUSet[pid] = maskSet
 	}
 
-	return cpumaskList, nil
+	return pidToCPUSet, nil
 }
 
 func newDeployment() *appsv1.Deployment {
