@@ -278,13 +278,13 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				// we need to wait as process affinity can change
 				time.Sleep(30 * time.Second)
 				ctnCpuset := taskSet(ctx, containerPid, workerRTNode)
-				testlog.Infof("Cpus used by ovn Containers are %s", ctnCpuset.String())
+				testlog.Infof("Cpus used by ovn Containers are %s", ctnCpuset)
 				pidList, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				pidToCPUs, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				for pid, cpumask := range pidToCPUs {
-					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask.String())
+					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask)
 					Expect(ctnCpuset.Equals(cpumask)).To(BeTrue(), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ctnCpuset, pid, cpumask)
 				}
 
@@ -328,7 +328,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				// we need to wait as process affinity can change
 				time.Sleep(30 * time.Second)
 				ctnCpuset := taskSet(ctx, containerPid, workerRTNode)
-				testlog.Infof("Container of ovn pod %s is using cpus %s", ovnPod.Name, ctnCpuset.String())
+				testlog.Infof("Container of ovn pod %s is using cpus %s", ovnPod.Name, ctnCpuset)
 
 				pidList, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
@@ -336,8 +336,8 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				pidToCPUs, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				for pid, cpumask := range pidToCPUs {
-					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask.String())
-					Expect(ctnCpuset.Equals(cpumask)).To(BeTrue()), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ctnCpuset.String(), pid, cpumask.String())
+					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask)
+					Expect(ctnCpuset.Equals(cpumask)).To(BeTrue(), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ctnCpuset, pid, cpumask)
 				}
 				deleteTestPod(ctx, testpod)
 
@@ -401,7 +401,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				// we need to wait as process affinity can change
 				time.Sleep(30 * time.Second)
 				ovnContainerCpuset1 := taskSet(ctx, containerPid, workerRTNode)
-				testlog.Infof("Container of ovn pod %s is using cpus %s", ovnPod.Name, ovnContainerCpuset1.String())
+				testlog.Infof("Container of ovn pod %s is using cpus %s", ovnPod.Name, ovnContainerCpuset1)
 				pidList, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -411,8 +411,8 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				pidToCPUs, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				for pid, cpumask := range pidToCPUs {
-					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask.String())
-					Expect(ovnContainerCpuset1.Equals(cpumask)).To(BeTrue(), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ovnContainerCpuset1.String(), pid, cpumask.String())
+					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask)
+					Expect(ovnContainerCpuset1.Equals(cpumask)).To(BeTrue(), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ovnContainerCpuset1, pid, cpumask)
 				}
 				// Delete testpod1
 				testlog.Infof("Deleting pod %v", testpod1.Name)
@@ -421,7 +421,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				time.Sleep(30 * time.Second)
 				// Check the cpus of ovnkubenode pods
 				ovnContainerCpuset2 := taskSet(ctx, containerPid, workerRTNode)
-				testlog.Infof("cpus used by ovn kube node pods after deleting pod %v is %v", testpod1.Name, ovnContainerCpuset2.String())
+				testlog.Infof("cpus used by ovn kube node pods after deleting pod %v is %v", testpod1.Name, ovnContainerCpuset2)
 				// we wait some time for ovs process affinity to change
 				time.Sleep(30 * time.Second)
 
@@ -429,8 +429,8 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				pidToCPUs, err = getCPUMaskForPids(ctx, pidList, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				for pid, cpumask := range pidToCPUs {
-					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask.String())
-					Expect(ovnContainerCpuset2.Equals(cpumask)).To(BeTrue(), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ovnContainerCpuset2.String(), pid, cpumask.String())
+					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask)
+					Expect(ovnContainerCpuset2.Equals(cpumask)).To(BeTrue(), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ovnContainerCpuset2, pid, cpumask)
 				}
 				// Delete testpod2
 				deleteTestPod(context.TODO(), testpod2)
@@ -464,7 +464,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 							// of ovs services should contain all cpus , which is generally 0-N (where
 							// N is total number of cpus, this should be easy to compare.
 							if !cpumask.Equals(onlineCPUSet) {
-								testlog.Warningf("ovs servics pid %s cpu mask is %s instead of %s", pid, cpumask.String(), onlineCPUSet.String())
+								testlog.Warningf("ovs servics pid %s cpu mask is %s instead of %s", pid, cpumask, onlineCPUSet)
 								return false
 							}
 						}
@@ -481,7 +481,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				// we need to wait as process affinity can change
 				time.Sleep(30 * time.Second)
 				ovnContainerCpuset := taskSet(ctx, containerPid, workerRTNode)
-				testlog.Infof("Container of ovn pod %s is using cpus %s", ovnPod.Name, ovnContainerCpuset.String())
+				testlog.Infof("Container of ovn pod %s is using cpus %s", ovnPod.Name, ovnContainerCpuset)
 				pidList, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -491,8 +491,8 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				pidToCPUs1, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				for pid, cpumask := range pidToCPUs1 {
-					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask.String())
-					Expect(ovnContainerCpuset).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ovnContainerCpuset.String(), pid, cpumask.String())
+					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask)
+					Expect(ovnContainerCpuset).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ovnContainerCpuset, pid, cpumask)
 				}
 
 				testlog.Info("Rebooting the node")
@@ -540,7 +540,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				// we need to wait as process affinity can change
 				time.Sleep(30 * time.Second)
 				ovnContainerCpusetAfterReboot := taskSet(ctx, containerPid, workerRTNode)
-				testlog.Infof("cpus used by ovn kube node pods %v", ovnContainerCpusetAfterReboot.String())
+				testlog.Infof("cpus used by ovn kube node pods %v", ovnContainerCpusetAfterReboot)
 				pidListAfterReboot, err := ovsPids(ctx, ovsSystemdServices, workerRTNode)
 
 				Expect(err).ToNot(HaveOccurred())
@@ -549,8 +549,8 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				pidToCPUs2, err := getCPUMaskForPids(ctx, pidListAfterReboot, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				for pid, cpumask := range pidToCPUs2 {
-					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask.String())
-					Expect(ovnContainerCpusetAfterReboot).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ovnContainerCpusetAfterReboot.String(), pid, cpumask.String())
+					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask)
+					Expect(ovnContainerCpusetAfterReboot).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ovnContainerCpusetAfterReboot, pid, cpumask)
 				}
 			})
 
@@ -595,7 +595,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 						Expect(err).ToNot(HaveOccurred())
 						for pid, cpumask := range pidToCPUs {
 							if !cpumask.Equals(onlineCPUSet) {
-								testlog.Warningf("ovs servics pid %s cpu mask is %s instead of %s", pid, cpumask.String(), onlineCPUSet.String())
+								testlog.Warningf("ovs servics pid %s cpu mask is %s instead of %s", pid, cpumask, onlineCPUSet)
 								return false
 							}
 						}
@@ -646,7 +646,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 							cpumask := strings.Split(line, ":")
 							threadsCpuset, err := cpuset.Parse(strings.TrimSpace(cpumask[1]))
 							Expect(err).ToNot(HaveOccurred())
-							testlog.Infof("ovs-switchd thread CpuAffinity: %s, pod %s Affinity: %s", threadsCpuset.String(), pod.Name, podcpus.String())
+							testlog.Infof("ovs-switchd thread CpuAffinity: %s, pod %s Affinity: %s", threadsCpuset, pod.Name, podcpus)
 							Expect(podcpus.IsSubsetOf(threadsCpuset)).To(Equal(false))
 						}
 					}
@@ -706,7 +706,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 							cpumask := strings.Split(line, ":")
 							threadsCpuset, err := cpuset.Parse(strings.TrimSpace(cpumask[1]))
 							Expect(err).ToNot(HaveOccurred())
-							testlog.Infof("ovs-switchd thread CpuAffinity: %s, pod %s Affinity: %s", threadsCpuset.String(), pod.Name, podcpus.String())
+							testlog.Infof("ovs-switchd thread CpuAffinity: %s, pod %s Affinity: %s", threadsCpuset, pod.Name, podcpus)
 							Expect(podcpus.IsSubsetOf(threadsCpuset)).To(Equal(false))
 						}
 					}
