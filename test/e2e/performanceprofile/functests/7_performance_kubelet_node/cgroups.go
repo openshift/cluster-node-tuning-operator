@@ -285,7 +285,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				Expect(err).ToNot(HaveOccurred())
 				for pid, cpumask := range pidToCPUs {
 					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask.String())
-					Expect(ctnCpuset).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ctnCpuset.String(), pid, cpumask.String())
+					Expect(ctnCpuset.Equals(cpumask)).To(BeTrue(), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ctnCpuset, pid, cpumask)
 				}
 
 			})
@@ -337,7 +337,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				Expect(err).ToNot(HaveOccurred())
 				for pid, cpumask := range pidToCPUs {
 					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask.String())
-					Expect(ctnCpuset).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ctnCpuset.String(), pid, cpumask.String())
+					Expect(ctnCpuset.Equals(cpumask)).To(BeTrue()), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ctnCpuset.String(), pid, cpumask.String())
 				}
 				deleteTestPod(ctx, testpod)
 
@@ -412,7 +412,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				Expect(err).ToNot(HaveOccurred())
 				for pid, cpumask := range pidToCPUs {
 					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask.String())
-					Expect(ovnContainerCpuset1).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ovnContainerCpuset1.String(), pid, cpumask.String())
+					Expect(ovnContainerCpuset1.Equals(cpumask)).To(BeTrue(), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ovnContainerCpuset1.String(), pid, cpumask.String())
 				}
 				// Delete testpod1
 				testlog.Infof("Deleting pod %v", testpod1.Name)
@@ -430,7 +430,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				Expect(err).ToNot(HaveOccurred())
 				for pid, cpumask := range pidToCPUs {
 					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask.String())
-					Expect(ovnContainerCpuset2).To(Equal(cpumask), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ovnContainerCpuset2.String(), pid, cpumask.String())
+					Expect(ovnContainerCpuset2.Equals(cpumask)).To(BeTrue(), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ovnContainerCpuset2.String(), pid, cpumask.String())
 				}
 				// Delete testpod2
 				deleteTestPod(context.TODO(), testpod2)
@@ -568,7 +568,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 						cpumask := strings.Split(line, ":")
 						threadsCpuset, err := cpuset.Parse(strings.TrimSpace(cpumask[1]))
 						Expect(err).ToNot(HaveOccurred())
-						Expect(threadsCpuset).To(Equal(onlineCPUSet))
+						Expect(threadsCpuset.Equals(onlineCPUSet), "actual cpuset %s not equals to expected cpuset %s", threadsCpuset, onlineCPUSet)
 					}
 				}
 
@@ -594,11 +594,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 						pidToCPUs, err := getCPUMaskForPids(ctx, pidList, workerRTNode)
 						Expect(err).ToNot(HaveOccurred())
 						for pid, cpumask := range pidToCPUs {
-							// since cpuset.CPUSet contains map in its struct field we can't compare
-							// the structs directly. After the deployment is delete, the cpu mask
-							// of ovs services should contain all cpus , which is generally 0-N (where
-							// N is total number of cpus, this should be easy to compare.
-							if cpumask.String() != onlineCPUSet.String() {
+							if !cpumask.Equals(onlineCPUSet) {
 								testlog.Warningf("ovs servics pid %s cpu mask is %s instead of %s", pid, cpumask.String(), onlineCPUSet.String())
 								return false
 							}
