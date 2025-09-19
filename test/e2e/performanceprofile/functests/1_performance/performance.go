@@ -348,6 +348,8 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 
 	Context("Tuned kernel parameters", Label(string(label.Tier0)), func() {
 		It("[test_id:28466][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Should contain configuration injected through openshift-node-performance profile", func() {
+			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred(), "Unable to fetch latest profile")
 			sysctlMap := map[string]string{
 				"kernel.hung_task_timeout_secs": "600",
 				"kernel.nmi_watchdog":           "0",
@@ -355,13 +357,16 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				"vm.stat_interval":              "10",
 				"kernel.timer_migration":        "1",
 			}
+			if !*profile.Spec.RealTimeKernel.Enabled {
+				sysctlMap["kernel.timer_migration"] = "0"
+			}
 
 			key := types.NamespacedName{
 				Name:      components.GetComponentName(testutils.PerformanceProfileName, components.ProfileNamePerformance),
 				Namespace: components.NamespaceNodeTuningOperator,
 			}
 			tuned := &tunedv1.Tuned{}
-			err := testclient.ControlPlaneClient.Get(context.TODO(), key, tuned)
+			err = testclient.ControlPlaneClient.Get(context.TODO(), key, tuned)
 			Expect(err).ToNot(HaveOccurred(), "cannot find the Cluster Node Tuning Operator object "+key.String())
 			validateTunedActiveProfile(context.TODO(), workerRTNodes)
 			execSysctlOnWorkers(context.TODO(), workerRTNodes, sysctlMap)
