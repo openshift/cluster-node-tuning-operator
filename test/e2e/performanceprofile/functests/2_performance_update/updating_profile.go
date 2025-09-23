@@ -31,6 +31,7 @@ import (
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/runtime"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
@@ -404,6 +405,12 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			if len(nonPerformancesWorkers) > 1 {
 				newCnfNode = &nonPerformancesWorkers[0]
 			}
+			ok, err := cluster.IsControlPlaneSchedulable()
+			Expect(err).ToNot(HaveOccurred(), "Unable to fetch schedulable information of control plane nodes: %v", err)
+			if ok {
+				Skip("Skipping the test - Control plane nodes are schedulable")
+			}
+
 			if newCnfNode == nil {
 				Skip("Skipping the test - cluster does not have another available worker node ")
 			}
