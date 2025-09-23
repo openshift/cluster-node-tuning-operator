@@ -2,9 +2,11 @@ package cluster
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
@@ -28,4 +30,26 @@ func ComputeTestTimeout(baseTimeout time.Duration, isSno bool) time.Duration {
 	}
 
 	return testTimeout
+}
+
+// Check if the control plane nodes are schedulable
+func IsControlPlaneSchedulable() (bool, error) {
+	controlPlaneNodesLabel := make(map[string]string)
+	controlPlaneNodesLabel["node-role.kubernetes.io/control-plane"] = ""
+	selector := labels.SelectorFromSet(controlPlaneNodesLabel)
+	controlPlaneNodes := &corev1.NodeList{}
+	if err := testclient.DataPlaneClient.List(context.TODO(), controlPlaneNodes, &client.ListOptions{LabelSelector: selector}); err != nil {
+		return false, err
+	}
+
+	if len(controlPlaneNodes.Items) == 0 {
+		return false, fmt.Errorf("unable to fetch control plane nodes")
+	}
+	for _, v := range controlPlaneNodes.Items {
+		// when control plane are schedulable, All taints are removed
+		if len(v.Spec.Taints) != 0 {
+			return false, nil // Not schedulable, but not an error
+		}
+	}
+	return true, nil
 }
