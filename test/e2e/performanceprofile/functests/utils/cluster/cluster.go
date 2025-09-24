@@ -2,14 +2,13 @@ package cluster
 
 import (
 	"context"
-	"fmt"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
+	clientconfigv1 "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // IsSingleNode validates if the environment is single node cluster
@@ -32,24 +31,16 @@ func ComputeTestTimeout(baseTimeout time.Duration, isSno bool) time.Duration {
 	return testTimeout
 }
 
-// Check if the control plane nodes are schedulable
-func IsControlPlaneSchedulable() (bool, error) {
-	controlPlaneNodesLabel := make(map[string]string)
-	controlPlaneNodesLabel["node-role.kubernetes.io/control-plane"] = ""
-	selector := labels.SelectorFromSet(controlPlaneNodesLabel)
-	controlPlaneNodes := &corev1.NodeList{}
-	if err := testclient.DataPlaneClient.List(context.TODO(), controlPlaneNodes, &client.ListOptions{LabelSelector: selector}); err != nil {
+// Check if the control plane nodes are schedulable, returns true if schedulable else false
+func IsControlPlaneSchedulable(ctx context.Context) (bool, error) {
+	cfg, err := testclient.GetRestConfigFromClient(testclient.Client)
+	if err != nil {
 		return false, err
 	}
-
-	if len(controlPlaneNodes.Items) == 0 {
-		return false, fmt.Errorf("unable to fetch control plane nodes")
+	openshiftConfigClient := clientconfigv1.NewForConfigOrDie(cfg)
+	schedulerInfo, err := openshiftConfigClient.Schedulers().Get(ctx, "cluster", metav1.GetOptions{})
+	if err != nil {
+		return false, err
 	}
-	for _, v := range controlPlaneNodes.Items {
-		// when control plane are schedulable, All taints are removed
-		if len(v.Spec.Taints) != 0 {
-			return false, nil // Not schedulable, but not an error
-		}
-	}
-	return true, nil
+	return schedulerInfo.Spec.MastersSchedulable, nil
 }
