@@ -405,7 +405,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			if len(nonPerformancesWorkers) > 1 {
 				newCnfNode = &nonPerformancesWorkers[0]
 			}
-			ok, err := cluster.IsControlPlaneSchedulable()
+			ok, err := cluster.IsControlPlaneSchedulable(context.TODO())
 			Expect(err).ToNot(HaveOccurred(), "Unable to fetch schedulable information of control plane nodes: %v", err)
 			if ok {
 				Skip("Skipping the test - Control plane nodes are schedulable")
