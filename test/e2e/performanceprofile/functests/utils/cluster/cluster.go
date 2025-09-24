@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 )
 
 // IsSingleNode validates if the environment is single node cluster
@@ -33,10 +34,12 @@ func ComputeTestTimeout(baseTimeout time.Duration, isSno bool) time.Duration {
 
 // Check if the control plane nodes are schedulable, returns true if schedulable else false
 func IsControlPlaneSchedulable(ctx context.Context) (bool, error) {
-	cfg, err := testclient.GetRestConfigFromClient(testclient.Client)
+	// Get the rest.Config using the helper function
+	cfg, err := config.GetConfig()
 	if err != nil {
 		return false, err
 	}
+
 	openshiftConfigClient := clientconfigv1.NewForConfigOrDie(cfg)
 	schedulerInfo, err := openshiftConfigClient.Schedulers().Get(ctx, "cluster", metav1.GetOptions{})
 	if err != nil {
