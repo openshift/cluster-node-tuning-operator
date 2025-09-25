@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"sigs.k8s.io/yaml"
@@ -482,20 +483,37 @@ func GetNodeInterfaces(ctx context.Context, node corev1.Node) ([]NodeInterface, 
 	return nodeInterfaces, err
 }
 
-func WaitForReadyOrFail(tag, nodeName string, timeout, polling time.Duration) {
-	testlog.Infof("%s: waiting for node %q: to be ready", tag, nodeName)
-	EventuallyWithOffset(1, func() (bool, error) {
+func WaitForState(tag, nodeName string, timeout, polling time.Duration, stateFunc func(*corev1.Node) bool) {
+	GinkgoHelper()
+	Eventually(func() (bool, error) {
 		node, err := GetByName(nodeName)
 		if err != nil {
 			// intentionally tolerate error
-			testlog.Infof("wait for node %q ready: %v", nodeName, err)
+			testlog.Warningf("failed to get node %q: %v. retrying...", nodeName, err)
 			return false, nil
 		}
+		return stateFunc(node), nil
+	}).WithTimeout(timeout).WithPolling(polling).Should(BeTrue(), "node %q did not reach desired state within timeout", nodeName)
+}
+
+func WaitForReadyOrFail(tag, nodeName string, timeout, polling time.Duration) {
+	testlog.Infof("%s: waiting for node %q: to be ready", tag, nodeName)
+	WaitForState(tag, nodeName, timeout, polling, func(node *corev1.Node) bool {
 		ready := isNodeReady(*node)
 		testlog.Infof("node %q ready=%v", nodeName, ready)
-		return ready, nil
-	}).WithTimeout(timeout).WithPolling(polling).Should(BeTrue(), "post reboot: cannot get readiness status after reboot for node %q", nodeName)
+		return ready
+	})
 	testlog.Infof("%s: node %q: reported ready", tag, nodeName)
+}
+
+func WaitForNotReadyOrFail(tag, nodeName string, timeout, polling time.Duration) {
+	testlog.Infof("%s: waiting for node %q: to be not ready", tag, nodeName)
+	WaitForState(tag, nodeName, timeout, polling, func(node *corev1.Node) bool {
+		ready := isNodeReady(*node)
+		testlog.Infof("node %q ready=%v", nodeName, ready)
+		return !ready
+	})
+	testlog.Infof("%s: node %q: reported not ready", tag, nodeName)
 }
 
 func isNodeReady(node corev1.Node) bool {
@@ -509,6 +527,7 @@ func isNodeReady(node corev1.Node) bool {
 
 // ContainerPid returns container process pid using crictl inspect command
 func ContainerPid(ctx context.Context, node *corev1.Node, containerId string) (string, error) {
+	GinkgoHelper()
 	var err error
 	var criInfo CrictlInfo
 	var cridata = []byte{}
