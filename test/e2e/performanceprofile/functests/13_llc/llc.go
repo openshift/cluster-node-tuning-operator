@@ -41,6 +41,7 @@ import (
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/deployments"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/infrastructure"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
@@ -116,7 +117,13 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 		if len(workerRTNodes) < 1 {
 			Skip("need at least a worker node")
 		}
-
+		for _, cnfnode := range workerRTNodes {
+			isVM, err := infrastructure.IsVM(context.TODO(), &cnfnode)
+			Expect(err).ToNot(HaveOccurred(), "Failed to detect if the node is based on VM")
+			if isVM {
+				Skip("System is Virtual Machine - LLC tests are applicable only on Baremetal")
+			}
+		}
 		perfProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 		initialProfile = perfProfile.DeepCopy()
