@@ -109,7 +109,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		onlineCPUSet, err = nodes.GetOnlineCPUsSet(ctx, workerRTNode)
 		Expect(err).ToNot(HaveOccurred())
 		cpuID := onlineCPUSet.UnsortedList()[0]
-		smtLevel = nodes.GetSMTLevel(ctx, cpuID, workerRTNode)
+		smtLevel, err = nodes.GetSMTLevel(ctx, cpuID, workerRTNode)
+		Expect(err).ToNot(HaveOccurred(), "Unable to fetch SMT level on node %s, Error: %v", workerRTNode.Name, err)
 		getter, err = cgroup.BuildGetter(ctx, testclient.DataPlaneClient, testclient.K8sClient)
 		Expect(err).ToNot(HaveOccurred())
 		cgroupV2, err = cgroup.IsVersion2(ctx, testclient.DataPlaneClient)
@@ -251,7 +252,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 		DescribeTable("Verify CPU usage by stress PODs", func(ctx context.Context, guaranteed bool) {
 			cpuID := onlineCPUSet.UnsortedList()[0]
-			smtLevel := nodes.GetSMTLevel(ctx, cpuID, workerRTNode)
+			smtLevel, err := nodes.GetSMTLevel(ctx, cpuID, workerRTNode)
+			Expect(err).ToNot(HaveOccurred(), "Unable to fetch SMT level on node %s, Error: %v", workerRTNode.Name, err)
 			if smtLevel < 2 {
 				Skip(fmt.Sprintf("designated worker node %q has SMT level %d - minimum required 2", workerRTNode.Name, smtLevel))
 			}
@@ -281,7 +283,6 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			}
 
 			By(fmt.Sprintf("create a %s QoS stress pod requesting %d cpus", expectedQos, cpuRequest))
-			var err error
 			err = testclient.DataPlaneClient.Create(ctx, testpod)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -414,7 +415,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			}
 
 			cpuID := onlineCPUSet.UnsortedList()[0]
-			smtLevel = nodes.GetSMTLevel(context.TODO(), cpuID, workerRTNode)
+			smtLevel, err = nodes.GetSMTLevel(context.TODO(), cpuID, workerRTNode)
+			Expect(err).ToNot(HaveOccurred(), "Unable to fetch SMT level on node %s, Error: %v", workerRTNode.Name, err)
 		})
 
 		AfterEach(func() {
@@ -584,7 +586,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			// also covers Hyper-thread aware sheduling [test_id:46545] Odd number of isolated CPU threads
 			// any random existing cpu is fine
 			cpuID := onlineCPUSet.UnsortedList()[0]
-			smtLevel := nodes.GetSMTLevel(context.TODO(), cpuID, workerRTNode)
+			smtLevel, err := nodes.GetSMTLevel(context.TODO(), cpuID, workerRTNode)
+			Expect(err).ToNot(HaveOccurred(), "Unable to fetch SMT level on node %s, Error: %v", workerRTNode.Name, err)
 			if smtLevel < 2 {
 				Skip(fmt.Sprintf("designated worker node %q has SMT level %d - minimum required 2", workerRTNode.Name, smtLevel))
 			}
@@ -593,7 +596,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			testpod = promotePodToGuaranteed(getStressPod(workerRTNode.Name, cpuCount))
 			testpod.Namespace = testutils.NamespaceTesting
 
-			err := testclient.DataPlaneClient.Create(context.TODO(), testpod)
+			err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
 
 			currentPod, err := pods.WaitForPredicate(context.TODO(), client.ObjectKeyFromObject(testpod), 10*time.Minute, func(pod *corev1.Pod) (bool, error) {
@@ -643,7 +646,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				// Check for SMT enabled
 				// any random existing cpu is fine
 				cpuID := onlineCPUSet.UnsortedList()[0]
-				smtLevel := nodes.GetSMTLevel(ctx, cpuID, workerRTNode)
+				smtLevel, err := nodes.GetSMTLevel(ctx, cpuID, workerRTNode)
+				Expect(err).ToNot(HaveOccurred(), "Unable to fetch SMT level on node %s, Error: %v", workerRTNode.Name, err)
 				hasWP := checkForWorkloadPartitioning(ctx)
 
 				// Following checks are required to map test_id scenario correctly to the type of node under test
