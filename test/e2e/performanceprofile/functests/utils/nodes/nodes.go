@@ -262,16 +262,20 @@ func GetOnlineCPUsSet(ctx context.Context, node *corev1.Node) (cpuset.CPUSet, er
 
 // GetSMTLevel returns the SMT level on the node using the given cpuID as target
 // Use a random cpuID from the return value of GetOnlineCPUsSet if not sure
-func GetSMTLevel(ctx context.Context, cpuID int, node *corev1.Node) int {
+func GetSMTLevel(ctx context.Context, cpuID int, node *corev1.Node) (int, error) {
 	cmd := []string{"/bin/sh", "-c", fmt.Sprintf("cat /sys/devices/system/cpu/cpu%d/topology/thread_siblings_list | tr -d \"\n\r\"", cpuID)}
 	out, err := ExecCommand(ctx, node, cmd)
-	ExpectWithOffset(1, err).ToNot(HaveOccurred())
+	if err != nil {
+		return 0, err
+	}
 	threadSiblingsList := testutils.ToString(out)
 	// how many thread sibling you have = SMT level
 	// example: 2-way SMT means 2 threads sibling for each thread
 	cpus, err := cpuset.Parse(strings.TrimSpace(threadSiblingsList))
-	ExpectWithOffset(1, err).ToNot(HaveOccurred())
-	return cpus.Size()
+	if err != nil {
+		return 0, err
+	}
+	return cpus.Size(), nil
 }
 
 // GetNumaNodes returns the number of numa nodes and the associated cpus as list on the node
