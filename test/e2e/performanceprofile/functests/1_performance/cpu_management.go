@@ -108,8 +108,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 		onlineCPUSet, err = nodes.GetOnlineCPUsSet(ctx, workerRTNode)
 		Expect(err).ToNot(HaveOccurred())
-		cpuID := onlineCPUSet.UnsortedList()[0]
-		smtLevel = nodes.GetSMTLevel(ctx, cpuID, workerRTNode)
+		smtLevel, err = nodes.GetSMTLevel(ctx, workerRTNode)
+		Expect(err).ToNot(HaveOccurred())
 		getter, err = cgroup.BuildGetter(ctx, testclient.DataPlaneClient, testclient.K8sClient)
 		Expect(err).ToNot(HaveOccurred())
 		cgroupV2, err = cgroup.IsVersion2(ctx, testclient.DataPlaneClient)
@@ -250,8 +250,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		})
 
 		DescribeTable("Verify CPU usage by stress PODs", func(ctx context.Context, guaranteed bool) {
-			cpuID := onlineCPUSet.UnsortedList()[0]
-			smtLevel := nodes.GetSMTLevel(ctx, cpuID, workerRTNode)
+			smtLevel, err := nodes.GetSMTLevel(ctx, workerRTNode)
+			Expect(err).ToNot(HaveOccurred())
 			if smtLevel < 2 {
 				Skip(fmt.Sprintf("designated worker node %q has SMT level %d - minimum required 2", workerRTNode.Name, smtLevel))
 			}
@@ -281,7 +281,6 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			}
 
 			By(fmt.Sprintf("create a %s QoS stress pod requesting %d cpus", expectedQos, cpuRequest))
-			var err error
 			err = testclient.DataPlaneClient.Create(ctx, testpod)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -413,8 +412,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				Skip("IRQ load balance should be enabled (GloballyDisableIrqLoadBalancing=false), skipping test")
 			}
 
-			cpuID := onlineCPUSet.UnsortedList()[0]
-			smtLevel = nodes.GetSMTLevel(context.TODO(), cpuID, workerRTNode)
+			smtLevel, err = nodes.GetSMTLevel(context.TODO(), workerRTNode)
+			Expect(err).ToNot(HaveOccurred())
 		})
 
 		AfterEach(func() {
@@ -582,9 +581,8 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 		It("[test_id:49149] should reject pods which request integral CPUs not aligned with machine SMT level", func() {
 			// also covers Hyper-thread aware sheduling [test_id:46545] Odd number of isolated CPU threads
-			// any random existing cpu is fine
-			cpuID := onlineCPUSet.UnsortedList()[0]
-			smtLevel := nodes.GetSMTLevel(context.TODO(), cpuID, workerRTNode)
+			smtLevel, err := nodes.GetSMTLevel(context.TODO(), workerRTNode)
+			Expect(err).ToNot(HaveOccurred())
 			if smtLevel < 2 {
 				Skip(fmt.Sprintf("designated worker node %q has SMT level %d - minimum required 2", workerRTNode.Name, smtLevel))
 			}
@@ -593,7 +591,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			testpod = promotePodToGuaranteed(getStressPod(workerRTNode.Name, cpuCount))
 			testpod.Namespace = testutils.NamespaceTesting
 
-			err := testclient.DataPlaneClient.Create(context.TODO(), testpod)
+			err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
 
 			currentPod, err := pods.WaitForPredicate(context.TODO(), client.ObjectKeyFromObject(testpod), 10*time.Minute, func(pod *corev1.Pod) (bool, error) {
@@ -635,15 +633,12 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		DescribeTable("Verify Hyper-Thread aware scheduling for guaranteed pods",
 			func(ctx context.Context, htDisabled bool, snoCluster bool, snoWP bool) {
 				// Check for SMT enabled
-				// any random existing cpu is fine
 				cpuCounts := make([]int, 0, 2)
 				//var testpod *corev1.Pod
 				//var err error
 
-				// Check for SMT enabled
-				// any random existing cpu is fine
-				cpuID := onlineCPUSet.UnsortedList()[0]
-				smtLevel := nodes.GetSMTLevel(ctx, cpuID, workerRTNode)
+				smtLevel, err := nodes.GetSMTLevel(ctx, workerRTNode)
+				Expect(err).ToNot(HaveOccurred())
 				hasWP := checkForWorkloadPartitioning(ctx)
 
 				// Following checks are required to map test_id scenario correctly to the type of node under test
