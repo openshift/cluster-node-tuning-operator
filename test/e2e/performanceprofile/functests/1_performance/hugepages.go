@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/go-units"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
@@ -155,29 +157,31 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 			}
 			Expect(usageHugepages).To(Equal(0), "Found used hugepages, expected 0")
 
-			By("running the POD and waiting while it's installing testing tools")
 			testpod = getCentosPod(workerRTNode.Name)
 			testpod.Namespace = testutils.NamespaceTesting
 			testpod.Spec.Containers[0].Resources.Limits = map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceName(fmt.Sprintf("hugepages-%si", hpSize)): resource.MustParse(fmt.Sprintf("%si", hpSize)),
 				corev1.ResourceMemory: resource.MustParse("1Gi"),
 			}
+			szInBytes, err := units.RAMInBytes(string(hpSize))
+			Expect(err).ToNot(HaveOccurred())
+			cmd2 := []string{"/bin/bash", "-c", fmt.Sprintf("/usr/bin/hugepages-allocator --hugepage-size=%d", szInBytes)}
+			testpod.Spec.Containers[0].Command = cmd2
+
+			By("creating a pod with HugePages allocation request")
 			err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
 			testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 			Expect(err).ToNot(HaveOccurred())
+			testlog.Infof("pod %s executed with command: %s", testpod.Name, cmd2)
 
-			cmd2 := []string{"/bin/bash", "-c", "tmux new -d 'LD_PRELOAD=libhugetlbfs.so HUGETLB_MORECORE=yes top -b > /dev/null'"}
-			_, err = pods.ExecCommandOnPod(testclient.K8sClient, testpod, "", cmd2)
-			Expect(err).ToNot(HaveOccurred())
-
-			By("checking free hugepages - one should be used by pod")
 			availableHugepagesFile := fmt.Sprintf("/sys/kernel/mm/hugepages/hugepages-%skB/nr_hugepages", hpSizeKb)
 			availableHugepages := checkHugepagesStatus(context.TODO(), availableHugepagesFile, workerRTNode)
-
 			freeHugepagesFile := fmt.Sprintf("/sys/kernel/mm/hugepages/hugepages-%skB/free_hugepages", hpSizeKb)
+			By("checking hugepages allocation updated correctly")
 			Eventually(func() int {
 				freeHugepages := checkHugepagesStatus(context.TODO(), freeHugepagesFile, workerRTNode)
+				testlog.Infof("available hugepages %d, free hugepages %d", availableHugepages, freeHugepages)
 				return availableHugepages - freeHugepages
 			}, cluster.ComputeTestTimeout(30*time.Second, RunningOnSingleNode), time.Second).Should(Equal(1))
 
