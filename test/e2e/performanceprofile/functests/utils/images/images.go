@@ -17,7 +17,7 @@ func init() {
 
 	cnfTestsImage, ok = os.LookupEnv("CNF_TESTS_IMAGE")
 	if !ok {
-		cnfTestsImage = "cnf-tests:4.14"
+		cnfTestsImage = "cnf-tests:4.19"
 	}
 }
 
