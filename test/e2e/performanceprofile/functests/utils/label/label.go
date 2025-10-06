@@ -67,6 +67,9 @@ const (
 
 	// UnCoreCache Feature should be added in tests that test Pod Affinity of Cpu's that share same Last level cache
 	UnCoreCache Feature = "uncore-cache"
+
+	// ControlplaneSched features be added in tests that test when control plane schedulable is enabled
+	CtrlPlaneSchedulable Feature = "controlplane-schedulable"
 )
 
 // Tier is a label to classify tests under specific grade/level
