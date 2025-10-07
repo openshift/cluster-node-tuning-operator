@@ -786,11 +786,14 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				ccx, err := getCCX(0)
 				Expect(err).ToNot(HaveOccurred())
 				L3CacheGroupSize = ccx.Size()
-				// Get actual CPU ID's from Numa Node 0
-				numaNode0Cpus := cpuset.New(numaInfo[0]...)
-
-				// Compare if L3 cache group CPUs match NUMA Node 0 CPUs
-				if ccx.Equals(numaNode0Cpus) {
+				// Compare length of numa node 0 cpus with ccx size
+				// if they are same then L3 Cache spans the whole of numa node
+				// we cannot compare the L3 cache cpus are same as numa node 0 cpus as
+				// as the cpu topology as they many not be same . For example
+				// ccx cpus may be 0-11, and numa node0 cpus could be 0,2,4,6,8,10,12,14,16,18,22
+				// if we were to compare the equality, the equality fails and tests will not be
+				// skipped atleast on Virtual machines
+				if len(numaInfo[0]) == L3CacheGroupSize {
 					Skip("This test requires systems where L3 cache is shared amount subset of cpus")
 				}
 
