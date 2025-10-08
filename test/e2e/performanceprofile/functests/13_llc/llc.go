@@ -984,7 +984,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			logs, err := pods.GetLogs(testclient.K8sClient, testPod)
 			Expect(err).ToNot(HaveOccurred(), "Cannot get logs from test pod")
 
-			allocatedCPUs, err := cpuset.Parse(logs)
+			allocatedCPUs, err := cpuset.Parse(strings.TrimSpace(logs))
 			Expect(err).ToNot(HaveOccurred(), "Cannot get cpuset for pod %s/%s from logs %q", testPod.Namespace, testPod.Name, logs)
 			Expect(allocatedCPUs.Size()).To(Equal(askingCPUs), "asked %d exclusive CPUs got %v", askingCPUs, allocatedCPUs)
 
@@ -1006,7 +1006,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			logs, err := pods.GetLogs(testclient.K8sClient, testPod)
 			Expect(err).ToNot(HaveOccurred(), "Cannot get logs from test pod")
 
-			allocatedCPUs, err := cpuset.Parse(logs)
+			allocatedCPUs, err := cpuset.Parse(strings.TrimSpace(logs))
 			Expect(err).ToNot(HaveOccurred(), "Cannot get cpuset for pod %s/%s from logs %q", testPod.Namespace, testPod.Name, logs)
 			Expect(allocatedCPUs.Size()).To(Equal(askingCPUs), "asked %d exclusive CPUs got %v", askingCPUs, allocatedCPUs)
 
