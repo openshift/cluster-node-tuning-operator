@@ -21,6 +21,7 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/namespaces"
@@ -46,9 +47,13 @@ var _ = BeforeSuite(func() {
 	Expect(isTestExecutableFound()).To(BeTrue())
 	Expect(testclient.ClientsEnabled).To(BeTrue())
 
+	ok, err := cluster.IsControlPlaneSchedulable(context.TODO())
+	Expect(err).ToNot(HaveOccurred(), "Unable to fetch schedulable information of control plane nodes: %v", err)
+	if ok {
+		Skip("Skipping the test - Control plane nodes are schedulable")
+	}
 	// update PP isolated CPUs. the new cpu set for isolated should have an even number of CPUs to avoid failing the pod on SMTAlignment error,
 	// and should be greater than what is requested by the test cases in the suite so the test runs properly
-	var err error
 	profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 	Expect(err).ToNot(HaveOccurred())
 	By(fmt.Sprintf("verify if the isolated cpus value under the performance profile %q is appropriate for this test suite", profile.Name))
@@ -96,6 +101,11 @@ var _ = AfterSuite(func() {
 	}
 	Expect(namespaces.WaitForDeletion(prePullNamespaceName, 5*time.Minute), "hitting timeout while waiting namespace %q deletion", prePullNamespaceName)
 
+	ok, err := cluster.IsControlPlaneSchedulable(context.TODO())
+	Expect(err).ToNot(HaveOccurred(), "Unable to fetch schedulable information of control plane nodes: %v", err)
+	if ok {
+		Skip("Skipping the test - Control plane nodes are schedulable")
+	}
 	currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 	Expect(err).ToNot(HaveOccurred())
 	if reflect.DeepEqual(currentProfile.Spec, profile.Spec) != true {
