@@ -23,8 +23,6 @@ import (
 	"time"
 
 	"k8s.io/klog/v2"
-
-	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 )
 
 func TunedCreateCmdline(debug bool) (string, []string) {
@@ -101,10 +99,6 @@ func TunedRunNoDaemon(timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	if err := util.AddToPath(nvidiaDriverBinDir); err != nil {
-		return err
-	}
-
 	command, args := TunedCreateCmdline(false)
 	if timeout > 0 {
 		// CommandContext sets Cancel to call the Kill (SIGKILL) method on the command's Process.
@@ -125,10 +119,6 @@ func TunedRunNoDaemon(timeout time.Duration) error {
 
 func TunedRun(cmd *exec.Cmd, daemon *Daemon, onDaemonReload func()) error {
 	klog.Infof("running cmd...")
-
-	if err := util.AddToPath(nvidiaDriverBinDir); err != nil {
-		return err
-	}
 
 	cmdReader, err := cmd.StderrPipe()
 	if err != nil {
