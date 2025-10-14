@@ -134,7 +134,7 @@ func buildServer(port int, caBundle string) *http.Server {
 }
 
 func startServer(srv *http.Server) {
-	klog.Infof("starting metrics server")
+	klog.Infof("starting metrics server on %s", srv.Addr)
 	if err := srv.ListenAndServeTLS(tlsCert, tlsKey); err != nil && err != http.ErrServerClosed {
 		klog.Errorf("error from metrics server: %v", err)
 	}
