@@ -264,7 +264,7 @@ func printEnvs() {
 	name, _ := os.LookupEnv(hypershift.HostedClusterNameEnv)
 	testlog.Infof("%s=%s", hypershift.HostedClusterNameEnv, name)
 
-	v, _ := hypershift.GetManagementClusterNamespace()
+	v, _ := hypershift.GetHostedControlPlaneNamespace()
 	testlog.Infof("%s=%s", hypershift.HostedControlPlaneNamespaceEnv, v)
 
 	kcPath, _ := os.LookupEnv(hypershift.ManagementClusterKubeConfigEnv)

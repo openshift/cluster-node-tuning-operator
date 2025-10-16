@@ -3,11 +3,12 @@ package __performance_status
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/onsi/gomega/gcustom"
 	types2 "github.com/onsi/gomega/types"
-	tunedutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
+	"k8s.io/apimachinery/pkg/labels"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -21,8 +22,11 @@ import (
 
 	ign2types "github.com/coreos/ignition/config/v2_2/types"
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift"
+	hypershiftconsts "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/consts"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
@@ -32,6 +36,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	tunedutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
 	v1 "github.com/openshift/custom-resource-status/conditions/v1"
 )
 
@@ -137,6 +142,74 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 
 			By("Waiting for performance profile condition to be Degraded")
 			profiles.WaitForCondition(testutils.NodeSelectorLabels, v1.ConditionDegraded, corev1.ConditionTrue)
+		})
+	})
+
+	Context("Hypershift specific status validation", Label(string(label.HyperShift)), func() {
+		var profile *performancev2.PerformanceProfile
+		ctx := context.Background()
+		BeforeEach(func() {
+			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Should have ConfigMap status when running on HyperShift platform", Label(string(label.HyperShift)), func() {
+			hcpNs, err := hypershiftutils.GetHostedControlPlaneNamespace()
+			Expect(err).ToNot(HaveOccurred())
+
+			np, err := nodepools.GetNodePool(ctx, testclient.ControlPlaneClient)
+			Expect(err).ToNot(HaveOccurred())
+
+			cm := &corev1.ConfigMap{}
+			cmName := hypershift.GetStatusConfigMapName(fmt.Sprintf("%s-%s", profile.GetName(), np.GetName()))
+			key := client.ObjectKey{Namespace: hcpNs, Name: cmName}
+			Expect(testclient.ControlPlaneClient.Get(ctx, key, cm)).To(Succeed(), "failed to find ConfigMap %s/%s", hcpNs, cmName)
+		})
+
+		It("Should not create more than a single ConfigMap status per nodePool when PerformanceProfile gets replace or updated", Label(string(label.HyperShift)), func() {
+			hcpNs, err := hypershiftutils.GetHostedControlPlaneNamespace()
+			Expect(err).ToNot(HaveOccurred())
+
+			np, err := nodepools.GetNodePool(ctx, testclient.ControlPlaneClient)
+			Expect(err).ToNot(HaveOccurred())
+
+			newProfile := profile.DeepCopy()
+			newProfile.Name = fmt.Sprintf("%s-2", profile.Name)
+			Expect(testclient.ControlPlaneClient.Create(ctx, newProfile)).To(Succeed())
+
+			// Cleanup: revert back to the original profile and delete the temporary one
+			defer func() {
+				By("Reverting back to the original profile")
+				Expect(nodepools.ReplaceTuningObject(ctx, testclient.ControlPlaneClient, profile, newProfile)).To(Succeed())
+
+				By("Waiting for node pool configuration to revert")
+				Expect(nodepools.WaitForConfigToBeReady(ctx, testclient.ControlPlaneClient, np.Name, np.Namespace)).To(Succeed())
+
+				By("Deleting the temporary profile")
+				Expect(testclient.ControlPlaneClient.Delete(ctx, newProfile)).To(Succeed())
+			}()
+
+			Expect(nodepools.ReplaceTuningObject(ctx, testclient.ControlPlaneClient, newProfile, profile)).To(Succeed())
+
+			// nothing changed in the profile but the name, so the nodepool will be transition into updating state for a really
+			// short time.
+			// to make sure it's not being missing, the test will only wait for updated state.
+			By("Waiting to see no more than a single configmap status created")
+			Consistently(func() {
+				cmList := &corev1.ConfigMapList{}
+				opts := &client.ListOptions{
+					Namespace: hcpNs,
+					LabelSelector: labels.SelectorFromSet(map[string]string{
+						hypershiftconsts.NTOGeneratedPerformanceProfileStatusConfigMapLabel: "true",
+						hypershiftconsts.NodePoolNameLabel:                                  np.GetName(),
+					}),
+				}
+				Expect(testclient.ControlPlaneClient.List(ctx, cmList, opts)).To(Succeed())
+				Expect(cmList.Items).To(HaveLen(1), "More than a single ConfigMap status was found")
+			}).WithPolling(time.Second * 10).WithTimeout(time.Minute * 2)
+
+			By("Waiting for the node pool configuration to be ready")
+			Expect(nodepools.WaitForConfigToBeReady(ctx, testclient.ControlPlaneClient, np.Name, np.Namespace)).To(Succeed())
 		})
 	})
 })
