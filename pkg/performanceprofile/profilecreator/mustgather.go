@@ -29,34 +29,39 @@ import (
 )
 
 const (
-	// ClusterScopedResources defines the subpath, relative to the top-level must-gather directory.
+	// clusterScopedResources defines the subpath, relative to the top-level must-gather directory.
 	// A top-level must-gather directory is of the following format:
 	// must-gather-dir/quay-io-openshift-kni-performance-addon-operator-must-gather-sha256-<Image SHA>
 	// Here we find the cluster-scoped definitions saved by must-gather
-	ClusterScopedResources = "cluster-scoped-resources"
-	// CoreNodes defines the subpath, relative to ClusterScopedResources, on which we find node-specific data
-	CoreNodes = "core/nodes"
-	// MCPools defines the subpath, relative to ClusterScopedResources, on which we find the machine config pool definitions
-	MCPools = "machineconfiguration.openshift.io/machineconfigpools"
-	// YAMLSuffix is the extension of the yaml files saved by must-gather
-	YAMLSuffix = ".yaml"
-	// Nodes defines the subpath, relative to top-level must-gather directory, on which we find node-specific data
-	Nodes = "nodes"
-	// SysInfoFileName defines the name of the file where ghw snapshot is stored
-	SysInfoFileName = "sysinfo.tgz"
-	// defines the sub path relative to ClusterScopedResources, on which OCP infrastructure object is
+	clusterScopedResources = "cluster-scoped-resources"
+	// coreNodes defines the subpath, relative to ClusterScopedResources, on which we find node-specific data
+	coreNodes = "core/nodes"
+	// mcpools defines the subpath, relative to ClusterScopedResources, on which we find the machine config pool definitions
+	mcpools = "machineconfiguration.openshift.io/machineconfigpools"
+	// yamlSuffix is the extension of the yaml files saved by must-gather
+	yamlSuffix = ".yaml"
+	// nodes defines the subpath, relative to top-level must-gather directory, on which we find node-specific data
+	nodes = "nodes"
+	// namespaces defines the subpath, relative to top-level must-gather directory, on which we find openshift namespace-specific data
+	namespaces = "namespaces"
+	// sysInfoFileName defines the name of the file where ghw snapshot is stored
+	sysInfoFileName = "sysinfo.tgz"
+	// configOCPInfra defines the sub path relative to ClusterScopedResources, on which OCP infrastructure object is
 	configOCPInfra = "config.openshift.io/infrastructures"
 )
 
-func getMustGatherFullPathsWithFilter(mustGatherPath string, suffix string, filter string) (string, error) {
+func getMustGatherFullPathsWithFilter(mustGatherPath string, suffix string, filters ...string) (string, error) {
 	var paths []string
 
-	// don't assume directory names, only look for the suffix, filter out files having "filter" in their names
+	// don't assume directory names, only look for the suffix, filter out files having "filters" in their names
 	err := filepath.Walk(mustGatherPath, func(path string, info os.FileInfo, err error) error {
 		if strings.HasSuffix(path, suffix) {
-			if len(filter) == 0 || !strings.Contains(path, filter) {
-				paths = append(paths, path)
+			for _, f := range filters {
+				if strings.Contains(path, f) {
+					return nil
+				}
 			}
+			paths = append(paths, path)
 		}
 		return nil
 	})
@@ -68,19 +73,19 @@ func getMustGatherFullPathsWithFilter(mustGatherPath string, suffix string, filt
 	}
 	if len(paths) > 1 {
 		Alert("Multiple matches for the specified must gather directory path: %s and suffix: %s", mustGatherPath, suffix)
-		return "", fmt.Errorf("Multiple matches for the specified must gather directory path: %s and suffix: %s.\n Expected only one performance-addon-operator-must-gather* directory, please check the must-gather tarball", mustGatherPath, suffix)
+		return "", fmt.Errorf("multiple matches for the specified must gather directory path: %s and suffix: %s.\n Expected only one performance-addon-operator-must-gather* directory, please check the must-gather tarball", mustGatherPath, suffix)
 	}
 	// returning one possible path
 	return paths[0], err
 }
 
 func getMustGatherFullPaths(mustGatherPath string, suffix string) (string, error) {
-	return getMustGatherFullPathsWithFilter(mustGatherPath, suffix, "")
+	return getMustGatherFullPathsWithFilter(mustGatherPath, suffix)
 }
 
 func getNode(mustGatherDirPath, nodeName string) (*v1.Node, error) {
 	var node v1.Node
-	nodePathSuffix := path.Join(ClusterScopedResources, CoreNodes, nodeName)
+	nodePathSuffix := path.Join(clusterScopedResources, coreNodes, nodeName)
 	path, err := getMustGatherFullPaths(mustGatherDirPath, nodePathSuffix)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get MachineConfigPool for %s: %v", nodeName, err)
@@ -103,7 +108,7 @@ func getNode(mustGatherDirPath, nodeName string) (*v1.Node, error) {
 func GetNodeList(mustGatherDirPath string) ([]*v1.Node, error) {
 	machines := make([]*v1.Node, 0)
 
-	nodePathSuffix := path.Join(ClusterScopedResources, CoreNodes)
+	nodePathSuffix := path.Join(clusterScopedResources, coreNodes)
 	nodePath, err := getMustGatherFullPaths(mustGatherDirPath, nodePathSuffix)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Nodes from must gather directory: %v", err)
@@ -131,7 +136,7 @@ func GetNodeList(mustGatherDirPath string) ([]*v1.Node, error) {
 func GetMCPList(mustGatherDirPath string) ([]*machineconfigv1.MachineConfigPool, error) {
 	pools := make([]*machineconfigv1.MachineConfigPool, 0)
 
-	mcpPathSuffix := path.Join(ClusterScopedResources, MCPools)
+	mcpPathSuffix := path.Join(clusterScopedResources, mcpools)
 	mcpPath, err := getMustGatherFullPaths(mustGatherDirPath, mcpPathSuffix)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get MCPs: %v", err)
@@ -161,7 +166,7 @@ func GetMCPList(mustGatherDirPath string) ([]*machineconfigv1.MachineConfigPool,
 func GetMCP(mustGatherDirPath, mcpName string) (*machineconfigv1.MachineConfigPool, error) {
 	var mcp machineconfigv1.MachineConfigPool
 
-	mcpPathSuffix := path.Join(ClusterScopedResources, MCPools, mcpName+YAMLSuffix)
+	mcpPathSuffix := path.Join(clusterScopedResources, mcpools, mcpName+yamlSuffix)
 	mcpPath, err := getMustGatherFullPaths(mustGatherDirPath, mcpPathSuffix)
 	if err != nil {
 		return nil, fmt.Errorf("failed to obtain MachineConfigPool %s: %v", mcpName, err)
