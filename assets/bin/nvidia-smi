@@ -1,3 +1,8 @@
 #!/bin/bash
 
+# This is a wrapper around /run/nvidia/driver/usr/bin/nvidia-smi binary,
+# which is populated by the NVIDIA GPU Operator on OpenShift.  The
+# binary will not exist unless the NVIDIA GPU Operator on OpenShift is
+# installed.  The primary use case is to set NVIDIA GPU frequencies and
+# power caps via TuneD.
 chroot /run/nvidia/driver /usr/bin/nvidia-smi "$@"
