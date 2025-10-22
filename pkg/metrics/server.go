@@ -47,6 +47,7 @@ func init() {
 // it does so only if the CA bundle changed from the current CA bundle on record.
 func DumpCA(caBundle string) {
 	if caBundle != server.caBundle {
+		klog.Infof("updating metrics server client CA bundle")
 		server.caBundleCh <- caBundle
 	}
 }
@@ -171,6 +172,7 @@ func RunServer(port int, ctx context.Context) error {
 
 		// Wait for the root certificate bundle of the metrics server for client authentication.
 		// The bundle is sent from a ConfigMap via a channel by the operator.
+		klog.Infof("waiting for initial metrics server client CA bundle")
 		server.caBundle = <-server.caBundleCh
 	}
 
