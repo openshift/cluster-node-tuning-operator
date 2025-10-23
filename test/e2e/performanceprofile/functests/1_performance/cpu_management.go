@@ -93,13 +93,14 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		ctx                      context.Context = context.Background()
 		getter                   cgroup.ControllersGetter
 		cgroupV2                 bool
+		workerRTNodes            []corev1.Node
 	)
 
 	testutils.CustomBeforeAll(func() {
 		isSNO, err := cluster.IsSingleNode()
 		Expect(err).ToNot(HaveOccurred())
 		RunningOnSingleNode = isSNO
-		workerRTNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
+		workerRTNodes, err = nodes.GetByLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 		workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes)
 		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("error looking for the optional selector: %v", err))
@@ -1063,6 +1064,89 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		})
 	})
 
+	Context("With Control plane schedule enabled", Label(string(label.CtrlPlaneSchedulable), string(label.OpenShift)), func() {
+		var (
+			profile          *performancev2.PerformanceProfile
+			reservedCpus     string
+			expectedCpuset   cpuset.CPUSet
+			platformServices []string
+		)
+
+		BeforeAll(func() {
+			By("Checking if control plane is schedulable")
+			ok, err := cluster.IsControlPlaneSchedulable(context.TODO())
+			Expect(err).ToNot(HaveOccurred(), "Unable to check if control plane is schedulable")
+			if !ok {
+				Skip("Skipping tests: Control planes are not schedulable")
+			}
+
+			By("Fetching performance profile")
+			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred(), "Unable to fetch profile")
+			Expect(profile.Spec.CPU.Reserved).ToNot(BeNil(), "Profile CPU Reserved field is nil")
+			reservedCpus = string(*profile.Spec.CPU.Reserved)
+
+			expectedCpuset, err = cpuset.Parse(reservedCpus)
+			Expect(err).ToNot(HaveOccurred(), "Unable to parse reserved CPU set %s", reservedCpus)
+
+			platformServices = []string{"systemd", "crio", "kubelet", "ovs-vswitchd"}
+		})
+
+		It("[test_id: 83851] verify platform services are restricted to reserved cpus", Label(string(label.Tier0)), func() {
+			By("Verifying platform services are restricted to reserved CPUs")
+			for _, service := range platformServices {
+				By(fmt.Sprintf("Checking CPU affinity for service: %s", service))
+				verifyServiceCPUAffinity(service, expectedCpuset, workerRTNodes)
+			}
+		})
+
+		It("[test_id: 83856] Verify cpu affinity of burstable pods are adjusted when guaranteed pods are created and removed on control plane node", Label(string(label.Tier0)), func() {
+			var guPod, buPod *corev1.Pod
+
+			By("Creating and starting guaranteed pod")
+			guPod = makePod(ctx, &workerRTNodes[0], true)
+			err = testclient.DataPlaneClient.Create(ctx, guPod)
+			Expect(err).ToNot(HaveOccurred(), "Unable to create guaranteed pod")
+			guPod, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(guPod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Getting cpuset configuration for guaranteed pod")
+			guaranteedPodCpuset, err := getPodCpusetConfiguration(ctx, guPod, getter)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Creating and starting burstable pod on the same node")
+			buPod = makePod(ctx, &workerRTNodes[0], false)
+			buPod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: guPod.Spec.NodeName}
+			buPod.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceMemory: resource.MustParse("200Mi"),
+					corev1.ResourceCPU:    resource.MustParse("500m"),
+				},
+			}
+			err = testclient.DataPlaneClient.Create(ctx, buPod)
+			Expect(err).ToNot(HaveOccurred(), "Unable to create burstable pod")
+			buPod, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(buPod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Getting cpuset configuration for burstable pod")
+			burstablePodCpuset, err := getPodCpusetConfiguration(ctx, buPod, getter)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Verifying that guaranteed pod cpuset is not a subset of burstable pod cpuset")
+			Expect(guaranteedPodCpuset.IsSubsetOf(burstablePodCpuset)).ToNot(BeTrue())
+
+			defer func() {
+				if guPod != nil {
+					testlog.Infof("deleting pod %q", guPod.Name)
+					deleteTestPod(ctx, guPod)
+				}
+				if buPod != nil {
+					testlog.Infof("deleting pod %q", buPod.Name)
+					deleteTestPod(ctx, buPod)
+				}
+			}()
+		})
+	})
 })
 
 func extractConfigInfo(output string) (*ContainerConfig, error) {
@@ -1440,6 +1524,49 @@ func busyCpuImageEnv() string {
 	}
 
 	return fmt.Sprintf("%s%s", qeImageRegistry, busyCpusImage)
+}
+
+// getPodCpusetConfiguration gets the cpuset configuration for a pod
+func getPodCpusetConfiguration(ctx context.Context, pod *corev1.Pod, getter cgroup.ControllersGetter) (cpuset.CPUSet, error) {
+	cpusetCfg := &controller.CpuSet{}
+	err := getter.Container(ctx, pod, pod.Spec.Containers[0].Name, cpusetCfg)
+	if err != nil {
+		return cpuset.CPUSet{}, err
+	}
+	return cpuset.Parse(cpusetCfg.Cpus)
+}
+
+// verifyServiceCPUAffinity verifies that a service is restricted to reserved CPUs
+func verifyServiceCPUAffinity(service string, expectedCpuset cpuset.CPUSet, targetNodes []corev1.Node) {
+	for _, ctrlPlaneNode := range targetNodes {
+		By(fmt.Sprintf("Checking service %s on node %s", service, ctrlPlaneNode.Name))
+
+		// Get service PID
+		cmd := []string{"pidof", service}
+		pidInBytes, err := nodes.ExecCommand(context.TODO(), &ctrlPlaneNode, cmd)
+		Expect(err).ToNot(HaveOccurred(), "unable to fetch pid of service %s on node %s", service, ctrlPlaneNode.Name)
+		pid := strings.TrimSpace(string(pidInBytes))
+		Expect(pid).ToNot(BeEmpty(), "PID for service %s on node %s is empty", service, ctrlPlaneNode.Name)
+
+		// Get CPU affinity
+		tasksetCmd := []string{"taskset", "-pc", pid}
+		out, err := nodes.ExecCommand(context.TODO(), &ctrlPlaneNode, tasksetCmd)
+		Expect(err).ToNot(HaveOccurred(), "unable to get CPU affinity for service %s on node %s", service, ctrlPlaneNode.Name)
+
+		testlog.TaggedInfof("Info", "Affinity of %s service with pid %s on node %s is %s", service, pid, ctrlPlaneNode.Name, string(out))
+
+		// Parse CPU affinity
+		output := testutils.ToString(out)
+		tasksetOutput := strings.Split(strings.TrimSpace(output), ":")
+		cpus := strings.TrimSpace(tasksetOutput[1])
+		serviceCpuset, err := cpuset.Parse(cpus)
+		Expect(err).ToNot(HaveOccurred(), "unable to parse CPU set %s for service %s", cpus, service)
+
+		// Verify CPU affinity matches expected reserved CPUs
+		Expect(serviceCpuset.Equals(expectedCpuset)).To(BeTrue(),
+			"Service %s on node %s is not isolated to reserved cpus. Expected: %s, Got: %s",
+			service, ctrlPlaneNode.Name, expectedCpuset.String(), serviceCpuset.String())
+	}
 }
 
 // isPodReady checks if the pod is in ready state
