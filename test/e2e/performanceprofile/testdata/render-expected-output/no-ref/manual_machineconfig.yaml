@@ -203,7 +203,7 @@ spec:
           ExecReload=/bin/pkill --signal HUP --pidfile /run/tuned/tuned.pid
           ExecStartPre=/bin/bash -c " \
             mkdir -p /run/tuned "
-          ExecStart=/usr/bin/podman run \
+          ExecStart=-/usr/bin/podman run \
               --rm \
               --name openshift-tuned \
               --privileged \
@@ -224,6 +224,7 @@ spec:
               --volume /sys:/sys:rslave \
               --entrypoint '["/usr/bin/cluster-node-tuning-operator","ocp-tuned","--in-cluster=false","--one-shot=true","-v=1"]' \
               $NTO_IMAGE
+          ExecStart=/usr/bin/true
           Environment=PODMAN_SYSTEMD_UNIT=%n
           EnvironmentFile=/etc/mco/proxy.env
           EnvironmentFile=-/var/lib/ocp-tuned/image.env
