@@ -12,7 +12,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -41,6 +40,7 @@ import (
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/deployments"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/infrastructure"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
@@ -293,7 +293,13 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
 			ctx := context.Background()
+			hasBaremetal := false
 			for _, cnfnode := range workerRTNodes {
+				isVM, err := infrastructure.IsVM(ctx, &cnfnode)
+				Expect(err).ToNot(HaveOccurred())
+				if !isVM {
+					hasBaremetal = true
+				}
 				numaInfo, err := nodes.GetNumaNodes(ctx, &cnfnode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get numa information from the node")
 				if len(numaInfo) < 2 {
@@ -309,6 +315,9 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				if len(numaInfo[0]) == L3CacheGroupSize {
 					Skip("This test requires systems where L3 cache is shared amount subset of cpus")
 				}
+			}
+			if !hasBaremetal {
+				Skip("Skipping test. All workers in this test setup are VMs, no baremetal node was found")
 			}
 			// Modify the profile such that we give 1 whole ccx to reserved cpus
 			By("Modifying the profile")
@@ -555,6 +564,21 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 		})
 
 		Context("With Multiple Pods", func() {
+			BeforeEach(func() {
+				hasBaremetal := false
+				for i := range workerRTNodes {
+					isVM, err := infrastructure.IsVM(context.Background(), &workerRTNodes[i])
+					Expect(err).ToNot(HaveOccurred())
+					if !isVM {
+						hasBaremetal = true
+						break
+					}
+				}
+				if !hasBaremetal {
+					Skip("Skipping test. All workers in this test setup are VMs, no baremetal node was found")
+				}
+			})
+
 			type L3UncoreCacheShareMode string
 			const (
 				L3UncoreCacheShareEqual   L3UncoreCacheShareMode = "equal"
@@ -652,6 +676,21 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 		})
 
 		Context("Multiple Containers", func() {
+			BeforeEach(func() {
+				hasBaremetal := false
+				for i := range workerRTNodes {
+					isVM, err := infrastructure.IsVM(context.Background(), &workerRTNodes[i])
+					Expect(err).ToNot(HaveOccurred())
+					if !isVM {
+						hasBaremetal = true
+						break
+					}
+				}
+				if !hasBaremetal {
+					Skip("Skipping test. All workers in this test setup are VMs, no baremetal node was found")
+				}
+			})
+
 			type alignment string
 			const (
 				partialAlignment               alignment = "partial"
@@ -777,7 +816,13 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
 			ctx := context.Background()
+			hasBaremetal := false
 			for _, cnfnode := range workerRTNodes {
+				isVM, err := infrastructure.IsVM(ctx, &cnfnode)
+				Expect(err).ToNot(HaveOccurred())
+				if !isVM {
+					hasBaremetal = true
+				}
 				numaInfo, err := nodes.GetNumaNodes(ctx, &cnfnode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to fetch numa nodes")
 				coresiblings, err := nodes.GetCoreSiblings(ctx, &cnfnode)
@@ -799,6 +844,9 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 					Skip(fmt.Sprintf("This test need 2 Numa nodes. The number of numa nodes on node %s < 2", cnfnode.Name))
 				}
 				Expect(err).ToNot(HaveOccurred())
+			}
+			if !hasBaremetal {
+				Skip("Skipping test. All workers in this test setup are VMs, no baremetal node was found")
 			}
 			node0 := cpuset.New(nosmt[0]...)
 			node1 := cpuset.New(nosmt[1]...)
@@ -950,7 +998,19 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 		})
 
 		BeforeEach(func() {
-			targetNodeName = workerRTNodes[0].Name // pick random node
+			targetNodeName = ""
+			for i := range workerRTNodes {
+				workerRT := &workerRTNodes[i]
+				isVM, err := infrastructure.IsVM(context.TODO(), workerRT)
+				Expect(err).ToNot(HaveOccurred())
+				if !isVM {
+					targetNodeName = workerRT.Name
+					break
+				}
+			}
+			if targetNodeName == "" {
+				Skip("Skipping test. All workers in this test setup are VMs, no baremetal node was found")
+			}
 			var ok bool
 			targetNodeInfo, ok = machineDatas[targetNodeName]
 			Expect(ok).To(BeTrue(), "unknown machine data for node %q", targetNodeName)
