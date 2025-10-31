@@ -33,17 +33,17 @@ import (
 // NewGHWHandler is a handler to use ghw options corresponding to a node
 func NewGHWHandler(mustGatherDirPath string, node *v1.Node) (*GHWHandler, error) {
 	nodeName := node.GetName()
-	nodePathSuffix := path.Join(Nodes)
-	nodepath, err := getMustGatherFullPathsWithFilter(mustGatherDirPath, nodePathSuffix, ClusterScopedResources)
+	nodePathSuffix := path.Join(nodes)
+	nodepath, err := getMustGatherFullPathsWithFilter(mustGatherDirPath, nodePathSuffix, clusterScopedResources, namespaces)
 	if err != nil {
 		return nil, fmt.Errorf("can't obtain the node path %s: %v", nodeName, err)
 	}
-	_, err = os.Stat(path.Join(nodepath, nodeName, SysInfoFileName))
+	_, err = os.Stat(path.Join(nodepath, nodeName, sysInfoFileName))
 	if err != nil {
 		return nil, fmt.Errorf("can't obtain the path: %s for node %s: %v", nodeName, nodepath, err)
 	}
 	options := ghw.WithSnapshot(ghw.SnapshotOptions{
-		Path: path.Join(nodepath, nodeName, SysInfoFileName),
+		Path: path.Join(nodepath, nodeName, sysInfoFileName),
 	})
 	ghwHandler := &GHWHandler{snapShotOptions: options, Node: node}
 	return ghwHandler, nil
