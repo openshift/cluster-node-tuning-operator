@@ -34,7 +34,7 @@ func GetPullTimeout() (time.Duration, error) {
 }
 
 // PrePull makes sure the image is pre-pulled on the relevant nodes.
-func PrePull(ctx context.Context, cli client.Client, pullSpec, namespace, tag string) (*appsv1.DaemonSet, error) {
+func PrePull(ctx context.Context, cli client.Client, pullSpec, namespace, tag string, imagePullSecrets []corev1.LocalObjectReference) (*appsv1.DaemonSet, error) {
 	name := PrePullPrefix + tag
 	ds := appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -54,6 +54,7 @@ func PrePull(ctx context.Context, cli client.Client, pullSpec, namespace, tag st
 					},
 				},
 				Spec: corev1.PodSpec{
+					ImagePullSecrets: imagePullSecrets,
 					Containers: []corev1.Container{
 						{
 							Name:    "prepullcontainer",
