@@ -91,6 +91,11 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 	}
 
 	if profile.Spec.HugePages != nil {
+		// Validate that if hugepages are configured, defaultHugepagesSize must be provided
+		if len(profile.Spec.HugePages.Pages) > 0 && profile.Spec.HugePages.DefaultHugePagesSize == nil {
+			return nil, fmt.Errorf("hugepages are configured but defaultHugepagesSize is not set")
+		}
+
 		var defaultHugepageSize performancev2.HugePageSize
 		if profile.Spec.HugePages.DefaultHugePagesSize != nil {
 			defaultHugepageSize = *profile.Spec.HugePages.DefaultHugePagesSize
