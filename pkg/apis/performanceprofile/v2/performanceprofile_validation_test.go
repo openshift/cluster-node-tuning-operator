@@ -544,6 +544,28 @@ var _ = Describe("PerformanceProfile", func() {
 	})
 
 	Describe("Hugepages validation", func() {
+		It("should reject when hugepages are configured without defaultHugepagesSize", func() {
+			nodeSpecs := []NodeSpecifications{}
+			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node"})
+			validatorClient = GetFakeValidatorClient(nodeSpecs)
+
+			nodes, err := profile.getNodesList()
+			Expect(err).To(BeNil())
+
+			// Set hugepages without defaultHugepagesSize
+			profile.Spec.HugePages.DefaultHugePagesSize = nil
+			profile.Spec.HugePages.Pages = []HugePage{
+				{
+					Size:  HugePageSize1G,
+					Count: HugePagesCount,
+				},
+			}
+
+			errors := profile.validateHugePages(nodes)
+			Expect(errors).NotTo(BeEmpty(), "should have validation error when hugepages are configured without defaultHugepagesSize")
+			Expect(errors[0].Error()).To(ContainSubstring("defaultHugepagesSize must be specified when hugepages are configured"))
+		})
+
 		It("should reject on incorrect default hugepages size (x86)", func() {
 			nodeSpecs := []NodeSpecifications{}
 			nodeSpecs = append(nodeSpecs, NodeSpecifications{architecture: amd64, cpuCapacity: 1000, name: "node"})

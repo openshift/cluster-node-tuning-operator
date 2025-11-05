@@ -381,6 +381,13 @@ func (r *PerformanceProfile) validateHugePages(nodes corev1.NodeList) field.Erro
 		return allErrs
 	}
 
+	// Validate that if hugepages are configured, defaultHugepagesSize must be provided
+	if len(r.Spec.HugePages.Pages) > 0 && r.Spec.HugePages.DefaultHugePagesSize == nil {
+		allErrs = append(allErrs, field.Required(
+			field.NewPath("spec.hugepages.defaultHugepagesSize"),
+			"defaultHugepagesSize must be specified when hugepages are configured"))
+	}
+
 	// We can only partially validate this if we have no nodes
 	// We can check that the value used is legitimate but we cannot check
 	// whether it is supposed to be x86 or aarch64
