@@ -113,7 +113,8 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 			mcpOld := e.ObjectOld.(*mcov1.MachineConfigPool)
 			mcpNew := e.ObjectNew.(*mcov1.MachineConfigPool)
 
-			return !reflect.DeepEqual(mcpOld.Status.Conditions, mcpNew.Status.Conditions)
+			// We care about labels and the spec section, because those influence matching of Nodes and KubeletConfigs
+			return !reflect.DeepEqual(mcpOld.Status.Conditions, mcpNew.Status.Conditions) || !reflect.DeepEqual(mcpOld.Labels, mcpNew.Labels) || !reflect.DeepEqual(mcpOld.Spec, mcpNew.Spec)
 		},
 	}
 
@@ -312,7 +313,8 @@ func mcpToPerformanceProfileReconcileRequests(profiles *performancev2.Performanc
 		mcpNodeSelector, err := metav1.LabelSelectorAsSelector(mcp.Spec.NodeSelector)
 		if err != nil {
 			klog.Errorf("failed to parse the selector %v: %v", mcp.Spec.NodeSelector, err)
-			return nil
+			// Skip the broken MCP, but process others
+			continue
 		}
 
 		if mcpNodeSelector.Matches(profileNodeSelector) {
