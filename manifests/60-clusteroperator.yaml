@@ -10,6 +10,34 @@ metadata:
   name: node-tuning
 spec: {}
 status:
+  # Setting relatedObjects in the operator's reconciled ClusterOperator status code is not enough.
+  # We want to add the entries here too, see OCPBUGS-65489.
+  relatedObjects:
+    - group: ""
+      name: openshift-cluster-node-tuning-operator
+      resource: namespaces
+    - group: ""
+      name: cluster-node-tuning-operator
+      namespace: openshift-cluster-node-tuning-operator
+      resource: serviceaccounts
+    - group: rbac.authorization.k8s.io
+      name: cluster-node-tuning-operator
+      resource: clusterroles
+    - group: rbac.authorization.k8s.io
+      name: cluster-node-tuning-operator
+      resource: clusterrolebindings
+    - group: tuned.openshift.io
+      name: ""
+      namespace: openshift-cluster-node-tuning-operator
+      resource: profiles
+    - group: tuned.openshift.io
+      name: ""
+      namespace: openshift-cluster-node-tuning-operator
+      resource: tuneds
+    - group: apps
+      name: tuned
+      namespace: openshift-cluster-node-tuning-operator
+      resource: daemonsets
   versions:
     - name: operator
       version: "0.0.1-snapshot"
