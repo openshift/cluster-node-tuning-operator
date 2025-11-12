@@ -16,7 +16,7 @@ spec:
   template:
     metadata:
       annotations:
-        openshift.io/required-scc: anyuid
+        openshift.io/required-scc: restricted-v3
         target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
       labels:
         name: cluster-node-tuning-operator
@@ -61,10 +61,10 @@ spec:
           name: trusted-ca
         - mountPath: /apiserver.local.config/certificates
           name: apiservice-cert
+      hostUsers: false
       priorityClassName: system-cluster-critical
       securityContext:
         runAsNonRoot: true
-        runAsUser: 499
       serviceAccountName: cluster-node-tuning-operator
       tolerations:
       - effect: NoSchedule

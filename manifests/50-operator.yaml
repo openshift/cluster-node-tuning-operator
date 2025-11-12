@@ -17,13 +17,13 @@ spec:
     metadata:
       annotations:
         target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
-        openshift.io/required-scc: anyuid
+        openshift.io/required-scc: restricted-v3
       labels:
         name: cluster-node-tuning-operator
     spec:
+      hostUsers: false
       securityContext:
         runAsNonRoot: true
-        runAsUser: 499
       serviceAccountName: cluster-node-tuning-operator
       nodeSelector:
         node-role.kubernetes.io/control-plane: ""
