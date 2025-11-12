@@ -419,6 +419,22 @@ var _ = Describe("Tuned", func() {
 			})
 		})
 
+		Context("with hugepages configured without defaultHugepagesSize", func() {
+			It("should return a validation error", func() {
+				profile.Spec.HugePages.DefaultHugePagesSize = nil
+				profile.Spec.HugePages.Pages = []performancev2.HugePage{
+					{
+						Size:  components.HugepagesSize1G,
+						Count: 4,
+					},
+				}
+
+				_, err := NewNodePerformance(profile)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("hugepages are configured but defaultHugepagesSize is not set"))
+			})
+		})
+
 		Context("with user level networking enabled", func() {
 			Context("with default net device queues (all devices set)", func() {
 				It("should set the default netqueues count to reserved CPUs count", func() {
