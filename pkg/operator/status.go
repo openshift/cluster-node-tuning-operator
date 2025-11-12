@@ -21,6 +21,7 @@ import (
 	ntomf "github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/metrics"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/tuned"
+	"github.com/openshift/cluster-node-tuning-operator/version"
 )
 
 const (
@@ -365,6 +366,9 @@ func getRelatedObjects() []configv1.ObjectReference {
 		// The `resource` property of `relatedObjects` stanza should be the lowercase, plural value like `daemonsets`.
 		// See BZ1851214
 		{Group: "", Resource: "namespaces", Name: tunedMf.Namespace},
+		{Group: "", Resource: "serviceaccounts", Name: version.OperatorFilename, Namespace: tunedMf.Namespace},
+		{Group: "rbac.authorization.k8s.io", Resource: "clusterroles", Name: version.OperatorFilename},
+		{Group: "rbac.authorization.k8s.io", Resource: "clusterrolebindings", Name: version.OperatorFilename},
 		{Group: "tuned.openshift.io", Resource: "profiles", Name: "", Namespace: tunedMf.Namespace},
 		{Group: "tuned.openshift.io", Resource: "tuneds", Name: "", Namespace: tunedMf.Namespace},
 		{Group: "apps", Resource: "daemonsets", Name: dsMf.Name, Namespace: dsMf.Namespace},
