@@ -213,7 +213,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			defer func() {
 				if testpod != nil {
 					testlog.Infof("deleting pod %q", testpod.Name)
-					deleteTestPod(context.TODO(), testpod)
+					Expect(pods.Delete(context.TODO(), testpod)).To(BeTrue(), "Failed to delete pod")
 				}
 				bannedCPUs, err := getIrqBalanceBannedCPUs(context.TODO(), targetNode)
 				Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %q", targetNode.Name)
