@@ -217,7 +217,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			defer func() {
 				if testpod != nil {
 					testlog.Infof("deleting pod %q", testpod.Name)
-					deleteTestPod(context.TODO(), testpod)
+					Expect(pods.Delete(context.TODO(), testpod)).To(BeTrue(), "Failed to delete pod")
 				}
 				bannedCPUs, err := getIrqBalanceBannedCPUs(context.TODO(), targetNode)
 				Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %q", targetNode.Name)
@@ -318,7 +318,10 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			testpod, err := createPodWithHouskeeping(numOfContainersInPod, cpusPerContainer, profile, context.TODO(), targetNode)
 			Expect(err).ToNot(HaveOccurred(), "Failed to create pod with housekeeping annotation")
 
-			defer deleteTestPod(context.TODO(), testpod)
+			defer func() {
+				testlog.Infof("deleting pod %q", testpod.Name)
+				Expect(pods.Delete(context.TODO(), testpod)).To(BeTrue(), "Failed to delete pod")
+			}()
 
 			for i := 0; i < numOfContainersInPod; i++ {
 				containerName := testpod.Spec.Containers[i].Name

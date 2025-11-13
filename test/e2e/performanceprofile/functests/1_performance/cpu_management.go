@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"regexp"
 	"strconv"
@@ -12,7 +13,6 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -44,6 +44,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/resources"
 )
 
 var workerRTNode *corev1.Node
@@ -156,6 +157,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			allocatableCPU, _ := workerRTNode.Status.Allocatable.Cpu().AsInt64()
 			differenceCPUGot := capacityCPU - allocatableCPU
 			differenceCPUExpected := int64(len(listReservedCPU))
+			// TODO: adjust the test to consider having shared CPUs
 			Expect(differenceCPUGot).To(Equal(differenceCPUExpected), "Allocatable CPU %d should be less than capacity %d by %d; got %d instead", allocatableCPU, capacityCPU, differenceCPUExpected, differenceCPUGot)
 		})
 
@@ -248,7 +250,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		})
 
 		AfterEach(func() {
-			deleteTestPod(context.TODO(), testpod)
+			Expect(pods.Delete(context.TODO(), testpod)).To(BeTrue(), "Failed to delete pod")
 		})
 
 		DescribeTable("Verify CPU usage by stress PODs", func(ctx context.Context, guaranteed bool) {
@@ -339,7 +341,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 		AfterEach(func() {
-			deleteTestPod(context.TODO(), testpod)
+			Expect(pods.Delete(context.TODO(), testpod)).To(BeTrue(), "Failed to delete pod")
 		})
 		When("kubelet is restart", func() {
 			It("[test_id: 73501] defaultCpuset should not change", func() {
@@ -422,7 +424,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 		AfterEach(func() {
 			if testpod != nil {
-				deleteTestPod(context.TODO(), testpod)
+				Expect(pods.Delete(context.TODO(), testpod)).To(BeTrue(), "Failed to delete pod")
 			}
 		})
 
@@ -481,7 +483,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				fmt.Sprintf("IRQ still active on CPU%s", psr))
 
 			By("Checking that after removing POD default smp affinity is returned back to all active CPUs")
-			deleteTestPod(context.TODO(), testpod)
+			Expect(pods.Delete(context.TODO(), testpod)).To(BeTrue(), "Failed to delete pod")
 			defaultSmpAffinitySet, err = nodes.GetDefaultSmpAffinitySet(context.TODO(), workerRTNode)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -580,7 +582,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			if testpod == nil {
 				return
 			}
-			deleteTestPod(context.TODO(), testpod)
+			Expect(pods.Delete(context.TODO(), testpod)).To(BeTrue(), "Failed to delete pod")
 		})
 
 		It("[test_id:49149] should reject pods which request integral CPUs not aligned with machine SMT level", func() {
@@ -633,7 +635,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			if testpod == nil {
 				return
 			}
-			deleteTestPod(context.TODO(), testpod)
+			Expect(pods.Delete(context.TODO(), testpod)).To(BeTrue(), "Failed to delete pod")
 		})
 
 		DescribeTable("Verify Hyper-Thread aware scheduling for guaranteed pods",
@@ -680,7 +682,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 					testpod = startHTtestPod(ctx, cpuCount)
 					Expect(checkPodHTSiblings(ctx, testpod)).To(BeTrue(), "Pod cpu set does not map to host cpu sibling pairs")
 					By("Deleting test pod...")
-					deleteTestPod(ctx, testpod)
+					Expect(pods.Delete(ctx, testpod)).To(BeTrue(), "Failed to delete pod")
 				}
 			},
 
@@ -983,7 +985,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			defer func() {
 				if guaranteedPod != nil {
 					testlog.Infof("deleting pod %q", guaranteedPod.Name)
-					deleteTestPod(ctx, guaranteedPod)
+					Expect(pods.Delete(ctx, guaranteedPod)).To(BeTrue(), "Failed to delete guaranteed pod")
 				}
 			}()
 
@@ -1014,7 +1016,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			defer func() {
 				if bestEffortPod != nil {
 					testlog.Infof("deleting pod %q", bestEffortPod.Name)
-					deleteTestPod(ctx, bestEffortPod)
+					Expect(pods.Delete(ctx, bestEffortPod)).To(BeTrue(), "Failed to delete best-effort pod")
 				}
 			}()
 
@@ -1142,13 +1144,177 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			defer func() {
 				if guPod != nil {
 					testlog.Infof("deleting pod %q", guPod.Name)
-					deleteTestPod(ctx, guPod)
+					Expect(pods.Delete(ctx, guPod)).To(BeTrue(), "Failed to delete guaranteed pod")
 				}
 				if buPod != nil {
 					testlog.Infof("deleting pod %q", buPod.Name)
-					deleteTestPod(ctx, buPod)
+					Expect(pods.Delete(ctx, buPod)).To(BeTrue(), "Failed to delete burstable pod")
 				}
 			}()
+		})
+	})
+
+	Context("Check exec-cpu-affinity feature", func() {
+		When("exec-cpu-affinity is enabled (default in PP)", func() {
+			BeforeEach(func() {
+				By("Checking if exec-cpu-affinity is enabled by default in the profile")
+				profile, _ := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+				Expect(profile).ToNot(BeNil(), "Failed to get performance profile")
+				if profile.Annotations != nil {
+					val, ok := profile.Annotations[performancev2.PerformanceProfileExecCPUAffinityAnnotation]
+					if ok && val == performancev2.PerformanceProfileExecCPUAffinityDisable {
+						// fail loudly because the default should be enabled
+						Fail("exec-cpu-affinity is disabled in the profile")
+					}
+				}
+			})
+
+			DescribeTable(
+				"should pin exec process to specific CPU dedicated to the container", func(qos corev1.PodQOSClass, containersResources []corev1.ResourceList) {
+					By("Creating the test pod")
+					isolatedCpus, _ := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+					switch qos {
+					case corev1.PodQOSGuaranteed:
+						totalPodCpus := resources.TotalCPUsRounded(containersResources)
+						if isolatedCpus.Size() < totalPodCpus {
+							Skip("Skipping test: Insufficient isolated CPUs")
+						}
+					case corev1.PodQOSBurstable:
+						maxPodCpus := resources.MaxCPURequestsRounded(containersResources)
+						if isolatedCpus.Size() < maxPodCpus {
+							Skip("Skipping test: Insufficient isolated CPUs")
+						}
+					case corev1.PodQOSBestEffort:
+						testlog.Info("test best-effort pod")
+					default:
+						Fail("Invalid QoS class")
+					}
+
+					testPod := pods.MakePodWithResources(ctx, workerRTNode, qos, containersResources)
+					Expect(testclient.Client.Create(ctx, testPod)).To(Succeed(), "Failed to create test pod")
+					testPod, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testPod), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
+					Expect(err).ToNot(HaveOccurred())
+					defer func() {
+						if testPod != nil {
+							testlog.Infof("deleting pod %q", testPod.Name)
+							Expect(pods.Delete(ctx, testPod)).To(BeTrue(), "Failed to delete test pod")
+						}
+					}()
+
+					cpusetCfg := &controller.CpuSet{}
+					for _, container := range testPod.Spec.Containers {
+						By(fmt.Sprintf("Collect comparable data for container %s", container.Name))
+
+						Expect(getter.Container(ctx, testPod, container.Name, cpusetCfg)).To(Succeed(), "Failed to get cpuset config for test pod container %s", container.Name)
+
+						cpusList, err := cpuset.Parse(cpusetCfg.Cpus)
+						Expect(err).ToNot(HaveOccurred(), "Failed to parse cpuset config for test pod container %s", container.Name)
+						Expect(cpusList.List()).ToNot(BeEmpty())
+						// assumes no shared configured in this suite
+						firstExclusiveCPU := cpusList.List()[0]
+						testlog.Infof("first exclusive CPU: %d, all exclusive CPUs: %s", firstExclusiveCPU, cpusList.String())
+
+						cpuRequest := container.Resources.Requests.Name(corev1.ResourceCPU, resource.DecimalSI).Value()
+						// high enough factor to ensure that even with only 2 cpus, the functionality is preserved
+						retries := int(math.Ceil(float64(20) / float64(cpuRequest)))
+
+						// should we expect cpu affinity to the first CPU
+						isExclusiveCPURequest := false
+						if qos == corev1.PodQOSGuaranteed {
+							cpuRequestFloat := container.Resources.Requests.Name(corev1.ResourceCPU, resource.DecimalSI).AsFloat64Slow()
+							testlog.Infof("float value of cpu request: %f", cpuRequestFloat)
+							mod := int(cpuRequestFloat*1000) % 1000
+							if mod == 0 {
+								isExclusiveCPURequest = true
+							} else {
+								testlog.Infof("cpu request is not an exclusive CPU request; exec process will be pinned to the any isolated CPU")
+								retries = 1 // no need to try further
+							}
+						}
+
+						testlog.Infof("expected CPU affinity: pinToFirstCPU: %t, retries: %d", isExclusiveCPURequest, retries)
+						By("Run exec command on the pod and verify the process is pinned to the correct CPU")
+						testlog.Infof("exclusive CPU request: %d", 2)
+						for i := 0; i < retries; i++ {
+							cmd := []string{"/bin/bash", "-c", "sleep 10 & SLPID=$!; ps -o psr -p $SLPID;"}
+							output, err := pods.ExecCommandOnPod(testclient.K8sClient, testPod, container.Name, cmd)
+							Expect(err).ToNot(HaveOccurred(), "Failed to exec command on the pod; retry %d", i)
+							strout := string(output)
+							testlog.Infof("retry %d: exec command output: %s", i, strout)
+
+							strout = strings.ReplaceAll(strout, "PSR", "")
+							execProcessCPUs := strings.TrimSpace(strout)
+							Expect(execProcessCPUs).ToNot(BeEmpty(), "Failed to get exec process CPU; retry %d", i)
+							execProcessCPUInt, err := strconv.Atoi(execProcessCPUs)
+							Expect(err).ToNot(HaveOccurred())
+							if isExclusiveCPURequest {
+								Expect(execProcessCPUInt).To(Equal(firstExclusiveCPU), "Exec process CPU is not the first exclusive CPU; retry %d", i)
+								continue
+							}
+
+							Expect(cpusList.Contains(execProcessCPUInt)).To(BeTrue(), "Exec process CPU is not in the cpuset; retry %d", i)
+						}
+					}
+				},
+				Entry("guaranteed pod single container with exclusive CPUs, exec process should be binned to first CPU",
+					corev1.PodQOSGuaranteed,
+					[]corev1.ResourceList{
+						{ // cnt1 resources
+							corev1.ResourceCPU:    resource.MustParse("2"),
+							corev1.ResourceMemory: resource.MustParse("200Mi"),
+						},
+					}),
+				Entry("guaranteed pod multiple containers with fraction CPU request, exec process can be binned to any CPU for container requesting fractional CPUs, and to the first CPU for container requesting exclusive CPUs",
+					corev1.PodQOSGuaranteed,
+					[]corev1.ResourceList{
+						{ // cnt1 resources
+							corev1.ResourceCPU:    resource.MustParse("300m"),
+							corev1.ResourceMemory: resource.MustParse("200Mi"),
+						},
+						{ // cnt2 resources
+							corev1.ResourceCPU:    resource.MustParse("2"),
+							corev1.ResourceMemory: resource.MustParse("200Mi"),
+						},
+					}),
+				Entry("guaranteed pod with two containers with exclusive CPUs,exec process should be binned to first CPU",
+					corev1.PodQOSGuaranteed,
+					[]corev1.ResourceList{
+						{ // cnt1 resources
+							corev1.ResourceCPU:    resource.MustParse("2"),
+							corev1.ResourceMemory: resource.MustParse("200Mi"),
+						},
+						{ // cnt2 resources
+							corev1.ResourceCPU:    resource.MustParse("2"),
+							corev1.ResourceMemory: resource.MustParse("200Mi"),
+						},
+					}),
+				Entry("guaranteed pod with two container with fraction CPU request, exec process can be binned to any CPU for containerrewuesting fractional CPUs, and to the first CPU for container requesting exclusive CPUs",
+					corev1.PodQOSGuaranteed,
+					[]corev1.ResourceList{
+						{ // cnt1 resources
+							corev1.ResourceCPU:    resource.MustParse("2"),
+							corev1.ResourceMemory: resource.MustParse("200Mi"),
+						},
+						{ // cnt2 resources
+							corev1.ResourceCPU:    resource.MustParse("2300m"),
+							corev1.ResourceMemory: resource.MustParse("200Mi"),
+						},
+					}),
+				Entry("best-effort pod with shared CPU request, exec process can be binned to any CPU ",
+					corev1.PodQOSBestEffort,
+					[]corev1.ResourceList{
+						//cnt1 resources
+						{},
+					}),
+				Entry("burstable pod with shared CPU request, exec process can be binned to any CPU ",
+					corev1.PodQOSBurstable,
+					[]corev1.ResourceList{
+						{
+							corev1.ResourceCPU:    resource.MustParse("2"),
+							corev1.ResourceMemory: resource.MustParse("100Mi"),
+						},
+					}),
+			)
 		})
 	})
 })
@@ -1399,24 +1565,6 @@ func getTestPodWithAnnotations(annotations map[string]string, cpus int) *corev1.
 	testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
 
 	return testpod
-}
-
-func deleteTestPod(ctx context.Context, testpod *corev1.Pod) (types.UID, bool) {
-	// it possible that the pod already was deleted as part of the test, in this case we want to skip teardown
-	err := testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(testpod), testpod)
-	if errors.IsNotFound(err) {
-		return "", false
-	}
-
-	testpodUID := testpod.UID
-
-	err = testclient.DataPlaneClient.Delete(ctx, testpod)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = pods.WaitForDeletion(ctx, testpod, pods.DefaultDeletionTimeout*time.Second)
-	Expect(err).ToNot(HaveOccurred())
-
-	return testpodUID, true
 }
 
 func cpuSpecToString(cpus *performancev2.CPU) (string, error) {
