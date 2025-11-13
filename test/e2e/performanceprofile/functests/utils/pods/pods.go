@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/remotecommand"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
@@ -49,6 +50,28 @@ func GetTestPod() *corev1.Pod {
 			},
 		},
 	}
+}
+
+func Delete(ctx context.Context, pod *corev1.Pod) bool {
+	err := testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(pod), pod)
+	if errors.IsNotFound(err) {
+		klog.InfoS("pod already deleted", "namespace", pod.Namespace, "name", pod.Name)
+		return true
+	}
+
+	err = testclient.DataPlaneClient.Delete(ctx, pod)
+	if err != nil {
+		klog.ErrorS(err, "failed to delete pod", "namespace", pod.Namespace, "name", pod.Name)
+		return false
+	}
+
+	err = WaitForDeletion(ctx, pod, DefaultDeletionTimeout*time.Second)
+	if err != nil {
+		klog.ErrorS(err, "failed to wait for pod deletion", "namespace", pod.Namespace, "name", pod.Name)
+		return false
+	}
+
+	return true
 }
 
 // WaitForDeletion waits until the pod will be removed from the cluster
