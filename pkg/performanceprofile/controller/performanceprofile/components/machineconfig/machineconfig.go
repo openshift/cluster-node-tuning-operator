@@ -76,6 +76,9 @@ const (
 	ovsDynamicPinningTriggerHostFile = "/var/lib/ovn-ic/etc/enable_dynamic_cpu_affinity"
 
 	cpusetConfigure = "cpuset-configure"
+
+	// ExecCPUAffinity config
+	execCPUAffinityFirst = "first"
 )
 
 const (
@@ -118,6 +121,7 @@ const (
 	templateOvsSliceUsageFile        = "01-use-ovs-slice.conf"
 	templateWorkload                 = "Workload"
 	templateCrioSharedCPUsAnnotation = "CrioSharedCPUsAnnotation"
+	templateExecCPUAffinity          = "ExecCPUAffinity"
 )
 
 // New returns new machine configuration object for performance sensitive workloads
@@ -585,6 +589,10 @@ func renderCrioConfigSnippet(profile *performancev2.PerformanceProfile, src stri
 
 	if profile.Spec.CPU.Reserved != nil {
 		templateArgs[templateReservedCpus] = string(*profile.Spec.CPU.Reserved)
+	}
+
+	if profilecomponent.IsExecCPUAffinityEnabled(profile) {
+		templateArgs[templateExecCPUAffinity] = execCPUAffinityFirst
 	}
 
 	if opts.MixedCPUsEnabled {
