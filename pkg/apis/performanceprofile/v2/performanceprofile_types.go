@@ -227,7 +227,22 @@ type WorkloadHints struct {
 	// MixedCpus enables the mixed-cpu-node-plugin on the node.
 	// Defaults to false.
 	MixedCpus *bool `json:"mixedCpus,omitempty"`
+	// +optional
+	// +default="first"
+	// valid values: "first", ""
+	// ExecCPUAffinity enables the exec-cpu-affinity setting for the node.
+	ExecCPUAffinity *ExecCPUAffinityValue `json:"execCpuAffinity,omitempty"`
 }
+
+// ExecCPUAffinityValue defines the exec-cpu-affinity setting value.
+type ExecCPUAffinityValue string
+
+const (
+	// ExecCPUAffinityFirst enables exec-cpu-affinity with "first" value.
+	ExecCPUAffinityFirst ExecCPUAffinityValue = "first"
+	// ExecCPUAffinityNone disables exec-cpu-affinity.
+	ExecCPUAffinityNone ExecCPUAffinityValue = "none"
+)
 
 // PerformanceProfileStatus defines the observed state of PerformanceProfile.
 type PerformanceProfileStatus struct {

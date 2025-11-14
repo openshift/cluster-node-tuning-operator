@@ -9,12 +9,14 @@ This document documents the PerformanceProfile API introduced by the Performance
 ## Table of Contents
 * [CPU](#cpu)
 * [CPUSet](#cpuset)
+* [CPUfrequency](#cpufrequency)
 * [Device](#device)
+* [ExecCPUAffinityValue](#execcpuaffinityvalue)
+* [HardwareTuning](#hardwaretuning)
 * [HugePage](#hugepage)
 * [HugePageSize](#hugepagesize)
 * [HugePages](#hugepages)
-* [CPUfrequency](#cpufrequency)
-* [HardwareTuning](#hardwaretuning)
+* [KernelPageSize](#kernelpagesize)
 * [NUMA](#numa)
 * [Net](#net)
 * [PerformanceProfile](#performanceprofile)
@@ -22,7 +24,6 @@ This document documents the PerformanceProfile API introduced by the Performance
 * [PerformanceProfileSpec](#performanceprofilespec)
 * [PerformanceProfileStatus](#performanceprofilestatus)
 * [RealTimeKernel](#realtimekernel)
-* [KernelPageSize](#kernelpagesize)
 * [WorkloadHints](#workloadhints)
 
 ## CPU
@@ -35,6 +36,7 @@ CPU defines a set of CPU related features.
 | isolated | Isolated defines a set of CPUs that will be used to give to application threads the most execution time possible, which means removing as many extraneous tasks off a CPU as possible. It is important to notice the CPU manager can choose any CPU to run the workload except the reserved CPUs. In order to guarantee that your workload will run on the isolated CPU:\n  1. The union of reserved CPUs and isolated CPUs should include all online CPUs\n  2. The isolated CPUs field should be the complementary to reserved CPUs field | *[CPUSet](#cpuset) | true |
 | balanceIsolated | BalanceIsolated toggles whether or not the Isolated CPU set is eligible for load balancing work loads. When this option is set to \"false\", the Isolated CPU set will be static, meaning workloads have to explicitly assign each thread to a specific cpu in order to work across multiple CPUs. Setting this to \"true\" allows workloads to be balanced across CPUs. Setting this to \"false\" offers the most predictable performance for guaranteed workloads, but it offloads the complexity of cpu load balancing to the application. Defaults to \"true\" | *bool | false |
 | offlined | Offline defines a set of CPUs that will be unused and set offline | *[CPUSet](#cpuset) | false |
+| shared | Shared defines a set of CPUs that will be shared among guaranteed workloads that needs additional cpus which are not exclusive, alongside the isolated, exclusive resources that are being used already by those workloads. | *[CPUSet](#cpuset) | false |
 
 [Back to TOC](#table-of-contents)
 
@@ -46,6 +48,14 @@ CPUSet is of type `string`.
 
 [Back to TOC](#table-of-contents)
 
+## CPUfrequency
+
+CPUfrequency defines cpu frequencies for isolated and reserved cpus
+
+CPUfrequency is of type `string`.
+
+[Back to TOC](#table-of-contents)
+
 ## Device
 
 Device defines a way to represent a network device in several options: device name, vendor ID, model ID, PCI path and MAC address
@@ -53,8 +63,27 @@ Device defines a way to represent a network device in several options: device na
 | Field | Description | Scheme | Required |
 | ----- | ----------- | ------ | -------- |
 | interfaceName | Network device name to be matched. It uses a syntax of shell-style wildcards which are either positive or negative. | *string | false |
-| vendorID | Network device vendor ID represented as a 16 bit Hexmadecimal number. | *string | false |
-| deviceID | Network device ID (model) represented as a 16 bit hexmadecimal number. | *string | false |
+| vendorID | Network device vendor ID represnted as a 16 bit Hexmadecimal number. | *string | false |
+| deviceID | Network device ID (model) represnted as a 16 bit hexmadecimal number. | *string | false |
+
+[Back to TOC](#table-of-contents)
+
+## ExecCPUAffinityValue
+
+ExecCPUAffinityValue defines the exec-cpu-affinity setting value.
+
+ExecCPUAffinityValue is of type `string`.
+
+[Back to TOC](#table-of-contents)
+
+## HardwareTuning
+
+HardwareTuning defines a set of CPU frequency related features.
+
+| Field | Description | Scheme | Required |
+| ----- | ----------- | ------ | -------- |
+| isolatedCpuFreq | IsolatedCpuFreq defines a minimum frequency to be set across isolated cpus | *[CPUfrequency](#cpufrequency) | false |
+| reservedCpuFreq | ReservedCpuFreq defines a maximum frequency to be set across reserved cpus | *[CPUfrequency](#cpufrequency) | false |
 
 [Back to TOC](#table-of-contents)
 
@@ -72,22 +101,9 @@ HugePage defines the number of allocated huge pages of the specific size.
 
 ## HugePageSize
 
-HugePageSize defines the size of huge pages, which depends on the CPU architecture:
-
-- **For x86/amd64**, the valid values are **2M** and **1G**.
-- **For aarch64**, the valid values depend on the kernel page size:
-  - With **[kernelPageSize](#kernelpagesize) set to 4k**: **64k, 2M, 32M, 1G**
-  - With **[kernelPageSize](#kernelpagesize) set to 64k**: **2M, 512M, 16G**
+HugePageSize defines size of huge pages The allowed values for this depend on CPU architecture For x86/amd64, the valid values are 2M and 1G. For aarch64, the valid huge page sizes depend on the kernel page size: - With a 4k kernel page size: 64k, 2M, 32M, 1G - With a 64k kernel page size: 2M, 512M, 16G\n\nReference: https://docs.kernel.org/mm/vmemmap_dedup.html
 
 HugePageSize is of type `string`.
-
-[Back to TOC](#table-of-contents)
-
-## CPUfrequency
-
-CPUfrequency defines cpu frequencies for isolated and reserved cpus
-
-CPUfrequency is a type of `int`.
 
 [Back to TOC](#table-of-contents)
 
@@ -102,16 +118,14 @@ HugePages defines a set of huge pages that we want to allocate at boot.
 
 [Back to TOC](#table-of-contents)
 
-## HardwareTuning
+## KernelPageSize
 
-HardwareTuning defines cpu frequencies for isolated and reserved cpus. 
+KernelPageSize defines the size of the kernel pages. The allowed values for this depend on CPU architecture For x86/amd64, the only valid value is 4k. For aarch64, the valid values are 4k, 64k.
 
-| Field | Description | Scheme | Required |
-| ----- | ----------- | ------ | -------- |
-| isolatedCpuFreq | IsolatedCpuFreq defines the maximum cpu frequency for isolated CPUs. | *[CPUfrequency](#cpufrequency) | true |
-| reservedCpuFreq | ReservedCpuFreq defines the maximum cpu frequency for reserved CPUs. | *[CPUfrequency](#cpufrequency) | true |
+KernelPageSize is of type `string`.
 
 [Back to TOC](#table-of-contents)
+
 ## NUMA
 
 NUMA defines parameters related to topology awareness and affinity.
@@ -163,13 +177,13 @@ PerformanceProfileSpec defines the desired state of PerformanceProfile.
 | Field | Description | Scheme | Required |
 | ----- | ----------- | ------ | -------- |
 | cpu | CPU defines a set of CPU related parameters. | *[CPU](#cpu) | true |
+| hardwareTuning | HardwareTuning defines a set of CPU frequencies for isolated and reserved cpus. | *[HardwareTuning](#hardwaretuning) | false |
 | hugepages | HugePages defines a set of huge pages related parameters. It is possible to set huge pages with multiple size values at the same time. For example, hugepages can be set with 1G and 2M, both values will be set on the node by the Performance Profile Controller. It is important to notice that setting hugepages default size to 1G will remove all 2M related folders from the node and it will be impossible to configure 2M hugepages under the node. | *[HugePages](#hugepages) | false |
-| hardwareTuning | HardwareTuning defines cpu frequencies for isolated and reserved cpus. It is an optional parameter and requires vendor recommendation to find suitable frequencies. The intention is to set higher frequencies for reserved cpus where platform application is running while setting isolated cpu frequencies to match vendor recommendation. | [HardwareTuning](#hardwaretuning) | false
 | machineConfigLabel | MachineConfigLabel defines the label to add to the MachineConfigs the operator creates. It has to be used in the MachineConfigSelector of the MachineConfigPool which targets this performance profile. Defaults to \"machineconfiguration.openshift.io/role=&lt;same role as in NodeSelector label key&gt;\" | map[string]string | false |
 | machineConfigPoolSelector | MachineConfigPoolSelector defines the MachineConfigPool label to use in the MachineConfigPoolSelector of resources like KubeletConfigs created by the operator. Defaults to \"machineconfiguration.openshift.io/role=&lt;same role as in NodeSelector label key&gt;\" | map[string]string | false |
 | nodeSelector | NodeSelector defines the Node label to use in the NodeSelectors of resources like Tuned created by the operator. It most likely should, but does not have to match the node label in the NodeSelector of the MachineConfigPool which targets this performance profile. In the case when machineConfigLabels or machineConfigPoolSelector are not set, we are expecting a certain NodeSelector format &lt;domain&gt;/&lt;role&gt;: \"\" in order to be able to calculate the default values for the former mentioned fields. | map[string]string | true |
 | realTimeKernel | RealTimeKernel defines a set of real time kernel related parameters. RT kernel won't be installed when not set. | *[RealTimeKernel](#realtimekernel) | false |
-| kernelPageSize | KernelPageSize defines the kernel page size. 4k is the default, 64k is only supported on aarch64 | *[kernelPageSize](#kernelpagesize) | false |
+| kernelPageSize | KernelPageSize defines the kernel page size. 4k is the default, 64k is only supported on aarch64 | *[KernelPageSize](#kernelpagesize) | false |
 | additionalKernelArgs | Additional kernel arguments. | []string | false |
 | numa | NUMA defines options related to topology aware affinities | *[NUMA](#numa) | false |
 | net | Net defines a set of network related features | *[Net](#net) | false |
@@ -200,13 +214,6 @@ RealTimeKernel defines the set of parameters relevant for the real time kernel.
 
 [Back to TOC](#table-of-contents)
 
-## KernelPageSize
-
-KernelPageSize defines the kernel page size that will be used by the kernel.
-4k is the default value, 64k is only supported on aarch64 with realTimeKernel disabled.
-
-[Back to TOC](#table-of-contents)
-
 ## WorkloadHints
 
 WorkloadHints defines the set of upper level flags for different type of workloads.
@@ -216,5 +223,7 @@ WorkloadHints defines the set of upper level flags for different type of workloa
 | highPowerConsumption | HighPowerConsumption defines if the node should be configured in high power consumption mode. The flag will affect the power consumption but will improve the CPUs latency. Defaults to false. | *bool | false |
 | realTime | RealTime defines if the node should be configured for the real time workload. Defaults to true. | *bool | false |
 | perPodPowerManagement | PerPodPowerManagement defines if the node should be configured in per pod power management. PerPodPowerManagement and HighPowerConsumption hints can not be enabled together. Defaults to false. | *bool | false |
+| mixedCpus | MixedCpus enables the mixed-cpu-node-plugin on the node. Defaults to false. | *bool | false |
+| execCpuAffinity | valid values: \"first\", \"\" ExecCPUAffinity enables the exec-cpu-affinity setting for the node. | *[ExecCPUAffinityValue](#execcpuaffinityvalue) | false |
 
 [Back to TOC](#table-of-contents)

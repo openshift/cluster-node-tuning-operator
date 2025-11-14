@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -138,6 +139,87 @@ var _ = Describe("Machine Config", func() {
 			for _, f := range result.Systemd.Units {
 				Expect(f.Name).To(Not(ContainSubstring("rps")), "rps systemd unit %s should not be present", f.Name)
 			}
+		})
+	})
+
+	Context("machine config creation with CRI-O runtime config", func() {
+		crioRuntimeConfigPath := filepath.Join(crioConfd, crioRuntimesConfig)
+
+		It("should create machine config with exec-cpu-affinity set by default", func() {
+			profile := testutils.NewPerformanceProfile("test")
+
+			mc, err := New(profile, &components.MachineConfigOptions{})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+			Expect(json.Unmarshal(mc.Spec.Config.Raw, &result)).To(Succeed())
+
+			var content string
+			for _, f := range result.Storage.Files {
+				if f.Path == crioRuntimeConfigPath {
+					base64Data := strings.TrimPrefix(*f.Contents.Source, "data:text/plain;charset=utf-8;base64,")
+					decoded, err := base64.StdEncoding.DecodeString(base64Data)
+					Expect(err).ToNot(HaveOccurred())
+					content = string(decoded)
+					break
+				}
+			}
+			Expect(content).ToNot(BeEmpty(), "crio runtime config not found")
+			Expect(content).To(ContainSubstring("exec_cpu_affinity = \"first\""))
+		})
+
+		It("should create machine config with exec-cpu-affinity set explicitly", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			if profile.Spec.WorkloadHints == nil {
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{}
+			}
+			profile.Spec.WorkloadHints.ExecCPUAffinity = ptr.To(performancev2.ExecCPUAffinityFirst)
+
+			mc, err := New(profile, &components.MachineConfigOptions{})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+			Expect(json.Unmarshal(mc.Spec.Config.Raw, &result)).To(Succeed())
+
+			var content string
+			for _, f := range result.Storage.Files {
+				if f.Path == crioRuntimeConfigPath {
+					base64Data := strings.TrimPrefix(*f.Contents.Source, "data:text/plain;charset=utf-8;base64,")
+					decoded, err := base64.StdEncoding.DecodeString(base64Data)
+					Expect(err).ToNot(HaveOccurred())
+					content = string(decoded)
+					break
+				}
+			}
+			Expect(content).ToNot(BeEmpty(), "crio runtime config not found")
+			Expect(content).To(ContainSubstring("exec_cpu_affinity = \"first\""))
+		})
+
+		It("should create machine config without exec-cpu-affinity when annotation is set to none", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			if profile.Spec.WorkloadHints == nil {
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{}
+			}
+			profile.Spec.WorkloadHints.ExecCPUAffinity = ptr.To(performancev2.ExecCPUAffinityNone)
+
+			mc, err := New(profile, &components.MachineConfigOptions{})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+			Expect(json.Unmarshal(mc.Spec.Config.Raw, &result)).To(Succeed())
+
+			var content string
+			for _, f := range result.Storage.Files {
+				if f.Path == crioRuntimeConfigPath {
+					base64Data := strings.TrimPrefix(*f.Contents.Source, "data:text/plain;charset=utf-8;base64,")
+					decoded, err := base64.StdEncoding.DecodeString(base64Data)
+					Expect(err).ToNot(HaveOccurred())
+					content = string(decoded)
+					break
+				}
+			}
+			Expect(content).ToNot(BeEmpty(), "crio runtime config not found")
+			Expect(content).ToNot(ContainSubstring("exec_cpu_affinity = \"first\""))
 		})
 	})
 
