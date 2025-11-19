@@ -597,7 +597,6 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 
 	profileMf.Name = nodeName
 	delete(c.bootcmdlineConflict, nodeName)
-	delete(c.mcLabelsAcrossMCP, nodeName)
 	nodeLabels, err := c.pc.nodeLabelsGet(nodeName)
 	if err != nil {
 		// Remove Profiles for Nodes which no longer exist.
@@ -713,6 +712,8 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 					return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
 				}
 			}
+		} else {
+			delete(c.mcLabelsAcrossMCP, nodeName)
 		}
 	}
 
@@ -783,6 +784,8 @@ func (c *Controller) syncMachineConfig(labels map[string]string, profile *tunedv
 			profile.Name, printMachineConfigPoolsNames(pools))
 		c.mcLabelsAcrossMCP[profile.Name] = true
 		return nil
+	} else {
+		c.mcLabelsAcrossMCP[profile.Name] = false
 	}
 
 	name := GetMachineConfigNameForPools(pools)
