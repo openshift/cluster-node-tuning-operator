@@ -164,6 +164,20 @@ func (c *Controller) numProfilesWithBootcmdlineConflict(profileList []*tunedv1.P
 	return numConflict
 }
 
+// numMCLabelsAcrossMCP returns the total number
+// of Profiles in the internal operator's cache (mcLabelsAcrossMCP)
+// tracked as using machineConfigLabels that match across multiple MCPs.
+func (c *Controller) numMCLabelsAcrossMCP(profileList []*tunedv1.Profile) int {
+	n := 0
+	for _, profile := range profileList {
+		if c.mcLabelsAcrossMCP[profile.Name] {
+			n++
+		}
+	}
+
+	return n
+}
+
 // computeStatus computes the operator's current status.
 func (c *Controller) computeStatus(tuned *tunedv1.Tuned, conditions []configv1.ClusterOperatorStatusCondition) ([]configv1.ClusterOperatorStatusCondition, string, error) {
 	const (
@@ -317,6 +331,14 @@ func (c *Controller) computeStatus(tuned *tunedv1.Tuned, conditions []configv1.C
 			degradedCondition.Status = configv1.ConditionTrue
 			degradedCondition.Reason = "ProfileConflict"
 			degradedCondition.Message = fmt.Sprintf("%v/%v Profiles with bootcmdline conflict", numConflict, len(profileList))
+		}
+
+		numMCLabelsAcrossMCP := c.numMCLabelsAcrossMCP(profileList)
+		if numMCLabelsAcrossMCP > 0 {
+			klog.Infof("%v/%v Profiles use machineConfigLabels that match across multiple MCPs", numMCLabelsAcrossMCP, len(profileList))
+			degradedCondition.Status = configv1.ConditionTrue
+			degradedCondition.Reason = "MCLabelsAcrossMCPs"
+			degradedCondition.Message = fmt.Sprintf("%v/%v Profiles use machineConfigLabels that match across multiple MCPs", numMCLabelsAcrossMCP, len(profileList))
 		}
 
 		// If the operator is not available for an extensive period of time, set the Degraded operator status.
