@@ -40,7 +40,7 @@ type ContainerDevices struct {
 // ContainerMemory contains information about memory and hugepages assigned to a container
 type ContainerMemory struct {
 	MemoryType string        `json:"memory_type,omitempty"`
-	Size_      uint64        `json:"size,omitempty"`
+	Size       uint64        `json:"size,omitempty"`
 	Topology   *TopologyInfo `json:"topology,omitempty"`
 }
 

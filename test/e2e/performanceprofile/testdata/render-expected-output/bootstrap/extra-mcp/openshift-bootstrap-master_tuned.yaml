@@ -1,7 +1,6 @@
 apiVersion: tuned.openshift.io/v1
 kind: Tuned
 metadata:
-  creationTimestamp: null
   labels:
     performance.openshift.io/weak-owner-reference-name: openshift-bootstrap-master
   name: openshift-node-performance-openshift-bootstrap-master

@@ -1,7 +1,6 @@
 apiVersion: machineconfiguration.openshift.io/v1
 kind: MachineConfig
 metadata:
-  creationTimestamp: null
   labels:
     machineconfiguration.openshift.io/role: worker-cnf
   name: 50-performance-manual
