@@ -173,7 +173,7 @@ func getMemory(containerMemory []*kubeletpodresourcesv1.ContainerMemory) []*Cont
 		memoryTopologyInfo := getTopologyInfo(m.Topology)
 		cMemory = append(cMemory, &ContainerMemory{
 			MemoryType: m.MemoryType,
-			Size_:      m.Size_,
+			Size:       m.Size,
 			Topology:   memoryTopologyInfo,
 		})
 	}

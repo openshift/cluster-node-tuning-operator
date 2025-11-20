@@ -281,11 +281,39 @@ const (
 
 	// AWSLoadBalancerSubnetsAnnotation allows specifying the subnets to use for control plane load balancers
 	// in the AWS platform. These subnets only apply to private load balancers.
+	// Deprecated: Subnets should not be specified for the private load balancer. This results in
+	// private link creation failures. The annotation has no effect.
 	AWSLoadBalancerSubnetsAnnotation = "hypershift.openshift.io/aws-load-balancer-subnets"
 
 	// AWSLoadBalancerTargetNodesAnnotation allows specifying label selectors to choose target nodes for
 	// control plane load balancers in the AWS platform.
 	AWSLoadBalancerTargetNodesAnnotation = "hypershift.openshift.io/aws-load-balancer-target-node-labels"
+
+	// AWSLoadBalancerHealthProbeModeAnnotation allows overriding the health probe mode for AWS load balancers.
+	// Valid values are "Shared" or "ServiceNodePort".
+	// When set to "Shared", all services on the cluster that use a LoadBalancer share a single health probe (default).
+	// When set to "ServiceNodePort", each service gets its own dedicated health probe.
+	AWSLoadBalancerHealthProbeModeAnnotation = "hypershift.openshift.io/aws-load-balancer-health-probe-mode"
+
+	// SharedLoadBalancerHealthProbePathAnnotation allows overriding the health probe path for shared load balancers.
+	// This annotation applies to both AWS and Azure platforms.
+	// For AWS, this annotation only takes effect when aws-load-balancer-health-probe-mode is set to "Shared".
+	// For Azure, this annotation only takes effect when azure-load-balancer-health-probe-mode is set to "shared".
+	// The default value is "/healthz".
+	SharedLoadBalancerHealthProbePathAnnotation = "hypershift.openshift.io/shared-load-balancer-health-probe-path"
+
+	// SharedLoadBalancerHealthProbePortAnnotation allows overriding the health probe port for shared load balancers.
+	// This annotation applies to both AWS and Azure platforms.
+	// For AWS, this annotation only takes effect when aws-load-balancer-health-probe-mode is set to "Shared".
+	// For Azure, this annotation only takes effect when azure-load-balancer-health-probe-mode is set to "shared".
+	// The value must be a valid port number (1-65535). The default value is 10256.
+	SharedLoadBalancerHealthProbePortAnnotation = "hypershift.openshift.io/shared-load-balancer-health-probe-port"
+
+	// AzureLoadBalancerHealthProbeModeAnnotation allows overriding the health probe mode for Azure load balancers.
+	// Valid values are "shared" or "servicenodeport".
+	// When set to "shared", all services on the cluster that use a LoadBalancer share a single health probe (default).
+	// When set to "servicenodeport", each service gets its own dedicated health probe.
+	AzureLoadBalancerHealthProbeModeAnnotation = "hypershift.openshift.io/azure-load-balancer-health-probe-mode"
 
 	// DisableClusterAutoscalerAnnotation allows disabling the cluster autoscaler for a hosted cluster.
 	// This annotation is only set by the hypershift-operator on HosterControlPlanes.
@@ -362,6 +390,23 @@ const (
 	// a process to check if the different components in the DataPlane are working as expected. Checks:
 	// - Validates the monitoring stack is properly working after restoration, if not HCCO will restart the prometheus-k8s pods.
 	HostedClusterRestoredFromBackupAnnotation = "hypershift.openshift.io/restored-from-backup"
+
+	// HostedClusterSourcedAnnotation is set to true on Secret and ConfigMap resources to designate them as
+	// hosted-cluster-sourced resources. This means that the hosted cluster version of these resources is the source of
+	// truth and the management cluster version will be just empty resources that have this annotation. This is useful
+	// to enable day-two configuration use cases where such resources are expected to be provided by the end-user after
+	// the cluster creation, and, due to certain restrictions, those resources include sensitive data that can't live
+	// on the control-plane. Setting this annotation will instruct HyperShift to skip creating this resource on the hosted
+	// cluster and to not override any changes done later on the hosted cluster version of this resource.
+	//
+	// This annotation can only be set on empty resources and currently it's only honored when set on secrets that are
+	// referenced in the HostedCluster `spec.configuration.authentication.oidcProviders[*].oidcClients[*].clientSecret`
+	// and only for the ARO-HCP platform.
+	HostedClusterSourcedAnnotation = "hypershift.openshift.io/hosted-cluster-sourced"
+
+	// SkipKASCertificateConflicSANValidation allows skipping the validation of the KAS certificate SANs so they do not conflict with ServicePublishingStrategy Hostname.
+	// This annotation is useful as a escape hatch, that IBM could use.
+	SkipKASConflicSANValidation = "hypershift.openshift.io/skip-kas-conflict-san-validation"
 )
 
 // RetentionPolicy defines the policy for handling resources associated with a cluster when the cluster is deleted.
@@ -427,12 +472,13 @@ type Capabilities struct {
 
 // +kubebuilder:validation:XValidation:rule="self.platform.type == 'IBMCloud' ? size(self.services) >= 3 : size(self.services) >= 4",message="spec.services in body should have at least 4 items or 3 for IBMCloud"
 // +kubebuilder:validation:XValidation:rule=`self.platform.type != "IBMCloud" ? self.services == oldSelf.services : true`, message="Services is immutable. Changes might result in unpredictable and disruptive behavior."
-// +kubebuilder:validation:XValidation:rule=`self.platform.type == "Azure" ? self.services.exists(s, s.service == "APIServer" && s.servicePublishingStrategy.type == "Route" && s.servicePublishingStrategy.route.hostname != "") : true`,message="Azure platform requires APIServer Route service with a hostname to be defined"
-// +kubebuilder:validation:XValidation:rule=`self.platform.type == "Azure" ? self.services.exists(s, s.service == "OAuthServer" && s.servicePublishingStrategy.type == "Route" && s.servicePublishingStrategy.route.hostname != "") : true`,message="Azure platform requires OAuthServer Route service with a hostname to be defined"
-// +kubebuilder:validation:XValidation:rule=`self.platform.type == "Azure" ? self.services.exists(s, s.service == "Konnectivity" && s.servicePublishingStrategy.type == "Route" && s.servicePublishingStrategy.route.hostname != "") : true`,message="Azure platform requires Konnectivity Route service with a hostname to be defined"
-// +kubebuilder:validation:XValidation:rule=`self.platform.type == "Azure" ? self.services.exists(s, s.service == "Ignition" && s.servicePublishingStrategy.type == "Route" && s.servicePublishingStrategy.route.hostname != "") : true`,message="Azure platform requires Ignition Route service with a hostname to be defined"
+// +kubebuilder:validation:XValidation:rule=`self.platform.type == "Azure" ? self.services.exists(s, s.service == "OAuthServer" && s.servicePublishingStrategy.type == "Route") : true`,message="Azure platform requires OAuthServer to use Route service publishing strategy"
+// +kubebuilder:validation:XValidation:rule=`self.platform.type == "Azure" ? self.services.exists(s, s.service == "Konnectivity" && s.servicePublishingStrategy.type == "Route") : true`,message="Azure platform requires Konnectivity to use Route service publishing strategy"
+// +kubebuilder:validation:XValidation:rule=`self.platform.type == "Azure" ? self.services.exists(s, s.service == "Ignition" && s.servicePublishingStrategy.type == "Route") : true`,message="Azure platform requires Ignition to use Route service publishing strategy"
 // +kubebuilder:validation:XValidation:rule=`has(self.issuerURL) || !has(self.serviceAccountSigningKey)`,message="If serviceAccountSigningKey is set, issuerURL must be set"
 // +kubebuilder:validation:XValidation:rule=`!self.services.exists(s, s.service == 'APIServer' && has(s.servicePublishingStrategy.loadBalancer) && s.servicePublishingStrategy.loadBalancer.hostname != "" && has(self.configuration) && has(self.configuration.apiServer) && self.configuration.apiServer.servingCerts.namedCertificates.exists(cert, cert.names.exists(n, n == s.servicePublishingStrategy.loadBalancer.hostname)))`, message="APIServer loadBalancer hostname cannot be in ClusterConfiguration.apiserver.servingCerts.namedCertificates[]"
+// +kubebuilder:validation:XValidation:rule="!has(self.operatorConfiguration) || !has(self.operatorConfiguration.clusterNetworkOperator) || !has(self.operatorConfiguration.clusterNetworkOperator.disableMultiNetwork) || !self.operatorConfiguration.clusterNetworkOperator.disableMultiNetwork || self.networking.networkType == 'Other'",message="disableMultiNetwork can only be set to true when networkType is 'Other'"
+// +kubebuilder:validation:XValidation:rule="self.networking.networkType == 'OVNKubernetes' || !has(self.operatorConfiguration) || !has(self.operatorConfiguration.clusterNetworkOperator) || !has(self.operatorConfiguration.clusterNetworkOperator.ovnKubernetesConfig)", message="ovnKubernetesConfig is forbidden when networkType is not OVNKubernetes"
 type HostedClusterSpec struct {
 	// release specifies the desired OCP release payload for all the hosted cluster components.
 	// This includes those components running management side like the Kube API Server and the CVO but also the operands which land in the hosted cluster data plane like the ingress controller, ovn agents, etc.
@@ -635,7 +681,6 @@ type HostedClusterSpec struct {
 	// operatorConfiguration specifies configuration for individual OCP operators in the cluster.
 	//
 	// +optional
-	// +openshift:enable:FeatureGate=ClusterVersionOperatorConfiguration
 	OperatorConfiguration *OperatorConfiguration `json:"operatorConfiguration,omitempty"`
 
 	// auditWebhook contains metadata for configuring an audit webhook endpoint
@@ -1086,7 +1131,7 @@ type APIServerNetworking struct {
 	// This field is enforced for ARO (Azure Red Hat OpenShift) via the shared-ingress HAProxy.
 	// For platforms other than ARO, the enforcement depends on whether the underlying cloud provider supports the Service LoadBalancerSourceRanges field.
 	// If the platform does not support LoadBalancerSourceRanges, this field may have no effect.
-	// +kubebuilder:validation:MaxItems=50
+	// +kubebuilder:validation:MaxItems=500
 	// +listType=set
 	// +optional
 	AllowedCIDRBlocks []CIDRBlock `json:"allowedCIDRBlocks,omitempty"`
@@ -1139,6 +1184,9 @@ const (
 
 	// OpenStackPlatform represents OpenStack infrastructure.
 	OpenStackPlatform PlatformType = "OpenStack"
+
+	// GCPPlatform represents Google Cloud Platform infrastructure.
+	GCPPlatform PlatformType = "GCP"
 )
 
 // List all PlatformType instances
@@ -1152,6 +1200,7 @@ func PlatformTypes() []PlatformType {
 		AzurePlatform,
 		PowerVSPlatform,
 		OpenStackPlatform,
+		GCPPlatform,
 	}
 }
 
@@ -1164,7 +1213,7 @@ type PlatformSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf", message="Type is immutable"
 	// +immutable
 	// +openshift:validation:FeatureGateAwareEnum:featureGate="",enum=AWS;Azure;IBMCloud;KubeVirt;Agent;PowerVS;None
-	// +openshift:validation:FeatureGateAwareEnum:featureGate=OpenStack,enum=AWS;Azure;IBMCloud;KubeVirt;Agent;PowerVS;None;OpenStack
+	// +openshift:validation:FeatureGateAwareEnum:featureGate=OpenStack;GCPPlatform,enum=AWS;Azure;IBMCloud;KubeVirt;Agent;PowerVS;None;OpenStack;GCP
 	// +required
 	Type PlatformType `json:"type"`
 
@@ -1205,6 +1254,13 @@ type PlatformSpec struct {
 	// +optional
 	// +openshift:enable:FeatureGate=OpenStack
 	OpenStack *OpenStackPlatformSpec `json:"openstack,omitempty"`
+
+	// gcp specifies configuration for clusters running on Google Cloud Platform.
+	//
+	// +optional
+	// +immutable
+	// +openshift:enable:FeatureGate=GCPPlatform
+	GCP *GCPPlatformSpec `json:"gcp,omitempty"`
 }
 
 // IBMCloudPlatformSpec defines IBMCloud specific settings for components
@@ -1260,7 +1316,7 @@ type KarpenterAWSConfig struct {
 }
 
 const (
-	ProvisionerKarpeneter Provisioner = "Karpenter"
+	ProvisionerKarpenter Provisioner = "Karpenter"
 )
 
 // provisioner is a enum specifying the strategy for auto managing Nodes.
@@ -1751,6 +1807,10 @@ type HostedClusterStatus struct {
 	// platform contains platform-specific status of the HostedCluster
 	// +optional
 	Platform *PlatformStatus `json:"platform,omitempty"`
+
+	// configuration contains the cluster configuration status of the HostedCluster
+	// +optional
+	Configuration *ConfigurationStatus `json:"configuration,omitempty"`
 }
 
 // PlatformStatus contains platform-specific status
@@ -1811,6 +1871,15 @@ type ClusterVersionStatus struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=100
 	ConditionalUpdates []configv1.ConditionalUpdate `json:"conditionalUpdates,omitempty"`
+}
+
+// ConfigurationStatus contains the status of HostedCluster configuration
+type ConfigurationStatus struct {
+	// authentication contains the observed authentication configuration status from the hosted cluster.
+	// This field reflects the current state of the cluster authentication including OAuth metadata,
+	// OIDC client status, and other authentication-related configurations.
+	// +optional
+	Authentication configv1.AuthenticationStatus `json:"authentication,omitempty"`
 }
 
 // ClusterConfiguration specifies configuration for individual OCP components in the
@@ -1892,7 +1961,13 @@ type OperatorConfiguration struct {
 	// clusterVersionOperator specifies the configuration for the Cluster Version Operator in the hosted cluster.
 	//
 	// +optional
+	// +openshift:enable:FeatureGate=ClusterVersionOperatorConfiguration
 	ClusterVersionOperator *ClusterVersionOperatorSpec `json:"clusterVersionOperator,omitempty"`
+
+	// clusterNetworkOperator specifies the configuration for the Cluster Network Operator in the hosted cluster.
+	//
+	// +optional
+	ClusterNetworkOperator *ClusterNetworkOperatorSpec `json:"clusterNetworkOperator,omitempty"`
 }
 
 // +genclient

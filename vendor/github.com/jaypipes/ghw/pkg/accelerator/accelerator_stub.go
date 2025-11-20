@@ -1,5 +1,5 @@
-//go:build !linux
-// +build !linux
+//go:build !linux && !windows
+// +build !linux,!windows
 
 // Use and distribution licensed under the Apache license version 2.
 //

@@ -36,6 +36,9 @@ type Device struct {
 	// architecture is not NUMA.
 	Node   *topology.Node `json:"node,omitempty"`
 	Driver string         `json:"driver"`
+	// for IOMMU Groups see also:
+	// https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/7/html/virtualization_deployment_and_administration_guide/sect-iommu-deep-dive
+	IOMMUGroup string `json:"iommu_group"`
 }
 
 type devIdent struct {
@@ -148,6 +151,9 @@ func New(opts ...*option.Option) (*Info, error) {
 			info.arch = topo.Architecture
 		} else {
 			ctx.Warn("error detecting system topology: %v", err)
+		}
+		if merged.PCIDB != nil {
+			info.db = merged.PCIDB
 		}
 		return info.load()
 	}
