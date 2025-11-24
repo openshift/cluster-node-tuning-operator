@@ -10,7 +10,6 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog"
 
-	apiv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
@@ -73,10 +72,6 @@ func init() {
 	}
 
 	if err := hypershiftv1beta1.AddToScheme(scheme.Scheme); err != nil {
-		klog.Exit(err.Error())
-	}
-
-	if err := apiv1beta1.AddToScheme(scheme.Scheme); err != nil {
 		klog.Exit(err.Error())
 	}
 

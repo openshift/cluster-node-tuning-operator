@@ -1,7 +1,6 @@
 apiVersion: machineconfiguration.openshift.io/v1
 kind: KubeletConfig
 metadata:
-  creationTimestamp: null
   name: performance-manual
 spec:
   kubeletConfig:

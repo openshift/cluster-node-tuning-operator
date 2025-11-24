@@ -1,7 +1,6 @@
 apiVersion: tuned.openshift.io/v1
 kind: Tuned
 metadata:
-  creationTimestamp: null
   name: openshift-node-performance-manual
   namespace: openshift-cluster-node-tuning-operator
 spec:
