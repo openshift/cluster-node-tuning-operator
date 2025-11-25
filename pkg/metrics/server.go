@@ -15,6 +15,7 @@ import (
 
 	"k8s.io/klog/v2"
 
+	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/fsnotify.v1"
 )
@@ -23,6 +24,11 @@ const (
 	tlsSecretDir = "/etc/secrets"
 	tlsCert      = tlsSecretDir + "/tls.crt"
 	tlsKey       = tlsSecretDir + "/tls.key"
+
+	// In HyperShift, the control-plane operator volume mounts a local ConfigMap and supplies the client CA.
+	// https://github.com/openshift/hypershift/blob/1f2eb3a8b91bb4b84781bf53c421be0a2377d84c/control-plane-operator/controllers/hostedcontrolplane/v2/assets/cluster-node-tuning-operator/deployment.yaml#L67-L84
+	hyperShiftClientCADir = "/tmp/metrics-client-ca"
+	hyperShiftClientCA    = hyperShiftClientCADir + "/ca.crt"
 
 	AuthConfigMapNamespace   = "kube-system"
 	AuthConfigMapName        = "extension-apiserver-authentication"
@@ -42,8 +48,8 @@ func init() {
 	server = Server{caBundleCh: make(chan string)}
 }
 
-// DumpCA stores the root certificate bundle which is used to verify metric server
-// client certificates.  It uses an unbuffered channel to store the data and it
+// In classic clusters, DumpCA stores the root certificate bundle which is used to verify
+// metric server client certificates.  It uses an unbuffered channel to store the data and
 // it does so only if the CA bundle changed from the current CA bundle on record.
 func DumpCA(caBundle string) {
 	if caBundle != server.caBundle {
@@ -69,54 +75,59 @@ func buildServer(port int, caBundle string) *http.Server {
 	caCertPool := x509.NewCertPool()
 	var clientAuthHandler http.Handler = handler
 
-	if caCertPool.AppendCertsFromPEM([]byte(caBundle)) {
-		// Request client certificates; verify in handler to return "401 Unauthorized" instead of a TLS alert.
-		tlsConfig.ClientAuth = tls.RequestClientCert
-		tlsConfig.ClientCAs = caCertPool
-		// Default minimum version is TLS 1.3.  PQ algorithms will only be supported in TLS 1.3+.
-		// Hybrid key agreements for TLS 1.3 X25519MLKEM768 is supported by default in go 1.24.
-		tlsConfig.MinVersion = tls.VersionTLS13
-		tlsConfig.CipherSuites = []uint16{
-			// Drop
-			// - 64-bit block cipher 3DES as it is vulnerable to SWEET32 attack.
-			// - CBC encryption method.
-			// - RSA key exchange.
-			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+	// Default minimum version is TLS 1.3.  PQ algorithms will only be supported in TLS 1.3+.
+	// Hybrid key agreements for TLS 1.3 X25519MLKEM768 is supported by default in go 1.24.
+	tlsConfig.MinVersion = tls.VersionTLS13
+	tlsConfig.CipherSuites = []uint16{
+		// Drop
+		// - 64-bit block cipher 3DES as it is vulnerable to SWEET32 attack.
+		// - CBC encryption method.
+		// - RSA key exchange.
+		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+		tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+	}
+	tlsConfig.NextProtos = []string{"http/1.1"} // CVE-2023-44487
+
+	if len(caBundle) > 0 {
+		if caCertPool.AppendCertsFromPEM([]byte(caBundle)) {
+			// Request client certificates; verify in handler to return "401 Unauthorized" instead of a TLS alert.
+			tlsConfig.ClientAuth = tls.RequestClientCert
+			tlsConfig.ClientCAs = caCertPool
+
+			// Wrap the handler to check for client certificates.
+			clientAuthHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+					// No client certificate provided, return 401 Unauthorized.
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+				// With RequestClientCert we now have PeerCertificate(s) that have not
+				// been verified by the TLS layer.
+
+				intermediates := x509.NewCertPool()
+				for _, cert := range r.TLS.PeerCertificates[1:] {
+					intermediates.AddCert(cert)
+				}
+				verifyOpts := x509.VerifyOptions{
+					Roots:         caCertPool,
+					Intermediates: intermediates,
+					KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+				}
+				if _, err := r.TLS.PeerCertificates[0].Verify(verifyOpts); err != nil {
+					klog.Errorf("Client certificate verification failed: %v", err)
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+
+				// Valid client certificate received, serve metrics.
+				handler.ServeHTTP(w, r)
+			})
+		} else {
+			klog.Errorf("failed to parse root certificate bundle of the metrics server, client authentication will be disabled")
 		}
-		tlsConfig.NextProtos = []string{"http/1.1"} // CVE-2023-44487
-
-		// Wrap the handler to check for client certificates.
-		clientAuthHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
-				// No client certificate provided, return 401 Unauthorized.
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-			// With RequestClientCert we now have PeerCertificate(s) that have not
-			// been verified by the TLS layer.
-
-			intermediates := x509.NewCertPool()
-			for _, cert := range r.TLS.PeerCertificates[1:] {
-				intermediates.AddCert(cert)
-			}
-			verifyOpts := x509.VerifyOptions{
-				Roots:         caCertPool,
-				Intermediates: intermediates,
-				KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-			}
-			if _, err := r.TLS.PeerCertificates[0].Verify(verifyOpts); err != nil {
-				klog.Errorf("Client certificate verification failed: %v", err)
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-
-			// Valid client certificate received, serve metrics.
-			handler.ServeHTTP(w, r)
-		})
 	} else {
-		klog.Errorf("failed to parse root certificate bundle of the metrics server, client authentication will be disabled")
+		klog.Infof("client CA not supplied")
 	}
 	if tlsConfig.ClientCAs == nil {
 		klog.Infof("continuing without client authentication")
@@ -170,10 +181,28 @@ func RunServer(port int, ctx context.Context) error {
 			klog.Errorf("failed to add %v to watcher, cert/key rotation will be disabled: %v", tlsSecretDir, err)
 		}
 
-		// Wait for the root certificate bundle of the metrics server for client authentication.
-		// The bundle is sent from a ConfigMap via a channel by the operator.
-		klog.Infof("waiting for initial metrics server client CA bundle")
-		server.caBundle = <-server.caBundleCh
+		// Initialize the metrics server CA bundle for metrics client authorization.
+		if ntoconfig.InHyperShift() {
+			// In HyperShift clusters, the metrics client CA is provided via a volume mounted secret as a file.
+			klog.Infof("HyperShift detected: loading metrics client CA from %s", hyperShiftClientCA)
+			caBundle, err := getClientCA()
+			if err == nil && len(caBundle) > 0 {
+				server.caBundle = caBundle
+			} else {
+				server.caBundle = ""
+				klog.Errorf("failed to read HyperShift metrics client CA file %s: %v", hyperShiftClientCA, err)
+			}
+
+			if err = watcher.Add(hyperShiftClientCADir); err != nil {
+				klog.Errorf("failed to add %v to watcher, metrics client CA rotation will be disabled: %v", hyperShiftClientCADir, err)
+			}
+		} else {
+			// In classic clusters, the metrics client CA is provided via (not pod-mounted) ConfigMap.
+			// Wait for the root certificate bundle of the metrics server for client authentication.
+			// The bundle is sent from the ConfigMap via a channel by the operator.
+			klog.Infof("waiting for initial metrics server client CA bundle")
+			server.caBundle = <-server.caBundleCh
+		}
 	}
 
 	srv := buildServer(port, server.caBundle)
@@ -201,6 +230,14 @@ func RunServer(port int, ctx context.Context) error {
 				continue
 			}
 
+			caBundle, err := getClientCA()
+			if err == nil && len(caBundle) > 0 {
+				if caBundle != server.caBundle {
+					server.caBundle = caBundle
+					restartServer = true
+				}
+			}
+
 			if certsChanged(origCertChecksum, origKeyChecksum) {
 				// Update file checksums with latest files.
 				origCertChecksum = checksumFile(tlsCert)
@@ -219,6 +256,28 @@ func RunServer(port int, ctx context.Context) error {
 			go startServer(srv)
 		}
 	}
+}
+
+// getClientCA reads the metrics client CA provided as a file on HyperShift clusters.
+// Returns the content of the client CA and error reading the file if any.
+func getClientCA() (string, error) {
+	caNotEmpty, err := fileExistsAndNotEmpty(hyperShiftClientCA)
+	if err != nil {
+		klog.Warningf("error checking HyperShift metrics client CA file empty/exists: %v", err)
+		return "", err
+	}
+	if !caNotEmpty {
+		// metrics client CA file is empty
+		return "", nil
+	}
+
+	data, err := os.ReadFile(hyperShiftClientCA)
+	if err != nil {
+		klog.Errorf("failed to read HyperShift metrics client CA file %s: %v", hyperShiftClientCA, err)
+		return "", err
+	}
+
+	return string(data), err
 }
 
 // Determine if both the server certificate/key have changed and need to be updated.
