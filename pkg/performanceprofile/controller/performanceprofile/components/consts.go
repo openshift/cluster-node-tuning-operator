@@ -30,7 +30,7 @@ const (
 	// ProfileNameIntelX86 defines the Intel X86 specific tuning parameters
 	ProfileNameIntelX86 = "openshift-node-performance-intel-x86"
 	// ProfileNameIbmPpc64le defines the IBM POWER ppc64le specific tuning parameters
-	ProfileNameIbmPpc64le = "openshift-node-performance--ppc64le"
+	ProfileNameIbmPpc64le = "openshift-node-performance-ibm-ppc64le"
 )
 
 const (
