@@ -11,6 +11,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/cpuset"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -301,6 +302,210 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			Expect(out).To(Equal("0"), "file %s does not contain the expect output; expected=0 actual=%s", fullPath, out)
 		})
 	})
+	Context("Testing the new annotation value for irq-load-balancing.crio.io", Label(string(label.Tier0)), func() {
+
+		Context("Verify irqbalance housekeeping annotation exists with sibling cpus", func() {
+			testpod := &corev1.Pod{}
+
+			BeforeAll(func() {
+				cpuRequest := 4
+				if cpuRequest >= isolatedCPUSet.Size() {
+					Skip(fmt.Sprintf("cpus request %d is greater than the available on the node as the isolated cpus are %d", cpuRequest, isolatedCPUSet.Size()))
+				}
+
+				annotations := map[string]string{
+					"irq-load-balancing.crio.io": "housekeeping",
+				}
+				testpod = getTestPodWithProfileAndAnnotations(profile, annotations, cpuRequest)
+				testpod.Spec.NodeName = targetNode.Name
+
+				data, _ := json.Marshal(testpod)
+				testlog.Infof("using testpod:\n%s", string(data))
+
+				err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
+				Expect(err).ToNot(HaveOccurred())
+
+				testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+				Expect(err).ToNot(HaveOccurred())
+				logEventsForPod(testpod)
+			})
+
+			It("verifies housekeeping env var 'OPENSHIFT_HOUSEKEEPING_CPUS' is present", func() {
+				getHousekeepingCpus := []string{"printenv", "OPENSHIFT_HOUSEKEEPING_CPUS"}
+				_, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod, testpod.Spec.Containers[0].Name, getHousekeepingCpus)
+				Expect(err).ToNot(HaveOccurred(), "OPENSHIFT_HOUSEKEEPING_CPUS wasnt found on the container")
+			})
+
+			It("checks that houskeeping takes first cpu from cpu's asigned to container", func() {
+				getHousekeepingCpus := []string{"printenv", "OPENSHIFT_HOUSEKEEPING_CPUS"}
+				testpodHousekeepCpusByte, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod, testpod.Spec.Containers[0].Name, getHousekeepingCpus)
+				Expect(err).ToNot(HaveOccurred(), "OPENSHIFT_HOUSEKEEPING_CPUS wasnt found on the container")
+
+				// Parse to cpuset for stable comparison
+				testpodHousekeepCpusStr := strings.TrimSpace(string(testpodHousekeepCpusByte))
+				housekeepingCPUSet, err := cpuset.Parse(testpodHousekeepCpusStr)
+				Expect(err).ToNot(HaveOccurred(), "Failed to parse OPENSHIFT_HOUSEKEEPING_CPUS: %s", testpodHousekeepCpusStr)
+
+				// Get all cpus used by container
+				containerName := testpod.Spec.Containers[0].Name
+				tasksetcmd := []string{"/bin/taskset", "-pc", "1"}
+				containerAffinityBytes, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod, containerName, tasksetcmd)
+				Expect(err).ToNot(HaveOccurred(), "Failed to get CPUs used by container")
+				containerAffinityStr := string(containerAffinityBytes)
+				parts := strings.Split(strings.TrimSpace(containerAffinityStr), ":")
+				containerCpusStr := strings.TrimSpace(parts[1])
+				containerCpuSet, err := cpuset.Parse(containerCpusStr)
+				Expect(err).ToNot(HaveOccurred(), "Unable to parse CPUs %s used by container %s", containerCpusStr, containerName)
+				testlog.Infof("Container Cpu's are: %s", containerCpuSet)
+
+				// Check first cpu in container is first cpu in the housekeeping cpus
+				listHousekeepingCPUSet := housekeepingCPUSet.List()
+				listContainerCpuSet := containerCpuSet.List()
+				testlog.Infof("First housekeeping cpu: %v - First container cpu: %v", listHousekeepingCPUSet[0], listHousekeepingCPUSet[0])
+				Expect(listHousekeepingCPUSet[0]).To(Equal(listContainerCpuSet[0]))
+			})
+
+			It("verifies houskeeping cpus are all valid siblings", func() {
+				getHousekeepingCpus := []string{"printenv", "OPENSHIFT_HOUSEKEEPING_CPUS"}
+				testpodHousekeepCpusByte, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod, testpod.Spec.Containers[0].Name, getHousekeepingCpus)
+				Expect(err).ToNot(HaveOccurred(), "OPENSHIFT_HOUSEKEEPING_CPUS wasnt found on the container")
+
+				// Parse to cpuset for stable comparison
+				testpodHousekeepCpusStr := strings.TrimSpace(string(testpodHousekeepCpusByte))
+				housekeepingCPUSet, err := cpuset.Parse(testpodHousekeepCpusStr)
+				Expect(err).ToNot(HaveOccurred(), "Failed to parse OPENSHIFT_HOUSEKEEPING_CPUS: %s", testpodHousekeepCpusStr)
+
+				// Get core sibling topology
+				coreSiblings, err := nodes.GetCoreSiblings(context.TODO(), targetNode)
+				Expect(err).ToNot(HaveOccurred(), "Failed to get Core topology")
+
+				// Verify all housekeeping CPUs are siblings (belong to the same core)
+				found := false
+				for _, numaMap := range coreSiblings {
+					for _, siblings := range numaMap {
+						siblingSet := cpuset.New(siblings...)
+						if housekeepingCPUSet.Equals(siblingSet) {
+							testlog.Infof("Housekeep Cpu's: %v --- %v :Siblings set from core affinity\n", housekeepingCPUSet, siblingSet)
+							found = true
+							break
+						}
+					}
+					if found {
+						break
+					}
+				}
+				Expect(found).To(BeTrue())
+
+			})
+		})
+
+		When("a pod has two containers", func() {
+			testpod := &corev1.Pod{}
+			numContainers := 2
+			cpusPerContainer := 2
+			BeforeAll(func() {
+
+				cpuRequest := numContainers * cpusPerContainer
+				if cpuRequest >= isolatedCPUSet.Size() {
+					Skip(fmt.Sprintf("cpus request %d is greater than the available on the node as the isolated cpus are %d", cpuRequest, isolatedCPUSet.Size()))
+				}
+
+				annotations := map[string]string{
+					"irq-load-balancing.crio.io": "housekeeping",
+				}
+
+				// Create base pod with first container (2 CPUs)
+				testpod = getTestPodWithProfileAndAnnotations(profile, annotations, cpusPerContainer)
+				testpod.Spec.NodeName = targetNode.Name
+
+				// Create an additional continaer
+				secondContainer := corev1.Container{
+					Name:    testpod.Spec.Containers[0].Name + "-2",
+					Image:   testpod.Spec.Containers[0].Image,
+					Command: testpod.Spec.Containers[0].Command,
+					Resources: corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse(fmt.Sprintf("%v", cpusPerContainer)),
+							corev1.ResourceMemory: resource.MustParse("256Mi"),
+						},
+					},
+				}
+				testpod.Spec.Containers = append(testpod.Spec.Containers, secondContainer)
+
+				data, _ := json.Marshal(testpod)
+				testlog.Infof("using testpod:\n%s", string(data))
+
+				err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
+				Expect(err).ToNot(HaveOccurred())
+
+				testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+				Expect(err).ToNot(HaveOccurred())
+				logEventsForPod(testpod)
+			})
+
+			It("verifies housekeeping env var 'OPENSHIFT_HOUSEKEEPING_CPUS' is available on both containers", func() {
+				for i := 0; i < numContainers; i++ {
+					getHousekeepingCpus := []string{"printenv", "OPENSHIFT_HOUSEKEEPING_CPUS"}
+					_, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod, testpod.Spec.Containers[i].Name, getHousekeepingCpus)
+					Expect(err).ToNot(HaveOccurred())
+				}
+			})
+
+			It("verifies each container has OPENSHIFT_HOUSEKEEPING_CPUS aligned with its first CPU siblings", func() {
+				// Get core sibling topology once
+				coreSiblings, err := nodes.GetCoreSiblings(context.TODO(), targetNode)
+				Expect(err).ToNot(HaveOccurred())
+
+				for i := 0; i < numContainers; i++ {
+					containerName := testpod.Spec.Containers[i].Name
+
+					// Get housekeeping CPUs for this container and convert to cpuset
+					getHousekeepingCpus := []string{"printenv", "OPENSHIFT_HOUSEKEEPING_CPUS"}
+					housekeepCpusByte, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod, containerName, getHousekeepingCpus)
+					Expect(err).ToNot(HaveOccurred())
+					housekeepCpusStr := strings.TrimSpace(string(housekeepCpusByte))
+					housekeepingCPUSet, err := cpuset.Parse(housekeepCpusStr)
+					Expect(err).ToNot(HaveOccurred(), "Failed to parse OPENSHIFT_HOUSEKEEPING_CPUS for container %s: %s", containerName, housekeepCpusStr)
+
+					// Get container's assigned CPUs and convert to cpuset
+					tasksetcmd := []string{"/bin/taskset", "-pc", "1"}
+					containerAffinityBytes, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod, containerName, tasksetcmd)
+					Expect(err).ToNot(HaveOccurred())
+					containerAffinityStr := string(containerAffinityBytes)
+					parts := strings.Split(strings.TrimSpace(containerAffinityStr), ":")
+					containerCpusStr := strings.TrimSpace(parts[1])
+					containerCpuSet, err := cpuset.Parse(containerCpusStr)
+					Expect(err).ToNot(HaveOccurred(), "Unable to parse CPUs %s used by container %s", containerCpusStr, containerName)
+
+					// Check 1: First CPU in housekeeping matches first CPU in container
+					listHousekeepingCPUs := housekeepingCPUSet.List()
+					listContainerCpus := containerCpuSet.List()
+					testlog.Infof("Container %s: First housekeeping cpu: %v - First container cpu: %v", containerName, listHousekeepingCPUs[0], listContainerCpus[0])
+					Expect(listHousekeepingCPUs[0]).To(Equal(listContainerCpus[0]))
+
+					// Check 2: All housekeeping CPUs are a single siblings set
+					found := false
+					for _, numaMap := range coreSiblings {
+						for _, siblings := range numaMap {
+							siblingSet := cpuset.New(siblings...)
+							if housekeepingCPUSet.Equals(siblingSet) {
+								found = true
+								testlog.Infof("Container %s: housekeeping CPUs %v match sibling set %v", containerName, housekeepingCPUSet, siblingSet)
+								break
+							}
+						}
+						if found {
+							break
+						}
+					}
+					Expect(found).To(BeTrue())
+				}
+			})
+
+		})
+
+	})
+
 })
 
 // nodes.BannedCPUs fails (!!!) if the current banned list is empty because, deep down, ExecCommandOnNode expects non-empty stdout.
