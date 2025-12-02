@@ -1,3 +1,4 @@
+# hi this is a test
 package __performance
 
 import (
