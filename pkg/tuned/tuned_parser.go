@@ -6,6 +6,7 @@ import (
 	"io"      // io.EOF
 	"os"      // os.Stat()
 	"os/exec" // os.Exec()
+	"regexp"  // regexp.Compile()
 	"strings" // strings.Split()
 	"syscall" // syscall.SIGHUP, ...
 	"time"    // time.Second, ...
@@ -309,6 +310,49 @@ func execCmd(command []string) (string, error) {
 	return out, nil
 }
 
+// lscpu_check checks `lscpuStr` (lscpu output) against regular expressions.
+// Accepts args in the form: REGEX1, STR1, REGEX2, STR2, ...[, STR_FALLBACK]
+// If REGEX1 matches something in the output it returns STR1,
+// if REGEX2 matches it returns STR2, etc.
+// It stops on the first match. If no regex matches, it returns STR_FALLBACK
+// (or empty string if no fallback is provided).
+func lscpu_check(lscpuStr string, args []string) (string, error) {
+	var fallback string
+
+	if len(args) < 2 {
+		return "", fmt.Errorf("lscpu_check requires at least 2 arguments, got %d", len(args))
+	}
+
+	// See if we have a fallback (odd number of args).
+	if len(args)%2 == 1 {
+		fallback = args[len(args)-1]
+		args = args[:len(args)-1]
+	}
+
+	for i := 0; i < len(args); i += 2 {
+		regexStr := args[i]
+		resultStr := args[i+1]
+
+		// Enable multi-line matching: (?m) makes ^ and $ match line boundaries.
+		// Only add (?m) if not already present.
+		if len(regexStr) < 4 || regexStr[:4] != "(?m)" {
+			regexStr = "(?m)" + regexStr
+		}
+
+		re, err := regexp.Compile(regexStr)
+		if err != nil {
+			return "", fmt.Errorf("invalid regex '%s': %w", regexStr, err)
+		}
+
+		if re.MatchString(lscpuStr) {
+			return resultStr, nil
+		}
+	}
+
+	// No match found, return fallback.
+	return fallback, nil
+}
+
 // execTuneDBuiltin executes TuneD built-in function 'function' with
 // arguments 'args'.  Returns the result/expansion of running the built-in.
 // If the execution of the built-in fails, returns the string 'onFail'.
@@ -317,7 +361,7 @@ func execTuneDBuiltin(function string, args []string, onFail string) string {
 	case "exec":
 		out, err := execCmd(args)
 		if err != nil {
-			klog.Errorf("error calling built-in exec: %v", err)
+			klog.Warningf("failure calling built-in exec: %v", err)
 			return onFail
 		}
 		return out
@@ -330,7 +374,7 @@ func execTuneDBuiltin(function string, args []string, onFail string) string {
 		// argument 2.  Note the expansion to argument 2 is done also on error
 		// to match the semantics of the TuneD "virt_check".
 		if len(args) != 2 {
-			klog.Errorf("built-in \"virt_check\" requires 2 arguments")
+			klog.Warningf("built-in \"virt_check\" requires 2 arguments")
 			return onFail
 		}
 		out, err := execCmd([]string{"virt-what"})
@@ -338,13 +382,27 @@ func execTuneDBuiltin(function string, args []string, onFail string) string {
 			return args[0]
 		}
 		if err != nil {
-			klog.Errorf("failure calling built-in exec: %v", err)
+			klog.Warningf("failure calling built-in exec: %v", err)
 		}
 
 		return args[1]
 
+	case "lscpu_check":
+		lscpuOut, err := execCmd([]string{"lscpu"})
+		if err != nil {
+			klog.Warningf("failure calling built-in lscpu_check: %v", err)
+			return onFail
+		}
+		out, err := lscpu_check(lscpuOut, args)
+		if err != nil {
+			klog.Warningf("failure calling built-in lscpu_check: %v", err)
+			return onFail
+		}
+
+		return out
+
 	default:
-		klog.Errorf("calling unsupported built-in: %v", function)
+		klog.Warningf("calling unsupported built-in: %q, TuneD reloads on config changes may not work properly", function)
 		// unsupported built-in
 	}
 
