@@ -63,7 +63,7 @@ func PPCTestCreateUtil() *PPCTestIntegration {
 
 var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform awareness", Label(string(label.PerformanceProfileCreator)), func() {
 	mustgatherDir := testutils.MustGatherDir
-	mcpName := testutils.RoleWorkerCNF
+	mcpName := "worker"
 	ntoImage := testutils.NTOImage
 	Context("PPC Sanity Tests", Label(string(label.Tier0)), func() {
 		ppcIntgTest := PPCTestCreateUtil()
