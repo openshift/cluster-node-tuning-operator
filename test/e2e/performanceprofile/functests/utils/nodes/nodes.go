@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path"
 	"sort"
 	"strconv"
@@ -585,4 +586,21 @@ func GetL3SharedCPUs(node *corev1.Node) func(cpuId int) (cpuset.CPUSet, error) {
 		cpuSet, err := cpuset.Parse(strings.TrimSpace(string(output)))
 		return cpuSet, err
 	}
+}
+
+// PickNodeIdx selects a node index based on environment variable E2E_PAO_TARGET_NODE.
+// If the environment variable is not set or the node is not found, returns 0.
+func PickNodeIdx(nodes []corev1.Node) int {
+	name, ok := os.LookupEnv("E2E_PAO_TARGET_NODE")
+	if !ok {
+		return 0 // "random" default
+	}
+	for idx := range nodes {
+		if nodes[idx].Name == name {
+			testlog.Infof("node %q found among candidates, picking", name)
+			return idx
+		}
+	}
+	testlog.Infof("node %q not found among candidates, fall back to random one", name)
+	return 0 // "safe" default
 }

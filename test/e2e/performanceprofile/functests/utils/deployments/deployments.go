@@ -76,6 +76,7 @@ func WithPodTemplate(podTemplate *corev1.Pod) func(dp *appsv1.Deployment) {
 	return func(dp *appsv1.Deployment) {
 		dp.Spec.Template.Spec = podTemplate.Spec
 		dp.Spec.Template.Labels = podTemplate.Labels
+		dp.Spec.Template.Annotations = podTemplate.Annotations
 		dp.Spec.Selector.MatchLabels = podTemplate.Labels
 	}
 }
