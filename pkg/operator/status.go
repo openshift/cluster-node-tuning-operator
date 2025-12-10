@@ -2,13 +2,14 @@ package operator
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
+	"strconv"
 
 	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	operatorv1helpers "github.com/openshift/library-go/pkg/operator/v1helpers"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,10 +23,6 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/metrics"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/tuned"
 	"github.com/openshift/cluster-node-tuning-operator/version"
-)
-
-const (
-	errGenerationMismatch = "generation mismatch"
 )
 
 // syncOperatorStatus computes the operator's current status and therefrom
@@ -44,10 +41,6 @@ func (c *Controller) syncOperatorStatus(tuned *tunedv1.Tuned) error {
 	oldConditions := co.Status.Conditions
 	co.Status.Conditions, operandReleaseVersion, err = c.computeStatus(tuned, oldConditions)
 	if err != nil {
-		if err.Error() == errGenerationMismatch {
-			// Tuned DaemonSet has not updated its status yet
-			return nil
-		}
 		return err
 	}
 	if len(operandReleaseVersion) > 0 {
@@ -96,6 +89,53 @@ func (c *Controller) getOrCreateOperatorStatus() (*configv1.ClusterOperator, err
 		}
 	}
 	return co, nil
+}
+
+// storeLastStableGeneration stores the last stable daemonSet's generation into its annotation.
+// Returns the updated daemonSet and true if the annotation was updated.
+func (c *Controller) storeLastStableGeneration(daemonSet *appsv1.DaemonSet) (*appsv1.DaemonSet, bool) {
+	lastStableGeneration := daemonSet.Annotations[tunedv1.StableGenerationAnnotationName]
+	currentGeneration := strconv.FormatInt(daemonSet.Generation, 10)
+	if lastStableGeneration == currentGeneration {
+		return daemonSet, false
+	}
+
+	if isProgressing, _ := isProgressing(daemonSet); isProgressing {
+		return daemonSet, false
+	}
+
+	klog.V(2).Infof("DaemonSet %s/%s generation %d is stable", daemonSet.Namespace, daemonSet.Name, daemonSet.Generation)
+	daemonSet.Annotations[tunedv1.StableGenerationAnnotationName] = currentGeneration
+	return daemonSet, true
+}
+
+// Progressing means "[the component] is actively rolling out new code, propagating config
+// changes (e.g, a version change), or otherwise moving from one steady state to another.".
+// This controller expects that all "config changes" result in increased DaemonSet generation
+// (i.e. DaemonSet .spec changes).
+// The controller stores the last "stable" DS generation in an annotation.
+// Stable means that all DS replicas are available and at the latest version.
+// Any subsequent missing replicas must be caused by a node added / removed / rebooted /
+// pod manually killed, which then does not result in Progressing=true.
+//
+// This code is borrowed from library-go.
+func isProgressing(daemonSet *appsv1.DaemonSet) (bool, string) {
+	lastStableGeneration := daemonSet.Annotations[tunedv1.StableGenerationAnnotationName]
+	currentGeneration := strconv.FormatInt(daemonSet.Generation, 10)
+	if lastStableGeneration == currentGeneration {
+		// The previous reconfiguration has completed in the past.
+		return false, ""
+	}
+
+	switch {
+	case daemonSet.Generation != daemonSet.Status.ObservedGeneration:
+		return true, "Waiting for DaemonSet to act on changes"
+	case daemonSet.Status.UpdatedNumberScheduled < daemonSet.Status.DesiredNumberScheduled:
+		return true, fmt.Sprintf("Waiting for DaemonSet to update %d node pods", daemonSet.Status.DesiredNumberScheduled)
+	case daemonSet.Status.NumberUnavailable > 0:
+		return true, "Waiting for DaemonSet to deploy node pods"
+	}
+	return false, ""
 }
 
 // profileApplied returns true if Tuned Profile 'profile' has been applied.
@@ -178,7 +218,10 @@ func (c *Controller) numMCLabelsAcrossMCP(profileList []*tunedv1.Profile) int {
 	return n
 }
 
-// computeStatus computes the operator's current status.
+// computeStatus returns the operator's current status conditions, operand's version and error if any.
+// Operand's version is only returned if the operator is NOT progressing towards a new version,
+// i.e. is stable.  In all other cases (including when we fail to retrieve the daemonset), an empty string
+// is returned.
 func (c *Controller) computeStatus(tuned *tunedv1.Tuned, conditions []configv1.ClusterOperatorStatusCondition) ([]configv1.ClusterOperatorStatusCondition, string, error) {
 	const (
 		// maximum number of seconds for the operator to be Unavailable with a unique
@@ -253,11 +296,6 @@ func (c *Controller) computeStatus(tuned *tunedv1.Tuned, conditions []configv1.C
 				copyAvailableCondition()
 			}
 		} else {
-			if ds.Status.ObservedGeneration != ds.Generation {
-				// Do not base the conditions on stale information
-				return conditions, "", errors.New(errGenerationMismatch)
-			}
-
 			dsReleaseVersion := c.getDaemonSetReleaseVersion(ds)
 
 			if ds.Status.NumberAvailable > 0 {
@@ -278,17 +316,11 @@ func (c *Controller) computeStatus(tuned *tunedv1.Tuned, conditions []configv1.C
 				klog.V(3).Infof("syncOperatorStatus(): %s", availableCondition.Message)
 			}
 
-			// The operator is actively making changes to the operand (is Progressing) when:
-			// the total number of Nodes that should be running the daemon Pod
-			// (including Nodes correctly running the daemon Pod) != the total number of
-			// Nodes that are running updated daemon Pod.
-			if ds.Status.DesiredNumberScheduled != ds.Status.UpdatedNumberScheduled ||
-				ds.Status.CurrentNumberScheduled != ds.Status.NumberReady ||
-				ds.Status.DesiredNumberScheduled == 0 {
+			if ok, msg := isProgressing(ds); ok {
 				klog.V(3).Infof("setting Progressing condition to true")
 				progressingCondition.Status = configv1.ConditionTrue
 				progressingCondition.Reason = "Reconciling"
-				progressingCondition.Message = fmt.Sprintf("Working towards %q", os.Getenv("RELEASE_VERSION"))
+				progressingCondition.Message = msg
 			} else {
 				progressingCondition.Status = configv1.ConditionFalse
 				progressingCondition.Reason = "AsExpected"
@@ -314,9 +346,8 @@ func (c *Controller) computeStatus(tuned *tunedv1.Tuned, conditions []configv1.C
 		numProgressingProfiles, numDegradedProfiles := numProfilesProgressingDegraded(profileList)
 
 		if numProgressingProfiles > 0 {
-			progressingCondition.Status = configv1.ConditionTrue
-			progressingCondition.Reason = "ProfileProgressing"
-			progressingCondition.Message = fmt.Sprintf("Waiting for %v/%v Profiles to be applied", numProgressingProfiles, len(profileList))
+			availableCondition.Reason = "ProfileProgressing"
+			availableCondition.Message = fmt.Sprintf("Waiting for %v/%v Profiles to be applied", numProgressingProfiles, len(profileList))
 		}
 
 		if numDegradedProfiles > 0 {

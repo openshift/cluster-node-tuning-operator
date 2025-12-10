@@ -1339,7 +1339,7 @@ func (c *Controller) updateTunedProfileStatus(ctx context.Context, change Change
 	isApplied := (c.daemon.profileFingerprintUnpacked == c.daemon.profileFingerprintEffective)
 	daemonStatus := c.daemon.status
 
-	klog.V(4).Infof("daemonStatus(): change: deferred=%v applied=%v nodeRestart=%v", wantsDeferred, isApplied, change.nodeRestart)
+	klog.V(4).Infof("updateTunedProfileStatus(): change: deferred=%v applied=%v nodeRestart=%v", wantsDeferred, isApplied, change.nodeRestart)
 	if (wantsDeferred && !isApplied) && !change.nodeRestart { // avoid setting the flag on updates deferred -> immediate
 		daemonStatus |= scDeferred
 		recommendProfile, err := TunedRecommendFileRead()
