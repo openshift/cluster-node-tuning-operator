@@ -245,6 +245,12 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 	}
 	IntelX86ProfileName := components.GetComponentName(profile.Name, components.ProfileNameIntelX86)
 
+	IbmPpc64leProfileData, err := getProfileData(filepath.Join("tuned", components.ProfileNameIbmPpc64le), templateArgs)
+	if err != nil {
+		return nil, err
+	}
+	IbmPpc64leProfileName := components.GetComponentName(profile.Name, components.ProfileNameIbmPpc64le)
+
 	profiles := []tunedv1.TunedProfile{
 		{
 			Name: &name,
@@ -265,6 +271,10 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 		{
 			Name: &IntelX86ProfileName,
 			Data: &IntelX86ProfileData,
+		},
+		{
+			Name: &IbmPpc64leProfileName,
+			Data: &IbmPpc64leProfileData,
 		},
 	}
 
