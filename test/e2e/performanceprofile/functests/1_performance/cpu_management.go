@@ -313,6 +313,11 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				cpuManagerCpusetBeforeRestart, err := nodes.CpuManagerCpuSet(ctx, workerRTNode)
 				Expect(err).ToNot(HaveOccurred())
 				testlog.Infof("pre kubelet restart default cpuset: %v", cpuManagerCpusetBeforeRestart.String())
+
+				By("capturing test pod state before restart")
+				originalPodUID := testpod.UID
+				testlog.Infof("pre kubelet restart pod UID: %v", originalPodUID)
+
 				kubeletRestartCmd := []string{
 					"chroot",
 					"/rootfs",
@@ -328,6 +333,33 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				time.Sleep(restartCooldownTime)
 
 				testlog.Infof("post restart: finished cooldown time: %v", restartCooldownTime)
+
+				By("verify test pod comes back after kubelet restart")
+				Eventually(func() error {
+					var updatedPod corev1.Pod
+					err := testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(testpod), &updatedPod)
+					if err != nil {
+						return fmt.Errorf("failed to get pod after restart: %v", err)
+					}
+
+					// Verify it's the same pod (same UID)
+					if updatedPod.UID != originalPodUID {
+						return fmt.Errorf("pod UID changed after restart: original=%v, current=%v", originalPodUID, updatedPod.UID)
+					}
+
+					// Verify pod is ready
+					if updatedPod.Status.Phase != corev1.PodRunning {
+						return fmt.Errorf("pod is not running after restart: phase=%v", updatedPod.Status.Phase)
+					}
+					// Check pod ready condition
+					for _, condition := range updatedPod.Status.Conditions {
+						if condition.Type == corev1.PodReady && condition.Status != corev1.ConditionTrue {
+							return fmt.Errorf("Pod condition is not in Ready state after kubelet restart: reason: %v, message: %v", condition.Reason, condition.Message)
+
+						}
+					}
+					return nil
+				}).WithTimeout(5*time.Minute).WithPolling(10*time.Second).Should(Succeed(), "test pod should come back after kubelet restart")
 
 				By("fetch Default cpuset from cpu manager state after restart")
 				cpuManagerCpusetAfterRestart, err := nodes.CpuManagerCpuSet(ctx, workerRTNode)
