@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/remotecommand"
+	"k8s.io/utils/cpuset"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
@@ -271,4 +272,22 @@ func CheckPODSchedulingFailed(c client.Client, pod *corev1.Pod) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// GetPodCPUs returns the CPUs assigned to the pod by reading the container's cpuset
+func GetPodCPUs(ctx context.Context, c *kubernetes.Clientset, pod *corev1.Pod) (cpuset.CPUSet, error) {
+	// Get the CPUs allowed for the container by reading /proc/self/status
+	cmd := []string{"/bin/bash", "-c", "grep Cpus_allowed_list /proc/self/status | awk '{print $2}'"}
+	output, err := ExecCommandOnPod(c, pod, "", cmd)
+	if err != nil {
+		return cpuset.New(), fmt.Errorf("failed to get Cpus_allowed_list from pod %s/%s: %v", pod.Namespace, pod.Name, err)
+	}
+
+	cpuList := strings.TrimSpace(string(output))
+	podCPUs, err := cpuset.Parse(cpuList)
+	if err != nil {
+		return cpuset.New(), fmt.Errorf("failed to parse CPU list %q: %v", cpuList, err)
+	}
+
+	return podCPUs, nil
 }

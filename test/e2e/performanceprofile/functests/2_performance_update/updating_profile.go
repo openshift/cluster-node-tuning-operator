@@ -12,8 +12,10 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -27,11 +29,13 @@ import (
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	profilecomponent "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
+	componenttuned "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/tuned"
 	manifestsutil "github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/runtime"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/deployments"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
@@ -996,6 +1000,155 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		})
 	})
 
+	Context("Verify IRQ housekeeping updates", Ordered, Label(string(label.Tier2)), func() {
+		var targetNode *corev1.Node
+		var isolatedCPUSet cpuset.CPUSet
+
+		testutils.CustomBeforeAll(func() {
+			initialProfile = profile.DeepCopy()
+		})
+
+		It("[test_id:99999] should update housekeeping CPUs when performance profile is modified", func() {
+
+			if componenttuned.IsIRQBalancingGloballyDisabled(profile) {
+				Skip("this test needs IRQ balancing (GloballyDisableIrqLoadBalancing=false)")
+			}
+
+			ctx := context.TODO()
+
+			// Get current profile CPU configuration
+			Expect(profile.Spec.CPU.Reserved).ToNot(BeNil(), "expected reserved CPUs, found none")
+			Expect(profile.Spec.CPU.Isolated).ToNot(BeNil(), "expected isolated CPUs, found none")
+
+			reservedCPUSet, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
+			Expect(err).ToNot(HaveOccurred(), "failed to parse reserved CPUs")
+
+			isolatedCPUSet, err = cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+			Expect(err).ToNot(HaveOccurred(), "failed to parse isolated CPUs")
+
+			targetNodeIdx := nodes.PickNodeIdx(workerRTNodes)
+			targetNode = &workerRTNodes[targetNodeIdx]
+			Expect(targetNode).ToNot(BeNil(), "missing target node")
+			By(fmt.Sprintf("Using target worker node %q", targetNode.Name))
+
+			// Ensure we have enough isolated CPUs for the test
+			// minimum amount to avoid SMT-alignment error
+			cpuRequest := 2
+			if cpuRequest >= isolatedCPUSet.Size() {
+				Skip(fmt.Sprintf("cpus request %d is greater than the available isolated cpus %d", cpuRequest, isolatedCPUSet.Size()))
+			}
+
+			By("Creating a Deployment with guaranteed pod that has irq-load-balancing.crio.io: housekeeping annotation")
+			annotations := map[string]string{
+				"irq-load-balancing.crio.io": "housekeeping",
+			}
+			podTemplate := getTestPodWithProfileAndAnnotations(profile, annotations, cpuRequest)
+
+			dp := deployments.Make("irq-housekeeping-dp", testutils.NamespaceTesting,
+				deployments.WithPodTemplate(podTemplate),
+				deployments.WithNodeSelector(map[string]string{testutils.LabelHostname: targetNode.Name}),
+			)
+
+			err = testclient.DataPlaneClient.Create(ctx, dp)
+			Expect(err).ToNot(HaveOccurred(), "failed to create test deployment")
+			defer func() {
+				By("Cleaning up: deleting deployment")
+				testclient.DataPlaneClient.Delete(ctx, dp)
+			}()
+
+			By("Waiting for the deployment to be ready")
+			desiredStatus := appsv1.DeploymentStatus{
+				Replicas:          1,
+				AvailableReplicas: 1,
+			}
+			err = deployments.WaitForDesiredDeploymentStatus(ctx, dp, testclient.DataPlaneClient, dp.Namespace, dp.Name, desiredStatus)
+			Expect(err).ToNot(HaveOccurred(), "deployment did not reach desired status")
+
+			By("Getting the pod from the deployment")
+			podList := &corev1.PodList{}
+			listOptions := &client.ListOptions{
+				Namespace:     dp.Namespace,
+				LabelSelector: labels.SelectorFromSet(dp.Spec.Selector.MatchLabels),
+			}
+			err = testclient.DataPlaneClient.List(ctx, podList, listOptions)
+			Expect(err).ToNot(HaveOccurred(), "failed to list pods from deployment")
+			Expect(len(podList.Items)).To(Equal(1), "expected exactly one pod in deployment")
+			testpod := &podList.Items[0]
+			Expect(testpod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed), "Test pod does not have QoS class of Guaranteed")
+
+			By("Verifying OPENSHIFT_HOUSEKEEPING_CPUS environment variable is set")
+			initialHousekeepingCPUSet, err := getHousekeepingCPUsFromEnv(testpod)
+			Expect(err).ToNot(HaveOccurred(), "failed to get OPENSHIFT_HOUSEKEEPING_CPUS from pod")
+			Expect(initialHousekeepingCPUSet.Size()).ToNot(BeZero(), "OPENSHIFT_HOUSEKEEPING_CPUS should not be empty")
+
+			By("Verifying initial IRQ affinity includes housekeeping CPUs")
+			smpAffinitySet, err := nodes.GetDefaultSmpAffinitySet(ctx, targetNode)
+			Expect(err).ToNot(HaveOccurred(), "failed to get default smp affinity")
+			onlineCPUsSet, err := nodes.GetOnlineCPUsSet(ctx, targetNode)
+			Expect(err).ToNot(HaveOccurred(), "failed to get online CPUs")
+			smpAffinitySet = smpAffinitySet.Intersection(onlineCPUsSet)
+
+			Expect(initialHousekeepingCPUSet.IsSubsetOf(smpAffinitySet)).To(BeTrue(),
+				"Housekeeping CPUs %s should be subset of IRQ affinity %s", initialHousekeepingCPUSet.String(), smpAffinitySet.String())
+
+			By("Modifying the performance profile to change reserved and isolated CPUs")
+
+			// Move one isolated CPU to reserved to trigger housekeeping CPUs update
+			cpuToMove := cpuset.New(isolatedCPUSet.List()[0])
+			newReservedSet := reservedCPUSet.Union(cpuToMove)
+			newIsolatedSet := isolatedCPUSet.Difference(cpuToMove)
+
+			profile.Spec.CPU.Reserved = ptr.To(performancev2.CPUSet(newReservedSet.String()))
+			profile.Spec.CPU.Isolated = ptr.To(performancev2.CPUSet(newIsolatedSet.String()))
+
+			By("Updating the performance profile")
+			profiles.UpdateWithRetry(profile)
+
+			By("Waiting for tuning to start updating")
+			profilesupdate.WaitForTuningUpdating(ctx, profile)
+
+			By("Waiting for tuning to complete")
+			profilesupdate.WaitForTuningUpdated(ctx, profile)
+
+			By("Waiting for the deployment to be ready again after profile update and node reboot")
+			Eventually(func() error {
+				return deployments.WaitForDesiredDeploymentStatus(ctx, dp, testclient.DataPlaneClient, dp.Namespace, dp.Name, desiredStatus)
+			}).WithTimeout(20*time.Minute).WithPolling(30*time.Second).Should(Succeed(), "deployment did not become ready after profile update")
+
+			By("Getting the updated pod from the deployment")
+			err = testclient.DataPlaneClient.List(ctx, podList, listOptions)
+			Expect(err).ToNot(HaveOccurred(), "failed to list pods from deployment after update")
+			Expect(len(podList.Items)).To(Equal(1), "expected exactly one pod in deployment after update")
+			testpod = &podList.Items[0]
+
+			By("Verifying OPENSHIFT_HOUSEKEEPING_CPUS is updated after profile modification")
+			updatedHousekeepingCPUSet, err := getHousekeepingCPUsFromEnv(testpod)
+			Expect(err).ToNot(HaveOccurred(), "failed to get updated OPENSHIFT_HOUSEKEEPING_CPUS from pod")
+			Expect(updatedHousekeepingCPUSet.Size()).ToNot(BeZero(), "updated OPENSHIFT_HOUSEKEEPING_CPUS should not be empty")
+
+			By("Verifying updated IRQ affinity includes housekeeping CPUs")
+			updatedSmpAffinitySet, err := nodes.GetDefaultSmpAffinitySet(ctx, targetNode)
+			Expect(err).ToNot(HaveOccurred(), "failed to get updated default smp affinity")
+			updatedOnlineCPUsSet, err := nodes.GetOnlineCPUsSet(ctx, targetNode)
+			Expect(err).ToNot(HaveOccurred(), "failed to get updated online CPUs")
+			updatedSmpAffinitySet = updatedSmpAffinitySet.Intersection(updatedOnlineCPUsSet)
+
+			Expect(updatedHousekeepingCPUSet.IsSubsetOf(updatedSmpAffinitySet)).To(BeTrue(),
+				"Updated housekeeping CPUs %s should be subset of IRQ affinity %s", updatedHousekeepingCPUSet.String(), updatedSmpAffinitySet.String())
+		})
+
+		AfterAll(func() {
+			By("Reverting the profile to its initial state")
+			profiles.UpdateWithRetry(initialProfile)
+
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
+
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.WaitForTuningUpdated(context.TODO(), profile)
+		})
+	})
+
 	Context("[rfe_id:54374][rps_mask] Network Stack Pinning", Label(string(label.RPSMask), string(label.Tier1)), func() {
 
 		BeforeEach(func() {
@@ -1434,4 +1587,51 @@ func copyNumaCoreSiblings(src map[int]map[int][]int) map[int]map[int][]int {
 		dst[k] = coresiblings
 	}
 	return dst
+}
+
+// getHousekeepingCPUsFromEnv extracts the OPENSHIFT_HOUSEKEEPING_CPUS environment variable from the pod and returns it as a CPUSet.
+func getHousekeepingCPUsFromEnv(pod *corev1.Pod) (cpuset.CPUSet, error) {
+	const housekeepingCpusEnv = "OPENSHIFT_HOUSEKEEPING_CPUS"
+
+	cmd := []string{"printenv", housekeepingCpusEnv}
+	output, err := pods.ExecCommandOnPod(testclient.K8sClient, pod, "", cmd)
+	if err != nil {
+		return cpuset.New(), fmt.Errorf("failed to get %s from pod %s/%s: %v", housekeepingCpusEnv, pod.Namespace, pod.Name, err)
+	}
+
+	value := strings.TrimSpace(string(output))
+	if value == "" {
+		return cpuset.New(), fmt.Errorf("%s environment variable not found or empty in pod %s/%s", housekeepingCpusEnv, pod.Namespace, pod.Name)
+	}
+
+	cpuSet, err := cpuset.Parse(value)
+	if err != nil {
+		return cpuset.New(), fmt.Errorf("failed to parse %s value %q from pod %s/%s: %v", housekeepingCpusEnv, value, pod.Namespace, pod.Name, err)
+	}
+
+	return cpuSet, nil
+}
+
+// getTestPodWithProfileAndAnnotations creates a test pod with specified profile and annotations
+func getTestPodWithProfileAndAnnotations(perfProf *performancev2.PerformanceProfile, annotations map[string]string, cpus int) *corev1.Pod {
+	testpod := pods.GetTestPod()
+	if len(annotations) > 0 {
+		testpod.Annotations = annotations
+	}
+	testpod.Namespace = testutils.NamespaceTesting
+
+	cpuCount := fmt.Sprintf("%d", cpus)
+	resCpu := resource.MustParse(cpuCount)
+	resMem := resource.MustParse("256Mi")
+	testpod.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resCpu,
+			corev1.ResourceMemory: resMem,
+		},
+	}
+	if perfProf != nil {
+		runtimeClassName := components.GetComponentName(perfProf.Name, components.ComponentNamePrefix)
+		testpod.Spec.RuntimeClassName = &runtimeClassName
+	}
+	return testpod
 }
