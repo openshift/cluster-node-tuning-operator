@@ -211,7 +211,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			}
 		})
 		It("[test_id:42400][crit:medium][vendor:cnf-qe@redhat.com][level:acceptance] stalld daemon is running as sched_fifo", func() {
-			testutils.KnownIssueJira("RHEL-108827")
+			testutils.KnownIssueJira("RHEL-137196")
 			for _, node := range workerRTNodes {
 				out, err := nodes.ExecCommand(context.TODO(), &node, []string{"pidof", "stalld"})
 				Expect(err).ToNot(HaveOccurred())
