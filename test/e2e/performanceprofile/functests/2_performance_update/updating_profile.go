@@ -1271,6 +1271,87 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			Entry("create and test with ContainerRuntimeConfig", true),
 		)
 	})
+	Context("Performance Profile Controller what MCP Spec and label",  func() {
+		var (
+			cnfMcp *machineconfigv1.MachineConfigPool
+			initialLabel map[string]string
+			updatedProfile, profile *performancev2.PerformanceProfile
+			err error
+			ctx context.Context = context.TODO()
+
+		)
+
+		BeforeAll(func() {
+			//Backup the current mcp
+			profile, err = profiles.GetByNodeLabels(nodeLabel)
+			Expect(err).ToNot(HaveOccurred(), "Unable to fetch Performance profile")
+			cnfMcp, err = mcps.GetByName(testutils.RoleWorkerCNF)
+			Expect(err).ToNot(HaveOccurred(), "Unable to fetch mcp for %s", testutils.RoleWorkerCNF)
+			initialLabel  =  cnfMcp.DeepCopy().Labels
+			Expect(initialLabel).ToNot(BeEmpty(), "%s MCP cannot have empty labels", cnfMcp.Name)
+		})
+
+		It("Performance profile watch MCP label changes", func() {
+			// By remove the label from worker-cnf mcp
+			// Get original Profile resource version
+			originalResourceVersion := profile.ResourceVersion
+
+			By("Remove existing label")
+			delete(cnfMcp.Labels, testutils.LabelRole)
+			testclient.DataPlaneClient.Update(ctx, cnfMcp)
+
+			// Verify performance profile status has changed
+			fmt.Println(profile.Status.Conditions)
+			time.Sleep(1*time.Minute)
+
+			// Apply the label back
+			updatedMcp, err := mcps.GetByName(testutils.RoleWorkerCNF)
+			Expect(err).ToNot(HaveOccurred(), "Unable to fetch updated Machine Config Pool %s", testutils.RoleWorkerCNF)
+			if updatedMcp.Labels == nil {
+				updatedMcp.Labels = make(map[string]string)
+			}
+			for key, value := range initialLabel {
+				if updatedMcp.Labels[key] != value {
+					testlog.Infof("Updating label %q=%q in MCP %q", key, value, updatedMcp.Name)
+					updatedMcp.Labels[key] = value
+				}
+			}
+			testclient.DataPlaneClient.Update(ctx, updatedMcp)
+			By("Verify Performance profile reconciled")
+			// The controller should reconcile when mcp labels are updated
+			// we verify this by checking that performance Profile resourceversion changes
+			Eventually(func() bool {
+				updatedProfile, err = profiles.GetByNodeLabels(nodeLabel)
+				if err != nil {
+					return false
+				}
+				return updatedProfile.ResourceVersion != originalResourceVersion
+			}, 2*time.Minute, 5*time.Second).Should(BeTrue(), "Performance Profile should reconcile when MCP labels are updated")
+
+			By("Verify Performance Profile is not Degraded")
+			fmt.Println(updatedProfile.Status.Conditions)
+
+		})
+		AfterAll(func(){
+			By(fmt.Sprintf("Restore %s mcp Label", testutils.RoleWorkerCNF))
+			// Get updated profile
+			profile, err = profiles.GetByNodeLabels(nodeLabel)
+			Expect(err).ToNot(HaveOccurred(), "unable to fetch performance profile")
+			// Get Update mcp
+			updatedMcp, err := mcps.GetByName(testutils.RoleWorkerCNF)
+			Expect(err).ToNot(HaveOccurred(), "Unable to fetch updated Machine Config Pool %s", testutils.RoleWorkerCNF)
+			if updatedMcp.Labels == nil {
+				updatedMcp.Labels = make(map[string]string)
+			}
+			for key, value := range initialLabel {
+				if updatedMcp.Labels[key] != value {
+					testlog.Infof("Updating label %q=%q in MCP %q", key, value, updatedMcp.Name)
+					updatedMcp.Labels[key] = value
+				}
+			}
+		})
+
+	})
 })
 
 func getMCPConditionStatus(mcpName string, conditionType machineconfigv1.MachineConfigPoolConditionType) corev1.ConditionStatus {
