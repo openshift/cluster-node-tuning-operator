@@ -38,7 +38,6 @@ import (
 	tunedinformers "github.com/openshift/cluster-node-tuning-operator/pkg/generated/informers/externalversions"
 	ntomf "github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/metrics"
-	tunedpkg "github.com/openshift/cluster-node-tuning-operator/pkg/tuned"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/openshift/cluster-node-tuning-operator/version"
 
@@ -571,6 +570,10 @@ func (c *Controller) syncDaemonSet(tuned *tunedv1.Tuned) error {
 		update = true
 	}
 
+	// OCPBUGS-62632: do not indicate ClusterOperator status Progressing on node scaling or reboot
+	ds, change := c.storeLastStableGeneration(ds)
+	update = update || change
+
 	if update {
 		// Update the DaemonSet
 		ds = ds.DeepCopy() // never update the objects from cache
@@ -658,7 +661,6 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 			profileMf.Spec.Config.Verbosity = computed.Operand.Verbosity
 			profileMf.Spec.Config.TuneDConfig = computed.Operand.TuneDConfig
 			profileMf.Spec.Profile = computed.AllProfiles
-			profileMf.Status.Conditions = tunedpkg.InitializeStatusConditions()
 			_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.WatchNamespace()).Create(context.TODO(), profileMf, metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to create Profile %s: %v", profileMf.Name, err)
@@ -737,7 +739,6 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	profile.Spec.Config.TuneDConfig = computed.Operand.TuneDConfig
 	profile.Spec.Config.ProviderName = providerName
 	profile.Spec.Profile = computed.AllProfiles
-	profile.Status.Conditions = tunedpkg.InitializeStatusConditions()
 	delete(c.pc.state.bootcmdline, nodeName) // bootcmdline retrieved from node annotation is potentially stale, let it resync on node update
 
 	klog.V(2).Infof("syncProfile(): updating Profile %s [%s]", profile.Name, computed.TunedProfileName)
