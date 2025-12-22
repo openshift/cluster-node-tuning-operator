@@ -2,6 +2,7 @@ package __latency_testing
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math"
 	"os"
@@ -12,7 +13,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
+	"k8s.io/utils/cpuset"
+
+	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 )
 
 // TODO get commonly used variables from one shared file that defines constants
@@ -219,6 +225,37 @@ func clearEnv() {
 	os.Unsetenv(latencyTestCpus)
 }
 
+// checkHyperthreading determines if the BZ 2094046 test should run based on HT status.
+// Returns true if the test should run (HT enabled), false if it should be skipped (HT disabled).
+func checkHyperthreading() (bool, error) {
+	profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+	if err != nil {
+		return false, fmt.Errorf("get performance profile: %w", err)
+	}
+
+	workerNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
+	if err != nil {
+		return false, fmt.Errorf("get worker nodes: %w", err)
+	}
+	workerNode := &workerNodes[0]
+
+	ctx := context.Background()
+	set, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+	if err != nil || set.Size() == 0 {
+		return false, fmt.Errorf("failed to parse isolated CPUs from profile")
+	}
+	cpuID := set.List()[0]
+
+	smtLevel, err := nodes.GetSMTLevel(ctx, cpuID, workerNode)
+	if err != nil {
+		return false, fmt.Errorf("failed to get SMT level for CPU %d on node %s: %w", cpuID, workerNode.Name, err)
+	}
+	isHTEnabled := smtLevel > 1
+	testlog.Infof("Hyperthreading status on node %s (CPU %d): %t", workerNode.Name, cpuID, isHTEnabled)
+
+	return isHTEnabled, nil
+}
+
 func getValidValuesTests(toolToTest string) []latencyTest {
 	var testSet []latencyTest
 
@@ -283,15 +320,21 @@ func getNegativeTests(toolToTest string) []latencyTest {
 		testSet = append(testSet, latencyTest{testRuntime: "2", oslatMaxLatency: "&", outputMsgs: []string{incorrectOslatMaxLatency, fail}, toolToTest: toolToTest})
 		testSet = append(testSet, latencyTest{testRuntime: "2", oslatMaxLatency: fmt.Sprint(math.MaxInt32 + 1), outputMsgs: []string{invalidNumberOslatMaxLatency, fail}, toolToTest: toolToTest})
 		testSet = append(testSet, latencyTest{testRuntime: "2", oslatMaxLatency: "-3", outputMsgs: []string{invalidNumberOslatMaxLatency, fail}, toolToTest: toolToTest})
-		// Covers the scenario of BZ 2094046
-		testSet = append(testSet, latencyTest{testRuntime: "2", testCpus: "2", outputMsgs: []string{unexpectedError, fail}, toolToTest: toolToTest})
+		// BZ 2094046: only add this test if HT is enabled
+		htEnabled, htErr := checkHyperthreading()
+		if htErr == nil && htEnabled {
+			testSet = append(testSet, latencyTest{testRuntime: "2", testCpus: "2", oslatMaxLatency: untunedLatencyThreshold, outputMsgs: []string{unexpectedError, fail}, toolToTest: toolToTest})
+		}
 	}
 	if toolToTest == cyclictest {
 		testSet = append(testSet, latencyTest{testRuntime: "2", cyclictestMaxLatency: "&", outputMsgs: []string{incorrectCyclictestMaxLatency, fail}, toolToTest: toolToTest})
 		testSet = append(testSet, latencyTest{testRuntime: "2", cyclictestMaxLatency: fmt.Sprint(math.MaxInt32 + 1), outputMsgs: []string{invalidNumberCyclictestMaxLatency, fail}, toolToTest: toolToTest})
 		testSet = append(testSet, latencyTest{testRuntime: "2", cyclictestMaxLatency: "-3", outputMsgs: []string{invalidNumberCyclictestMaxLatency, fail}, toolToTest: toolToTest})
-		// Covers the scenario of BZ 2094046
-		testSet = append(testSet, latencyTest{testRuntime: "2", testCpus: "2", outputMsgs: []string{unexpectedError, fail}, toolToTest: toolToTest})
+		// BZ 2094046: only add this test if HT is enabled
+		htEnabled, htErr := checkHyperthreading()
+		if htErr == nil && htEnabled {
+			testSet = append(testSet, latencyTest{testRuntime: "2", testCpus: "2", cyclictestMaxLatency: untunedLatencyThreshold, outputMsgs: []string{unexpectedError, fail}, toolToTest: toolToTest})
+		}
 	}
 	if toolToTest == hwlatdetect {
 		testSet = append(testSet, latencyTest{testRuntime: "2", hwlatdetectMaxLatency: "&", outputMsgs: []string{incorrectHwlatdetectMaxLatency, fail}, toolToTest: toolToTest})
