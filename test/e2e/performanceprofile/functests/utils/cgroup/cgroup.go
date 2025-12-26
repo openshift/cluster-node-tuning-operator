@@ -33,12 +33,12 @@ func IsVersion2(ctx context.Context, c client.Client) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to get configs.node object. name=%q; %w", key.Name, err)
 	}
-	if nodecfg.Spec.CgroupMode == apiconfigv1.CgroupModeV1 {
-		return false, nil
-	}
 	// in case `apiconfigv1.CgroupMode` not set, it's returned true since
 	// the platform's default is cgroupV2
-	return true, nil
+	if nodecfg.Spec.CgroupMode == apiconfigv1.CgroupModeV2 || nodecfg.Spec.CgroupMode == apiconfigv1.CgroupModeEmpty {
+		return true, nil
+	}
+	return false, nil
 }
 
 // BuildGetter return a cgroup information getter that complies with
