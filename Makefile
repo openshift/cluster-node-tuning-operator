@@ -99,7 +99,7 @@ test-e2e: $(BINDATA)
 test-e2e-local: $(BINDATA) performance-profile-creator-tests gather-sysinfo-tests
 	$(GO_BUILD_RECIPE)
 	for d in performanceprofile/functests-render-command/1_render_command; do \
-	  $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.no-color -ginkgo.fail-fast || exit; \
+	  $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.no-color || exit; \
 	done
 
 # This target ensures /manifests directory is up-to-date.  It takes advantage of yaml patching functionality of
@@ -211,7 +211,7 @@ pao-functests: cluster-label-worker-cnf pao-functests-only
 pao-functests-only: $(BINDATA)
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
-	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/1_performance test/e2e/performanceprofile/functests/6_mustgather_testing test/e2e/performanceprofile/functests/10_performance_ppc" -p "-v -r --fail-fast  --flake-attempts=2 --junit-report=report.xml" -m "Running Functional Tests"
+	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/1_performance test/e2e/performanceprofile/functests/6_mustgather_testing test/e2e/performanceprofile/functests/10_performance_ppc" -p "-v -r --flake-attempts=2 --junit-report=report.xml" -m "Running Functional Tests"
 
 .PHONY: pao-functests-updating-profile
 pao-functests-updating-profile: cluster-label-worker-cnf pao-functests-update-only
@@ -235,19 +235,19 @@ pao-functests-performance-workloadhints: cluster-label-worker-cnf pao-functests-
 pao-functests-performance-workloadhints-only: $(BINDATA)
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
-	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/8_performance_workloadhints" -p "-v -r --fail-fast --flake-attempts=2 --timeout=5h --junit-report=report.xml" -m "Running Functional WorkloadHints Tests"
+	hack/run-test.sh -t "test/e2e/performanceprofile/functests/0_config test/e2e/performanceprofile/functests/8_performance_workloadhints" -p "-v -r --flake-attempts=2 --timeout=5h --junit-report=report.xml" -m "Running Functional WorkloadHints Tests"
 
 .PHONY: pao-functests-latency-testing
 pao-functests-latency-testing: dist-latency-tests $(BINDATA)
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
-	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/5_latency_testing" -p "-v -r --fail-fast --flake-attempts=2 --timeout=5h --junit-report=report.xml" -m "Running Functionalconfiguration latency Tests"
+	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/5_latency_testing" -p "-v -r --flake-attempts=2 --timeout=5h --junit-report=report.xml" -m "Running Functionalconfiguration latency Tests"
 
 .PHONY: pao-functests-mixedcpus
 pao-functests-mixedcpus: $(BINDATA)
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
-	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/11_mixedcpus" -p "-v -r --fail-fast --flake-attempts=2 --junit-report=report.xml" -m "Running MixedCPUs Tests"
+	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/11_mixedcpus" -p "-v -r --flake-attempts=2 --junit-report=report.xml" -m "Running MixedCPUs Tests"
 
 .PHONY: pao-functests-hypershift
 pao-functests-hypershift: $(BINDATA)
@@ -275,7 +275,7 @@ arm-kernelpagesize: $(BINDATA)
 .PHONY: performance-profile-creator-tests
 performance-profile-creator-tests: build-performance-profile-creator
 	@echo "Running Performance Profile Creator Tests"
-	hack/run-test.sh -t "test/e2e/performanceprofile/functests-performance-profile-creator" -p "--v -r --fail-fast --flake-attempts=2" -m "Running Functional Tests" -r "--junit-report=/tmp/artifacts"
+	hack/run-test.sh -t "test/e2e/performanceprofile/functests-performance-profile-creator" -p "--v -r --flake-attempts=2" -m "Running Functional Tests" -r "--junit-report=/tmp/artifacts"
 
 # Gather sysinfo binary for use in must-gather
 .PHONY: build-gather-sysinfo
