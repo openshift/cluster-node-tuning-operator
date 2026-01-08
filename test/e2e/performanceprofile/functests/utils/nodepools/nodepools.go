@@ -156,6 +156,26 @@ func AttachTuningObjectToNodePool(ctx context.Context, cli client.Client, object
 	return nil
 }
 
+// ReplaceTuningObject works similar to AttachTuningObject but replaces one object with another instead of appending
+func ReplaceTuningObject(ctx context.Context, cli client.Client, newObject, oldObject client.Object) error {
+	var err error
+	np, err := GetNodePool(ctx, cli)
+	if err != nil {
+		return err
+	}
+
+	updatedTuningConfig := corev1.LocalObjectReference{Name: newObject.GetName()}
+	for i, tuningConfig := range np.Spec.TuningConfig {
+		if tuningConfig.Name == oldObject.GetName() {
+			np.Spec.TuningConfig[i] = updatedTuningConfig
+		}
+	}
+	if cli.Update(ctx, np) != nil {
+		return err
+	}
+	return nil
+}
+
 func DeattachTuningObject(ctx context.Context, cli client.Client, object client.Object) error {
 	np, err := GetNodePool(ctx, cli)
 	if err != nil {

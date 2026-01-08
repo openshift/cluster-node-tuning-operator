@@ -34,7 +34,7 @@ func BuildControlPlaneClient() (client.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	ns, err := GetManagementClusterNamespace()
+	ns, err := GetHostedControlPlaneNamespace()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build management-cluster client for hypershift; err %v", err)
 	}
@@ -57,7 +57,7 @@ func GetHostedClusterName() (string, error) {
 	return v, nil
 }
 
-func GetManagementClusterNamespace() (string, error) {
+func GetHostedControlPlaneNamespace() (string, error) {
 	ns, ok := os.LookupEnv(HostedControlPlaneNamespaceEnv)
 	if !ok {
 		return "", fmt.Errorf("failed to retrieve management cluster namespace; %q environment var is not set", HostedControlPlaneNamespaceEnv)
