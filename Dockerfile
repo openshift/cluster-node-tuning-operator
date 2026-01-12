@@ -6,11 +6,13 @@ ARG GOARCH
 
 RUN make update-tuned-submodule
 RUN make build
+RUN gzip /go/src/github.com/openshift/cluster-node-tuning-operator/_output/cluster-node-tuning-operator-test-ext
 
 FROM quay.io/centos/centos:stream9
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/cluster-node-tuning-operator /usr/bin/
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/performance-profile-creator /usr/bin/
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/gather-sysinfo /usr/bin/
+COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/_output/cluster-node-tuning-operator-test-ext.gz /usr/bin/
 
 ENV ASSETS_DIR=/root/assets
 COPY --from=builder /go/src/github.com/openshift/cluster-node-tuning-operator/assets $ASSETS_DIR
