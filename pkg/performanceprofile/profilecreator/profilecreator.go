@@ -570,7 +570,7 @@ func IsLogicalProcessorUsed(extCPUInfo *extendedCPUInfo, logicalProcessor int) b
 
 // IsExternalControlPlaneCluster return whether the control plane is running on externally outside the cluster
 func IsExternalControlPlaneCluster(mustGatherDirPath string) (bool, error) {
-	infraPath := path.Join(ClusterScopedResources, configOCPInfra, "cluster.yaml")
+	infraPath := path.Join(clusterScopedResources, configOCPInfra, "cluster.yaml")
 	fullInfraPath, err := getMustGatherFullPaths(mustGatherDirPath, infraPath)
 	if fullInfraPath == "" || err != nil {
 		return false, fmt.Errorf("failed to get Infrastructure object from must gather directory path: %s; %w", mustGatherDirPath, err)
