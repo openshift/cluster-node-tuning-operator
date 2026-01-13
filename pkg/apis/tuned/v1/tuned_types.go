@@ -29,6 +29,10 @@ const (
 	// TunedDeferredUpdate request the tuned daemons to defer the update of the rendered profile
 	// until the next restart.
 	TunedDeferredUpdate string = "tuned.openshift.io/deferred"
+
+	// StableGenerationAnnotationName is tuned daemonset annotation used to determine ClusterOperator
+	// progressing status.
+	StableGenerationAnnotationName = "tuned.openshift.io/last-stable-daemonset-generation"
 )
 
 /////////////////////////////////////////////////////////////////////////////////
