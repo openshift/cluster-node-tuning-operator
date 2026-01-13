@@ -1,6 +1,10 @@
 package profile
 
 import (
+	"strconv"
+
+	"k8s.io/klog/v2"
+
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 
@@ -93,4 +97,22 @@ func IsMixedCPUsEnabled(profile *performancev2.PerformanceProfile) bool {
 		return false
 	}
 	return *profile.Spec.WorkloadHints.MixedCpus
+}
+
+func IsDRAManaged(profile *performancev2.PerformanceProfile) bool {
+	if profile.Annotations == nil {
+		return false
+	}
+
+	v, ok := profile.Annotations[performancev2.PerformanceProfileDRAResourceManagementAnnotation]
+	if !ok {
+		return false
+	}
+
+	parsed, err := strconv.ParseBool(v)
+	if err != nil {
+		klog.ErrorS(err, "failed to parse annotation as bool", "annotation", performancev2.PerformanceProfileDRAResourceManagementAnnotation)
+		return false
+	}
+	return parsed
 }
