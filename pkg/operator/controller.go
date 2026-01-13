@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -38,6 +39,7 @@ import (
 	tunedinformers "github.com/openshift/cluster-node-tuning-operator/pkg/generated/informers/externalversions"
 	ntomf "github.com/openshift/cluster-node-tuning-operator/pkg/manifests"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/metrics"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/tuned"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	"github.com/openshift/cluster-node-tuning-operator/version"
 
@@ -692,11 +694,19 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		// MachineConfigs.
 		if computed.NodePoolName != "" {
 			if profile.Status.TunedProfile == computed.TunedProfileName && profileApplied(profile) {
-				// Synchronize MachineConfig only once the (calculated) TuneD profile 'tunedProfileName'
-				// has been successfully applied.
-				err := c.syncMachineConfigHyperShift(computed.NodePoolName, profile)
-				if err != nil {
-					return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
+				// Skip MachineConfig creation if this profile is managed by PerformanceProfile controller.
+				// PerformanceProfile controller creates its own "50-performance-*" MachineConfigs with
+				// boot parameters from tuned, so we don't need the operator controller to also create
+				// "50-nto-*" MachineConfigs for the same nodes (which would cause race conditions).
+				if c.isManagedByPerformanceProfile(profile) {
+					klog.V(2).Infof("skipping MachineConfig creation for profile %s: managed by PerformanceProfile controller", profile.Name)
+				} else {
+					// Synchronize MachineConfig only once the (calculated) TuneD profile 'tunedProfileName'
+					// has been successfully applied.
+					err := c.syncMachineConfigHyperShift(computed.NodePoolName, profile)
+					if err != nil {
+						return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
+					}
 				}
 			}
 		}
@@ -706,11 +716,19 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 			// labels 'mcLabels' set for additional machine configuration.  Sync the operator-created
 			// MachineConfig based on 'mcLabels'.
 			if profile.Status.TunedProfile == computed.TunedProfileName && profileApplied(profile) {
-				// Synchronize MachineConfig only once the (calculated) TuneD profile 'tunedProfileName'
-				// has been successfully applied.
-				err := c.syncMachineConfig(computed.MCLabels, profile)
-				if err != nil {
-					return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
+				// Skip MachineConfig creation if this profile is managed by PerformanceProfile controller.
+				// PerformanceProfile controller creates its own "50-performance-*" MachineConfigs with
+				// boot parameters from tuned, so we don't need the operator controller to also create
+				// "50-nto-*" MachineConfigs for the same nodes (which would cause race conditions).
+				if c.isManagedByPerformanceProfile(profile) {
+					klog.V(2).Infof("skipping MachineConfig creation for profile %s: managed by PerformanceProfile controller", profile.Name)
+				} else {
+					// Synchronize MachineConfig only once the (calculated) TuneD profile 'tunedProfileName'
+					// has been successfully applied.
+					err := c.syncMachineConfig(computed.MCLabels, profile)
+					if err != nil {
+						return fmt.Errorf("failed to update Profile %s: %v", profile.Name, err)
+					}
 				}
 			}
 		} else {
@@ -765,6 +783,81 @@ func (c *Controller) getProviderName(nodeName string) (string, error) {
 	}
 
 	return util.GetProviderName(node.Spec.ProviderID), nil
+}
+
+// getProfileDependencies recursively finds all profiles that the given profile depends on
+// by following include= directives. This is similar to profileDepends() but works with
+// in-memory Profile data (from tunedv1.TunedProfile) instead of reading from disk.
+func getProfileDependencies(profileName string, profileMap map[string]*tunedv1.TunedProfile, seen map[string]bool) map[string]bool {
+	if seen[profileName] {
+		return seen
+	}
+
+	tunedProfile, exists := profileMap[profileName]
+	if !exists || tunedProfile.Data == nil {
+		return seen
+	}
+
+	// Parse the profile data to get include= directives
+	includes := tuned.GetIniFileSectionSlice(tunedProfile.Data, "main", "include", ",")
+	for _, includedProfile := range includes {
+		// Remove optional leading '-' for conditional includes
+		includedProfile = strings.TrimPrefix(includedProfile, "-")
+		includedProfile = strings.TrimSpace(includedProfile)
+
+		if includedProfile == "" {
+			continue
+		}
+
+		seen[includedProfile] = true
+		// Recursively get dependencies of the included profile
+		seen = getProfileDependencies(includedProfile, profileMap, seen)
+	}
+
+	return seen
+}
+
+// isManagedByPerformanceProfile checks if a tuned profile is or includes/inherits a tuned profile managed by
+// the PerformanceProfile controller. PerformanceProfile controller creates tuned profiles with names starting
+// with "openshift-node-performance". These profiles should not have MachineConfigs created by the operator
+// controller as the PerformanceProfile controller creates its own MachineConfigs with boot parameters from tuned.
+func (c *Controller) isManagedByPerformanceProfile(profile *tunedv1.Profile) bool {
+	const (
+		tunedPerformanceProfilePrefix = "openshift-node-performance-"
+	)
+
+	tunedProfileName := profile.Status.TunedProfile
+
+	// Check if the profile name itself starts with "openshift-node-performance-".
+	// PerformanceProfile creates profiles with names like:
+	// - openshift-node-performance-<profile-name>
+	// - openshift-node-performance-<profile-name>-rt
+	// - openshift-node-performance-<profile-name>-amd-x86
+	// - openshift-node-performance-<profile-name>-arm-aarch64
+	// - openshift-node-performance-<profile-name>-intel-x86
+	if strings.HasPrefix(tunedProfileName, tunedPerformanceProfilePrefix) {
+		return true
+	}
+
+	// Build a map of all profiles in the Profile object for quick lookup.
+	profileMap := make(map[string]*tunedv1.TunedProfile)
+	for i := range profile.Spec.Profile {
+		tp := &profile.Spec.Profile[i]
+		if tp.Name != nil {
+			profileMap[*tp.Name] = tp
+		}
+	}
+
+	// Recursively check if the profile depends on a PerformanceProfile-managed profile.
+	deps := getProfileDependencies(tunedProfileName, profileMap, make(map[string]bool))
+	for depProfileName := range deps {
+		if strings.HasPrefix(depProfileName, tunedPerformanceProfilePrefix) {
+			klog.V(2).Infof("profile %s depends on PerformanceProfile-managed profile %s", tunedProfileName, depProfileName)
+			return true
+		}
+	}
+
+	return false
 }
 
 func (c *Controller) syncMachineConfig(labels map[string]string, profile *tunedv1.Profile) error {

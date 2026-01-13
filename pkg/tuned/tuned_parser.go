@@ -81,10 +81,10 @@ func iniCfgSetKey(cfg *ini.File, key string, value interface{}) error {
 	return nil
 }
 
-// getIniFileSectionSlice searches INI file `data` inside [`section`]
+// GetIniFileSectionSlice searches INI file `data` inside [`section`]
 // for key `key`.  It takes the key's value and uses separator
 // `separator` to return a slice of strings.
-func getIniFileSectionSlice(data *string, section, key, separator string) []string {
+func GetIniFileSectionSlice(data *string, section, key, separator string) []string {
 	var ret []string
 
 	if data == nil {
@@ -120,7 +120,7 @@ func profileIncludesRaw(profileName string, tunedProfilesDir string) []string {
 
 	s := string(content)
 
-	return getIniFileSectionSlice(&s, "main", "include", ",")
+	return GetIniFileSectionSlice(&s, "main", "include", ",")
 }
 
 // profileIncludes returns a slice of strings containing TuneD profile names
