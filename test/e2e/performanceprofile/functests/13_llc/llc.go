@@ -827,6 +827,18 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				Expect(err).ToNot(HaveOccurred(), "Unable to fetch numa nodes")
 				coresiblings, err := nodes.GetCoreSiblings(ctx, &cnfnode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get numa information from the node")
+				getCCX = nodes.GetL3SharedCPUs(&cnfnode)
+				ccx, err := getCCX(0)
+				Expect(err).ToNot(HaveOccurred())
+				L3CacheGroupSize = ccx.Size()
+				// Get actual CPU ID's from Numa Node 0
+				numaNode0Cpus := cpuset.New(numaInfo[0]...)
+
+				// Compare if L3 cache group CPUs match NUMA Node 0 CPUs
+				if ccx.Equals(numaNode0Cpus) {
+					Skip("This test requires systems where L3 cache is shared amount subset of cpus")
+				}
+
 				nosmt = transformToNoSMT(coresiblings)
 				if len(numaInfo) < 2 {
 					Skip(fmt.Sprintf("This test need 2 Numa nodes. The number of numa nodes on node %s < 2", cnfnode.Name))
