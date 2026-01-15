@@ -514,9 +514,15 @@ func getIrqBalanceBannedCPUs(ctx context.Context, node *corev1.Node) (cpuset.CPU
 	bannedCPUs := unquote(strings.TrimSpace(items[1]))
 	testlog.Infof("banned CPUs: %q", bannedCPUs)
 
-	banned, err := components.CPUMaskToCPUSet(bannedCPUs)
+	var banned cpuset.CPUSet
+	if items[0] == "IRQBALANCE_BANNED_CPULIST" {
+		banned, err = cpuset.Parse(bannedCPUs)
+	} else {
+		banned, err = components.CPUMaskToCPUSet(bannedCPUs)
+	}
+
 	if err != nil {
-		return cpuset.New(), fmt.Errorf("failed to parse the banned CPUs: %v", err)
+		return cpuset.New(), fmt.Errorf("failed to parse banned CPUs from %s: %v", items[0], err)
 	}
 
 	return banned, nil
@@ -539,10 +545,12 @@ func findIrqBalanceBannedCPUsVarFromConf(conf string) string {
 		if strings.HasPrefix(line, "#") {
 			continue
 		}
-		if !strings.HasPrefix(line, "IRQBALANCE_BANNED_CPUS") {
-			continue
+		if strings.HasPrefix(line, "IRQBALANCE_BANNED_CPULIST") {
+			return line
 		}
-		return line
+		if strings.HasPrefix(line, "IRQBALANCE_BANNED_CPUS") {
+			return line
+		}
 	}
 	return ""
 }
