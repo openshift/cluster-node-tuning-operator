@@ -24,6 +24,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/tuned"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/baseload"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/controller"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
@@ -32,11 +33,18 @@ import (
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/poolname"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 	e2etuned "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 	"github.com/openshift/cluster-node-tuning-operator/test/framework"
+)
+
+const (
+	irqLoadBalancingAnnotation   = "irq-load-balancing.crio.io"
+	irqLoadBalancingDisable      = "disable"
+	irqLoadBalancingHousekeeping = "housekeeping"
 )
 
 var (
@@ -162,112 +170,116 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 	})
 
 	Context("Verify irqbalance configuration handling", Label(string(label.Tier0)), func() {
-		It("Should not overwrite the banned CPU set on tuned restart", func() {
-			if profile.Status.RuntimeClass == nil {
-				Skip("runtime class not generated")
-			}
-
-			if tuned.IsIRQBalancingGloballyDisabled(profile) {
-				Skip("this test needs dynamic IRQ balancing")
-			}
-
-			targetNodeIdx := pickNodeIdx(workerRTNodes)
-			targetNode = &workerRTNodes[targetNodeIdx]
-			Expect(targetNode).ToNot(BeNil(), "missing target node")
-			By(fmt.Sprintf("verifying worker node %q", targetNode.Name))
-
-			irqAffBegin, err := getIrqDefaultSMPAffinity(context.TODO(), targetNode)
-			Expect(err).ToNot(HaveOccurred(), "failed to extract the default IRQ affinity from node %q", targetNode.Name)
-			testlog.Infof("IRQ Default affinity on %q when test begins: {%s}", targetNode.Name, irqAffBegin)
-
-			bannedCPUs, err := getIrqBalanceBannedCPUs(context.TODO(), targetNode)
-			Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %q", targetNode.Name)
-			testlog.Infof("banned CPUs on %q when test begins: {%s}", targetNode.Name, bannedCPUs.String())
-
-			smpAffinitySet, err := nodes.GetDefaultSmpAffinitySet(context.TODO(), targetNode)
-			Expect(err).ToNot(HaveOccurred(), "failed to get default smp affinity")
-
-			onlineCPUsSet, err := nodes.GetOnlineCPUsSet(context.TODO(), targetNode)
-			Expect(err).ToNot(HaveOccurred(), "failed to get Online CPUs list")
-
-			// Mask the smpAffinitySet according to the current onlineCpuSet
-			// as smp_default_affinity is not online cpu aware
-			smpAffinitySet = smpAffinitySet.Intersection(onlineCPUsSet)
-
-			// expect no irqbalance run in the system already, AKA start from pristine conditions.
-			// This is not an hard requirement, just the easier state to manage and check
-			Expect(smpAffinitySet.Equals(onlineCPUsSet)).To(BeTrue(), "found default_smp_affinity %v, expected %v - IRQBalance already run?", smpAffinitySet, onlineCPUsSet)
-
-			cpuRequest := 2 // minimum amount to be reasonably sure we're SMT-aligned
-			annotations := map[string]string{
-				"irq-load-balancing.crio.io": "disable",
-			}
-			testpod := getTestPodWithProfileAndAnnotations(profile, annotations, cpuRequest)
-			testpod.Spec.NodeName = targetNode.Name
-
-			data, _ := json.Marshal(testpod)
-			testlog.Infof("using testpod:\n%s", string(data))
-
-			if cpuRequest >= isolatedCPUSet.Size() {
-				Skip(fmt.Sprintf("cpus request %d is greater than the available on the node as the isolated cpus are %d", cpuRequest, isolatedCPUSet.Size()))
-			}
-
-			err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
-			Expect(err).ToNot(HaveOccurred())
-			defer func() {
-				if testpod != nil {
-					testlog.Infof("deleting pod %q", testpod.Name)
-					deleteTestPod(context.TODO(), testpod)
+		DescribeTable("Should not overwrite the banned CPU set on tuned restart",
+			func(annotationValue string) {
+				if profile.Status.RuntimeClass == nil {
+					Skip("runtime class not generated")
 				}
-				bannedCPUs, err := getIrqBalanceBannedCPUs(context.TODO(), targetNode)
-				Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %q", targetNode.Name)
 
-				testlog.Infof("banned CPUs on %q when test ends: {%s}", targetNode.Name, bannedCPUs.String())
+				if tuned.IsIRQBalancingGloballyDisabled(profile) {
+					Skip("this test needs dynamic IRQ balancing")
+				}
+
+				targetNodeIdx := pickNodeIdx(workerRTNodes)
+				targetNode = &workerRTNodes[targetNodeIdx]
+				Expect(targetNode).ToNot(BeNil(), "missing target node")
+				By(fmt.Sprintf("verifying worker node %q with annotation %q", targetNode.Name, annotationValue))
 
 				irqAffBegin, err := getIrqDefaultSMPAffinity(context.TODO(), targetNode)
 				Expect(err).ToNot(HaveOccurred(), "failed to extract the default IRQ affinity from node %q", targetNode.Name)
+				testlog.Infof("IRQ Default affinity on %q when test begins: {%s}", targetNode.Name, irqAffBegin)
 
-				testlog.Infof("IRQ Default affinity on %q when test ends: {%s}", targetNode.Name, irqAffBegin)
-			}()
+				bannedCPUs, err := getIrqBalanceBannedCPUs(context.TODO(), targetNode)
+				Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %q", targetNode.Name)
+				testlog.Infof("banned CPUs on %q when test begins: {%s}", targetNode.Name, bannedCPUs.String())
 
-			testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
-			logEventsForPod(testpod)
-			Expect(err).ToNot(HaveOccurred())
+				smpAffinitySet, err := nodes.GetDefaultSmpAffinitySet(context.TODO(), targetNode)
+				Expect(err).ToNot(HaveOccurred(), "failed to get default smp affinity")
 
-			// now we have something in the IRQBalance cpu list. Let's make sure the restart doesn't overwrite this data.
-			postCreateBannedCPUs, err := getIrqBalanceBannedCPUs(context.TODO(), targetNode)
-			Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %q", targetNode.Name)
-			testlog.Infof("banned CPUs on %q just before the tuned restart: {%s}", targetNode.Name, postCreateBannedCPUs.String())
+				onlineCPUsSet, err := nodes.GetOnlineCPUsSet(context.TODO(), targetNode)
+				Expect(err).ToNot(HaveOccurred(), "failed to get Online CPUs list")
 
-			Expect(postCreateBannedCPUs.IsEmpty()).To(BeFalse(), "banned CPUs %v should not be empty on node %q", postCreateBannedCPUs, targetNode.Name)
+				// Mask the smpAffinitySet according to the current onlineCpuSet
+				// as smp_default_affinity is not online cpu aware
+				smpAffinitySet = smpAffinitySet.Intersection(onlineCPUsSet)
 
-			By(fmt.Sprintf("getting a TuneD Pod running on node %s", targetNode.Name))
-			pod, err := util.GetTunedForNode(cs, targetNode)
-			Expect(err).NotTo(HaveOccurred())
+				// expect no irqbalance run in the system already, AKA start from pristine conditions.
+				// This is not an hard requirement, just the easier state to manage and check
+				Expect(smpAffinitySet.Equals(onlineCPUsSet)).To(BeTrue(), "found default_smp_affinity %v, expected %v - IRQBalance already run?", smpAffinitySet, onlineCPUsSet)
 
-			By(fmt.Sprintf("causing a restart of the tuned pod (deleting the pod) on %s", targetNode.Name))
-			_, _, err = util.ExecAndLogCommand("oc", "delete", "pod", "--wait=true", "-n", pod.Namespace, pod.Name)
-			Expect(err).NotTo(HaveOccurred())
+				cpuRequest := 2 // minimum amount to be reasonably sure we're SMT-aligned
+				annotations := map[string]string{
+					irqLoadBalancingAnnotation: annotationValue,
+				}
+				testpod := getTestPodWithProfileAndAnnotations(profile, annotations, cpuRequest)
+				testpod.Spec.NodeName = targetNode.Name
 
-			Eventually(func() error {
-				By(fmt.Sprintf("getting again a TuneD Pod running on node %s", targetNode.Name))
-				pod, err = util.GetTunedForNode(cs, targetNode)
-				if err != nil {
-					return err
+				data, _ := json.Marshal(testpod)
+				testlog.Infof("using testpod:\n%s", string(data))
+
+				if cpuRequest >= isolatedCPUSet.Size() {
+					Skip(fmt.Sprintf("cpus request %d is greater than the available on the node as the isolated cpus are %d", cpuRequest, isolatedCPUSet.Size()))
 				}
 
-				By(fmt.Sprintf("waiting for the TuneD daemon running on node %s", targetNode.Name))
-				_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, "test", "-e", "/run/tuned/tuned.pid")
-				return err
-			}).WithTimeout(5 * time.Minute).WithPolling(10 * time.Second).ShouldNot(HaveOccurred())
+				err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
+				Expect(err).ToNot(HaveOccurred())
+				defer func() {
+					if testpod != nil {
+						testlog.Infof("deleting pod %q", testpod.Name)
+						deleteTestPod(context.TODO(), testpod)
+					}
+					bannedCPUs, err := getIrqBalanceBannedCPUs(context.TODO(), targetNode)
+					Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %q", targetNode.Name)
 
-			By(fmt.Sprintf("re-verifying worker node %q after TuneD restart", targetNode.Name))
-			postRestartBannedCPUs, err := getIrqBalanceBannedCPUs(context.TODO(), targetNode)
-			Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %q", targetNode.Name)
-			testlog.Infof("banned CPUs on %q after the tuned restart: {%s}", targetNode.Name, postRestartBannedCPUs.String())
+					testlog.Infof("banned CPUs on %q when test ends: {%s}", targetNode.Name, bannedCPUs.String())
 
-			Expect(postRestartBannedCPUs.List()).To(Equal(postCreateBannedCPUs.List()), "banned CPUs changed post tuned restart on node %q", postRestartBannedCPUs.List(), targetNode.Name)
-		})
+					irqAffBegin, err := getIrqDefaultSMPAffinity(context.TODO(), targetNode)
+					Expect(err).ToNot(HaveOccurred(), "failed to extract the default IRQ affinity from node %q", targetNode.Name)
+
+					testlog.Infof("IRQ Default affinity on %q when test ends: {%s}", targetNode.Name, irqAffBegin)
+				}()
+
+				testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+				logEventsForPod(testpod)
+				Expect(err).ToNot(HaveOccurred())
+
+				// now we have something in the IRQBalance cpu list. Let's make sure the restart doesn't overwrite this data.
+				postCreateBannedCPUs, err := getIrqBalanceBannedCPUs(context.TODO(), targetNode)
+				Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %q", targetNode.Name)
+				testlog.Infof("banned CPUs on %q just before the tuned restart: {%s}", targetNode.Name, postCreateBannedCPUs.String())
+
+				Expect(postCreateBannedCPUs.IsEmpty()).To(BeFalse(), "banned CPUs %v should not be empty on node %q", postCreateBannedCPUs, targetNode.Name)
+
+				By(fmt.Sprintf("getting a TuneD Pod running on node %s", targetNode.Name))
+				pod, err := util.GetTunedForNode(cs, targetNode)
+				Expect(err).NotTo(HaveOccurred())
+
+				By(fmt.Sprintf("causing a restart of the tuned pod (deleting the pod) on %s", targetNode.Name))
+				_, _, err = util.ExecAndLogCommand("oc", "delete", "pod", "--wait=true", "-n", pod.Namespace, pod.Name)
+				Expect(err).NotTo(HaveOccurred())
+
+				Eventually(func() error {
+					By(fmt.Sprintf("getting again a TuneD Pod running on node %s", targetNode.Name))
+					pod, err = util.GetTunedForNode(cs, targetNode)
+					if err != nil {
+						return err
+					}
+
+					By(fmt.Sprintf("waiting for the TuneD daemon running on node %s", targetNode.Name))
+					_, err = util.WaitForCmdInPod(5*time.Second, 5*time.Minute, pod, "test", "-e", "/run/tuned/tuned.pid")
+					return err
+				}).WithTimeout(5 * time.Minute).WithPolling(10 * time.Second).ShouldNot(HaveOccurred())
+
+				By(fmt.Sprintf("re-verifying worker node %q after TuneD restart", targetNode.Name))
+				postRestartBannedCPUs, err := getIrqBalanceBannedCPUs(context.TODO(), targetNode)
+				Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %q", targetNode.Name)
+				testlog.Infof("banned CPUs on %q after the tuned restart: {%s}", targetNode.Name, postRestartBannedCPUs.String())
+
+				Expect(postRestartBannedCPUs.List()).To(Equal(postCreateBannedCPUs.List()), "banned CPUs changed post tuned restart on node %q", postRestartBannedCPUs.List(), targetNode.Name)
+			},
+			Entry("with irq-load-balancing disabled", irqLoadBalancingDisable),
+			Entry("[test_id:86348] with irq-load-balancing housekeeping", irqLoadBalancingHousekeeping),
+		)
 
 		It("Should store empty cpu mask in the backup file", func() {
 			// crio stores the irqbalance CPU ban list in the backup file once, at startup, if the file doesn't exist.
@@ -359,11 +371,335 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 		)
 	})
 
+	Context("Verify single hyperthread allocation", Label(string(label.Tier2)), func() {
+		var originalProfile *performancev2.PerformanceProfile
+		var profileUpdated bool
+
+		BeforeEach(func() {
+			profileUpdated = false
+
+			if profile.Spec.CPU.Isolated == nil {
+				Skip("isolated CPUs are required for this test")
+			}
+
+			smtLevel, err := nodes.GetSMTLevel(context.TODO(), 0, targetNode)
+			Expect(err).ToNot(HaveOccurred())
+			if smtLevel < 2 {
+				Skip("SMT must be enabled for this test (at least 2 threads per core)")
+			}
+			originalProfile = profile.DeepCopy()
+
+			By("Setting full-pcpus-only=false in performance profile")
+			if profile.Annotations == nil {
+				profile.Annotations = make(map[string]string)
+			}
+			profile.Annotations["kubeletconfig.experimental"] = `{"cpuManagerPolicyOptions": {"full-pcpus-only": "false"}}`
+			profiles.UpdateWithRetry(profile)
+
+			poolName := poolname.GetByProfile(context.TODO(), profile)
+			By(fmt.Sprintf("Waiting for %s to start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
+
+			By(fmt.Sprintf("Waiting for %s to finish updates", poolName))
+			profilesupdate.WaitForTuningUpdated(context.TODO(), profile)
+
+			profileUpdated = true
+		})
+
+		AfterEach(func() {
+			if !profileUpdated {
+				return
+			}
+
+			By("Reverting profile to original annotations")
+			currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+
+			currentProfile.Annotations = originalProfile.Annotations
+			profiles.UpdateWithRetry(currentProfile)
+
+			poolName := poolname.GetByProfile(context.TODO(), currentProfile)
+			By(fmt.Sprintf("Waiting for %s to start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(context.TODO(), currentProfile)
+
+			By(fmt.Sprintf("Waiting for %s to finish updates", poolName))
+			profilesupdate.WaitForTuningUpdated(context.TODO(), currentProfile)
+		})
+
+		It("[test_id:86346] Verify housekeeping works correctly with single hyperthread allocation", func() {
+			ctx := context.TODO()
+
+			By("Creating a housekeeping pod requesting 1 CPU (single hyperthread)")
+			annotations := map[string]string{
+				irqLoadBalancingAnnotation: irqLoadBalancingHousekeeping,
+			}
+			testpod := getTestPodWithProfileAndAnnotations(profile, annotations, 1)
+			testpod.Spec.NodeName = targetNode.Name
+
+			err = testclient.DataPlaneClient.Create(ctx, testpod)
+			Expect(err).ToNot(HaveOccurred())
+			defer deleteTestPod(ctx, testpod)
+
+			testpod, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+			Expect(err).ToNot(HaveOccurred())
+			logEventsForPod(testpod)
+
+			By("Getting housekeeping CPUs from container")
+			containerName := testpod.Spec.Containers[0].Name
+			housekeepingCPUSet, err := getContainerHouskeepCpuSet(testpod, containerName)
+			Expect(err).ToNot(HaveOccurred(), "Failed to get OPENSHIFT_HOUSEKEEPING_CPUS from container")
+
+			By("Getting container's assigned CPUs")
+			containerCpuSet, err := getContainerCpuSet(ctx, testpod, containerName)
+			Expect(err).ToNot(HaveOccurred())
+
+			testlog.Infof("Container CPUs: %v, Housekeeping CPUs: %v", containerCpuSet, housekeepingCPUSet)
+
+			By("Verifying single hyperthread allocation succeeded")
+			Expect(containerCpuSet.Size()).To(Equal(1), "Expected container to have exactly 1 CPU (single hyperthread) with full-pcpus-only=false")
+
+			By("Verifying housekeeping CPUs match container's assigned CPU")
+			Expect(housekeepingCPUSet.Equals(containerCpuSet)).To(BeTrue(),
+				"Housekeeping CPUs %v should match container CPUs %v",
+				housekeepingCPUSet, containerCpuSet)
+
+			By("Verifying IRQ SMP affinity is correctly configured")
+			isReflected, err := isSmpReflectingHousekeeping(ctx, targetNode, housekeepingCPUSet, containerCpuSet)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(isReflected).To(BeTrue(), "IRQ SMP affinity should correctly reflect housekeeping CPUs")
+		})
+	})
+
+	Context("Verify housekeeping CPU assignment when SMT is disabled", Label(string(label.Tier2)), func() {
+		var originalProfile *performancev2.PerformanceProfile
+		var profileUpdated bool
+		var newIsolatedCPUs cpuset.CPUSet
+
+		BeforeEach(func() {
+			profileUpdated = false
+
+			if profile.Spec.CPU.Isolated == nil || profile.Spec.CPU.Reserved == nil {
+				Skip("isolated and reserved CPUs are required for this test")
+			}
+
+			// Check if SMT is currently enabled
+			smtLevel, err := nodes.GetSMTLevel(context.TODO(), 0, targetNode)
+			Expect(err).ToNot(HaveOccurred())
+			if smtLevel < 2 {
+				Skip("SMT must be enabled initially to test disabling it with nosmt")
+			}
+
+			// Save original profile for restoration
+			originalProfile = profile.DeepCopy()
+
+			ctx := context.TODO()
+
+			By("Computing new CPU topology for nosmt")
+			reservedCPUSet, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
+			Expect(err).ToNot(HaveOccurred())
+			coreSiblings, err := nodes.GetCoreSiblings(ctx, targetNode)
+			Expect(err).ToNot(HaveOccurred())
+			nosmtOnlineCPUs := cpuset.New()
+			for _, numaMap := range coreSiblings {
+				for _, siblings := range numaMap {
+					if len(siblings) > 0 {
+						minCPU := siblings[0]
+						for _, cpu := range siblings {
+							if cpu < minCPU {
+								minCPU = cpu
+							}
+						}
+						nosmtOnlineCPUs = nosmtOnlineCPUs.Union(cpuset.New(minCPU))
+					}
+				}
+			}
+			newReservedCPUs := reservedCPUSet.Intersection(nosmtOnlineCPUs)
+			if newReservedCPUs.IsEmpty() {
+				Skip("No reserved CPUs would remain online with nosmt")
+			}
+			newIsolatedCPUs = nosmtOnlineCPUs.Difference(newReservedCPUs)
+			if newIsolatedCPUs.IsEmpty() {
+				Skip("No isolated CPUs would remain online with nosmt")
+			}
+
+			By("Updating performance profile with nosmt and adjusted CPU topology")
+			newReservedStr := performancev2.CPUSet(newReservedCPUs.String())
+			newIsolatedStr := performancev2.CPUSet(newIsolatedCPUs.String())
+			profile.Spec.CPU.Reserved = &newReservedStr
+			profile.Spec.CPU.Isolated = &newIsolatedStr
+			nosmtArg := "nosmt"
+			hasNosmt := false
+			for _, arg := range profile.Spec.AdditionalKernelArgs {
+				if arg == nosmtArg {
+					hasNosmt = true
+					break
+				}
+			}
+			if !hasNosmt {
+				profile.Spec.AdditionalKernelArgs = append(profile.Spec.AdditionalKernelArgs, nosmtArg)
+			}
+
+			profiles.UpdateWithRetry(profile)
+
+			poolName := poolname.GetByProfile(ctx, profile)
+			By(fmt.Sprintf("Waiting for %s to start updating (applying nosmt)", poolName))
+			profilesupdate.WaitForTuningUpdating(ctx, profile)
+
+			By(fmt.Sprintf("Waiting for %s to finish updates (applying nosmt)", poolName))
+			profilesupdate.WaitForTuningUpdated(ctx, profile)
+
+			By("Verifying node is healthy after nosmt application")
+			Eventually(func() error {
+				_, err := nodes.ExecCommand(ctx, targetNode, []string{"echo", "health-check"})
+				return err
+			}).WithPolling(10*time.Second).WithTimeout(5*time.Minute).Should(Succeed(),
+				"Node %s may be stuck after nosmt application - check kubelet and CPU configuration", targetNode.Name)
+
+			By("Verifying SMT is disabled on the node")
+			smtActiveCmd := []string{"cat", "/rootfs/sys/devices/system/cpu/smt/active"}
+			smtOutput, err := nodes.ExecCommand(ctx, targetNode, smtActiveCmd)
+			Expect(err).ToNot(HaveOccurred())
+			smtActive := strings.TrimSpace(testutils.ToString(smtOutput))
+			Expect(smtActive).To(Equal("0"), "SMT should be disabled (smt/active should be 0)")
+
+			profileUpdated = true
+		})
+
+		AfterEach(func() {
+			if !profileUpdated {
+				return
+			}
+
+			ctx := context.TODO()
+
+			By("Checking if the target node is responsive before attempting restoration")
+			Eventually(func() error {
+				_, err := nodes.ExecCommand(ctx, targetNode, []string{"echo", "health-check"})
+				return err
+			}).WithPolling(10*time.Second).WithTimeout(5*time.Minute).Should(Succeed(),
+				"Node %s is not responsive - may be stuck due to invalid CPU configuration", targetNode.Name)
+
+			By("Removing nosmt kernel argument while keeping nosmt-compatible CPU config")
+			currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+			hasNosmt := false
+			for _, arg := range currentProfile.Spec.AdditionalKernelArgs {
+				if arg == "nosmt" {
+					hasNosmt = true
+					break
+				}
+			}
+			poolName := poolname.GetByProfile(ctx, currentProfile)
+			if hasNosmt {
+				currentProfile.Spec.AdditionalKernelArgs = originalProfile.Spec.AdditionalKernelArgs
+				profiles.UpdateWithRetry(currentProfile)
+
+				By(fmt.Sprintf("Waiting for %s to start updating (removing nosmt)", poolName))
+				profilesupdate.WaitForTuningUpdating(ctx, currentProfile)
+
+				By(fmt.Sprintf("Waiting for %s to finish updates (removing nosmt)", poolName))
+				profilesupdate.WaitForTuningUpdated(ctx, currentProfile)
+
+				By("Verifying node is healthy after nosmt removal")
+				Eventually(func() error {
+					_, err := nodes.ExecCommand(ctx, targetNode, []string{"echo", "stage1-health-check"})
+					return err
+				}).WithPolling(10*time.Second).WithTimeout(5*time.Minute).Should(Succeed(),
+					"Node %s is not responsive after nosmt removal", targetNode.Name)
+			}
+
+			By("Restoring original CPU configuration")
+			currentProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+			currentReserved := string(*currentProfile.Spec.CPU.Reserved)
+			originalReserved := string(*originalProfile.Spec.CPU.Reserved)
+
+			if currentReserved != originalReserved {
+				currentProfile.Spec.CPU = originalProfile.Spec.CPU
+				profiles.UpdateWithRetry(currentProfile)
+
+				By(fmt.Sprintf("Waiting for %s to start updating (restoring CPU config)", poolName))
+				profilesupdate.WaitForTuningUpdating(ctx, currentProfile)
+
+				By(fmt.Sprintf("Waiting for %s to finish updates (restoring CPU config)", poolName))
+				profilesupdate.WaitForTuningUpdated(ctx, currentProfile)
+			}
+
+			By("Verifying node is healthy after full restoration")
+			Eventually(func() error {
+				_, err := nodes.ExecCommand(ctx, targetNode, []string{"echo", "post-restore-check"})
+				return err
+			}).WithPolling(10*time.Second).WithTimeout(5*time.Minute).Should(Succeed(),
+				"Node %s is not responsive after profile restoration", targetNode.Name)
+		})
+
+		It("[test_id:86347] Verify housekeeping selects single CPU when SMT is disabled", func() {
+			ctx := context.TODO()
+
+			cpuRequest := 2
+
+			By("Checking available CPU capacity on node")
+			nodeLoad, err := baseload.ForNode(ctx, testclient.DataPlaneClient, targetNode.Name)
+			Expect(err).ToNot(HaveOccurred())
+			testlog.Infof("Current node load: %d cores, available: %d",
+				nodeLoad.CPURequestedCores(), nodeLoad.AvailableCPUs(newIsolatedCPUs.Size()))
+
+			if !nodeLoad.HasCapacityFor(cpuRequest, newIsolatedCPUs.Size()) {
+				Skip(fmt.Sprintf("Not enough available isolated CPUs for nosmt test: requested %d, total isolated %d, cores in use %d",
+					cpuRequest, newIsolatedCPUs.Size(), nodeLoad.CPURequestedCores()))
+			}
+
+			By(fmt.Sprintf("Creating a housekeeping pod with %d CPUs", cpuRequest))
+			annotations := map[string]string{
+				irqLoadBalancingAnnotation: irqLoadBalancingHousekeeping,
+			}
+			testpod := getTestPodWithProfileAndAnnotations(profile, annotations, cpuRequest)
+			testpod.Spec.NodeName = targetNode.Name
+
+			err = testclient.DataPlaneClient.Create(ctx, testpod)
+			Expect(err).ToNot(HaveOccurred())
+			defer deleteTestPod(ctx, testpod)
+
+			testpod, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+			Expect(err).ToNot(HaveOccurred())
+			logEventsForPod(testpod)
+
+			By("Getting housekeeping CPUs from container")
+			containerName := testpod.Spec.Containers[0].Name
+			housekeepingCPUSet, err := getContainerHouskeepCpuSet(testpod, containerName)
+			Expect(err).ToNot(HaveOccurred(), "Failed to get OPENSHIFT_HOUSEKEEPING_CPUS from container")
+
+			By("Getting container's assigned CPUs")
+			containerCpuSet, err := getContainerCpuSet(ctx, testpod, containerName)
+			Expect(err).ToNot(HaveOccurred())
+
+			testlog.Infof("Container CPUs: %v, Housekeeping CPUs: %v", containerCpuSet, housekeepingCPUSet)
+
+			By(fmt.Sprintf("Verifying container got %d CPUs", cpuRequest))
+			Expect(containerCpuSet.Size()).To(Equal(cpuRequest), "Container should have exactly %d CPUs with nosmt", cpuRequest)
+
+			By("Verifying housekeeping CPUs are a subset of container's assigned CPUs")
+			Expect(housekeepingCPUSet.IsSubsetOf(containerCpuSet)).To(BeTrue(),
+				"Housekeeping CPUs %v should be a subset of container CPUs %v when SMT is disabled",
+				housekeepingCPUSet, containerCpuSet)
+
+			By("Verifying housekeeping selected only 1 CPU (no sibling pairing needed with noSMT)")
+			Expect(housekeepingCPUSet.Size()).To(Equal(1),
+				"With noSMT, housekeeping should select only 1 CPU (no siblings), but got %v",
+				housekeepingCPUSet)
+
+			By("Verifying housekeeping CPU is reflected in IRQ SMP affinity")
+			isReflected, err := isSmpReflectingHousekeeping(ctx, targetNode, housekeepingCPUSet, containerCpuSet)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(isReflected).To(BeTrue(), "IRQ SMP affinity should correctly reflect housekeeping when SMT is disabled")
+		})
+	})
+
 })
 
 func createPodWithHouskeeping(numOfContainersInPod, cpusPerContainer int, perfProf *performancev2.PerformanceProfile, ctx context.Context, targetNode *corev1.Node) (*corev1.Pod, error) {
 	annotations := map[string]string{
-		"irq-load-balancing.crio.io": "housekeeping",
+		irqLoadBalancingAnnotation: irqLoadBalancingHousekeeping,
 	}
 	testpod := getTestPodWithProfileAndAnnotations(perfProf, annotations, cpusPerContainer)
 	testpod.Spec.NodeName = targetNode.Name
@@ -481,6 +817,19 @@ func getContainerHouskeepCpuSet(testpod *corev1.Pod, containerName string) (cpus
 	}
 	testlog.Infof("Housekeeping CPUs (parsed): %v", housekeepingCPUSet)
 	return housekeepingCPUSet, err
+}
+
+func getContainerCpuSet(ctx context.Context, testpod *corev1.Pod, containerName string) (cpuset.CPUSet, error) {
+	getter, err := cgroup.BuildGetter(ctx, testclient.DataPlaneClient, testclient.K8sClient)
+	if err != nil {
+		return cpuset.New(), err
+	}
+	cpusetCfg := &controller.CpuSet{}
+	err = getter.Container(ctx, testpod, containerName, cpusetCfg)
+	if err != nil {
+		return cpuset.New(), err
+	}
+	return cpuset.Parse(cpusetCfg.Cpus)
 }
 
 // nodes.BannedCPUs fails (!!!) if the current banned list is empty because, deep down, ExecCommandOnNode expects non-empty stdout.
