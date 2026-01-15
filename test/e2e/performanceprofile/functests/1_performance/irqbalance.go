@@ -39,6 +39,12 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/framework"
 )
 
+const (
+	irqLoadBalancingAnnotation   = "irq-load-balancing.crio.io"
+	irqLoadBalancingDisable      = "disable"
+	irqLoadBalancingHousekeeping = "housekeeping"
+)
+
 var (
 	cs = framework.NewClientSet()
 )
@@ -162,7 +168,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 	})
 
 	Context("Verify irqbalance configuration handling", Label(string(label.Tier0)), func() {
-		It("Should not overwrite the banned CPU set on tuned restart", func() {
+		DescribeTable("Should not overwrite the banned CPU set on tuned restart", func(annotationValue string) {
 			if profile.Status.RuntimeClass == nil {
 				Skip("runtime class not generated")
 			}
@@ -174,7 +180,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			targetNodeIdx := pickNodeIdx(workerRTNodes)
 			targetNode = &workerRTNodes[targetNodeIdx]
 			Expect(targetNode).ToNot(BeNil(), "missing target node")
-			By(fmt.Sprintf("verifying worker node %q", targetNode.Name))
+			By(fmt.Sprintf("verifying worker node %q with annotation %q", targetNode.Name, annotationValue))
 
 			irqAffBegin, err := getIrqDefaultSMPAffinity(context.TODO(), targetNode)
 			Expect(err).ToNot(HaveOccurred(), "failed to extract the default IRQ affinity from node %q", targetNode.Name)
@@ -200,7 +206,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 
 			cpuRequest := 2 // minimum amount to be reasonably sure we're SMT-aligned
 			annotations := map[string]string{
-				"irq-load-balancing.crio.io": "disable",
+				irqLoadBalancingAnnotation: annotationValue,
 			}
 			testpod := getTestPodWithProfileAndAnnotations(profile, annotations, cpuRequest)
 			testpod.Spec.NodeName = targetNode.Name
@@ -239,7 +245,20 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred(), "failed to extract the banned CPUs from node %q", targetNode.Name)
 			testlog.Infof("banned CPUs on %q just before the tuned restart: {%s}", targetNode.Name, postCreateBannedCPUs.String())
 
-			Expect(postCreateBannedCPUs.IsEmpty()).To(BeFalse(), "banned CPUs %v should not be empty on node %q", postCreateBannedCPUs, targetNode.Name)
+			switch annotationValue {
+			case irqLoadBalancingDisable:
+				Expect(postCreateBannedCPUs.IsEmpty()).To(BeFalse(), "banned CPUs %v should not be empty on node %q for annotation %q", postCreateBannedCPUs, targetNode.Name, annotationValue)
+			case irqLoadBalancingHousekeeping:
+				containerName := testpod.Spec.Containers[0].Name
+				housekeepingCPUSet, err := getContainerHouskeepCpuSet(testpod, containerName)
+				Expect(err).ToNot(HaveOccurred(), "failed to get housekeeping CPUs for container %q", containerName)
+				containerCpuSet, err := getContainerCpuSet(context.TODO(), testpod, containerName)
+				Expect(err).ToNot(HaveOccurred(), "failed to get container CPUs for container %q", containerName)
+
+				isValid, err := isIrqBalanceReflectingHousekeeping(context.TODO(), targetNode, housekeepingCPUSet, containerCpuSet)
+				Expect(err).ToNot(HaveOccurred(), "failed to verify IRQBALANCE_BANNED_CPUS on node %q", targetNode.Name)
+				Expect(isValid).To(BeTrue(), "IRQBALANCE_BANNED_CPUS doesn't correctly reflect housekeeping configuration on node %q", targetNode.Name)
+			}
 
 			By(fmt.Sprintf("getting a TuneD Pod running on node %s", targetNode.Name))
 			pod, err := util.GetTunedForNode(cs, targetNode)
@@ -267,7 +286,10 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			testlog.Infof("banned CPUs on %q after the tuned restart: {%s}", targetNode.Name, postRestartBannedCPUs.String())
 
 			Expect(postRestartBannedCPUs.List()).To(Equal(postCreateBannedCPUs.List()), "banned CPUs changed post tuned restart on node %q", postRestartBannedCPUs.List(), targetNode.Name)
-		})
+		},
+			Entry("with irq-load-balancing disabled", irqLoadBalancingDisable),
+			Entry("[test_id:86348] with irq-load-balancing housekeeping", irqLoadBalancingHousekeeping),
+		)
 
 		It("Should store empty cpu mask in the backup file", func() {
 			// crio stores the irqbalance CPU ban list in the backup file once, at startup, if the file doesn't exist.
@@ -363,7 +385,7 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 
 func createPodWithHouskeeping(numOfContainersInPod, cpusPerContainer int, perfProf *performancev2.PerformanceProfile, ctx context.Context, targetNode *corev1.Node) (*corev1.Pod, error) {
 	annotations := map[string]string{
-		"irq-load-balancing.crio.io": "housekeeping",
+		irqLoadBalancingAnnotation: irqLoadBalancingHousekeeping,
 	}
 	testpod := getTestPodWithProfileAndAnnotations(perfProf, annotations, cpusPerContainer)
 	testpod.Spec.NodeName = targetNode.Name
@@ -481,6 +503,19 @@ func getContainerHouskeepCpuSet(testpod *corev1.Pod, containerName string) (cpus
 	}
 	testlog.Infof("Housekeeping CPUs (parsed): %v", housekeepingCPUSet)
 	return housekeepingCPUSet, err
+}
+
+func getContainerCpuSet(ctx context.Context, testpod *corev1.Pod, containerName string) (cpuset.CPUSet, error) {
+	getter, err := cgroup.BuildGetter(ctx, testclient.DataPlaneClient, testclient.K8sClient)
+	if err != nil {
+		return cpuset.New(), err
+	}
+	cpusetCfg := &controller.CpuSet{}
+	err = getter.Container(ctx, testpod, containerName, cpusetCfg)
+	if err != nil {
+		return cpuset.New(), err
+	}
+	return cpuset.Parse(cpusetCfg.Cpus)
 }
 
 // nodes.BannedCPUs fails (!!!) if the current banned list is empty because, deep down, ExecCommandOnNode expects non-empty stdout.
