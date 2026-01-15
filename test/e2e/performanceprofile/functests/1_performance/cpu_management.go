@@ -909,6 +909,17 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred(), "unable to fetch cpus used by testpod")
 				podCpus, err := cpuset.Parse(output)
 				Expect(err).ToNot(HaveOccurred(), "unable to parse cpuset used by pod")
+
+				// On cgroupv1, we need to wait for kubelet's CPU Manager to reconcile
+				// and update system pod cpusets to exclude the Guaranteed pod's CPUs.
+				// This is necessary because in cgroupv1, a CPU will still be load-balanced
+				// if any cpuset cgroup that includes it has sched_load_balance enabled;
+				// therefore all overlapping cpusets must first be updated.
+				if !cgroupV2 {
+					By("Waiting for kubelet to reconcile system pod cpusets (cgroupv1 workaround)")
+					waitForKubeletToReconcileCPUSet(ctx, targetNode, podCpus)
+				}
+
 				By("Getting the CPU scheduling flags")
 				// After the testpod is started get the schedstat and check for cpus
 				// not participating in scheduling domains
@@ -1511,6 +1522,59 @@ func checkSchedulingDomains(workerRTNode *corev1.Node, podCpus cpuset.CPUSet, te
 		cpuIDs := cpuset.New(cpuIDList...)
 		return testFunc(cpuIDs)
 	}).WithTimeout(2*time.Minute).WithPolling(5*time.Second).ShouldNot(HaveOccurred(), errMsg)
+}
+
+func waitForKubeletToReconcileCPUSet(ctx context.Context, node *corev1.Node, excludedCpus cpuset.CPUSet) {
+	Eventually(func() error {
+		conflicts, totalCgroups, err := findCgroupV1ConflictingCgroups(ctx, node, excludedCpus)
+		if err != nil {
+			return fmt.Errorf("failed to check cgroup state: %v", err)
+		}
+		testlog.Infof("Checked %d cgroups, found %d conflicts for CPUs %v", totalCgroups, len(conflicts), excludedCpus)
+		if len(conflicts) > 0 {
+			testlog.Infof("kubelet reconciliation pending - conflicting cgroups: %v", conflicts)
+			return fmt.Errorf("found %d cgroups with sched_load_balance=1 that intersect with excluded CPUs %v: %v",
+				len(conflicts), excludedCpus, conflicts)
+		}
+		testlog.Infof("kubelet reconciliation complete - no conflicting cgroups found for CPUs %v", excludedCpus)
+		return nil
+	}).WithTimeout(2*time.Minute).WithPolling(5*time.Second).Should(Succeed(),
+		"kubelet failed to reconcile system pod cpusets to exclude Guaranteed pod CPUs %v", excludedCpus)
+}
+
+func findCgroupV1ConflictingCgroups(ctx context.Context, node *corev1.Node, targetCpus cpuset.CPUSet) ([]string, int, error) {
+	cgroupPaths, err := nodes.FindCgroupV1ContainerCgroups(ctx, node)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list container cgroups: %w", err)
+	}
+
+	testlog.Infof("Found %d container cgroups to check", len(cgroupPaths))
+
+	if len(cgroupPaths) == 0 {
+		testlog.Infof("WARNING: No container cgroups found - this may indicate a problem")
+		return nil, 0, nil
+	}
+
+	var conflicts []string
+	checkedCount := 0
+	skippedCount := 0
+	for _, cgPath := range cgroupPaths {
+		info, err := nodes.ReadCgroupV1ContainerInfo(ctx, node, cgPath)
+		if err != nil {
+			testlog.Infof("Skipping cgroup %s: %v", cgPath, err)
+			skippedCount++
+			continue
+		}
+		checkedCount++
+
+		if info.SchedLoadBalance == "1" && !info.Cpus.Intersection(targetCpus).IsEmpty() {
+			conflicts = append(conflicts, fmt.Sprintf("%s(cpus=%s)", cgPath, info.Cpus.String()))
+		}
+	}
+	if skippedCount > 0 {
+		testlog.Infof("Skipped %d cgroups due to read errors", skippedCount)
+	}
+	return conflicts, checkedCount, nil
 }
 
 // busyCpuImageEnv return busycpus image used for crio quota annotations test
