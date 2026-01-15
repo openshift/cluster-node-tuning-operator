@@ -909,15 +909,21 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred(), "unable to fetch cpus used by testpod")
 				podCpus, err := cpuset.Parse(output)
 				Expect(err).ToNot(HaveOccurred(), "unable to parse cpuset used by pod")
+
+				// Wait for kubelet's CPU Manager to reconcile cpusets before checking
+				// scheduling domains (since on cgroupv1 all overlapping cgroups must be
+				// updated). Without this sleep the check can flake.
+				time.Sleep(1 * time.Minute)
+
 				By("Getting the CPU scheduling flags")
 				// After the testpod is started get the schedstat and check for cpus
-				// not participating in scheduling domains
+				// not participating in scheduling domains.
 				checkSchedulingDomains(targetNode, podCpus, func(cpuIDs cpuset.CPUSet) error {
 					if !podCpus.IsSubsetOf(cpuIDs) {
 						return fmt.Errorf("pod CPUs NOT entirely part of cpus with load balance disabled: %v vs %v", podCpus, cpuIDs)
 					}
 					return nil
-				}, 2*time.Minute, 5*time.Second, "checking scheduling domains with pod running")
+				}, 5*time.Minute, 5*time.Second, "checking scheduling domains with pod running")
 			})
 
 			It("[test_id:73382]cpuset.cpus.exclusive of kubepods.slice should be updated", func() {
@@ -1510,7 +1516,7 @@ func checkSchedulingDomains(workerRTNode *corev1.Node, podCpus cpuset.CPUSet, te
 		}
 		cpuIDs := cpuset.New(cpuIDList...)
 		return testFunc(cpuIDs)
-	}).WithTimeout(2*time.Minute).WithPolling(5*time.Second).ShouldNot(HaveOccurred(), errMsg)
+	}).WithTimeout(timeout).WithPolling(polling).ShouldNot(HaveOccurred(), errMsg)
 }
 
 // busyCpuImageEnv return busycpus image used for crio quota annotations test
