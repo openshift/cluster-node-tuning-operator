@@ -1,0 +1,6 @@
+[main]
+summary=Platform specific tuning for IBM POWER (ppc64le)
+
+[bootloader]
+# No specific IOMMU settings for POWER
+# No pstate args for POWER
