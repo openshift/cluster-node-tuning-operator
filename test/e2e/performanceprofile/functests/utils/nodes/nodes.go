@@ -586,3 +586,65 @@ func GetL3SharedCPUs(node *corev1.Node) func(cpuId int) (cpuset.CPUSet, error) {
 		return cpuSet, err
 	}
 }
+
+// ContainerCgroupInfo holds information about a container's cgroup cpuset configuration (cgroupv1)
+type ContainerCgroupInfo struct {
+	Path             string
+	Cpus             cpuset.CPUSet
+	SchedLoadBalance string
+}
+
+// FindCgroupV1ContainerCgroups lists all CRI-O container cgroup directories under kubepods.slice
+// on a given node. This function is specific to cgroupv1.
+func FindCgroupV1ContainerCgroups(ctx context.Context, node *corev1.Node) ([]string, error) {
+	listCmd := []string{
+		"find", "/sys/fs/cgroup/cpuset/kubepods.slice",
+		"-name", "crio-*.scope",
+		"-type", "d",
+	}
+
+	out, err := ExecCommand(ctx, node, listCmd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list cgroups on node %s: %w", node.Name, err)
+	}
+	output := strings.TrimSpace(testutils.ToString(out))
+	if output == "" {
+		return nil, nil
+	}
+	paths := strings.Split(output, "\n")
+	result := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result, nil
+}
+
+// ReadCgroupV1ContainerInfo reads cpuset.cpus and cpuset.sched_load_balance from a cgroup directory on a node.
+// This function is specific to cgroupv1.
+func ReadCgroupV1ContainerInfo(ctx context.Context, node *corev1.Node, cgroupPath string) (*ContainerCgroupInfo, error) {
+	cpusCmd := []string{"cat", cgroupPath + "/cpuset.cpus"}
+	cpusOut, err := ExecCommand(ctx, node, cpusCmd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read cpuset.cpus from %s: %w", cgroupPath, err)
+	}
+	cpusStr := strings.TrimSpace(testutils.ToString(cpusOut))
+	cpus, err := cpuset.Parse(cpusStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse cpuset.cpus '%s' from %s: %w", cpusStr, cgroupPath, err)
+	}
+
+	lbCmd := []string{"cat", cgroupPath + "/cpuset.sched_load_balance"}
+	lbOut, err := ExecCommand(ctx, node, lbCmd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read cpuset.sched_load_balance from %s: %w", cgroupPath, err)
+	}
+	schedLoadBalance := strings.TrimSpace(testutils.ToString(lbOut))
+
+	return &ContainerCgroupInfo{
+		Path:             cgroupPath,
+		Cpus:             cpus,
+		SchedLoadBalance: schedLoadBalance,
+	}, nil
+}
