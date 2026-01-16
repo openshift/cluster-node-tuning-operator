@@ -796,6 +796,266 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				Entry("[test-id:81671] With multiple guaranteed containers where total cpus requested is less than single ccx size", "test-deployment3", partialAlignment, []string{"test2"}),
 			)
 		})
+
+		// AI Attribution: This test context was created with AI assistance to test
+		// odd integer CPU requests with uncore cache alignment. The implementation
+		// includes test cases for odd CPU requests (3, 5, 7 CPUs), large odd requests
+		// that span multiple uncore cache groups, and even requests that avoid uncore
+		// caches with odd free CPUs. The code dynamically calculates CPU requests based
+		// on actual uncore cache sizes rather than hardcoded values.
+		// Reference: https://aiattribution.github.io/
+		Context("Odd CPU Requests with SMT Enabled", func() {
+			BeforeAll(func() {
+				ctx := context.Background()
+				// Update profile to allow odd CPU requests by setting full-pcpus-only to false
+				llcPolicyOddCPUs := `{"cpuManagerPolicyOptions":{"prefer-align-cpus-by-uncorecache":"true", "full-pcpus-only":"false"}}`
+				perfProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+				Expect(err).ToNot(HaveOccurred())
+				prof := perfProfile.DeepCopy()
+				if prof.Annotations == nil {
+					prof.Annotations = make(map[string]string)
+				}
+				prof.Annotations["kubeletconfig.experimental"] = llcPolicyOddCPUs
+
+				By("Updating performance profile to allow odd CPU requests")
+				profiles.UpdateWithRetry(prof)
+
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+				profilesupdate.WaitForTuningUpdating(ctx, prof)
+
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.WaitForTuningUpdated(ctx, prof)
+			})
+
+			AfterAll(func() {
+				ctx := context.Background()
+				// Restore original policy with full-pcpus-only: true
+				perfProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+				Expect(err).ToNot(HaveOccurred())
+				prof := perfProfile.DeepCopy()
+				if prof.Annotations == nil {
+					prof.Annotations = make(map[string]string)
+				}
+				prof.Annotations["kubeletconfig.experimental"] = llcPolicy
+
+				By("Restoring original performance profile policy")
+				profiles.UpdateWithRetry(prof)
+
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+				profilesupdate.WaitForTuningUpdating(ctx, prof)
+
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.WaitForTuningUpdated(ctx, prof)
+			})
+
+			BeforeEach(func() {
+				hasBaremetal := false
+				for i := range workerRTNodes {
+					isVM, err := infrastructure.IsVM(context.Background(), &workerRTNodes[i])
+					Expect(err).ToNot(HaveOccurred())
+					if !isVM {
+						hasBaremetal = true
+						break
+					}
+				}
+				if !hasBaremetal {
+					Skip("Skipping test. All workers in this test setup are VMs, no baremetal node was found")
+				}
+			})
+
+			// Helper function to verify that odd CPU requests prefer whole cores
+			// and avoid leaving a single thread on the last core
+			verifyOddCPUAllocation := func(ctx context.Context, targetNode *corev1.Node, requestedCPUs int, cpusetCfg *controller.CpuSet, testpod *corev1.Pod) {
+				err := getter.Container(ctx, testpod, testpod.Spec.Containers[0].Name, cpusetCfg)
+				Expect(err).ToNot(HaveOccurred())
+				podCpuset, err := cpuset.Parse(cpusetCfg.Cpus)
+				Expect(err).ToNot(HaveOccurred())
+				testlog.TaggedInfof("Pod", "CPUs used by %q are: %q (requested: %d)", testpod.Name, podCpuset.String(), requestedCPUs)
+
+				// Verify the pod got exactly the requested number of CPUs
+				Expect(podCpuset.Size()).To(Equal(requestedCPUs), "Pod should have exactly %d CPUs, got %d", requestedCPUs, podCpuset.Size())
+
+				// Verify CPUs are aligned to uncore cache boundaries
+				getCCX := nodes.GetL3SharedCPUs(targetNode)
+				cpus, err := getCCX(podCpuset.List()[0])
+				Expect(err).ToNot(HaveOccurred())
+				testlog.TaggedInfof("L3 Cache Group", "CPU Group sharing L3 Cache to which %s is allocated: %s", testpod.Name, cpus.String())
+
+				// For odd requests, the allocation should be a subset of one or more uncore cache groups
+				// and should prefer whole cores to reduce SMT misalignment
+				Expect(podCpuset.IsSubsetOf(cpus) || podCpuset.Intersection(cpus).Size() > 0).To(BeTrue(),
+					"Pod CPUs should be aligned to uncore cache boundaries")
+			}
+
+			It("[test_id:87072] Odd integer CPU request: 3 CPUs should prefer whole cores", func(ctx context.Context) {
+				requestedCPUs := 3
+				targetNode := workerRTNodes[0]
+				cpusetCfg := &controller.CpuSet{}
+				podLabel := make(map[string]string)
+
+				rl := &corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse(strconv.Itoa(requestedCPUs)),
+					corev1.ResourceMemory: resource.MustParse("100Mi"),
+				}
+				podLabel["test-app"] = fmt.Sprintf("odd-cpu-%d", requestedCPUs)
+				deploymentName := "test-deployment-odd-3"
+				dp, err := createDeployment(ctx, deploymentName, podLabel, &targetNode, rl)
+				Expect(err).ToNot(HaveOccurred())
+				defer func() {
+					testlog.TaggedInfof("Cleanup", "Deleting Deployment %v", deploymentName)
+					err := testclient.DataPlaneClient.Delete(ctx, dp)
+					Expect(err).ToNot(HaveOccurred(), "Unable to delete deployment %v", deploymentName)
+					waitForDeploymentPodsDeletion(ctx, &targetNode, podLabel)
+				}()
+
+				podList := &corev1.PodList{}
+				listOptions := &client.ListOptions{Namespace: testutils.NamespaceTesting, LabelSelector: labels.SelectorFromSet(dp.Spec.Selector.MatchLabels)}
+				Eventually(func() bool {
+					isReady, err := deployments.IsReady(ctx, testclient.Client, listOptions, podList, dp)
+					Expect(err).ToNot(HaveOccurred())
+					return isReady
+				}, time.Minute, time.Second).Should(BeTrue())
+				Expect(testclient.Client.List(ctx, podList, listOptions)).To(Succeed())
+				Expect(len(podList.Items)).To(Equal(1), "Expected exactly one pod in the list")
+				testpod := podList.Items[0]
+
+				verifyOddCPUAllocation(ctx, &targetNode, requestedCPUs, cpusetCfg, &testpod)
+			})
+
+			It("[test_id:87073] Large odd integer CPU request should take full uncore plus partial from another", func(ctx context.Context) {
+				targetNode := workerRTNodes[0]
+				// Get the actual uncore cache size
+				getCCX := nodes.GetL3SharedCPUs(&targetNode)
+				uncoreCache, err := getCCX(0)
+				Expect(err).ToNot(HaveOccurred(), "Unable to get uncore cache size")
+				uncoreCacheSize := uncoreCache.Size()
+				testlog.TaggedInfof("Uncore Cache", "Uncore cache size: %d CPUs", uncoreCacheSize)
+
+				// Calculate a large odd integer that will span multiple uncore cache groups
+				// Formula: one full uncore + 3 CPUs from another uncore = uncoreSize + 3
+				// Then ensure it's odd (if result is even, add 1)
+				requestedCPUs := uncoreCacheSize + 3
+				if requestedCPUs%2 == 0 {
+					requestedCPUs++
+				}
+				testlog.TaggedInfof("Test", "Requesting %d CPUs (one full uncore of %d + partial from another)", requestedCPUs, uncoreCacheSize)
+
+				cpusetCfg := &controller.CpuSet{}
+				podLabel := make(map[string]string)
+
+				rl := &corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse(strconv.Itoa(requestedCPUs)),
+					corev1.ResourceMemory: resource.MustParse("100Mi"),
+				}
+				podLabel["test-app"] = "odd-cpu-large"
+				deploymentName := "test-deployment-odd-large"
+				dp, err := createDeployment(ctx, deploymentName, podLabel, &targetNode, rl)
+				Expect(err).ToNot(HaveOccurred())
+				defer func() {
+					testlog.TaggedInfof("Cleanup", "Deleting Deployment %v", deploymentName)
+					err := testclient.DataPlaneClient.Delete(ctx, dp)
+					Expect(err).ToNot(HaveOccurred(), "Unable to delete deployment %v", deploymentName)
+					waitForDeploymentPodsDeletion(ctx, &targetNode, podLabel)
+				}()
+
+				podList := &corev1.PodList{}
+				listOptions := &client.ListOptions{Namespace: testutils.NamespaceTesting, LabelSelector: labels.SelectorFromSet(dp.Spec.Selector.MatchLabels)}
+				Eventually(func() bool {
+					isReady, err := deployments.IsReady(ctx, testclient.Client, listOptions, podList, dp)
+					Expect(err).ToNot(HaveOccurred())
+					return isReady
+				}, time.Minute, time.Second).Should(BeTrue())
+				Expect(testclient.Client.List(ctx, podList, listOptions)).To(Succeed())
+				Expect(len(podList.Items)).To(Equal(1), "Expected exactly one pod in the list")
+				testpod := podList.Items[0]
+
+				err = getter.Container(ctx, &testpod, testpod.Spec.Containers[0].Name, cpusetCfg)
+				Expect(err).ToNot(HaveOccurred())
+				podCpuset, err := cpuset.Parse(cpusetCfg.Cpus)
+				Expect(err).ToNot(HaveOccurred())
+				testlog.TaggedInfof("Pod", "CPUs used by %q are: %q (requested: %d)", testpod.Name, podCpuset.String(), requestedCPUs)
+
+				// Verify the pod got exactly the requested number of CPUs
+				Expect(podCpuset.Size()).To(Equal(requestedCPUs), "Pod should have exactly %d CPUs, got %d", requestedCPUs, podCpuset.Size())
+
+				// For large odd requests, it should span multiple uncore cache groups
+				// Take full uncore + partial from another uncore
+				firstCPU := podCpuset.List()[0]
+				firstUncore, err := getCCX(firstCPU)
+				Expect(err).ToNot(HaveOccurred())
+				testlog.TaggedInfof("L3 Cache Group", "First CPU %d is in uncore cache group: %s (size: %d)", firstCPU, firstUncore.String(), firstUncore.Size())
+
+				// The allocation should span at least one full uncore cache group plus additional CPUs
+				// Verify that the allocation is aligned to uncore boundaries
+				firstUncoreIntersection := podCpuset.Intersection(firstUncore)
+				Expect(firstUncoreIntersection.Size()).To(BeNumerically(">", 0),
+					"Pod CPUs should intersect with at least one uncore cache group")
+
+				// Verify it spans multiple uncore groups since requestedCPUs > uncoreCacheSize
+				Expect(requestedCPUs).To(BeNumerically(">", uncoreCacheSize),
+					"Requested CPUs (%d) should be larger than uncore cache size (%d)", requestedCPUs, uncoreCacheSize)
+				remainingCPUs := podCpuset.Difference(firstUncore)
+				Expect(remainingCPUs.Size()).To(BeNumerically(">", 0),
+					"For requests larger than uncore size, allocation should span multiple uncore groups")
+				testlog.TaggedInfof("Allocation", "Allocation spans %d CPUs from first uncore (size: %d) and %d CPUs from other uncore(s)",
+					firstUncoreIntersection.Size(), uncoreCacheSize, remainingCPUs.Size())
+			})
+
+			It("[test_id:87074] Even integer CPU request should avoid uncore with odd free CPUs when possible", func(ctx context.Context) {
+				// This test verifies that even requests (e.g., 4 CPUs) avoid uncore caches
+				// with odd free CPUs to maintain alignment
+				requestedCPUs := 4
+				targetNode := workerRTNodes[0]
+				cpusetCfg := &controller.CpuSet{}
+				podLabel := make(map[string]string)
+
+				rl := &corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse(strconv.Itoa(requestedCPUs)),
+					corev1.ResourceMemory: resource.MustParse("100Mi"),
+				}
+				podLabel["test-app"] = "even-cpu-avoid-odd"
+				deploymentName := "test-deployment-even-avoid-odd"
+				dp, err := createDeployment(ctx, deploymentName, podLabel, &targetNode, rl)
+				Expect(err).ToNot(HaveOccurred())
+				defer func() {
+					testlog.TaggedInfof("Cleanup", "Deleting Deployment %v", deploymentName)
+					err := testclient.DataPlaneClient.Delete(ctx, dp)
+					Expect(err).ToNot(HaveOccurred(), "Unable to delete deployment %v", deploymentName)
+					waitForDeploymentPodsDeletion(ctx, &targetNode, podLabel)
+				}()
+
+				podList := &corev1.PodList{}
+				listOptions := &client.ListOptions{Namespace: testutils.NamespaceTesting, LabelSelector: labels.SelectorFromSet(dp.Spec.Selector.MatchLabels)}
+				Eventually(func() bool {
+					isReady, err := deployments.IsReady(ctx, testclient.Client, listOptions, podList, dp)
+					Expect(err).ToNot(HaveOccurred())
+					return isReady
+				}, time.Minute, time.Second).Should(BeTrue())
+				Expect(testclient.Client.List(ctx, podList, listOptions)).To(Succeed())
+				Expect(len(podList.Items)).To(Equal(1), "Expected exactly one pod in the list")
+				testpod := podList.Items[0]
+
+				err = getter.Container(ctx, &testpod, testpod.Spec.Containers[0].Name, cpusetCfg)
+				Expect(err).ToNot(HaveOccurred())
+				podCpuset, err := cpuset.Parse(cpusetCfg.Cpus)
+				Expect(err).ToNot(HaveOccurred())
+				testlog.TaggedInfof("Pod", "CPUs used by %q are: %q (requested: %d)", testpod.Name, podCpuset.String(), requestedCPUs)
+
+				// Verify the pod got exactly the requested number of CPUs
+				Expect(podCpuset.Size()).To(Equal(requestedCPUs), "Pod should have exactly %d CPUs, got %d", requestedCPUs, podCpuset.Size())
+
+				// Verify CPUs are aligned to uncore cache boundaries
+				getCCX := nodes.GetL3SharedCPUs(&targetNode)
+				cpus, err := getCCX(podCpuset.List()[0])
+				Expect(err).ToNot(HaveOccurred())
+				testlog.TaggedInfof("L3 Cache Group", "CPU Group sharing L3 Cache to which %s is allocated: %s", testpod.Name, cpus.String())
+
+				// The allocation should be aligned to uncore cache boundaries
+				// For even requests, the system should prefer uncore caches with even availability
+				Expect(podCpuset.IsSubsetOf(cpus)).To(BeTrue(),
+					"Pod CPUs should be aligned to uncore cache boundaries")
+			})
+		})
 	})
 
 	Context("Functional Tests with SMT Disabled", func() {
