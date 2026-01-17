@@ -773,7 +773,7 @@ func (c *Controller) syncMachineConfig(labels map[string]string, profile *tunedv
 		kernelArguments []string
 	)
 
-	pools, err := c.pc.getPoolsForMachineConfigLabelsSorted(labels)
+	pools, err := c.pc.getPoolsForMachineConfigNaming(labels)
 	if err != nil {
 		return err
 	}
@@ -1034,6 +1034,7 @@ func (c *Controller) pruneMachineConfigs() error {
 	if err != nil {
 		return err
 	}
+	klog.Infof("pruneMachineConfigs(): mcNames: %v", mcNames)
 
 	for _, mc := range mcList {
 		if mc.Annotations != nil {
@@ -1122,14 +1123,25 @@ func (c *Controller) getMachineConfigNamesForTuned() (map[string]bool, error) {
 		return nil, fmt.Errorf("failed to list Tuned: %v", err)
 	}
 
+	// Consider only current profiles.
+	profileList, err := c.listers.TunedProfiles.List(labels.Everything())
+	if err != nil {
+		return nil, fmt.Errorf("failed to list Tuned Profiles: %v", err)
+	}
+	currentProfileNames := map[string]bool{}
+	for _, profile := range profileList {
+		currentProfileNames[profile.Spec.Config.TunedProfile] = true
+	}
+
 	mcNames := map[string]bool{}
 
 	for _, recommend := range TunedRecommend(tunedList) {
-		if recommend.Profile == nil || recommend.MachineConfigLabels == nil {
+		if recommend.Profile == nil || recommend.MachineConfigLabels == nil ||
+			!currentProfileNames[*recommend.Profile] {
 			continue
 		}
 
-		pools, err := c.pc.getPoolsForMachineConfigLabels(recommend.MachineConfigLabels)
+		pools, err := c.pc.getPoolsForMachineConfigNaming(recommend.MachineConfigLabels)
 		if err != nil {
 			return nil, err
 		}
