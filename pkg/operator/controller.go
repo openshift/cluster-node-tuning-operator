@@ -789,7 +789,8 @@ func (c *Controller) syncMachineConfig(labels map[string]string, profile *tunedv
 		c.mcLabelsAcrossMCP[profile.Name] = false
 	}
 
-	name := GetMachineConfigNameForPools(pools)
+	// Use the TuneD daemon profile name for the MachineConfig name
+	name := GetMachineConfigNameForProfile(profile.Spec.Config.TunedProfile)
 	klog.V(2).Infof("syncMachineConfig(): %v", name)
 
 	nodes, err := c.pc.getNodesForPool(pools[0])
@@ -914,7 +915,8 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 		kernelArguments []string
 	)
 
-	mcName := MachineConfigPrefix + "-" + nodePoolName
+	// Use the TuneD daemon profile name for the MachineConfig name
+	mcName := GetMachineConfigNameForProfile(profile.Spec.Config.TunedProfile)
 	configMapName := mcConfigMapName(nodePoolName)
 
 	nodes, err := c.getNodesForNodePool(nodePoolName)
@@ -1122,19 +1124,26 @@ func (c *Controller) getMachineConfigNamesForTuned() (map[string]bool, error) {
 		return nil, fmt.Errorf("failed to list Tuned: %v", err)
 	}
 
+	// Consider only current profiles.
+	profileList, err := c.listers.TunedProfiles.List(labels.Everything())
+	if err != nil {
+		return nil, fmt.Errorf("failed to list Tuned Profiles: %v", err)
+	}
+	currentProfileNames := map[string]bool{}
+	for _, profile := range profileList {
+		currentProfileNames[profile.Spec.Config.TunedProfile] = true
+	}
+
 	mcNames := map[string]bool{}
 
 	for _, recommend := range TunedRecommend(tunedList) {
-		if recommend.Profile == nil || recommend.MachineConfigLabels == nil {
+		if recommend.Profile == nil || recommend.MachineConfigLabels == nil ||
+			!currentProfileNames[*recommend.Profile] {
 			continue
 		}
 
-		pools, err := c.pc.getPoolsForMachineConfigLabels(recommend.MachineConfigLabels)
-		if err != nil {
-			return nil, err
-		}
-		mcName := GetMachineConfigNameForPools(pools)
-
+		// Use the TuneD profile name directly for the MachineConfig name.
+		mcName := GetMachineConfigNameForProfile(*recommend.Profile)
 		mcNames[mcName] = true
 	}
 
