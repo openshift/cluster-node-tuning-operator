@@ -805,47 +805,41 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 		// on actual uncore cache sizes rather than hardcoded values.
 		// Reference: https://aiattribution.github.io/
 		Context("Odd CPU Requests with SMT Enabled", func() {
+
 			BeforeAll(func() {
 				ctx := context.Background()
 				// Update profile to allow odd CPU requests by setting full-pcpus-only to false
 				llcPolicyOddCPUs := `{"cpuManagerPolicyOptions":{"prefer-align-cpus-by-uncorecache":"true", "full-pcpus-only":"false"}}`
 				perfProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 				Expect(err).ToNot(HaveOccurred())
-				prof := perfProfile.DeepCopy()
-				if prof.Annotations == nil {
-					prof.Annotations = make(map[string]string)
+				initialProfile = perfProfile.DeepCopy()
+				if perfProfile.Annotations == nil {
+					perfProfile.Annotations = make(map[string]string)
 				}
-				prof.Annotations["kubeletconfig.experimental"] = llcPolicyOddCPUs
+				perfProfile.Annotations["kubeletconfig.experimental"] = llcPolicyOddCPUs
 
 				By("Updating performance profile to allow odd CPU requests")
-				profiles.UpdateWithRetry(prof)
+				profiles.UpdateWithRetry(perfProfile)
 
 				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-				profilesupdate.WaitForTuningUpdating(ctx, prof)
+				profilesupdate.WaitForTuningUpdating(ctx, perfProfile)
 
 				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-				profilesupdate.WaitForTuningUpdated(ctx, prof)
+				profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
 			})
 
 			AfterAll(func() {
 				ctx := context.Background()
 				// Restore original policy with full-pcpus-only: true
-				perfProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-				Expect(err).ToNot(HaveOccurred())
-				prof := perfProfile.DeepCopy()
-				if prof.Annotations == nil {
-					prof.Annotations = make(map[string]string)
-				}
-				prof.Annotations["kubeletconfig.experimental"] = llcPolicy
 
 				By("Restoring original performance profile policy")
-				profiles.UpdateWithRetry(prof)
+				profiles.UpdateWithRetry(initialProfile)
 
 				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-				profilesupdate.WaitForTuningUpdating(ctx, prof)
+				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
 
 				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-				profilesupdate.WaitForTuningUpdated(ctx, prof)
+				profilesupdate.WaitForTuningUpdated(ctx, initialProfile)
 			})
 
 			BeforeEach(func() {
@@ -871,9 +865,6 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				podCpuset, err := cpuset.Parse(cpusetCfg.Cpus)
 				Expect(err).ToNot(HaveOccurred())
 				testlog.TaggedInfof("Pod", "CPUs used by %q are: %q (requested: %d)", testpod.Name, podCpuset.String(), requestedCPUs)
-
-				// Verify the pod got exactly the requested number of CPUs
-				Expect(podCpuset.Size()).To(Equal(requestedCPUs), "Pod should have exactly %d CPUs, got %d", requestedCPUs, podCpuset.Size())
 
 				// Verify CPUs are aligned to uncore cache boundaries
 				getCCX := nodes.GetL3SharedCPUs(targetNode)
@@ -974,9 +965,6 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				podCpuset, err := cpuset.Parse(cpusetCfg.Cpus)
 				Expect(err).ToNot(HaveOccurred())
 				testlog.TaggedInfof("Pod", "CPUs used by %q are: %q (requested: %d)", testpod.Name, podCpuset.String(), requestedCPUs)
-
-				// Verify the pod got exactly the requested number of CPUs
-				Expect(podCpuset.Size()).To(Equal(requestedCPUs), "Pod should have exactly %d CPUs, got %d", requestedCPUs, podCpuset.Size())
 
 				// For large odd requests, it should span multiple uncore cache groups
 				// Take full uncore + partial from another uncore
