@@ -805,14 +805,29 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 		// on actual uncore cache sizes rather than hardcoded values.
 		// Reference: https://aiattribution.github.io/
 		Context("Odd CPU Requests with SMT Enabled", func() {
+			var initialOddCPUProfile *performancev2.PerformanceProfile
 
 			BeforeAll(func() {
 				ctx := context.Background()
+				// Check for baremetal nodes before proceeding
+				hasBaremetal := false
+				for i := range workerRTNodes {
+					isVM, err := infrastructure.IsVM(context.Background(), &workerRTNodes[i])
+					Expect(err).ToNot(HaveOccurred())
+					if !isVM {
+						hasBaremetal = true
+						break
+					}
+				}
+				if !hasBaremetal {
+					Skip("Skipping test. All workers in this test setup are VMs, no baremetal node was found")
+				}
+
 				// Update profile to allow odd CPU requests by setting full-pcpus-only to false
 				llcPolicyOddCPUs := `{"cpuManagerPolicyOptions":{"prefer-align-cpus-by-uncorecache":"true", "full-pcpus-only":"false"}}`
 				perfProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 				Expect(err).ToNot(HaveOccurred())
-				initialProfile = perfProfile.DeepCopy()
+				initialOddCPUProfile = perfProfile.DeepCopy()
 				if perfProfile.Annotations == nil {
 					perfProfile.Annotations = make(map[string]string)
 				}
@@ -833,28 +848,13 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				// Restore original policy with full-pcpus-only: true
 
 				By("Restoring original performance profile policy")
-				profiles.UpdateWithRetry(initialProfile)
+				profiles.UpdateWithRetry(initialOddCPUProfile)
 
 				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
+				profilesupdate.WaitForTuningUpdating(ctx, initialOddCPUProfile)
 
 				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-				profilesupdate.WaitForTuningUpdated(ctx, initialProfile)
-			})
-
-			BeforeEach(func() {
-				hasBaremetal := false
-				for i := range workerRTNodes {
-					isVM, err := infrastructure.IsVM(context.Background(), &workerRTNodes[i])
-					Expect(err).ToNot(HaveOccurred())
-					if !isVM {
-						hasBaremetal = true
-						break
-					}
-				}
-				if !hasBaremetal {
-					Skip("Skipping test. All workers in this test setup are VMs, no baremetal node was found")
-				}
+				profilesupdate.WaitForTuningUpdated(ctx, initialOddCPUProfile)
 			})
 
 			// Helper function to verify that odd CPU requests prefer whole cores
