@@ -8,11 +8,9 @@ summary=Openshift node optimized for deterministic performance at the cost of in
 #   include=openshift-node-performance-arm-aarch64;
 #   include=openshift-node-performance-intel-x86;
 # The second line will be evaluated based on whether the real time kernel is enabled
-# This has two possible results:
+# This has one result for power
 #     openshift-node,cpu-partitioning
-#     openshift-node,cpu-partitioning,openshift-node-performance-rt-<PerformanceProfile name>
 include=openshift-node,cpu-partitioning${f:regex_search_ternary:${f:exec:uname:-r}:rt:,openshift-node-performance-rt-{{.PerformanceProfileName}}:};
-    openshift-node-performance-${f:lscpu_check:Vendor ID\:\s*GenuineIntel:intel:Vendor ID\:\s*AuthenticAMD:amd:Architecture\:\s*aarch64:arm:Architecture\:\s*ppc64le:power:ppc64le}-${f:lscpu_check:Architecture\:\s*x86_64:x86:Architecture\:\s*aarch64:aarch64:Architecture\:\s*ppc64le:ppc64le:Architecture}-{{.PerformanceProfileName}}
 
 # Inheritance of base profiles legend:
 # cpu-partitioning -> network-latency -> latency-performance
@@ -42,14 +40,6 @@ force_latency=cstate.id:1|3
 governor=performance
 energy_perf_bias=performance
 min_perf_pct=100
-{{end}}
-
-{{if .RealTimeHint}}
-[service]
-service.stalld=start,enable
-{{else}}
-[service]
-service.stalld=stop,disable
 {{end}}
 
 [vm]
@@ -149,20 +139,9 @@ cmdline_isolation=+isolcpus=domain,managed_irq,${isolated_cores}
 cmdline_isolation=+isolcpus=managed_irq,${isolated_cores}
 {{end}}
 
-{{if .RealTimeHint}}
-cmdline_realtime_nohzfull=+nohz_full=${isolated_cores}
-cmdline_realtime_nosoftlookup=+nosoftlockup
-cmdline_realtime_common=+skew_tick=1 rcutree.kthread_prio=11
-{{end}}
-
 {{if .HighPowerConsumption}}
 # No default value but will be composed conditionally based on platform
 cmdline_power_performance=
-{{end}}
-
-{{if and .HighPowerConsumption .RealTimeHint}}
-# No default value but will be composed conditionally based on platform
-cmdline_idle_poll=
 {{end}}
 
 {{if .DefaultHugepagesSize}}
