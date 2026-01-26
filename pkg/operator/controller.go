@@ -773,7 +773,7 @@ func (c *Controller) syncMachineConfig(labels map[string]string, profile *tunedv
 		kernelArguments []string
 	)
 
-	pools, err := c.pc.getPoolsForMachineConfigLabelsSorted(labels)
+	pools, err := c.pc.getPoolsForMachineConfigNaming(labels)
 	if err != nil {
 		return err
 	}
@@ -1129,7 +1129,7 @@ func (c *Controller) getMachineConfigNamesForTuned() (map[string]bool, error) {
 			continue
 		}
 
-		pools, err := c.pc.getPoolsForMachineConfigLabels(recommend.MachineConfigLabels)
+		pools, err := c.pc.getPoolsForMachineConfigNaming(recommend.MachineConfigLabels)
 		if err != nil {
 			return nil, err
 		}
