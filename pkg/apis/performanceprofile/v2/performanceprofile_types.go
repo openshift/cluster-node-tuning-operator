@@ -34,6 +34,17 @@ const PerformanceProfileEnablePhysicalRpsAnnotation = "performance.openshift.io/
 // Valid values: "true", "enable" (to enable), "false", "disable" (to disable).
 const PerformanceProfileEnableRpsAnnotation = "performance.openshift.io/enable-rps"
 
+const (
+	// PerformanceProfileExecCPUAffinityAnnotation manages the exec-cpu-affinity setting for the node.
+	// Performance profile sets this flag's value to "first" by default in the runtime handler configuration.
+	// Valid values:
+	// "disable": will disable performance profile's default setting of this feature in CRI-O's configuration file.
+	//  Other values are ignored and treated as to keep the default value set by performance-profile.
+	// remove in 4.23
+	PerformanceProfileExecCPUAffinityAnnotation = "performance.openshift.io/exec-cpu-affinity"
+	PerformanceProfileExecCPUAffinityDisable    = "disable"
+)
+
 // PerformanceProfileSpec defines the desired state of PerformanceProfile.
 type PerformanceProfileSpec struct {
 	// CPU defines a set of CPU related parameters.
