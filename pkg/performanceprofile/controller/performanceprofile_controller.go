@@ -499,6 +499,12 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		MixedCPUsFeatureGateEnabled: r.isMixedCPUsFeatureGateEnabled(),
 	})
 	if err != nil {
+		// Check if this is a bootcmdline not ready error, which requires requeue
+		if isBootcmdlineNotReadyError(err) {
+			klog.V(2).Infof("bootcmdline not ready for performance profile %q, requeueing after 5 seconds", instance.GetName())
+			return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+
 		klog.Errorf("failed to deploy performance profile %q components: %v", instance.GetName(), err)
 		r.Recorder.Eventf(instance, corev1.EventTypeWarning, "Creation failed", "Failed to create all components: %v", err)
 		conditions := status.GetDegradedConditions(status.ConditionReasonComponentsCreationFailed, err.Error())
@@ -572,6 +578,16 @@ func namespacedName(obj metav1.Object) types.NamespacedName {
 		Namespace: obj.GetNamespace(),
 		Name:      obj.GetName(),
 	}
+}
+
+// isBootcmdlineNotReadyError checks if the error message indicates bootcmdline not ready
+func isBootcmdlineNotReadyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Check if error message indicates bootcmdline not ready
+	errMsg := err.Error()
+	return len(errMsg) > 40 && errMsg[:40] == "bootcmdline not ready for all nodes of "
 }
 
 func validateProfileMachineConfigPool(profile *performancev2.PerformanceProfile, profileMCP *mcov1.MachineConfigPool) error {
