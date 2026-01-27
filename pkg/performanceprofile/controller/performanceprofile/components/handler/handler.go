@@ -31,6 +31,30 @@ func NewHandler(cli client.Client, scheme *runtime.Scheme) components.Handler {
 	return &handler{Client: cli, scheme: scheme}
 }
 
+func (h *handler) applyTuned(ctx context.Context, profile *performancev2.PerformanceProfile, mfs *manifestset.ManifestResultSet) ([]string, error) {
+	// Get mutated performance tuned.
+	performanceTunedMutated, err := resources.GetMutatedTuned(ctx, h.Client, mfs.Tuned)
+	if err != nil {
+		return nil, err
+	}
+
+	// The Tuned CR must be created first so the tuned operand can calculate bootcmdline.
+	if performanceTunedMutated != nil {
+		if err := resources.CreateOrUpdateTuned(ctx, h.Client, performanceTunedMutated, profile.Name); err != nil {
+			return nil, err
+		}
+	}
+
+	// Get kernel arguments from tuned bootcmdline. This will wait for tuned to calculate and agree on them.
+	// In other words, if bootcmdline is not ready or nodes disagree, an error is returned.
+	kernelArguments, err := resources.GetKernelArgumentsFromTunedBootcmdline(ctx, h.Client, profile)
+	if err != nil {
+		return nil, err
+	}
+
+	return kernelArguments, nil
+}
+
 func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.EventRecorder, opts *components.Options) error {
 	profile, ok := obj.(*performancev2.PerformanceProfile)
 	if !ok {
@@ -42,43 +66,64 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 		klog.Infof("Ignoring reconcile loop for pause performance profile %s", profile.Name)
 		return nil
 	}
-
 	// set missing options
 	opts.MachineConfig.MixedCPUsEnabled = opts.MixedCPUsFeatureGateEnabled && profileutil.IsMixedCPUsEnabled(profile)
 
-	// First, create components WITHOUT kernel arguments to bootstrap the system.
-	// The Tuned CR must be created first so the tuned operand can calculate bootcmdline.
-	components, err := manifestset.GetNewComponents(profile, opts)
+	mfs, err := manifestset.GetNewComponents(profile, opts)
 	if err != nil {
 		return err
 	}
-	for _, componentObj := range components.ToObjects() {
+	for _, componentObj := range mfs.ToObjects() {
 		if err := controllerutil.SetControllerReference(profile, componentObj, h.scheme); err != nil {
 			return err
 		}
 	}
 
-	// get mutated kubelet config
-	kcMutated, err := resources.GetMutatedKubeletConfig(ctx, h.Client, components.KubeletConfig)
+	// The Tuned CR must be created first so the tuned operand can calculate bootcmdline.
+	kernelArguments, err := h.applyTuned(ctx, profile, mfs)
 	if err != nil {
 		return err
 	}
 
-	// get mutated performance tuned
-	performanceTunedMutated, err := resources.GetMutatedTuned(ctx, h.Client, components.Tuned)
+	// Generate MachineConfig with kernel arguments from tuned bootcmdline
+	opts.MachineConfig.KernelArguments = kernelArguments
+	mc, err := machineconfig.New(profile, &opts.MachineConfig)
+	if err != nil {
+		return err
+	}
+	if err := controllerutil.SetControllerReference(profile, mc, h.scheme); err != nil {
+		return err
+	}
+
+	// get mutated machine config WITH kernel arguments
+	mcMutated, err := resources.GetMutatedMachineConfig(ctx, h.Client, mc)
+	if err != nil {
+		return err
+	}
+
+	// get mutated kubelet config
+	kcMutated, err := resources.GetMutatedKubeletConfig(ctx, h.Client, mfs.KubeletConfig)
 	if err != nil {
 		return err
 	}
 
 	// get mutated RuntimeClass
-	runtimeClassMutated, err := resources.GetMutatedRuntimeClass(ctx, h.Client, components.RuntimeClass)
+	runtimeClassMutated, err := resources.GetMutatedRuntimeClass(ctx, h.Client, mfs.RuntimeClass)
 	if err != nil {
 		return err
 	}
 
-	// Create/Update Tuned, KubeletConfig, and RuntimeClass first (without waiting for bootcmdline)
-	if performanceTunedMutated != nil {
-		if err := resources.CreateOrUpdateTuned(ctx, h.Client, performanceTunedMutated, profile.Name); err != nil {
+	updated := mcMutated != nil ||
+		kcMutated != nil ||
+		runtimeClassMutated != nil
+
+	// does not update any resources if it no changes to relevant objects and continue to the status update
+	if !updated {
+		return nil
+	}
+
+	if mcMutated != nil {
+		if err := resources.CreateOrUpdateMachineConfig(ctx, h.Client, mcMutated); err != nil {
 			return err
 		}
 	}
@@ -94,20 +139,8 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 			return err
 		}
 	}
-
-	// Get kernel arguments from tuned bootcmdline. This will wait for tuned to calculate them.
-	kernelArguments, err := resources.GetKernelArgumentsFromTunedBootcmdline(ctx, h.Client, profile)
-	if err != nil {
-		return err
-	}
-
-	// Update options with kernel arguments and create/update MachineConfig
-	opts.MachineConfig.KernelArguments = kernelArguments
-	if err := h.syncMachineConfig(ctx, profile, opts); err != nil {
-		return err
-	}
-
 	recorder.Eventf(profile, corev1.EventTypeNormal, "Creation succeeded", "Succeeded to create all components")
+
 	return nil
 }
 
@@ -153,34 +186,4 @@ func (h *handler) Exists(ctx context.Context, profileName string) bool {
 		return true
 	}
 	return false
-}
-
-// syncMachineConfig creates or updates the MachineConfig with the provided kernel arguments
-func (h *handler) syncMachineConfig(ctx context.Context, profile *performancev2.PerformanceProfile, opts *components.Options) error {
-	// Generate MachineConfig with kernel arguments
-	components, err := manifestset.GetNewComponents(profile, opts)
-	if err != nil {
-		return err
-	}
-
-	for _, componentObj := range components.ToObjects() {
-		if err := controllerutil.SetControllerReference(profile, componentObj, h.scheme); err != nil {
-			return err
-		}
-	}
-
-	// get mutated machine config with kernel arguments
-	mcMutated, err := resources.GetMutatedMachineConfig(ctx, h.Client, components.MachineConfig)
-	if err != nil {
-		return err
-	}
-
-	// Create/Update MachineConfig only after bootcmdline is ready
-	if mcMutated != nil {
-		if err := resources.CreateOrUpdateMachineConfig(ctx, h.Client, mcMutated); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }

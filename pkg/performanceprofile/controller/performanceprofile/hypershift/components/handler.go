@@ -17,6 +17,7 @@ import (
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/machineconfig"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift"
@@ -70,6 +71,35 @@ func (h *handler) Exists(ctx context.Context, profileName string) bool {
 	return false
 }
 
+func (h *handler) applyTuned(ctx context.Context, profile *performancev2.PerformanceProfile, mfs *manifestset.ManifestResultSet, cfgmap *corev1.ConfigMap) ([]string, error) {
+	// Get mutated performance tuned.
+	performanceTunedMutated, err := resources.GetMutatedTuned(ctx, h.controlPlaneClient, mfs.Tuned)
+	if err != nil {
+		return nil, err
+	}
+
+	// The Tuned CR must be created first so the tuned operand can calculate bootcmdline.
+	if performanceTunedMutated != nil {
+		cm, err := EncapsulateObjInConfigMap(h.scheme, cfgmap, mfs.Tuned, profile.Name, hypershiftconsts.TuningKey, map[string]string{hypershiftconsts.ControllerGeneratedTunedConfigMapLabel: "true"})
+		if err != nil {
+			return nil, err
+		}
+		err = createOrUpdateTunedConfigMap(ctx, h.controlPlaneClient, cm)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Get kernel arguments from tuned bootcmdline. This will wait for tuned to calculate and agree on them.
+	// In other words, if bootcmdline is not ready or nodes disagree, an error is returned.
+	kernelArguments, err := resources.GetKernelArgumentsFromTunedBootcmdline(ctx, h.dataPlaneClient, profile)
+	if err != nil {
+		return nil, err
+	}
+
+	return kernelArguments, nil
+}
+
 func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.EventRecorder, options *components.Options) error {
 	instance, ok := obj.(*corev1.ConfigMap)
 	if !ok {
@@ -91,13 +121,29 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 		klog.Infof("ignoring reconcile loop for pause performance profile %s", profile.Name)
 		return nil
 	}
-
 	// set missing options
 	options.MachineConfig.MixedCPUsEnabled = options.MixedCPUsFeatureGateEnabled && profileutil.IsMixedCPUsEnabled(profile)
 
-	// First, create components WITHOUT kernel arguments to bootstrap the system.
-	// The Tuned CR must be created first so the tuned operand can calculate bootcmdline.
 	mfs, err := manifestset.GetNewComponents(profile, options)
+	if err != nil {
+		return err
+	}
+
+	// The Tuned CR must be created first so the tuned operand can calculate bootcmdline.
+	kernelArguments, err := h.applyTuned(ctx, profile, mfs, instance)
+	if err != nil {
+		return err
+	}
+
+	// Generate MachineConfig with kernel arguments from tuned bootcmdline
+	options.MachineConfig.KernelArguments = kernelArguments
+	mc, err := machineconfig.New(profile, &options.MachineConfig)
+	if err != nil {
+		return err
+	}
+
+	// get mutated machine config WITH kernel arguments
+	mcMutated, err := resources.GetMutatedMachineConfig(ctx, h.controlPlaneClient, mc)
 	if err != nil {
 		return err
 	}
@@ -108,84 +154,23 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 		return err
 	}
 
-	// get mutated performance tuned
-	performanceTunedMutated, err := resources.GetMutatedTuned(ctx, h.controlPlaneClient, mfs.Tuned)
-	if err != nil {
-		return err
-	}
-
 	// get mutated RuntimeClass
 	runtimeClassMutated, err := resources.GetMutatedRuntimeClass(ctx, h.dataPlaneClient, mfs.RuntimeClass)
 	if err != nil {
 		return err
 	}
 
-	// Create/Update Tuned, KubeletConfig, and RuntimeClass first (without waiting for bootcmdline)
-	if performanceTunedMutated != nil {
-		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.Tuned, profile.Name, hypershiftconsts.TuningKey, map[string]string{hypershiftconsts.ControllerGeneratedTunedConfigMapLabel: "true"})
-		if err != nil {
-			return fmt.Errorf("failed to encapsulate Tuned in ConfigMap: %w", err)
-		}
-		err = createOrUpdateTunedConfigMap(ctx, h.controlPlaneClient, cm)
-		if err != nil {
-			return fmt.Errorf("failed to create/update tuned ConfigMap: %w", err)
-		}
+	updated := mcMutated != nil ||
+		kcMutated != nil ||
+		runtimeClassMutated != nil
+
+	// do not update any resources if no changes are present and continue to the status update
+	if !updated {
+		return nil
 	}
 
-	if kcMutated != nil {
-		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.KubeletConfig, profile.Name, hypershiftconsts.ConfigKey, map[string]string{
-			hypershiftconsts.NTOGeneratedMachineConfigLabel: "true",
-			hypershiftconsts.KubeletConfigConfigMapLabel:    "true",
-		})
-		if err != nil {
-			return fmt.Errorf("failed to encapsulate KubeletConfig in ConfigMap: %w", err)
-		}
-		err = createOrUpdateKubeletConfigConfigMap(ctx, h.controlPlaneClient, cm)
-		if err != nil {
-			return fmt.Errorf("failed to create/update kubeletConfig ConfigMap: %w", err)
-		}
-	}
-
-	if runtimeClassMutated != nil {
-		if err := resources.CreateOrUpdateRuntimeClass(ctx, h.dataPlaneClient, runtimeClassMutated); err != nil {
-			return fmt.Errorf("failed to create/update RuntimeClass: %w", err)
-		}
-	}
-
-	// Get kernel arguments from tuned bootcmdline. This will wait for tuned to calculate them.
-	kernelArguments, err := resources.GetKernelArgumentsFromTunedBootcmdline(ctx, h.dataPlaneClient, profile)
-	if err != nil {
-		return err
-	}
-
-	// Update options with kernel arguments and create/update MachineConfig
-	options.MachineConfig.KernelArguments = kernelArguments
-	if err := h.syncMachineConfig(ctx, instance, profile, options); err != nil {
-		return err
-	}
-
-	klog.InfoS("Processed ok", "instanceName", instance.Name)
-	recorder.Eventf(instance, corev1.EventTypeNormal, "Creation succeeded", "Succeeded to create all components for PerformanceProfile")
-	return nil
-}
-
-// syncMachineConfig creates or updates the MachineConfig with the provided kernel arguments
-func (h *handler) syncMachineConfig(ctx context.Context, instance *corev1.ConfigMap, profile *performancev2.PerformanceProfile, options *components.Options) error {
-	// Generate MachineConfig with kernel arguments
-	mfs, err := manifestset.GetNewComponents(profile, options)
-	if err != nil {
-		return err
-	}
-
-	// get mutated machine config with kernel arguments
-	mcMutated, err := resources.GetMutatedMachineConfig(ctx, h.controlPlaneClient, mfs.MachineConfig)
-	if err != nil {
-		return err
-	}
-
-	// Create/Update MachineConfig only after bootcmdline is ready
 	if mcMutated != nil {
-		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.MachineConfig, profile.Name, hypershiftconsts.ConfigKey, map[string]string{hypershiftconsts.NTOGeneratedMachineConfigLabel: "true"})
+		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mc, profile.Name, hypershiftconsts.ConfigKey, map[string]string{hypershiftconsts.NTOGeneratedMachineConfigLabel: "true"})
 		if err != nil {
 			return err
 		}
@@ -195,6 +180,29 @@ func (h *handler) syncMachineConfig(ctx context.Context, instance *corev1.Config
 		}
 	}
 
+	if kcMutated != nil {
+		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.KubeletConfig, profile.Name, hypershiftconsts.ConfigKey, map[string]string{
+			hypershiftconsts.NTOGeneratedMachineConfigLabel: "true",
+			hypershiftconsts.KubeletConfigConfigMapLabel:    "true",
+		})
+		if err != nil {
+			return err
+		}
+		err = createOrUpdateKubeletConfigConfigMap(ctx, h.controlPlaneClient, cm)
+		if err != nil {
+			return err
+		}
+	}
+
+	if runtimeClassMutated != nil {
+		err = resources.CreateOrUpdateRuntimeClass(ctx, h.dataPlaneClient, runtimeClassMutated)
+		if err != nil {
+			return err
+		}
+	}
+
+	klog.InfoS("Processed ok", "instanceName", instance.Name)
+	recorder.Eventf(instance, corev1.EventTypeNormal, "Creation succeeded", "Succeeded to create all components for PerformanceProfile")
 	return nil
 }
 
