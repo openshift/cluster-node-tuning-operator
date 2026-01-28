@@ -45,6 +45,11 @@ const (
 	PerformanceProfileExecCPUAffinityDisable    = "disable"
 )
 
+// PerformanceProfileDRAResourceManagementAnnotation signal the operator to disable KubeletConfig
+// topology managers (CPU Manager, Memory Manager) configurations
+// that conflict with the DRA feature, and stop reconciling the PerformanceProfile.
+const PerformanceProfileDRAResourceManagementAnnotation = "performance.openshift.io/dra-resource-management"
+
 // PerformanceProfileSpec defines the desired state of PerformanceProfile.
 type PerformanceProfileSpec struct {
 	// CPU defines a set of CPU related parameters.

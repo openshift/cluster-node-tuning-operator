@@ -93,6 +93,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 	// set missing options
 	options.MachineConfig.MixedCPUsEnabled = options.MixedCPUsFeatureGateEnabled && profileutil.IsMixedCPUsEnabled(profile)
+	options.DRAResourceManagement = profileutil.IsDRAManaged(profile)
 
 	mfs, err := manifestset.GetNewComponents(profile, options)
 	if err != nil {
