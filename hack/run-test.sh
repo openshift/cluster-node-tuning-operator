@@ -84,10 +84,15 @@ main() {
         NO_COLOR="--no-color"
     fi
 
+    LABEL_FILTER_FLAG=""
+    if [ -n "$GINKGO_LABEL_FILTER" ]; then
+        LABEL_FILTER_FLAG="--label-filter=${GINKGO_LABEL_FILTER}"
+    fi
+
     MESSAGE="${HEADER_MESSAGE}: ${GINKGO_SUITS}"
     print ${MESSAGE}
 
-    GINKGO_FLAGS="${NO_COLOR} ${DRY_RUN} ${EXTRA_PARAMS} --require-suite ${REPORT_PARAMS} ${GINKGO_SUITS}"
+    GINKGO_FLAGS="${NO_COLOR} ${DRY_RUN} ${EXTRA_PARAMS} ${LABEL_FILTER_FLAG} --require-suite ${REPORT_PARAMS} ${GINKGO_SUITS}"
     print "Command to run: GOFLAGS=-mod=vendor ginkgo ${GINKGO_FLAGS}"
 
     if [ "$ONLY_CLI_PRINT" = true ]; then
