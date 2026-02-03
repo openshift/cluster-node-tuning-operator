@@ -11,7 +11,7 @@ metadata:
     uid: ""
 spec:
   profile:
-  - data: "[main]\nsummary=Openshift node optimized for deterministic performance
+  - data: "# PerformanceProfile.Name: manual\n# PerformanceProfile.Generation: 0\n[main]\nsummary=Openshift node optimized for deterministic performance
       at the cost of increased power consumption, focused on low latency network performance.
       Based on Tuned 2.11 and Cluster node tuning (oc 4.5)\ninclude=openshift-node,cpu-partitioning\n\n#
       Inheritance of base profiles legend:\n# cpu-partitioning -> network-latency

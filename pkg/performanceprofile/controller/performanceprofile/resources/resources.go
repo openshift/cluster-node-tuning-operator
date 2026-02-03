@@ -420,12 +420,15 @@ func GetNodesForProfile(ctx context.Context, cli client.Client, profile *perform
 	return matchedNodes, nil
 }
 
-// CheckNodesBootcmdlineReady checks if all nodes have bootcmdline annotations set and if they all agree on the bootcmdline.
+// CheckNodesBootcmdlineReady checks if all nodes have bootcmdline annotations set, if they all agree on the bootcmdline,
+// and if the bootcmdline dependencies annotation matches the expected PerformanceProfile name and generation.
 // Returns: (bootcmdline string, allNodesReady bool, nodesAgree bool).
-func CheckNodesBootcmdlineReady(nodes []corev1.Node) (string, bool, bool) {
+func CheckNodesBootcmdlineReady(nodes []corev1.Node, profileName string, profileGeneration int64) (string, bool, bool) {
 	if len(nodes) == 0 {
 		return "", true, true
 	}
+
+	expectedDeps := fmt.Sprintf("%s:%d", profileName, profileGeneration)
 
 	var bootcmdline string
 	allSet := true
@@ -434,19 +437,27 @@ func CheckNodesBootcmdlineReady(nodes []corev1.Node) (string, bool, bool) {
 	for i, node := range nodes {
 		if node.Annotations == nil {
 			allSet = false
-			continue
+			break
 		}
 
 		bootcmdlineAnnotVal, bootcmdlineAnnotSet := node.Annotations[tunedv1.TunedBootcmdlineAnnotationKey]
 		if !bootcmdlineAnnotSet {
 			allSet = false
-			continue
+			break
+		}
+
+		// Check that bootcmdline dependencies match the expected PerformanceProfile name and generation
+		bootcmdlineDepsAnnotVal, bootcmdlineDepsAnnotSet := node.Annotations[tunedv1.TunedBootcmdlineDepsAnnotationKey]
+		if !bootcmdlineDepsAnnotSet || bootcmdlineDepsAnnotVal != expectedDeps {
+			allSet = false
+			break
 		}
 
 		if i == 0 {
 			bootcmdline = bootcmdlineAnnotVal
 		} else if bootcmdline != bootcmdlineAnnotVal {
 			allAgree = false
+			break
 		}
 	}
 
@@ -462,12 +473,12 @@ func GetKernelArgumentsFromTunedBootcmdline(ctx context.Context, cli client.Clie
 		return nil, fmt.Errorf("failed to get nodes for performance profile %q: %v", profile.Name, err)
 	}
 
-	// Check if all nodes have bootcmdline annotations set by tuned
-	bootcmdline, allNodesReady, nodesAgree := CheckNodesBootcmdlineReady(nodes)
+	// Check if all nodes have bootcmdline annotations set by tuned and dependencies match
+	bootcmdline, allNodesReady, nodesAgree := CheckNodesBootcmdlineReady(nodes, profile.Name, profile.Generation)
 
 	if !allNodesReady {
-		klog.V(2).Infof("bootcmdline for profile %s not cached for all nodes, MachineConfig creation deferred", profile.Name)
-		return nil, fmt.Errorf("bootcmdline not ready for all nodes of profile %s", profile.Name)
+		klog.V(2).Infof("bootcmdline for profile %s (generation %d) not cached for all nodes, MachineConfig creation deferred", profile.Name, profile.Generation)
+		return nil, fmt.Errorf("bootcmdline not ready for all nodes of profile %s (generation %d)", profile.Name, profile.Generation)
 	}
 
 	if !nodesAgree {

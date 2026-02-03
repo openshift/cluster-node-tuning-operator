@@ -26,6 +26,9 @@ const (
 	// calculated by TuneD for the current profile applied to that Node.
 	TunedBootcmdlineAnnotationKey string = "tuned.openshift.io/bootcmdline"
 
+	// TunedBootcmdlineDepsAnnotationKey is used to determine Node's bootcmdline dependencies.
+	TunedBootcmdlineDepsAnnotationKey string = "tuned.openshift.io/bootcmdline-deps"
+
 	// TunedDeferredUpdate request the tuned daemons to defer the update of the rendered profile
 	// until the next restart.
 	TunedDeferredUpdate string = "tuned.openshift.io/deferred"

@@ -740,7 +740,8 @@ var _ = Describe("Controller", func() {
 										"nodekey": "nodeValue",
 									},
 									Annotations: map[string]string{
-										tunedv1.TunedBootcmdlineAnnotationKey: "",
+										tunedv1.TunedBootcmdlineAnnotationKey:     "",
+										tunedv1.TunedBootcmdlineDepsAnnotationKey: fmt.Sprintf("%s:%d", profile.Name, profile.Generation),
 									},
 								},
 							},
