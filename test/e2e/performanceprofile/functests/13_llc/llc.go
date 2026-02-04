@@ -914,12 +914,10 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				Expect(testclient.Client.List(ctx, podList, listOptions)).To(Succeed())
 				Expect(len(podList.Items)).To(Equal(1), "Expected exactly one pod in the list")
 				testpod := podList.Items[0]
-
 				verifyOddCPUAllocation(ctx, &targetNode, requestedCPUs, cpusetCfg, &testpod)
 			})
 
 			It("[test_id:87073] Large odd integer CPU request should take full uncore plus partial from another", func(ctx context.Context) {
-				targetNode := workerRTNodes[0]
 				// Get the actual uncore cache size
 				getCCX := nodes.GetL3SharedCPUs(&targetNode)
 				uncoreCache, err := getCCX(0)
