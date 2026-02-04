@@ -806,16 +806,22 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 		// Reference: https://aiattribution.github.io/
 		Context("Odd CPU Requests with SMT Enabled", func() {
 			var initialOddCPUProfile *performancev2.PerformanceProfile
-
+			var targetNode corev1.Node
 			BeforeAll(func() {
 				ctx := context.Background()
 				// Check for baremetal nodes before proceeding
 				hasBaremetal := false
 				for i := range workerRTNodes {
-					isVM, err := infrastructure.IsVM(context.Background(), &workerRTNodes[i])
+					isVM, err := infrastructure.IsVM(ctx, &workerRTNodes[i])
 					Expect(err).ToNot(HaveOccurred())
 					if !isVM {
 						hasBaremetal = true
+						// we pick one baremetal node. Generally the cluster created to run
+						// this test will have one bare metal worker and one VM worker , but in case it has
+						// two or more baremetal worker nodes. we just pick one node. It doesn't matter which node
+						// it is. Since these tests are run on very specific hardware where generally we are given
+						// only one bare metal Worker
+						targetNode = workerRTNodes[i]
 						break
 					}
 				}
@@ -880,7 +886,6 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 
 			It("[test_id:87072] Odd integer CPU request: 3 CPUs should prefer whole cores", func(ctx context.Context) {
 				requestedCPUs := 3
-				targetNode := workerRTNodes[0]
 				cpusetCfg := &controller.CpuSet{}
 				podLabel := make(map[string]string)
 
