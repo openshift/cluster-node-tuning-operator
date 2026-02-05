@@ -52,6 +52,8 @@ const (
 	yamlSuffix = ".yaml"
 	// nodes defines the subpath, relative to top-level must-gather directory, on which we find node-specific data
 	nodes = "nodes"
+	// namespaces defines the subpath, relative to top-level must-gather directory, on which we find openshift namespace-specific data
+	namespaces = "namespaces"
 	// sysInfoFileName defines the name of the file where ghw snapshot is stored
 	sysInfoFileName = "sysinfo.tgz"
 	// noSMTKernelArg is the kernel arg value to disable SMT in a system
@@ -75,15 +77,18 @@ var (
 	filterFirstLogicalProcessorInCore = func(index, lpID int) bool { return index != 0 }
 )
 
-func getMustGatherFullPathsWithFilter(mustGatherPath string, suffix string, filter string) (string, error) {
+func getMustGatherFullPathsWithFilter(mustGatherPath string, suffix string, filters ...string) (string, error) {
 	var paths []string
 
-	// don't assume directory names, only look for the suffix, filter out files having "filter" in their names
+	// don't assume directory names, only look for the suffix, filter out files having "filters" in their names
 	err := filepath.Walk(mustGatherPath, func(path string, info os.FileInfo, err error) error {
 		if strings.HasSuffix(path, suffix) {
-			if len(filter) == 0 || !strings.Contains(path, filter) {
-				paths = append(paths, path)
+			for _, f := range filters {
+				if strings.Contains(path, f) {
+					return nil
+				}
 			}
+			paths = append(paths, path)
 		}
 		return nil
 	})
@@ -95,14 +100,14 @@ func getMustGatherFullPathsWithFilter(mustGatherPath string, suffix string, filt
 	}
 	if len(paths) > 1 {
 		log.Infof("Multiple matches for the specified must gather directory path: %s and suffix: %s", mustGatherPath, suffix)
-		return "", fmt.Errorf("Multiple matches for the specified must gather directory path: %s and suffix: %s.\n Expected only one performance-addon-operator-must-gather* directory, please check the must-gather tarball", mustGatherPath, suffix)
+		return "", fmt.Errorf("multiple matches for the specified must gather directory path: %s and suffix: %s.\n Expected only one performance-addon-operator-must-gather* directory, please check the must-gather tarball", mustGatherPath, suffix)
 	}
 	// returning one possible path
 	return paths[0], err
 }
 
 func getMustGatherFullPaths(mustGatherPath string, suffix string) (string, error) {
-	return getMustGatherFullPathsWithFilter(mustGatherPath, suffix, "")
+	return getMustGatherFullPathsWithFilter(mustGatherPath, suffix)
 }
 
 func getNode(mustGatherDirPath, nodeName string) (*v1.Node, error) {
@@ -213,7 +218,7 @@ func GetMCP(mustGatherDirPath, mcpName string) (*machineconfigv1.MachineConfigPo
 func NewGHWHandler(mustGatherDirPath string, node *v1.Node) (*GHWHandler, error) {
 	nodeName := node.GetName()
 	nodePathSuffix := path.Join(nodes)
-	nodepath, err := getMustGatherFullPathsWithFilter(mustGatherDirPath, nodePathSuffix, clusterScopedResources)
+	nodepath, err := getMustGatherFullPathsWithFilter(mustGatherDirPath, nodePathSuffix, clusterScopedResources, namespaces)
 	if err != nil {
 		return nil, fmt.Errorf("can't obtain the node path %s: %v", nodeName, err)
 	}
