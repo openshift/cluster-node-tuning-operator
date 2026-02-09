@@ -43,6 +43,7 @@ type Options struct {
 type MachineConfigOptions struct {
 	PinningMode      *apiconfigv1.CPUPartitioningMode
 	MixedCPUsEnabled bool
+	KernelArguments  []string
 }
 
 type KubeletConfigOptions struct {

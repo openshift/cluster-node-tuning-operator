@@ -136,7 +136,9 @@ func New(profile *performancev2.PerformanceProfile, opts *components.MachineConf
 			Name:   name,
 			Labels: profilecomponent.GetMachineConfigLabel(profile),
 		},
-		Spec: machineconfigv1.MachineConfigSpec{},
+		Spec: machineconfigv1.MachineConfigSpec{
+			KernelArguments: opts.KernelArguments,
+		},
 	}
 
 	ignitionConfig, err := getIgnitionConfig(profile, opts)

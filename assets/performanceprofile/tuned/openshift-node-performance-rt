@@ -1,3 +1,5 @@
+# PerformanceProfile.Name: {{.PerformanceProfileName}}
+# PerformanceProfile.Generation: {{.ProfileGeneration}}
 [main]
 summary=Real time profile to override unsupported settings
 

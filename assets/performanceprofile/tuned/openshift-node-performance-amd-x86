@@ -1,3 +1,5 @@
+# PerformanceProfile.Name: {{.PerformanceProfileName}}
+# PerformanceProfile.Generation: {{.ProfileGeneration}}
 [main]
 summary=Platform specific tuning for AMD x86
 

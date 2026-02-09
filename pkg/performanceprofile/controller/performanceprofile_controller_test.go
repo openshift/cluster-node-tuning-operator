@@ -739,6 +739,10 @@ var _ = Describe("Controller", func() {
 									Labels: map[string]string{
 										"nodekey": "nodeValue",
 									},
+									Annotations: map[string]string{
+										tunedv1.TunedBootcmdlineAnnotationKey:     "",
+										tunedv1.TunedBootcmdlineDepsAnnotationKey: fmt.Sprintf("%s:%d", profile.Name, profile.Generation),
+									},
 								},
 							},
 							{
