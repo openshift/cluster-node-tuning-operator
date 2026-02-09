@@ -44,6 +44,8 @@ import (
 	mcfgv1 "github.com/openshift/api/machineconfiguration/v1"
 	mcfgclientset "github.com/openshift/client-go/machineconfiguration/clientset/versioned"
 	mcfginformers "github.com/openshift/client-go/machineconfiguration/informers/externalversions"
+
+	ntosync "github.com/openshift/cluster-node-tuning-operator/pkg/sync"
 )
 
 const (
@@ -799,7 +801,8 @@ func (c *Controller) syncMachineConfig(labels map[string]string, profile *tunedv
 		return err
 	}
 
-	// TODO: compare PerformanceProfile name:gen + operand version
+	// TODO: operand RELEASE_VERSION
+	klog.V(2).Infof("syncMachineConfig(): profile.Name=%v; profile.Spec.Config.BootcmdlineDeps=%v", profile.Name, profile.Spec.Config.BootcmdlineDeps)
 	if ok := c.allNodesHaveCurrentBootcmdlineDeps(nodes, profile.Spec.Config.BootcmdlineDeps); !ok {
 		klog.V(2).Infof("syncMachineConfig(): bootcmdline for %s not calculated for all nodes, sync canceled", profile.Name)
 		return nil
@@ -811,6 +814,13 @@ func (c *Controller) syncMachineConfig(labels map[string]string, profile *tunedv
 		klog.Errorf("not all %d Nodes in MCP %v agree on bootcmdline: %s", len(nodes), pools[0].Name, bootcmdline)
 		return nil
 	}
+
+	// Bootcmdline is ready and all nodes agree - signal the PerformanceProfile controller
+	// with the bootcmdlineDeps that the bootcmdline was calculated from. This provides
+	// generation-aware synchronization to ensure the PerformanceProfile's MachineConfig
+	// (50-performance-*) is created only after the operator's MachineConfig (50-nto-*)
+	// is ready, and both are based on the same generation of Tuned CRs.
+	defer ntosync.GetBootcmdlineSync().SignalReady(pools[0].Name, profile.Spec.Config.BootcmdlineDeps)
 
 	kernelArguments = util.SplitKernelArguments(bootcmdline)
 
@@ -870,10 +880,10 @@ func (c *Controller) syncMachineConfig(labels map[string]string, profile *tunedv
 func (c *Controller) allNodesHaveCurrentBootcmdlineDeps(nodes []*corev1.Node, bootcmdlineDeps string) bool {
 	for _, node := range nodes {
 		if v, bootcmdlineDepsSet := c.pc.state.bootcmdlineDeps[node.Name]; !bootcmdlineDepsSet {
-			klog.V(3).Infof("allNodesHaveCurrentBootcmdlineDeps(): bootcmdline-deps not set for node %s", node.Name)
+			klog.V(2).Infof("allNodesHaveCurrentBootcmdlineDeps(): bootcmdline-deps not set for node %s", node.Name)
 			return false
 		} else {
-			klog.V(3).Infof("allNodesHaveCurrentBootcmdlineDeps(): bootcmdline-deps %q set for node %s", v, node.Name)
+			klog.V(2).Infof("allNodesHaveCurrentBootcmdlineDeps(): bootcmdline-deps %q set for node %s", v, node.Name)
 		}
 	}
 
@@ -881,7 +891,7 @@ func (c *Controller) allNodesHaveCurrentBootcmdlineDeps(nodes []*corev1.Node, bo
 	for _, node := range nodes {
 		if bootcmdlineDeps != c.pc.state.bootcmdlineDeps[node.Name] {
 			// We haven't calculated/set bootcmdline parameters for some Nodes yet.
-			klog.V(3).Infof("allNodesHaveCurrentBootcmdlineDeps(): wanted=%q, seen=%q", bootcmdlineDeps, c.pc.state.bootcmdlineDeps[node.Name])
+			klog.V(2).Infof("allNodesHaveCurrentBootcmdlineDeps(): wanted=%q, seen=%q", bootcmdlineDeps, c.pc.state.bootcmdlineDeps[node.Name])
 			return false
 		}
 	}
@@ -932,6 +942,13 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 	if ok := c.allNodesAgreeOnBootcmdline(nodes); !ok {
 		return fmt.Errorf("not all %d Nodes in NodePool %v agree on bootcmdline: %s", len(nodes), nodePoolName, bootcmdline)
 	}
+
+	// Bootcmdline is ready and all nodes agree - signal the PerformanceProfile controller
+	// with the bootcmdlineDeps that the bootcmdline was calculated from. This provides
+	// generation-aware synchronization to ensure the PerformanceProfile's MachineConfig
+	// (50-performance-*) is created only after the operator's MachineConfig (50-nto-*)
+	// is ready, and both are based on the same generation of Tuned CRs.
+	defer ntosync.GetBootcmdlineSync().SignalReady(nodePoolName, profile.Spec.Config.BootcmdlineDeps)
 
 	kernelArguments = util.SplitKernelArguments(bootcmdline)
 

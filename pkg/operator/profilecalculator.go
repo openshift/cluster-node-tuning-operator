@@ -901,23 +901,5 @@ func podLabelsNodeWideChange(podLabelsNodeWide map[string]map[string]string,
 // in the format <name1>:<generation1>,<name2>:<generation2>,...<nameN>:<generationN>.
 // The Tuned CR list is sorted.
 func bootcmdlineDeps(tunedSlice []*tunedv1.Tuned) string {
-	if len(tunedSlice) == 0 {
-		return ""
-	}
-
-	// Sort the Tuned CRs by name for deterministic output.
-	sortedTuneds := make([]*tunedv1.Tuned, len(tunedSlice))
-	copy(sortedTuneds, tunedSlice)
-	sort.Slice(sortedTuneds, func(i, j int) bool {
-		return sortedTuneds[i].Name < sortedTuneds[j].Name
-	})
-
-	var sb strings.Builder
-	for i, tuned := range sortedTuneds {
-		if i > 0 {
-			sb.WriteString(",")
-		}
-		sb.WriteString(fmt.Sprintf("%s:%d", tuned.Name, tuned.Generation))
-	}
-	return sb.String()
+	return util.BootcmdlineDeps(tunedSlice)
 }
