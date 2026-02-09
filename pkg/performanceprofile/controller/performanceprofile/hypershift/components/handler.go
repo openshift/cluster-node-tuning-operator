@@ -16,12 +16,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
+	nto "github.com/openshift/cluster-node-tuning-operator/pkg/operator"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift"
 	hypershiftconsts "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/consts"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
+	ntosync "github.com/openshift/cluster-node-tuning-operator/pkg/sync"
 )
 
 var _ components.Handler = &handler{}
@@ -112,7 +114,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	// get mutated performance tuned
-	performanceTunedMutated, err := resources.GetMutatedTuned(ctx, h.controlPlaneClient, mfs.Tuned)
+	_, performanceTunedNeedsUpdate, err := resources.GetMutatedTuned(ctx, h.controlPlaneClient, mfs.Tuned)
 	if err != nil {
 		return err
 	}
@@ -125,7 +127,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 
 	updated := mcMutated != nil ||
 		kcMutated != nil ||
-		performanceTunedMutated != nil ||
+		performanceTunedNeedsUpdate ||
 		runtimeClassMutated != nil
 
 	// do not update any resources if no changes are present and continue to the status update
@@ -133,7 +135,70 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 		return nil
 	}
 
+	// Get NodePool name for bootcmdline sync
+	nodePoolNamespacedName, ok := instance.Annotations[hypershiftconsts.NodePoolNameLabel]
+	if !ok {
+		return fmt.Errorf("annotation %q not found in ConfigMap %q annotations", hypershiftconsts.NodePoolNameLabel, client.ObjectKeyFromObject(instance).String())
+	}
+	nodePoolName := parseNamespacedName(nodePoolNamespacedName)
+
+	// Create/update Tuned first, TuneD pods need this to calculate bootcmdline and agree on it.
+	if performanceTunedNeedsUpdate {
+		ntosync.GetBootcmdlineSync().ClearCacheForPool(nodePoolName) // Do not honor a stale ready signal from a previous generation
+		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.Tuned, profile.Name, hypershiftconsts.TuningKey, map[string]string{hypershiftconsts.ControllerGeneratedTunedConfigMapLabel: "true"})
+		if err != nil {
+			return err
+		}
+		err = createOrUpdateTunedConfigMap(ctx, h.controlPlaneClient, cm)
+		if err != nil {
+			return err
+		}
+		// The operator will pick up this new ConfigMap, create the actual Tuned CR on the hosted cluster,
+		// compute bootcmdline and signal ready to the PerformanceProfile controller.  Continue on the next
+		// reconcile.
+		return nil
+	}
+
+	// Check bootcmdline sync signal from the operator controller before creating MachineConfig.
+	// This synchronizes the creation of the PerformanceProfile's MachineConfig (50-performance-*)
+	// with the operator's MachineConfig (50-nto-*) to prevent multiple reboots.
+	// The check is generation-aware.  It verifies that the bootcmdline was calculated with the
+	// current performance Tuned CR identified by its name:generation.  The check is non-blocking.
+	// If not ready, we return an error to requeue.  The operator controller will also trigger
+	// immediate reconciliation when ready.
+	// In HyperShift, we use the NodePool name (vs. MCP) as the sync key.
 	if mcMutated != nil {
+		bootcmdlineSync := ntosync.GetBootcmdlineSync()
+
+		// Fetch the actual Tuned CR from the hosted cluster to get its real name and generation.
+		// The operator's syncHostedClusterTuneds creates the Tuned CR on the hosted cluster
+		// with a hash suffix based on the NodePool name using MakeTunedUniqueName().
+		tunedName := nto.MakeTunedUniqueName(mfs.Tuned.Name, nodePoolName)
+		actualTuned, err := resources.GetTuned(ctx, h.dataPlaneClient, tunedName, mfs.Tuned.Namespace)
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				klog.Infof("PerformanceProfile %q (HyperShift): Tuned CR %q not found in hosted cluster, waiting for it to be created", profile.Name, tunedName)
+				return &ntosync.BootcmdlineNotReadyError{
+					MCPName: nodePoolName,
+					Message: fmt.Sprintf("waiting for Tuned CR %q to be created", tunedName),
+				}
+			}
+			return fmt.Errorf("failed to get Tuned CR %q: %w", tunedName, err)
+		}
+
+		// Check if the current performance Tuned CR is included in the bootcmdline calculation.
+		// Use the actual Tuned CR from the hosted cluster with its real generation.
+		expectedTunedDep := fmt.Sprintf("%s:%d", actualTuned.Name, actualTuned.Generation)
+
+		if !bootcmdlineSync.IsReady(nodePoolName, expectedTunedDep) {
+			klog.Infof("PerformanceProfile %q [%v] (HyperShift): bootcmdline not ready for NodePool %q", profile.Name, expectedTunedDep, nodePoolName)
+			return &ntosync.BootcmdlineNotReadyError{
+				MCPName: nodePoolName,
+				Message: fmt.Sprintf("waiting for bootcmdline to be ready for NodePool %q with Tuned dependency %q", nodePoolName, expectedTunedDep),
+			}
+		}
+
+		klog.Infof("PerformanceProfile %q (HyperShift): bootcmdline ready for NodePool %q, creating MachineConfig", profile.Name, nodePoolName)
 		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.MachineConfig, profile.Name, hypershiftconsts.ConfigKey, map[string]string{hypershiftconsts.NTOGeneratedMachineConfigLabel: "true"})
 		if err != nil {
 			return err
@@ -153,17 +218,6 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 			return err
 		}
 		err = createOrUpdateKubeletConfigConfigMap(ctx, h.controlPlaneClient, cm)
-		if err != nil {
-			return err
-		}
-	}
-
-	if performanceTunedMutated != nil {
-		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.Tuned, profile.Name, hypershiftconsts.TuningKey, map[string]string{hypershiftconsts.ControllerGeneratedTunedConfigMapLabel: "true"})
-		if err != nil {
-			return err
-		}
-		err = createOrUpdateTunedConfigMap(ctx, h.controlPlaneClient, cm)
 		if err != nil {
 			return err
 		}

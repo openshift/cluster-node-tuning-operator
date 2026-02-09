@@ -200,14 +200,18 @@ func GetTuned(ctx context.Context, cli client.Client, name string, namespace str
 	return tuned, nil
 }
 
-func GetMutatedTuned(ctx context.Context, cli client.Client, tuned *tunedv1.Tuned) (*tunedv1.Tuned, error) {
+// GetMutatedTuned() returns the mutated Tuned object 'tuned.Name' in 'tuned.Namespace'
+// namespace even if it is the same as the existing object.  The indication of whether
+// an update is necessary is passed in the second return value.  Error (if any) is
+// returned as the last value.
+func GetMutatedTuned(ctx context.Context, cli client.Client, tuned *tunedv1.Tuned) (*tunedv1.Tuned, bool, error) {
 	existing, err := GetTuned(ctx, cli, tuned.Name, tuned.Namespace)
 	if errors.IsNotFound(err) {
-		return tuned, nil
+		return tuned, true, nil
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	mutated := existing.DeepCopy()
@@ -219,10 +223,10 @@ func GetMutatedTuned(ctx context.Context, cli client.Client, tuned *tunedv1.Tune
 	if apiequality.Semantic.DeepEqual(existing.Spec, mutated.Spec) &&
 		apiequality.Semantic.DeepEqual(existing.Labels, mutated.Labels) &&
 		apiequality.Semantic.DeepEqual(existing.Annotations, mutated.Annotations) {
-		return nil, nil
+		return mutated, false, nil
 	}
 
-	return mutated, nil
+	return mutated, true, nil
 }
 
 func CreateOrUpdateTuned(ctx context.Context, cli client.Client, tuned *tunedv1.Tuned, profileName string) error {
