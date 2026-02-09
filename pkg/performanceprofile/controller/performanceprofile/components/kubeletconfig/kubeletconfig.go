@@ -2,6 +2,7 @@ package kubeletconfig
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -43,8 +44,12 @@ const (
 	evictionHardNodefsInodesFree                 = "nodefs.inodesFree"
 )
 
-// New returns new KubeletConfig object for performance sensetive workflows
+// New returns new KubeletConfig object for performance sensitive workflows
 func New(profile *performancev2.PerformanceProfile, opts *components.KubeletConfigOptions) (*machineconfigv1.KubeletConfig, error) {
+	if err := validateOptions(opts); err != nil {
+		return nil, fmt.Errorf("KubeletConfig options validation failed: %w", err)
+	}
+
 	name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
 	kubeletConfig := &kubeletconfigv1beta1.KubeletConfiguration{}
 	if v, ok := profile.Annotations[experimentalKubeletSnippetAnnotation]; ok {
@@ -58,6 +63,61 @@ func New(profile *performancev2.PerformanceProfile, opts *components.KubeletConf
 		Kind:       "KubeletConfiguration",
 	}
 
+	// when DRA resource management is enabled, all kubeletconfig settings should be disabled.
+	// this is because the DRA plugin will manage the resource allocation.
+	// if the kubeletconfig CPU and Memory Manager settings are not disabled, it will conflict with the DRA.
+	if opts.DRAResourceManagement {
+		if err := setKubeletConfigForDRAManagement(kubeletConfig, opts); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := setKubeletConfigForCPUAndMemoryManagers(profile, kubeletConfig, opts); err != nil {
+			return nil, err
+		}
+	}
+
+	raw, err := json.Marshal(kubeletConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return &machineconfigv1.KubeletConfig{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: machineconfigv1.GroupVersion.String(),
+			Kind:       "KubeletConfig",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: machineconfigv1.KubeletConfigSpec{
+			MachineConfigPoolSelector: &metav1.LabelSelector{
+				MatchLabels: opts.MachineConfigPoolSelector,
+			},
+			KubeletConfig: &runtime.RawExtension{
+				Raw: raw,
+			},
+		},
+	}, nil
+}
+
+func addStringToQuantity(q *resource.Quantity, value string) error {
+	v, err := resource.ParseQuantity(value)
+	if err != nil {
+		return err
+	}
+	q.Add(v)
+	return nil
+}
+
+func setKubeletConfigForDRAManagement(kubeletConfig *kubeletconfigv1beta1.KubeletConfiguration, opts *components.KubeletConfigOptions) error {
+	kubeletConfig.CPUManagerPolicy = "none"
+	kubeletConfig.CPUManagerPolicyOptions = map[string]string{}
+	kubeletConfig.TopologyManagerPolicy = kubeletconfigv1beta1.NoneTopologyManagerPolicy
+	kubeletConfig.MemoryManagerPolicy = kubeletconfigv1beta1.NoneMemoryManagerPolicy
+	return nil
+}
+
+func setKubeletConfigForCPUAndMemoryManagers(profile *performancev2.PerformanceProfile, kubeletConfig *kubeletconfigv1beta1.KubeletConfiguration, opts *components.KubeletConfigOptions) error {
 	kubeletConfig.CPUManagerPolicy = cpuManagerPolicyStatic
 	kubeletConfig.CPUManagerReconcilePeriod = metav1.Duration{Duration: 5 * time.Second}
 	kubeletConfig.TopologyManagerPolicy = kubeletconfigv1beta1.BestEffortTopologyManagerPolicy
@@ -102,11 +162,11 @@ func New(profile *performancev2.PerformanceProfile, opts *components.KubeletConf
 	if opts.MixedCPUsEnabled {
 		sharedCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Shared))
 		if err != nil {
-			return nil, err
+			return err
 		}
 		reservedCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
 		if err != nil {
-			return nil, err
+			return err
 		}
 		kubeletConfig.ReservedSystemCPUs = reservedCPUs.Union(sharedCPUs).String()
 	}
@@ -125,13 +185,13 @@ func New(profile *performancev2.PerformanceProfile, opts *components.KubeletConf
 				if kubeletConfig.ReservedMemory == nil {
 					reservedMemory := resource.NewQuantity(0, resource.DecimalSI)
 					if err := addStringToQuantity(reservedMemory, kubeletConfig.KubeReserved[string(corev1.ResourceMemory)]); err != nil {
-						return nil, err
+						return err
 					}
 					if err := addStringToQuantity(reservedMemory, kubeletConfig.SystemReserved[string(corev1.ResourceMemory)]); err != nil {
-						return nil, err
+						return err
 					}
 					if err := addStringToQuantity(reservedMemory, kubeletConfig.EvictionHard[evictionHardMemoryAvailable]); err != nil {
-						return nil, err
+						return err
 					}
 
 					kubeletConfig.ReservedMemory = []kubeletconfigv1beta1.MemoryReservation{
@@ -159,37 +219,16 @@ func New(profile *performancev2.PerformanceProfile, opts *components.KubeletConf
 			}
 		}
 	}
-
-	raw, err := json.Marshal(kubeletConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	return &machineconfigv1.KubeletConfig{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: machineconfigv1.GroupVersion.String(),
-			Kind:       "KubeletConfig",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
-		Spec: machineconfigv1.KubeletConfigSpec{
-			MachineConfigPoolSelector: &metav1.LabelSelector{
-				MatchLabels: opts.MachineConfigPoolSelector,
-			},
-			KubeletConfig: &runtime.RawExtension{
-				Raw: raw,
-			},
-		},
-	}, nil
+	return nil
 }
-
-func addStringToQuantity(q *resource.Quantity, value string) error {
-	v, err := resource.ParseQuantity(value)
-	if err != nil {
-		return err
+func validateOptions(opts *components.KubeletConfigOptions) error {
+	if opts == nil {
+		return nil
 	}
-	q.Add(v)
+
+	if opts.MixedCPUsEnabled && opts.DRAResourceManagement {
+		return fmt.Errorf("invalid configuration: mixed CPUs mode and DRA resource management features are mutually exclusive. please disable one of the features before continuing")
+	}
 
 	return nil
 }

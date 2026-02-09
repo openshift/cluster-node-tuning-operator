@@ -62,6 +62,7 @@ func GetNewComponents(profile *performancev2.PerformanceProfile, opts *component
 		&components.KubeletConfigOptions{
 			MachineConfigPoolSelector: machineConfigPoolSelector,
 			MixedCPUsEnabled:          opts.MachineConfig.MixedCPUsEnabled,
+			DRAResourceManagement:     opts.DRAResourceManagement,
 		})
 	if err != nil {
 		return nil, err

@@ -108,6 +108,46 @@ var _ = Describe("PerformanceProfile", func() {
 			})
 		})
 	})
+
+	Describe("DRA Resource Management", func() {
+		Context("IsDRAManaged", func() {
+			It("should return false when annotations are nil", func() {
+				profile.Annotations = nil
+				result := IsDRAManaged(profile)
+				Expect(result).To(BeFalse())
+			})
+
+			It("should return false when annotation is not present", func() {
+				profile.Annotations = map[string]string{}
+				result := IsDRAManaged(profile)
+				Expect(result).To(BeFalse())
+			})
+
+			It("should return true when annotation is 'true'", func() {
+				profile.Annotations = map[string]string{
+					performancev2.PerformanceProfileDRAResourceManagementAnnotation: "true",
+				}
+				result := IsDRAManaged(profile)
+				Expect(result).To(BeTrue())
+			})
+
+			It("should return false when annotation is 'false'", func() {
+				profile.Annotations = map[string]string{
+					performancev2.PerformanceProfileDRAResourceManagementAnnotation: "false",
+				}
+				result := IsDRAManaged(profile)
+				Expect(result).To(BeFalse())
+			})
+
+			It("should return false when annotation has invalid value", func() {
+				profile.Annotations = map[string]string{
+					performancev2.PerformanceProfileDRAResourceManagementAnnotation: "invalid",
+				}
+				result := IsDRAManaged(profile)
+				Expect(result).To(BeFalse())
+			})
+		})
+	})
 })
 
 func setValidNodeSelector(profile *performancev2.PerformanceProfile) {
