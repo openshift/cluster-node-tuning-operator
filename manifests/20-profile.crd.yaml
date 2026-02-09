@@ -67,6 +67,12 @@ spec:
                   required:
                     - tunedProfile
                   properties:
+                    bootcmdlineDeps:
+                      description: |-
+                        BootcmdlineDeps is a list of all Tuned CR names and generations in the format
+                        <name1>:<generation1>,<name2>:<generation2>,...<nameN>:<generationN>, out of which
+                        the current Tuned Profile was calculated from.  The Tuned CR names are sorted.
+                      type: string
                     debug:
                       description: option to debug TuneD daemon execution
                       type: boolean

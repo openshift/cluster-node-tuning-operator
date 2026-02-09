@@ -660,6 +660,7 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 			profileMf.Spec.Config.Debug = computed.Operand.Debug
 			profileMf.Spec.Config.Verbosity = computed.Operand.Verbosity
 			profileMf.Spec.Config.TuneDConfig = computed.Operand.TuneDConfig
+			profileMf.Spec.Config.BootcmdlineDeps = computed.BootcmdlineDeps
 			profileMf.Spec.Profile = computed.AllProfiles
 			_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.WatchNamespace()).Create(context.TODO(), profileMf, metav1.CreateOptions{})
 			if err != nil {
@@ -727,7 +728,8 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 		reflect.DeepEqual(profile.Spec.Config.TuneDConfig, computed.Operand.TuneDConfig) &&
 		reflect.DeepEqual(profile.Spec.Profile, computed.AllProfiles) &&
 		util.GetDeferredUpdateAnnotation(profile.Annotations) == util.GetDeferredUpdateAnnotation(anns) &&
-		profile.Spec.Config.ProviderName == providerName {
+		profile.Spec.Config.ProviderName == providerName &&
+		profile.Spec.Config.BootcmdlineDeps == computed.BootcmdlineDeps {
 		klog.V(2).Infof("syncProfile(): no need to update Profile %s", nodeName)
 		return nil
 	}
@@ -738,8 +740,8 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	profile.Spec.Config.Verbosity = computed.Operand.Verbosity
 	profile.Spec.Config.TuneDConfig = computed.Operand.TuneDConfig
 	profile.Spec.Config.ProviderName = providerName
+	profile.Spec.Config.BootcmdlineDeps = computed.BootcmdlineDeps
 	profile.Spec.Profile = computed.AllProfiles
-	delete(c.pc.state.bootcmdline, nodeName) // bootcmdline retrieved from node annotation is potentially stale, let it resync on node update
 
 	klog.V(2).Infof("syncProfile(): updating Profile %s [%s]", profile.Name, computed.TunedProfileName)
 	_, err = c.clients.Tuned.TunedV1().Profiles(ntoconfig.WatchNamespace()).Update(context.TODO(), profile, metav1.UpdateOptions{})
@@ -797,8 +799,9 @@ func (c *Controller) syncMachineConfig(labels map[string]string, profile *tunedv
 		return err
 	}
 
-	if ok := c.allNodesHaveBootcmdlineSet(nodes); !ok {
-		klog.V(2).Infof("syncMachineConfig(): bootcmdline for %s not cached for all nodes, sync canceled", profile.Name)
+	// TODO: compare PerformanceProfile name:gen + operand version
+	if ok := c.allNodesHaveCurrentBootcmdlineDeps(nodes, profile.Spec.Config.BootcmdlineDeps); !ok {
+		klog.V(2).Infof("syncMachineConfig(): bootcmdline for %s not calculated for all nodes, sync canceled", profile.Name)
 		return nil
 	}
 
@@ -859,30 +862,27 @@ func (c *Controller) syncMachineConfig(labels map[string]string, profile *tunedv
 	return nil
 }
 
-// allNodesHaveBootcmdlineSet returns true if all Nodes in slice 'nodes' have
-// their bootcmdline annotation (TunedBootcmdlineAnnotationKey) value cached in
-// the profilecalculator's cache.  The values in the cache are populated on Node
-// updates (regular ones or just resyncs) and removed from the cache on Profile
-// updates.  Note this is not a bullet-proof solution to false bootcmdline
-// conflicts, because we can still have races, such as regular k8s object
-// Node resync (or other independent Node updates) right after Profile update.
-// While the cached bootcmdline value will be deleted after Profile update, it
-// can still be populated by a stale value from Node's annotation because of the
-// Node's resync (or other independent updates) before the proper bootcmdline
-// is calculated by the TuneD pod and Node's (TunedBootcmdlineAnnotationKey)
-// annotation updated.  A bullet-proof solution would involve adding a new
-// annotation such as tuned.openshift.io/lastProfileObservedGen to the Node
-// tied to the Profile and comparing it to the Profile's generation prior to
-// updating a MachineConfig.  However, we want to avoid putting extra load
-// on the API server as much as possible and this simpler solution already
-// significantly reduces false reports of bootcmdline conflicts.
-func (c *Controller) allNodesHaveBootcmdlineSet(nodes []*corev1.Node) bool {
+// allNodesHaveCurrentBootcmdlineDeps returns true if all Nodes in slice 'nodes' have
+// their bootcmdline-deps annotation (TunedBootcmdlineDepsAnnotationKey) values
+// cached in the profilecalculator's cache.  The values also must agree for all nodes
+// and match 'bootcmdlineDeps'.  The values in the cache are populated on Node updates
+// (regular ones or just periodic resyncs).
+func (c *Controller) allNodesHaveCurrentBootcmdlineDeps(nodes []*corev1.Node, bootcmdlineDeps string) bool {
 	for _, node := range nodes {
-		if v, bootcmdlineSet := c.pc.state.bootcmdline[node.Name]; !bootcmdlineSet {
-			klog.V(3).Infof("allNodesHaveBootcmdlineSet(): bootcmdline not set for node %s", node.Name)
+		if v, bootcmdlineDepsSet := c.pc.state.bootcmdlineDeps[node.Name]; !bootcmdlineDepsSet {
+			klog.V(3).Infof("allNodesHaveCurrentBootcmdlineDeps(): bootcmdline-deps not set for node %s", node.Name)
 			return false
 		} else {
-			klog.V(3).Infof("allNodesHaveBootcmdlineSet(): bootcmdline %q set for node %s", v, node.Name)
+			klog.V(3).Infof("allNodesHaveCurrentBootcmdlineDeps(): bootcmdline-deps %q set for node %s", v, node.Name)
+		}
+	}
+
+	// Guard against logging false bootcmdline conflicts by first checking that the bootcmdline dependencies agree for all nodes.
+	for _, node := range nodes {
+		if bootcmdlineDeps != c.pc.state.bootcmdlineDeps[node.Name] {
+			// We haven't calculated/set bootcmdline parameters for some Nodes yet.
+			klog.V(3).Infof("allNodesHaveCurrentBootcmdlineDeps(): wanted=%q, seen=%q", bootcmdlineDeps, c.pc.state.bootcmdlineDeps[node.Name])
+			return false
 		}
 	}
 
@@ -900,6 +900,7 @@ func (c *Controller) allNodesAgreeOnBootcmdline(nodes []*corev1.Node) bool {
 	bootcmdline := c.pc.state.bootcmdline[nodes[0].Name]
 	for _, node := range nodes[1:] {
 		if bootcmdline != c.pc.state.bootcmdline[node.Name] {
+			// Do not return early on the first conflict, log them all.
 			klog.V(2).Infof("found a conflicting bootcmdline %q for Node %q", c.pc.state.bootcmdline[node.Name], node.Name)
 			c.bootcmdlineConflict[node.Name] = true
 			match = false
@@ -922,8 +923,8 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 		return fmt.Errorf("could not fetch a list of Nodes for NodePool %s: %v", nodePoolName, err)
 	}
 
-	if ok := c.allNodesHaveBootcmdlineSet(nodes); !ok {
-		klog.V(2).Infof("syncMachineConfigHyperShift(): bootcmdline for %s not cached for all nodes, sync canceled", profile.Name)
+	if ok := c.allNodesHaveCurrentBootcmdlineDeps(nodes, profile.Spec.Config.BootcmdlineDeps); !ok {
+		klog.V(2).Infof("syncMachineConfigHyperShift(): bootcmdline for %s not calculated for all nodes, sync canceled", profile.Name)
 		return nil
 	}
 

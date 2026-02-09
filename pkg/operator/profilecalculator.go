@@ -37,6 +37,9 @@ type tunedState struct {
 	bootcmdline map[string]string
 	// Node name:   ^^^^^^
 	// bootcmdline         ^^^^^^
+	bootcmdlineDeps map[string]string
+	// Node name:       ^^^^^^
+	// bootcmdline-deps         ^^^^^^
 }
 
 type ProfileCalculator struct {
@@ -54,6 +57,7 @@ func NewProfileCalculator(listers *ntoclient.Listers, clients *ntoclient.Clients
 	pc.state.podLabels = map[string]map[string]map[string]string{}
 	pc.state.providerIDs = map[string]string{}
 	pc.state.bootcmdline = map[string]string{}
+	pc.state.bootcmdlineDeps = map[string]string{}
 	return pc
 }
 
@@ -137,6 +141,10 @@ func (pc *ProfileCalculator) nodeChangeHandler(nodeName string) (bool, error) {
 			change = pc.state.bootcmdline[nodeName] != bootcmdlineAnnotVal
 			pc.state.bootcmdline[nodeName] = bootcmdlineAnnotVal
 		}
+		if bootcmdlineDepsAnnotVal, bootcmdlineDepsAnnotSet := node.Annotations[tunedv1.TunedBootcmdlineDepsAnnotationKey]; bootcmdlineDepsAnnotSet {
+			change = change || pc.state.bootcmdlineDeps[nodeName] != bootcmdlineDepsAnnotVal
+			pc.state.bootcmdlineDeps[nodeName] = bootcmdlineDepsAnnotVal
+		}
 	}
 
 	nodeLabelsNew := util.MapOfStringsCopy(node.Labels)
@@ -157,6 +165,10 @@ type ComputedProfile struct {
 	MCLabels         map[string]string
 	NodePoolName     string
 	Operand          tunedv1.OperandConfig
+	// BootcmdlineDeps is a list of all Tuned CR names and generations in the format
+	// <name1>:<generation1>,<name2>:<generation2>,...<nameN>:<generationN> out of which
+	// the current Tuned Profile was calculated from.  The Tuned CR list is sorted.
+	BootcmdlineDeps string
 }
 
 type RecommendedProfile struct {
@@ -173,6 +185,7 @@ type RecommendedProfile struct {
 // * the list of all TunedProfiles out of which the tuned profile was calculated
 // * MachineConfig labels if the profile was selected by machineConfigLabels
 // * operand configuration as defined by tunedv1.OperandConfig
+// * bootcmdline dependencies (sorted Tuned CR names and their generations)
 // * an error if any
 func (pc *ProfileCalculator) calculateProfile(nodeName string) (ComputedProfile, error) {
 	klog.V(3).Infof("calculateProfile(%s)", nodeName)
@@ -181,6 +194,9 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (ComputedProfile,
 	if err != nil {
 		return ComputedProfile{}, fmt.Errorf("failed to list Tuned: %v", err)
 	}
+
+	// Compute bootcmdline dependencies from all Tuned CRs.
+	bootcmdlineDepsStr := bootcmdlineDeps(tunedList)
 
 	profilesAll, err := tunedProfiles(tunedList)
 	if err != nil {
@@ -253,12 +269,14 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (ComputedProfile,
 			return ComputedProfile{
 				TunedProfileName: defaultProfile,
 				Operand:          recommendedProfile.Config,
+				BootcmdlineDeps:  bootcmdlineDepsStr,
 			}, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
 		}
 
 		return ComputedProfile{
 			TunedProfileName: defaultProfile,
 			Operand:          recommendedProfile.Config,
+			BootcmdlineDeps:  bootcmdlineDepsStr,
 		}, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
 	}
 
@@ -301,6 +319,7 @@ func (pc *ProfileCalculator) calculateProfile(nodeName string) (ComputedProfile,
 		Deferred:         recommendedProfile.Deferred,
 		MCLabels:         recommendedProfile.Labels,
 		Operand:          recommendedProfile.Config,
+		BootcmdlineDeps:  bootcmdlineDepsStr,
 	}, err
 }
 
@@ -318,6 +337,7 @@ type HypershiftRecommendedProfile struct {
 // * the list of all TunedProfiles out of which the tuned profile was calculated
 // * the NodePool name for this Node
 // * operand configuration as defined by tunedv1.OperandConfig
+// * bootcmdline dependencies (sorted Tuned CR names and their generations)
 // * an error if any
 func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (ComputedProfile, error) {
 	klog.V(3).Infof("calculateProfileHyperShift(%s)", nodeName)
@@ -348,6 +368,9 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (Comput
 		}, fmt.Errorf("failed to get Tuned %s: %v", tunedv1.TunedDefaultResourceName, err)
 	}
 	tunedList = append(tunedList, defaultTuned)
+
+	// Compute bootcmdline dependencies from all Tuned CRs.
+	bootcmdlineDepsStr := bootcmdlineDeps(tunedList)
 
 	profilesAll, err := tunedProfiles(tunedList)
 	if err != nil {
@@ -396,6 +419,7 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (Comput
 			TunedProfileName: defaultProfile,
 			AllProfiles:      profilesAll,
 			Operand:          recommendedProfile.Config,
+			BootcmdlineDeps:  bootcmdlineDepsStr,
 		}, fmt.Errorf("the default Tuned CR misses a catch-all profile selection")
 	}
 
@@ -438,6 +462,7 @@ func (pc *ProfileCalculator) calculateProfileHyperShift(nodeName string) (Comput
 		Deferred:         recommendedProfile.Deferred,
 		NodePoolName:     recommendedProfile.NodePoolName,
 		Operand:          recommendedProfile.Config,
+		BootcmdlineDeps:  bootcmdlineDepsStr,
 	}, err
 }
 
@@ -870,4 +895,29 @@ func podLabelsNodeWideChange(podLabelsNodeWide map[string]map[string]string,
 	change := !util.MapOfStringsEqual(oldPodLabelsUnique, curPodLabelsUnique)
 
 	return change
+}
+
+// bootcmdlineDeps returns a string containing a list of all Tuned CR names and generations
+// in the format <name1>:<generation1>,<name2>:<generation2>,...<nameN>:<generationN>.
+// The Tuned CR list is sorted.
+func bootcmdlineDeps(tunedSlice []*tunedv1.Tuned) string {
+	if len(tunedSlice) == 0 {
+		return ""
+	}
+
+	// Sort the Tuned CRs by name for deterministic output.
+	sortedTuneds := make([]*tunedv1.Tuned, len(tunedSlice))
+	copy(sortedTuneds, tunedSlice)
+	sort.Slice(sortedTuneds, func(i, j int) bool {
+		return sortedTuneds[i].Name < sortedTuneds[j].Name
+	})
+
+	var sb strings.Builder
+	for i, tuned := range sortedTuneds {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf("%s:%d", tuned.Name, tuned.Generation))
+	}
+	return sb.String()
 }

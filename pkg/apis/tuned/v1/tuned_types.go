@@ -26,6 +26,12 @@ const (
 	// calculated by TuneD for the current profile applied to that Node.
 	TunedBootcmdlineAnnotationKey string = "tuned.openshift.io/bootcmdline"
 
+	// TunedBootcmdlineDepsAnnotationKey is a Node-specific annotation containing a list of all Tuned CR
+	// names and generations in the format <name1>:<generation1>,<name2>:<generation2>,...<nameN>:<generationN>
+	// out of which the current Tuned Profile was calculated from.  This is used to detect whether all nodes
+	// in a MachineConfigPool have the same bootcmdline parameters calculated from the same set of Tuned CRs.
+	TunedBootcmdlineDepsAnnotationKey string = "tuned.openshift.io/bootcmdline-deps"
+
 	// TunedDeferredUpdate request the tuned daemons to defer the update of the rendered profile
 	// until the next restart.
 	TunedDeferredUpdate string = "tuned.openshift.io/deferred"
@@ -195,6 +201,11 @@ type ProfileConfig struct {
 	// Name of the cloud provider as taken from the Node providerID: <ProviderName>://<ProviderSpecificNodeID>
 	// +optional
 	ProviderName string `json:"providerName,omitempty"`
+	// BootcmdlineDeps is a list of all Tuned CR names and generations in the format
+	// <name1>:<generation1>,<name2>:<generation2>,...<nameN>:<generationN> out of which
+	// the current Tuned Profile was calculated from.  The Tuned CR list is sorted.
+	// +optional
+	BootcmdlineDeps string `json:"bootcmdlineDeps,omitempty"`
 }
 
 // ProfileStatus is the status for a Profile resource; the status is for internal use only
