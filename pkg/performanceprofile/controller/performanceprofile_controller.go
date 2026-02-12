@@ -32,10 +32,12 @@ import (
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
 	ntoconfig "github.com/openshift/cluster-node-tuning-operator/pkg/config"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	pphandler "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/handler"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	hypershiftconsts "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/consts"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/status"
+	ntosync "github.com/openshift/cluster-node-tuning-operator/pkg/sync"
 
 	operatorv1helpers "github.com/openshift/library-go/pkg/operator/v1helpers"
 
@@ -131,6 +133,16 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		},
 	}
 
+	// Set up the bootcmdline sync trigger channel.
+	// When the operator controller signals that bootcmdline is ready for an MCP,
+	// it will send to this channel, triggering immediate reconciliation.
+	bootcmdlineTrigger := make(chan string, 100)
+	ntosync.GetBootcmdlineSync().SetReconcileTrigger(bootcmdlineTrigger)
+
+	// Create a channel source that converts MCP name signals to reconcile requests
+	bootcmdlineEventChan := make(chan event.GenericEvent, 100)
+	go r.bootcmdlineTriggerToEvents(bootcmdlineTrigger, bootcmdlineEventChan)
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&performancev2.PerformanceProfile{}).
 		Owns(&mcov1.MachineConfig{}, builder.WithPredicates(p)).
@@ -144,7 +156,22 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 			handler.EnqueueRequestsFromMapFunc(r.tunedProfileToPerformanceProfile),
 			builder.WithPredicates(tunedProfilePredicates),
 		).
+		WatchesRawSource(source.Channel(bootcmdlineEventChan,
+			handler.EnqueueRequestsFromMapFunc(r.mcpToPerformanceProfile))).
 		Complete(r)
+}
+
+// bootcmdlineTriggerToEvents converts MCP name signals from the bootcmdline sync
+// to GenericEvents that can be watched by the controller.
+func (r *PerformanceProfileReconciler) bootcmdlineTriggerToEvents(trigger <-chan string, events chan<- event.GenericEvent) {
+	for mcpName := range trigger {
+		klog.V(2).Infof("PerformanceProfile controller: received bootcmdline ready signal for MCP %q", mcpName)
+		// Create a synthetic MCP object to use in the event.
+		// The mcpToPerformanceProfile handler will use this to find matching profiles.
+		mcp := &mcov1.MachineConfigPool{}
+		mcp.SetName(mcpName)
+		events <- event.GenericEvent{Object: mcp}
+	}
 }
 
 func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Manager, managementCluster cluster.Cluster) error {
@@ -220,6 +247,21 @@ func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Ma
 		},
 	}
 
+	// Set up the bootcmdline sync trigger channel for HyperShift.
+	// When the operator controller signals that bootcmdline is ready for a NodePool,
+	// it will send to this channel, triggering immediate reconciliation.
+	// Note: In HyperShift, the channel may already be set up by the standard setup,
+	// so we only set it if not already configured.
+	bootcmdlineSync := ntosync.GetBootcmdlineSync()
+	if bootcmdlineSync.GetReconcileTrigger() == nil {
+		bootcmdlineTrigger := make(chan string, 100)
+		bootcmdlineSync.SetReconcileTrigger(bootcmdlineTrigger)
+	}
+
+	// Create a channel source that converts NodePool name signals to reconcile requests
+	bootcmdlineEventChan := make(chan event.GenericEvent, 100)
+	go r.bootcmdlineTriggerToEventsForHypershift(bootcmdlineSync.GetReconcileTrigger(), bootcmdlineEventChan)
+
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("performanceprofile_controller").
 		// we can't use For() and Owns(), because this calls are using the cache of the hosted cluster's client.
@@ -241,7 +283,52 @@ func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Ma
 			&tunedv1.Profile{},
 			handler.TypedEnqueueRequestsFromMapFunc[*tunedv1.Profile](r.tunedProfileToPerformanceProfileForHypershift),
 			tunedProfilePredicates)).
+		WatchesRawSource(source.Channel(bootcmdlineEventChan,
+			handler.EnqueueRequestsFromMapFunc(r.nodePoolToPerformanceProfileForHypershift))).
 		Complete(r)
+}
+
+// bootcmdlineTriggerToEventsForHypershift converts NodePool name signals from the bootcmdline sync
+// to GenericEvents that can be watched by the HyperShift controller.
+func (r *PerformanceProfileReconciler) bootcmdlineTriggerToEventsForHypershift(trigger <-chan string, events chan<- event.GenericEvent) {
+	for nodePoolName := range trigger {
+		klog.V(2).Infof("PerformanceProfile controller (HyperShift): received bootcmdline ready signal for NodePool %q", nodePoolName)
+		// Create a synthetic object with the NodePool name to use in the event.
+		cm := &corev1.ConfigMap{}
+		cm.SetName(nodePoolName)
+		cm.SetLabels(map[string]string{hypershiftconsts.NodePoolNameLabel: nodePoolName})
+		events <- event.GenericEvent{Object: cm}
+	}
+}
+
+// nodePoolToPerformanceProfileForHypershift maps a NodePool name to PerformanceProfile reconcile requests.
+func (r *PerformanceProfileReconciler) nodePoolToPerformanceProfileForHypershift(ctx context.Context, obj client.Object) []reconcile.Request {
+	nodePoolName := obj.GetName()
+	if labels := obj.GetLabels(); labels != nil {
+		if npName, ok := labels[hypershiftconsts.NodePoolNameLabel]; ok {
+			nodePoolName = npName
+		}
+	}
+
+	cmList := &corev1.ConfigMapList{}
+	err := r.ManagementClient.List(ctx, cmList, client.MatchingLabels{
+		hypershiftconsts.NodePoolNameLabel:                                   nodePoolName,
+		hypershiftconsts.ControllerGeneratedPerformanceProfileConfigMapLabel: "true",
+	})
+	if err != nil {
+		klog.Errorf("failed to get performance profiles ConfigMaps for NodePool %q: %v", nodePoolName, err)
+		return nil
+	}
+	if len(cmList.Items) == 0 {
+		klog.V(4).InfoS("no performance profile ConfigMap found for NodePool", "nodePool", nodePoolName)
+		return nil
+	}
+
+	var requests []reconcile.Request
+	for i := range cmList.Items {
+		requests = append(requests, reconcile.Request{NamespacedName: namespacedName(&cmList.Items[i])})
+	}
+	return requests
 }
 
 func validateLabels(obj client.Object, label, eventType string) bool {
@@ -491,6 +578,8 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	// apply components
+	// Note: If bootcmdline is not yet ready, this will return BootcmdlineNotReadyError.
+	// The operator controller will trigger immediate reconciliation when ready.
 	err = r.ComponentsHandler.Apply(ctx, instance, r.Recorder, &components.Options{
 		ProfileMCP: profileMCP,
 		MachineConfig: components.MachineConfigOptions{
@@ -499,6 +588,14 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		MixedCPUsFeatureGateEnabled: r.isMixedCPUsFeatureGateEnabled(),
 	})
 	if err != nil {
+		// Check if the error is due to bootcmdline sync not being ready yet.
+		// If so, requeue without degrading the profile status - this is a normal wait condition.
+		// The operator controller will trigger immediate reconciliation when bootcmdline is ready,
+		// so the RequeueAfter is just a fallback.
+		if _, isBootcmdlineNotReady := err.(*pphandler.BootcmdlineNotReadyError); isBootcmdlineNotReady {
+			klog.V(2).Infof("PerformanceProfile %q: waiting for bootcmdline ready signal, will be triggered by operator controller", instance.GetName())
+			return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
+		}
 		klog.Errorf("failed to deploy performance profile %q components: %v", instance.GetName(), err)
 		r.Recorder.Eventf(instance, corev1.EventTypeWarning, "Creation failed", "Failed to create all components: %v", err)
 		conditions := status.GetDegradedConditions(status.ConditionReasonComponentsCreationFailed, err.Error())
