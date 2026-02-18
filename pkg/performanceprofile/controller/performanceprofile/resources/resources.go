@@ -29,6 +29,26 @@ func mergeMaps(src map[string]string, dst map[string]string) {
 	}
 }
 
+// normalizeMachineConfigSpec returns a copy of spec with RawExtension.Config bytes
+// JSON-normalized (keys sorted alphabetically).
+func normalizeMachineConfigSpec(spec mcov1.MachineConfigSpec) mcov1.MachineConfigSpec {
+	if len(spec.Config.Raw) == 0 {
+		return spec
+	}
+	var obj interface{}
+	if err := json.Unmarshal(spec.Config.Raw, &obj); err != nil {
+		// Not a valid JSON.  Leave as is, comparison will still work for identical bytes.
+		return spec
+	}
+	normalized, err := json.Marshal(obj)
+	if err != nil {
+		return spec
+	}
+	copy := spec.DeepCopy()
+	copy.Config.Raw = normalized
+	return *copy
+}
+
 // TODO: we should merge all create, get and delete methods
 
 func GetMachineConfig(ctx context.Context, cli client.Client, name string) (*mcov1.MachineConfig, error) {
@@ -59,7 +79,7 @@ func GetMutatedMachineConfig(ctx context.Context, cli client.Client, mc *mcov1.M
 	mutated.Spec = mc.Spec
 
 	// we do not need to update if it no change between mutated and existing object
-	if reflect.DeepEqual(existing.Spec, mutated.Spec) &&
+	if reflect.DeepEqual(normalizeMachineConfigSpec(existing.Spec), normalizeMachineConfigSpec(mutated.Spec)) &&
 		apiequality.Semantic.DeepEqual(existing.Labels, mutated.Labels) &&
 		apiequality.Semantic.DeepEqual(existing.Annotations, mutated.Annotations) {
 		return nil, nil
