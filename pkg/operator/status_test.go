@@ -1,4 +1,4 @@
-// Assisted-by: Claude Code IDE; model: claude-4.5-sonnet
+// Assisted-by: Cursor IDE; model: claude-4.5-sonnet
 
 package operator
 
