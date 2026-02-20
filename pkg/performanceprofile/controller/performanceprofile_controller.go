@@ -53,6 +53,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	ctrlmanager "sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
@@ -132,12 +133,22 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 	// Set up the bootcmdline sync trigger channel.
 	// When the operator controller signals that bootcmdline is ready for an MCP,
 	// it will send to this channel, triggering immediate reconciliation.
+	// Guard against SetupWithManager being called more than once, e.g. in tests.
+	bootcmdlineSync := ntosync.GetBootcmdlineSync()
+	if old := bootcmdlineSync.GetReconcileTrigger(); old != nil {
+		close(old)
+	}
 	bootcmdlineTrigger := make(chan string, ntosync.PoolsMax)
-	ntosync.GetBootcmdlineSync().SetReconcileTrigger(bootcmdlineTrigger)
+	bootcmdlineSync.SetReconcileTrigger(bootcmdlineTrigger)
 
 	// Create a channel source that converts MCP name signals to reconcile requests.
 	bootcmdlineEventChan := make(chan event.GenericEvent, ntosync.PoolsMax)
-	go r.bootcmdlineTriggerToEvents(bootcmdlineTrigger, bootcmdlineEventChan)
+	if err := mgr.Add(ctrlmanager.RunnableFunc(func(ctx context.Context) error {
+		r.bootcmdlineTriggerToEvents(ctx, bootcmdlineTrigger, bootcmdlineEventChan)
+		return nil
+	})); err != nil {
+		return err
+	}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&performancev2.PerformanceProfile{}).
@@ -159,14 +170,27 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 
 // bootcmdlineTriggerToEvents converts MCP name signals from the bootcmdline sync
 // to GenericEvents that can be watched by the controller.
-func (r *PerformanceProfileReconciler) bootcmdlineTriggerToEvents(trigger <-chan string, events chan<- event.GenericEvent) {
-	for mcpName := range trigger {
-		klog.V(2).Infof("PerformanceProfile controller: received bootcmdline ready signal for MCP %q", mcpName)
-		// Create a synthetic MCP object to use in the event.
-		// The mcpToPerformanceProfile handler will use this to find matching profiles.
-		mcp := &mcov1.MachineConfigPool{}
-		mcp.SetName(mcpName)
-		events <- event.GenericEvent{Object: mcp}
+func (r *PerformanceProfileReconciler) bootcmdlineTriggerToEvents(ctx context.Context, trigger <-chan string, events chan<- event.GenericEvent) {
+	defer close(events)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case mcpName, ok := <-trigger:
+			if !ok {
+				return
+			}
+			klog.V(2).Infof("PerformanceProfile controller: received bootcmdline ready signal for MCP %q", mcpName)
+			// Create a synthetic MCP object to use in the event.
+			// The mcpToPerformanceProfile handler will use this to find matching profiles.
+			mcp := &mcov1.MachineConfigPool{}
+			mcp.SetName(mcpName)
+			select {
+			case events <- event.GenericEvent{Object: mcp}:
+			case <-ctx.Done():
+				return
+			}
+		}
 	}
 }
 
@@ -246,17 +270,22 @@ func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Ma
 	// Set up the bootcmdline sync trigger channel for HyperShift.
 	// When the operator controller signals that bootcmdline is ready for a NodePool,
 	// it will send to this channel, triggering immediate reconciliation.
-	// Note: In HyperShift, the channel may already be set up by the standard setup,
-	// so we only set it if not already configured.
+	// Guard against SetupWithManager being called more than once, e.g. in tests.
 	bootcmdlineSync := ntosync.GetBootcmdlineSync()
-	if bootcmdlineSync.GetReconcileTrigger() == nil {
-		bootcmdlineTrigger := make(chan string, ntosync.PoolsMax)
-		bootcmdlineSync.SetReconcileTrigger(bootcmdlineTrigger)
+	if old := bootcmdlineSync.GetReconcileTrigger(); old != nil {
+		close(old)
 	}
+	bootcmdlineTrigger := make(chan string, ntosync.PoolsMax)
+	bootcmdlineSync.SetReconcileTrigger(bootcmdlineTrigger)
 
-	// Create a channel source that converts NodePool name signals to reconcile requests
+	// Create a channel source that converts NodePool name signals to reconcile requests.
 	bootcmdlineEventChan := make(chan event.GenericEvent, ntosync.PoolsMax)
-	go r.bootcmdlineTriggerToEventsForHypershift(bootcmdlineSync.GetReconcileTrigger(), bootcmdlineEventChan)
+	if err := mgr.Add(ctrlmanager.RunnableFunc(func(ctx context.Context) error {
+		r.bootcmdlineTriggerToEventsForHypershift(ctx, bootcmdlineTrigger, bootcmdlineEventChan)
+		return nil
+	})); err != nil {
+		return err
+	}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("performanceprofile_controller").
@@ -286,14 +315,29 @@ func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Ma
 
 // bootcmdlineTriggerToEventsForHypershift converts NodePool name signals from the bootcmdline sync
 // to GenericEvents that can be watched by the HyperShift controller.
-func (r *PerformanceProfileReconciler) bootcmdlineTriggerToEventsForHypershift(trigger <-chan string, events chan<- event.GenericEvent) {
-	for nodePoolName := range trigger {
-		klog.V(2).Infof("PerformanceProfile controller (HyperShift): received bootcmdline ready signal for NodePool %q", nodePoolName)
-		// Create a synthetic object with the NodePool name to use in the event.
-		cm := &corev1.ConfigMap{}
-		cm.SetName(nodePoolName)
-		cm.SetLabels(map[string]string{hypershiftconsts.NodePoolNameLabel: nodePoolName})
-		events <- event.GenericEvent{Object: cm}
+// It closes events when it returns so that source.Channel's syncLoop can detect the
+// end-of-stream via the channel-closed path in addition to ctx.Done().
+func (r *PerformanceProfileReconciler) bootcmdlineTriggerToEventsForHypershift(ctx context.Context, trigger <-chan string, events chan<- event.GenericEvent) {
+	defer close(events)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case nodePoolName, ok := <-trigger:
+			if !ok {
+				return
+			}
+			klog.V(2).Infof("PerformanceProfile controller (HyperShift): received bootcmdline ready signal for NodePool %q", nodePoolName)
+			// Create a synthetic object with the NodePool name to use in the event.
+			cm := &corev1.ConfigMap{}
+			cm.SetName(nodePoolName)
+			cm.SetLabels(map[string]string{hypershiftconsts.NodePoolNameLabel: nodePoolName})
+			select {
+			case events <- event.GenericEvent{Object: cm}:
+			case <-ctx.Done():
+				return
+			}
+		}
 	}
 }
 
