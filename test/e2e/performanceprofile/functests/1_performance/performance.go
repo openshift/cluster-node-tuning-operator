@@ -13,7 +13,6 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
-	nodev1 "k8s.io/api/node/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
@@ -607,48 +606,27 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		It("[test_id:32364] Verifies that cluster can have multiple profiles", func() {
 			Expect(testclient.ControlPlaneClient.Create(context.TODO(), secondProfile)).ToNot(HaveOccurred())
 
-			By("Checking that new KubeletConfig, MachineConfig and RuntimeClass created")
-			configKey := types.NamespacedName{
-				Name:      components.GetComponentName(secondProfile.Name, components.ComponentNamePrefix),
-				Namespace: metav1.NamespaceNone,
-			}
-			kubeletConfig := &machineconfigv1.KubeletConfig{}
-			err := testclient.GetWithRetry(context.TODO(), testclient.ControlPlaneClient, configKey, kubeletConfig)
-			Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("cannot find KubeletConfig object %s", configKey.Name))
-			Expect(kubeletConfig.Spec.MachineConfigPoolSelector.MatchLabels[machineconfigv1.MachineConfigRoleLabelKey]).Should(Equal(newRole))
-			Expect(kubeletConfig.Spec.KubeletConfig.Raw).Should(ContainSubstring("restricted"), "Can't find value in KubeletConfig")
-
-			runtimeClass := &nodev1.RuntimeClass{}
-			err = testclient.GetWithRetry(context.TODO(), testclient.DataPlaneClient, configKey, runtimeClass)
-			Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("cannot find RuntimeClass profile object %s", runtimeClass.Name))
-			Expect(runtimeClass.Handler).Should(Equal(machineconfig.HighPerformanceRuntime))
-
-			machineConfigKey := types.NamespacedName{
-				Name:      machineconfig.GetMachineConfigName(secondProfile.Name),
-				Namespace: metav1.NamespaceNone,
-			}
-			machineConfig := &machineconfigv1.MachineConfig{}
-			err = testclient.GetWithRetry(context.TODO(), testclient.ControlPlaneClient, machineConfigKey, machineConfig)
-			Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("cannot find MachineConfig object %s", configKey.Name))
-			Expect(machineConfig.Labels[machineconfigv1.MachineConfigRoleLabelKey]).Should(Equal(newRole))
-
 			By("Checking that new Tuned profile created")
 			tunedKey := types.NamespacedName{
 				Name:      components.GetComponentName(secondProfile.Name, components.ProfileNamePerformance),
 				Namespace: components.NamespaceNodeTuningOperator,
 			}
 			tunedProfile := &tunedv1.Tuned{}
-			err = testclient.GetWithRetry(context.TODO(), testclient.ControlPlaneClient, tunedKey, tunedProfile)
+			err := testclient.GetWithRetry(context.TODO(), testclient.ControlPlaneClient, tunedKey, tunedProfile)
 			Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("cannot find Tuned profile object %s", tunedKey.Name))
 			Expect(tunedProfile.Spec.Recommend[0].MachineConfigLabels[machineconfigv1.MachineConfigRoleLabelKey]).Should(Equal(newRole))
 			Expect(*tunedProfile.Spec.Profile[0].Data).Should(ContainSubstring("NEW_ARGUMENT"), "Can't find value in Tuned profile")
+
+			// New KubeletConfig, MachineConfig and RuntimeClass will only be created once all nodes within the MCP agree on bootcmdline
+			// parameters.  We didn't add any new nodes in the second MCP (these tests should work with one worker node only), so this
+			// will never happen.
 
 			By("Checking that the initial MCP does not start updating")
 			Consistently(func() corev1.ConditionStatus {
 				return mcps.GetConditionStatus(testutils.RoleWorkerCNF, machineconfigv1.MachineConfigPoolUpdating)
 			}, 30, 5).Should(Equal(corev1.ConditionFalse))
 
-			By("Remove second profile and verify that KubeletConfig and MachineConfig were removed")
+			By("Remove the second PerformanceProfile and verify that the second Tuned profile was removed")
 			Expect(testclient.ControlPlaneClient.Delete(context.TODO(), secondProfile)).ToNot(HaveOccurred())
 
 			profileKey := types.NamespacedName{
@@ -661,9 +639,6 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				return mcps.GetConditionStatus(testutils.RoleWorkerCNF, machineconfigv1.MachineConfigPoolUpdating)
 			}, 30, 5).Should(Equal(corev1.ConditionFalse))
 
-			Expect(testclient.ControlPlaneClient.Get(context.TODO(), configKey, kubeletConfig)).To(HaveOccurred(), fmt.Sprintf("KubeletConfig %s should be removed", configKey.Name))
-			Expect(testclient.ControlPlaneClient.Get(context.TODO(), machineConfigKey, machineConfig)).To(HaveOccurred(), fmt.Sprintf("MachineConfig %s should be removed", configKey.Name))
-			Expect(testclient.ControlPlaneClient.Get(context.TODO(), configKey, runtimeClass)).To(HaveOccurred(), fmt.Sprintf("RuntimeClass %s should be removed", configKey.Name))
 			Expect(testclient.ControlPlaneClient.Get(context.TODO(), tunedKey, tunedProfile)).To(HaveOccurred(), fmt.Sprintf("Tuned profile object %s should be removed", tunedKey.Name))
 
 			By("Checking that initial KubeletConfig and MachineConfig still exist")
