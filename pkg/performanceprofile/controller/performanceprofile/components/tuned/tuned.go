@@ -268,7 +268,7 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 		},
 	}
 
-	priority := uint64(20)
+	priority := int64(20)
 	recommends := []tunedv1.TunedRecommend{
 		{
 			Profile:             &name,

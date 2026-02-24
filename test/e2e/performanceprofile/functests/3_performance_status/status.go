@@ -251,7 +251,7 @@ func createBadMachineConfig(name string) *machineconfigv1.MachineConfig {
 // createBadTuned creates bad tuned that should ended up in a degraded state
 // and return a cleanup function that can be called to wipe out the bad tuned object
 func createBadTuned(name, ns string) func() {
-	priority := uint64(20)
+	priority := int64(20)
 	// include=profile-does-not-exist
 	// points to tuned profile which doesn't exist
 	data := "[main]\nsummary=A Tuned daemon profile that does not exist\ninclude=profile-does-not-exist"

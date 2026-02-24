@@ -2564,7 +2564,11 @@ func (in *IngressControllerTuningOptions) DeepCopyInto(out *IngressControllerTun
 		*out = new(metav1.Duration)
 		**out = **in
 	}
-	out.HTTPKeepAliveTimeout = in.HTTPKeepAliveTimeout
+	if in.HTTPKeepAliveTimeout != nil {
+		in, out := &in.HTTPKeepAliveTimeout, &out.HTTPKeepAliveTimeout
+		*out = new(metav1.Duration)
+		**out = **in
+	}
 	if in.TLSInspectDelay != nil {
 		in, out := &in.TLSInspectDelay, &out.TLSInspectDelay
 		*out = new(metav1.Duration)

@@ -88,7 +88,7 @@ type TunedRecommend struct {
 
 	// Tuned profile priority. Highest priority is 0.
 	// +kubebuilder:validation:Minimum=0
-	Priority *uint64 `json:"priority"`
+	Priority *int64 `json:"priority"`
 	// Rules governing application of a Tuned profile connected by logical OR operator.
 	Match []TunedMatch `json:"match,omitempty"`
 	// MachineConfigLabels specifies the labels for a MachineConfig. The MachineConfig is created

@@ -344,6 +344,47 @@ type IngressControllerSpec struct {
 	// +kubebuilder:default:="Immediate"
 	// +default="Immediate"
 	IdleConnectionTerminationPolicy IngressControllerConnectionTerminationPolicy `json:"idleConnectionTerminationPolicy,omitempty"`
+
+	// closedClientConnectionPolicy controls how the IngressController
+	// behaves when the client closes the TCP connection while the TLS
+	// handshake or HTTP request is in progress. This option maps directly
+	// to HAProxy’s "abortonclose" option.
+	//
+	// Valid values are: "Abort" and "Continue".
+	// The default value is "Continue".
+	//
+	// When set to "Abort", the router will stop processing the TLS handshake
+	// if it is in progress, and it will not send an HTTP request to the backend server
+	// if the request has not yet been sent when the client closes the connection.
+	//
+	// When set to "Continue", the router will complete the TLS handshake
+	// if it is in progress, or send an HTTP request to the backend server
+	// and wait for the backend server's response, regardless of
+	// whether the client has closed the connection.
+	//
+	// Setting "Abort" can help free CPU resources otherwise spent on TLS computation
+	// for connections the client has already closed, and can reduce request queue
+	// size, thereby reducing the load on saturated backend servers.
+	//
+	// Important Considerations:
+	//
+	//   - The default policy ("Continue") is HTTP-compliant, and requests
+	//     for aborted client connections will still be served.
+	//     Use the "Continue" policy to allow a client to send a request
+	//     and then immediately close its side of the connection while
+	//     still receiving a response on the half-closed connection.
+	//
+	//   - When clients use keep-alive connections, the most common case for premature
+	//     closure is when the user wants to cancel the transfer or when a timeout
+	//     occurs. In that case, the "Abort" policy may be used to reduce resource consumption.
+	//
+	//   - Using RSA keys larger than 2048 bits can significantly slow down
+	//     TLS computations. Consider using the "Abort" policy to reduce CPU usage.
+	//
+	// +optional
+	// +kubebuilder:default:="Continue"
+	// +default="Continue"
+	ClosedClientConnectionPolicy IngressControllerClosedClientConnectionPolicy `json:"closedClientConnectionPolicy,omitempty"`
 }
 
 // httpCompressionPolicy turns on compression for the specified MIME types.
@@ -1912,7 +1953,7 @@ type IngressControllerTuningOptions struct {
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=16
 	// +optional
-	HTTPKeepAliveTimeout metav1.Duration `json:"httpKeepAliveTimeout,omitempty"`
+	HTTPKeepAliveTimeout *metav1.Duration `json:"httpKeepAliveTimeout,omitempty"`
 
 	// tlsInspectDelay defines how long the router can hold data to find a
 	// matching route.
@@ -2169,4 +2210,35 @@ const (
 	// the proxy keep-alive timeout, or the client closing the
 	// connection.
 	IngressControllerConnectionTerminationPolicyDeferred IngressControllerConnectionTerminationPolicy = "Deferred"
+)
+
+// IngressControllerClosedClientConnectionPolicy controls how the IngressController
+// behaves when the client closes the TCP connection while the TLS
+// handshake or HTTP request is in progress.
+//
+// +kubebuilder:validation:Enum=Abort;Continue
+type IngressControllerClosedClientConnectionPolicy string
+
+const (
+	// IngressControllerClosedClientConnectionPolicyAbort aborts processing early when the client
+	// closes the connection.
+	//
+	// This affects two types of processing: TLS handshake computation on the router
+	// and request handling.
+	//
+	// When the client closes the connection, the router will stop processing
+	// the TLS handshake, preventing unnecessary CPU work.
+	//
+	// If the HTTP request has not yet been sent to the backend, it will be aborted.
+	// If the request is already being processed by the backend, the router will
+	// half-close the connection to signal this condition to the backend server,
+	// which can then decide how to proceed.
+	IngressControllerClosedClientConnectionPolicyAbort IngressControllerClosedClientConnectionPolicy = "Abort"
+
+	// IngressControllerClosedClientConnectionPolicyContinue continues processing even if the client
+	// closes the connection.
+	//
+	// The router will complete the TLS handshake and wait for the backend
+	// server's response regardless of the client having closed the connection.
+	IngressControllerClosedClientConnectionPolicyContinue IngressControllerClosedClientConnectionPolicy = "Continue"
 )
