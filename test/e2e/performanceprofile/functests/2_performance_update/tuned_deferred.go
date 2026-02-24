@@ -234,7 +234,7 @@ func createTunedObject(deferMode string, KernelSHMMNI string, name string) (*tun
 
 	tunedName := name
 	ns := components.NamespaceNodeTuningOperator
-	priority := uint64(19)
+	priority := int64(19)
 	data := fmt.Sprintf(`
 	[main]
 	summary=Configuration changes profile inherited from performance created tuned

@@ -2,11 +2,11 @@ package main
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
-	"k8s.io/utils/strings/slices"
 
 	"github.com/openshift-kni/debug-tools/pkg/cli/knit"
 )
