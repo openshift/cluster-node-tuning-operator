@@ -1264,8 +1264,9 @@ func checkPodHTSiblings(ctx context.Context, testpod *corev1.Pod) bool {
 	By("Get host cpu siblings for pod cpuset")
 	hostHTSiblingPaths := strings.Builder{}
 	for _, cpuNum := range podcpus.List() {
-		_, err = hostHTSiblingPaths.WriteString(
-			fmt.Sprintf(" /sys/devices/system/cpu/cpu%d/topology/thread_siblings_list", cpuNum),
+		_, err = fmt.Fprintf(
+			&hostHTSiblingPaths,
+			" /sys/devices/system/cpu/cpu%d/topology/thread_siblings_list", cpuNum,
 		)
 		Expect(err).ToNot(HaveOccurred(), "Build.Write failed to add dir path string?")
 	}

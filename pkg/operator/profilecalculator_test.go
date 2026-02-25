@@ -30,7 +30,7 @@ func tunedProfileToString(tunedProfile tunedv1.TunedProfile) string {
 	} else {
 		data = *tunedProfile.Data
 	}
-	sb.WriteString(fmt.Sprintf("Name: %s; Data: %s", name, data))
+	fmt.Fprintf(&sb, "Name: %s; Data: %s", name, data)
 
 	return sb.String()
 }
@@ -50,7 +50,7 @@ func tunedProfilesToString(tunedProfiles []tunedv1.TunedProfile) string {
 
 func TestTunedProfiles(t *testing.T) {
 	profileData := "[main] # a dummy TuneD profile with no configuration"
-	profilePriority := uint64(20)
+	profilePriority := int64(20)
 
 	var (
 		tests = []struct {

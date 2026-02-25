@@ -36,14 +36,38 @@ const (
 	GCPErrorReason   string = "GCPError"
 )
 
-// GCPPrivateServiceConnectSpec defines the desired state of PSC infrastructure
-type GCPPrivateServiceConnectSpec struct {
-	// forwardingRuleName is the name of the Internal Load Balancer forwarding rule
+// DNSZoneStatus represents a single DNS zone and its records
+type DNSZoneStatus struct {
+	// name is the DNS zone name
 	// +required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	Name string `json:"name"`
+
+	// records lists the DNS records created in this zone
+	// +optional
+	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=10
+	// +kubebuilder:validation:items:MaxLength=253
+	Records []string `json:"records,omitempty"`
+}
+
+// GCPPrivateServiceConnectSpec defines the desired state of PSC infrastructure
+type GCPPrivateServiceConnectSpec struct {
+	// loadBalancerIP is the IP address of the Internal Load Balancer
+	// Populated by the observer from service status
+	// This value must be a valid IPv4 or IPv6 address.
+	// +required
+	// +kubebuilder:validation:XValidation:rule="self.matches('^((\\\\d{1,3}\\\\.){3}\\\\d{1,3})$') || self.matches('^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$')",message="loadBalancerIP must be a valid IPv4 or IPv6 address"
+	// +kubebuilder:validation:MaxLength=45
+	LoadBalancerIP string `json:"loadBalancerIP"`
+
+	// forwardingRuleName is the name of the Internal Load Balancer forwarding rule
+	// Populated by the reconciler via GCP API lookup
+	// +optional
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=`^[a-z]([-a-z0-9]*[a-z0-9])?$`
-	ForwardingRuleName string `json:"forwardingRuleName"`
+	ForwardingRuleName string `json:"forwardingRuleName,omitempty"`
 
 	// consumerAcceptList specifies which customer projects can connect
 	// Accepts both project IDs (e.g. "my-project-123") and project numbers (e.g. "123456789012")
@@ -91,21 +115,16 @@ type GCPPrivateServiceConnectStatus struct {
 	// Customer Side Status (PSC Endpoint and DNS)
 
 	// endpointIP is the reserved IP address for the PSC endpoint
+	// This value must be a valid IPv4 or IPv6 address.
 	// +optional
-	// +kubebuilder:validation:MaxLength=15
-	// +kubebuilder:validation:Pattern=`^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$`
+	// +kubebuilder:validation:XValidation:rule="self == '' || self.matches('^((\\\\d{1,3}\\\\.){3}\\\\d{1,3})$') || self.matches('^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$')",message="endpointIP must be a valid IPv4 or IPv6 address"
+	// +kubebuilder:validation:MaxLength=45
 	EndpointIP string `json:"endpointIP,omitempty"`
 
-	// dnsZoneName is the private DNS zone name
-	// +optional
-	// +kubebuilder:validation:MaxLength=253
-	DNSZoneName string `json:"dnsZoneName,omitempty"`
-
-	// dnsRecords lists the created DNS A records
-	// +optional
-	// +kubebuilder:validation:MaxItems=10
-	// +kubebuilder:validation:items:MaxLength=253
-	DNSRecords []string `json:"dnsRecords,omitempty"`
+	// dnsZones contains DNS zone information created for this cluster
+	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=5
+	DNSZones []DNSZoneStatus `json:"dnsZones,omitempty"`
 }
 
 // +genclient
@@ -115,7 +134,7 @@ type GCPPrivateServiceConnectStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Service Attachment",type="string",JSONPath=".status.serviceAttachmentName",description="Name of the Service Attachment"
 // +kubebuilder:printcolumn:name="Endpoint IP",type="string",JSONPath=".status.endpointIP",description="IP address of the PSC endpoint"
-// +kubebuilder:printcolumn:name="Available",type="string",JSONPath=".status.conditions[?(@.type==\"GCPPrivateServiceConnectAvailable\")].status",description="Overall PSC availability status"
+// +kubebuilder:printcolumn:name="Available",type="string",JSONPath=".status.conditions[?(@.type==\"GCPEndpointAvailable\")].status",description="PSC endpoint availability status"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // +openshift:enable:FeatureGate=GCPPlatform
 

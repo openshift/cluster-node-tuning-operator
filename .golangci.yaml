@@ -36,6 +36,10 @@ linters:
       - legacy
       - std-error-handling
     rules:
+      # Technical debt, GetEventRecorderFor() this uses the old events API and will be removed in a future release.
+      - linters:
+          - staticcheck
+        text: "SA1019:.*GetEventRecorderFor is deprecated"
       # Technical debt, ReportViaDeprecatedReporter() will be removed in future ginkgo versions.
       - linters:
           - staticcheck
