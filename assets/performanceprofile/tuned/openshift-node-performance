@@ -1,3 +1,5 @@
+# PerformanceProfile.Name: {{.PerformanceProfileName}}
+# PerformanceProfile.Generation: {{.ProfileGeneration}}
 [main]
 summary=Openshift node optimized for deterministic performance at the cost of increased power consumption, focused on low latency network performance. Based on Tuned 2.11 and Cluster node tuning (oc 4.5)
 

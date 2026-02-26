@@ -38,6 +38,7 @@ const (
 	templateIsolatedCpuList                 = "IsolatedCpuList"
 	templateReservedCpuList                 = "ReservedCpuList"
 	templatePerformanceProfileName          = "PerformanceProfileName"
+	templateProfileGeneration               = "ProfileGeneration"
 )
 
 func new(name string, profiles []tunedv1.TunedProfile, recommends []tunedv1.TunedRecommend) *tunedv1.Tuned {
@@ -62,6 +63,7 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 	templateArgs := make(map[string]interface{})
 
 	templateArgs[templatePerformanceProfileName] = profile.Name
+	templateArgs[templateProfileGeneration] = profile.Generation
 
 	if profile.Spec.CPU.Isolated != nil {
 		minifiedCpuSet, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))

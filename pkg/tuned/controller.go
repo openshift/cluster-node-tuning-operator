@@ -1296,12 +1296,14 @@ func (c *Controller) daemonMessage(change Change, message string) string {
 func (c *Controller) updateTunedProfile(change Change) (err error) {
 	var bootcmdline string
 
+	klog.Infof("updateTunedProfile(): 1")
 	if bootcmdline, err = GetBootcmdline(); err != nil {
 		// This should never happen unless something is seriously wrong (e.g. TuneD
 		// daemon no longer uses tunedBootcmdlineFile).  Do not continue.
 		return fmt.Errorf("unable to get kernel command-line parameters: %v", err)
 	}
 
+	klog.Infof("updateTunedProfile(): 2")
 	node, err := c.getNodeForProfile(c.nodeName)
 	if err != nil {
 		return err
@@ -1311,13 +1313,33 @@ func (c *Controller) updateTunedProfile(change Change) (err error) {
 		node.Annotations = map[string]string{}
 	}
 
-	bootcmdlineAnnotVal, bootcmdlineAnnotSet := node.Annotations[tunedv1.TunedBootcmdlineAnnotationKey]
-	if !bootcmdlineAnnotSet || bootcmdlineAnnotVal != bootcmdline {
-		annotations := map[string]string{tunedv1.TunedBootcmdlineAnnotationKey: bootcmdline}
-		err = c.updateNodeAnnotations(node, annotations)
-		if err != nil {
-			return err
-		}
+	annotations := map[string]string{tunedv1.TunedBootcmdlineAnnotationKey: bootcmdline}
+
+	// Get the active profile to check for PPC dependencies.
+	klog.Infof("updateTunedProfile(): 3")
+	activeProfile, err := getActiveProfile()
+	if err != nil {
+		klog.V(2).Infof("updateTunedProfile(): unable to get active profile: %v", err)
+	}
+	klog.Infof("updateTunedProfile(): activeProfile=%v", activeProfile)
+
+	// Check if the active profile uses/includes a PPC-generated tuned profile.
+	var bootcmdlineDepsStr string
+	if ppcInfo := GetPPCInfoForProfile(activeProfile); ppcInfo != nil {
+		// Format: <PerformanceProfile.Name>:<PerformanceProfile.Generation>
+		bootcmdlineDepsStr = fmt.Sprintf("%s:%s", ppcInfo.Name, ppcInfo.Generation)
+		klog.Infof("updateTunedProfile(): PPC profile detected for %q: name=%s, generation=%s", activeProfile, ppcInfo.Name, ppcInfo.Generation)
+	}
+	klog.Infof("updateTunedProfile(): 4")
+
+	if len(bootcmdlineDepsStr) != 0 {
+		// TODO: tuned version (built-in profiles) for syncing.
+		annotations[tunedv1.TunedBootcmdlineDepsAnnotationKey] = bootcmdlineDepsStr
+	}
+
+	err = c.updateNodeAnnotations(node, annotations)
+	if err != nil {
+		return err
 	}
 
 	return c.updateTunedProfileStatus(context.TODO(), change)

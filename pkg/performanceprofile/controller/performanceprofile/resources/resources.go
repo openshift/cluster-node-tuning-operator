@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"reflect"
 
+	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -20,6 +21,7 @@ import (
 	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/util"
 )
 
 func mergeMaps(src map[string]string, dst map[string]string) {
@@ -396,4 +398,98 @@ func filterMCPDuplications(mcps []mcov1.MachineConfigPool) []mcov1.MachineConfig
 	}
 
 	return filtered
+}
+
+// GetNodesForProfile returns the list of nodes that match the performance profile's node selector.
+func GetNodesForProfile(ctx context.Context, cli client.Client, profile *performancev2.PerformanceProfile) ([]corev1.Node, error) {
+	nodeList := &corev1.NodeList{}
+	if err := cli.List(ctx, nodeList); err != nil {
+		return nil, err
+	}
+
+	profileNodeSelector := labels.Set(profile.Spec.NodeSelector)
+	var matchedNodes []corev1.Node
+
+	for _, node := range nodeList.Items {
+		nodeLabels := labels.Set(node.Labels)
+		if profileNodeSelector.AsSelector().Matches(nodeLabels) {
+			matchedNodes = append(matchedNodes, node)
+		}
+	}
+
+	return matchedNodes, nil
+}
+
+// CheckNodesBootcmdlineReady checks if all nodes have bootcmdline annotations set, if they all agree on the bootcmdline,
+// and if the bootcmdline dependencies annotation matches the expected PerformanceProfile name and generation.
+// Returns: (bootcmdline string, allNodesReady bool, nodesAgree bool).
+func CheckNodesBootcmdlineReady(nodes []corev1.Node, profileName string, profileGeneration int64) (string, bool, bool) {
+	if len(nodes) == 0 {
+		return "", true, true
+	}
+
+	expectedDeps := fmt.Sprintf("%s:%d", profileName, profileGeneration)
+
+	var bootcmdline string
+	allSet := true
+	allAgree := true
+
+	for i, node := range nodes {
+		if node.Annotations == nil {
+			allSet = false
+			break
+		}
+
+		bootcmdlineAnnotVal, bootcmdlineAnnotSet := node.Annotations[tunedv1.TunedBootcmdlineAnnotationKey]
+		if !bootcmdlineAnnotSet {
+			allSet = false
+			break
+		}
+
+		// Check that bootcmdline dependencies match the expected PerformanceProfile name and generation
+		bootcmdlineDepsAnnotVal, bootcmdlineDepsAnnotSet := node.Annotations[tunedv1.TunedBootcmdlineDepsAnnotationKey]
+		if !bootcmdlineDepsAnnotSet || bootcmdlineDepsAnnotVal != expectedDeps {
+			allSet = false
+			break
+		}
+
+		if i == 0 {
+			bootcmdline = bootcmdlineAnnotVal
+		} else if bootcmdline != bootcmdlineAnnotVal {
+			allAgree = false
+			break
+		}
+	}
+
+	return bootcmdline, allSet, allAgree
+}
+
+// GetKernelArgumentsFromTunedBootcmdline waits for all nodes to have bootcmdline annotations set by tuned,
+// then returns the parsed kernel arguments. Returns an error if bootcmdline is not ready or nodes disagree.
+func GetKernelArgumentsFromTunedBootcmdline(ctx context.Context, cli client.Client, profile *performancev2.PerformanceProfile) ([]string, error) {
+	// Get nodes for this performance profile
+	nodes, err := GetNodesForProfile(ctx, cli, profile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get nodes for performance profile %q: %v", profile.Name, err)
+	}
+
+	// Check if all nodes have bootcmdline annotations set by tuned and dependencies match
+	bootcmdline, allNodesReady, nodesAgree := CheckNodesBootcmdlineReady(nodes, profile.Name, profile.Generation)
+
+	if !allNodesReady {
+		klog.V(2).Infof("bootcmdline for profile %s (generation %d) not cached for all nodes, MachineConfig creation deferred", profile.Name, profile.Generation)
+		return nil, fmt.Errorf("bootcmdline not ready for all nodes of profile %s (generation %d)", profile.Name, profile.Generation)
+	}
+
+	if !nodesAgree {
+		// This is a configuration issue - nodes disagree on bootcmdline.
+		klog.Errorf("not all %d nodes for profile %q agree on bootcmdline: %s", len(nodes), profile.Name, bootcmdline)
+		return nil, fmt.Errorf("not all nodes for profile %q agree on bootcmdline", profile.Name)
+	}
+
+	// Split bootcmdline into kernel arguments
+	kernelArguments := util.SplitKernelArguments(bootcmdline)
+	klog.V(2).Infof("bootcmdline for profile %s: %s (parsed to %d kernel arguments)", profile.Name, bootcmdline, len(kernelArguments))
+
+	return kernelArguments, nil
 }
