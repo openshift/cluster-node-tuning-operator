@@ -2,6 +2,7 @@ package __latency_testing
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math"
 	"os"
@@ -12,7 +13,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
+	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 )
 
 // TODO get commonly used variables from one shared file that defines constants
@@ -264,6 +267,15 @@ func getNegativeTests(toolToTest string) []latencyTest {
 		latencyFailureMsg = hwlatdetectFail
 	}
 
+	// BZ 2094046: need SMT active on pool to add the HT-specific test. One node is enough (pool shares same config).
+	var htEnabled bool
+	if toolToTest == oslat || toolToTest == cyclictest {
+		workerNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
+		if err == nil && len(workerNodes) > 0 {
+			htEnabled, _ = nodes.IsSMTActive(context.Background(), &workerNodes[0])
+		}
+	}
+
 	testSet = append(testSet, latencyTest{testDelay: "0", testRuntime: "5", testMaxLatency: "1", outputMsgs: []string{latencyFailureMsg, fail}, toolToTest: toolToTest})
 	testSet = append(testSet, latencyTest{testRuntime: fmt.Sprint(math.MaxInt32 + 1), outputMsgs: []string{invalidNumberRuntime, fail}, toolToTest: toolToTest})
 	testSet = append(testSet, latencyTest{testRuntime: "-1", testMaxLatency: "1", outputMsgs: []string{invalidNumberRuntime, fail}, toolToTest: toolToTest})
@@ -283,15 +295,17 @@ func getNegativeTests(toolToTest string) []latencyTest {
 		testSet = append(testSet, latencyTest{testRuntime: "2", oslatMaxLatency: "&", outputMsgs: []string{incorrectOslatMaxLatency, fail}, toolToTest: toolToTest})
 		testSet = append(testSet, latencyTest{testRuntime: "2", oslatMaxLatency: fmt.Sprint(math.MaxInt32 + 1), outputMsgs: []string{invalidNumberOslatMaxLatency, fail}, toolToTest: toolToTest})
 		testSet = append(testSet, latencyTest{testRuntime: "2", oslatMaxLatency: "-3", outputMsgs: []string{invalidNumberOslatMaxLatency, fail}, toolToTest: toolToTest})
-		// Covers the scenario of BZ 2094046
-		testSet = append(testSet, latencyTest{testRuntime: "2", testCpus: "2", outputMsgs: []string{unexpectedError, fail}, toolToTest: toolToTest})
+		if htEnabled {
+			testSet = append(testSet, latencyTest{testRuntime: "2", testCpus: "2", oslatMaxLatency: untunedLatencyThreshold, outputMsgs: []string{unexpectedError, fail}, toolToTest: toolToTest})
+		}
 	}
 	if toolToTest == cyclictest {
 		testSet = append(testSet, latencyTest{testRuntime: "2", cyclictestMaxLatency: "&", outputMsgs: []string{incorrectCyclictestMaxLatency, fail}, toolToTest: toolToTest})
 		testSet = append(testSet, latencyTest{testRuntime: "2", cyclictestMaxLatency: fmt.Sprint(math.MaxInt32 + 1), outputMsgs: []string{invalidNumberCyclictestMaxLatency, fail}, toolToTest: toolToTest})
 		testSet = append(testSet, latencyTest{testRuntime: "2", cyclictestMaxLatency: "-3", outputMsgs: []string{invalidNumberCyclictestMaxLatency, fail}, toolToTest: toolToTest})
-		// Covers the scenario of BZ 2094046
-		testSet = append(testSet, latencyTest{testRuntime: "2", testCpus: "2", outputMsgs: []string{unexpectedError, fail}, toolToTest: toolToTest})
+		if htEnabled {
+			testSet = append(testSet, latencyTest{testRuntime: "2", testCpus: "2", cyclictestMaxLatency: untunedLatencyThreshold, outputMsgs: []string{unexpectedError, fail}, toolToTest: toolToTest})
+		}
 	}
 	if toolToTest == hwlatdetect {
 		testSet = append(testSet, latencyTest{testRuntime: "2", hwlatdetectMaxLatency: "&", outputMsgs: []string{incorrectHwlatdetectMaxLatency, fail}, toolToTest: toolToTest})
