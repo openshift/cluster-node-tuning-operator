@@ -39,7 +39,7 @@ func BootcmdlineDeps(tunedSlice []*tunedv1.Tuned) string {
 		if sb.Len() > 0 {
 			sb.WriteString(",")
 		}
-		sb.WriteString(fmt.Sprintf("%s:%d", tuned.Name, tuned.Generation))
+		fmt.Fprintf(&sb, "%s:%d", tuned.Name, tuned.Generation)
 	}
 	return sb.String()
 }
