@@ -103,6 +103,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 		}
 		// No point in checking any further, performanceTuned.Generation will not match below.
 		// Wait for explicit reconcileTrigger or periodic resync.
+		klog.Infof("PerformanceProfile %q: created/updated Tuned CR %q for MCP %q", profile.Name, performanceTuned.Name, opts.ProfileMCP.Name)
 		return nil
 	}
 
