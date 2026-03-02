@@ -149,13 +149,13 @@ func (b *BootcmdlineSync) IsReady(pool string, expectedBootcmdlineDep string) bo
 	ready := tunedDepMatch && releaseVersionMatch
 
 	if ready {
-		klog.Infof("BootcmdlineSync: pool %q ready: expected Tuned dep %q and RELEASE_VERSION %q found in actual deps %q", pool, expectedBootcmdlineDep, expectedReleaseVersion, bootcmdlineDeps)
+		klog.V(2).Infof("BootcmdlineSync: pool %q ready: expected Tuned dep %q and RELEASE_VERSION %q found in actual deps %q", pool, expectedBootcmdlineDep, expectedReleaseVersion, bootcmdlineDeps)
 	} else {
 		if !tunedDepMatch {
-			klog.Infof("BootcmdlineSync: pool %q not ready: expected Tuned dep %q not found in actual deps %q", pool, expectedBootcmdlineDep, bootcmdlineDeps)
+			klog.V(2).Infof("BootcmdlineSync: pool %q not ready: expected Tuned dep %q not found in actual deps %q", pool, expectedBootcmdlineDep, bootcmdlineDeps)
 		}
 		if !releaseVersionMatch {
-			klog.Infof("BootcmdlineSync: pool %q not ready: expected RELEASE_VERSION %q not found in actual deps %q", pool, expectedReleaseVersion, bootcmdlineDeps)
+			klog.V(2).Infof("BootcmdlineSync: pool %q not ready: expected RELEASE_VERSION %q not found in actual deps %q", pool, expectedReleaseVersion, bootcmdlineDeps)
 		}
 	}
 

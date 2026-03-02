@@ -131,7 +131,6 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if mcMutated != nil {
-		klog.Infof("PerformanceProfile %q: bootcmdline ready for MCP %q, creating MachineConfig", profile.Name, mcpName)
 		if err := resources.CreateOrUpdateMachineConfig(ctx, h.Client, mcMutated); err != nil {
 			return err
 		}
