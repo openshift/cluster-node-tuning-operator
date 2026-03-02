@@ -114,23 +114,23 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	// current performance Tuned CR identified by its name:generation.  The check is non-blocking.
 	// If not ready, we return an error to requeue.  The operator controller will also trigger
 	// immediate reconciliation when ready.
-	if mcMutated != nil {
-		mcpName := opts.ProfileMCP.Name
-		bootcmdlineSync := ntosync.GetBootcmdlineSync()
+	mcpName := opts.ProfileMCP.Name
+	bootcmdlineSync := ntosync.GetBootcmdlineSync()
 
-		// Check if the current performance Tuned CR is included in the bootcmdline calculation.
-		// We use the performanceTuned object which always contains the existing CR (with Generation field)
-		// whether or not it needs updating.
-		expectedTunedDep := fmt.Sprintf("%s:%d", performanceTuned.Name, performanceTuned.Generation)
+	// Check if the current performance Tuned CR is included in the bootcmdline calculation.
+	// We use the performanceTuned object which always contains the existing CR (with Generation field)
+	// whether or not it needs updating.
+	expectedTunedDep := fmt.Sprintf("%s:%d", performanceTuned.Name, performanceTuned.Generation)
 
-		if !bootcmdlineSync.IsReady(mcpName, expectedTunedDep) {
-			klog.Infof("PerformanceProfile %q [%v]: bootcmdline not ready for MCP %q", profile.Name, expectedTunedDep, mcpName)
-			return &ntosync.BootcmdlineNotReadyError{
-				MCPName: mcpName,
-				Message: fmt.Sprintf("waiting for bootcmdline to be ready for MCP %q with Tuned dependency %q", mcpName, expectedTunedDep),
-			}
+	if !bootcmdlineSync.IsReady(mcpName, expectedTunedDep) {
+		klog.Infof("PerformanceProfile %q [%v]: bootcmdline not ready for MCP %q", profile.Name, expectedTunedDep, mcpName)
+		return &ntosync.BootcmdlineNotReadyError{
+			MCPName: mcpName,
+			Message: fmt.Sprintf("waiting for bootcmdline to be ready for MCP %q with Tuned dependency %q", mcpName, expectedTunedDep),
 		}
+	}
 
+	if mcMutated != nil {
 		klog.Infof("PerformanceProfile %q: bootcmdline ready for MCP %q, creating MachineConfig", profile.Name, mcpName)
 		if err := resources.CreateOrUpdateMachineConfig(ctx, h.Client, mcMutated); err != nil {
 			return err
