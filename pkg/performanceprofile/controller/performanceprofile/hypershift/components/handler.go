@@ -177,7 +177,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	actualTuned, err := resources.GetTuned(ctx, h.dataPlaneClient, tunedName, mfs.Tuned.Namespace)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			klog.Infof("PerformanceProfile %q (HyperShift): Tuned CR %q not found in hosted cluster, waiting for it to be created", profile.Name, tunedName)
+			klog.V(2).Infof("PerformanceProfile %q (HyperShift): Tuned CR %q not found in hosted cluster, waiting for it to be created", profile.Name, tunedName)
 			return &ntosync.BootcmdlineNotReadyError{
 				MCPName: nodePoolName,
 				Message: fmt.Sprintf("waiting for Tuned CR %q to be created", tunedName),
@@ -199,7 +199,6 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	if mcMutated != nil {
-		klog.Infof("PerformanceProfile %q (HyperShift): bootcmdline ready for NodePool %q, creating MachineConfig", profile.Name, nodePoolName)
 		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.MachineConfig, profile.Name, hypershiftconsts.ConfigKey, map[string]string{hypershiftconsts.NTOGeneratedMachineConfigLabel: "true"})
 		if err != nil {
 			return err
