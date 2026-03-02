@@ -168,37 +168,37 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	// If not ready, we return an error to requeue.  The operator controller will also trigger
 	// immediate reconciliation when ready.
 	// In HyperShift, we use the NodePool name (vs. MCP) as the sync key.
-	if mcMutated != nil {
-		bootcmdlineSync := ntosync.GetBootcmdlineSync()
+	bootcmdlineSync := ntosync.GetBootcmdlineSync()
 
-		// Fetch the actual Tuned CR from the hosted cluster to get its real name and generation.
-		// The operator's syncHostedClusterTuneds creates the Tuned CR on the hosted cluster
-		// with a hash suffix based on the NodePool name using MakeTunedUniqueName().
-		tunedName := nto.MakeTunedUniqueName(mfs.Tuned.Name, nodePoolName)
-		actualTuned, err := resources.GetTuned(ctx, h.dataPlaneClient, tunedName, mfs.Tuned.Namespace)
-		if err != nil {
-			if k8serrors.IsNotFound(err) {
-				klog.Infof("PerformanceProfile %q (HyperShift): Tuned CR %q not found in hosted cluster, waiting for it to be created", profile.Name, tunedName)
-				return &ntosync.BootcmdlineNotReadyError{
-					MCPName: nodePoolName,
-					Message: fmt.Sprintf("waiting for Tuned CR %q to be created", tunedName),
-				}
-			}
-			return fmt.Errorf("failed to get Tuned CR %q: %w", tunedName, err)
-		}
-
-		// Check if the current performance Tuned CR is included in the bootcmdline calculation.
-		// Use the actual Tuned CR from the hosted cluster with its real generation.
-		expectedTunedDep := fmt.Sprintf("%s:%d", actualTuned.Name, actualTuned.Generation)
-
-		if !bootcmdlineSync.IsReady(nodePoolName, expectedTunedDep) {
-			klog.Infof("PerformanceProfile %q [%v] (HyperShift): bootcmdline not ready for NodePool %q", profile.Name, expectedTunedDep, nodePoolName)
+	// Fetch the actual Tuned CR from the hosted cluster to get its real name and generation.
+	// The operator's syncHostedClusterTuneds creates the Tuned CR on the hosted cluster
+	// with a hash suffix based on the NodePool name using MakeTunedUniqueName().
+	tunedName := nto.MakeTunedUniqueName(mfs.Tuned.Name, nodePoolName)
+	actualTuned, err := resources.GetTuned(ctx, h.dataPlaneClient, tunedName, mfs.Tuned.Namespace)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			klog.Infof("PerformanceProfile %q (HyperShift): Tuned CR %q not found in hosted cluster, waiting for it to be created", profile.Name, tunedName)
 			return &ntosync.BootcmdlineNotReadyError{
 				MCPName: nodePoolName,
-				Message: fmt.Sprintf("waiting for bootcmdline to be ready for NodePool %q with Tuned dependency %q", nodePoolName, expectedTunedDep),
+				Message: fmt.Sprintf("waiting for Tuned CR %q to be created", tunedName),
 			}
 		}
+		return fmt.Errorf("failed to get Tuned CR %q: %w", tunedName, err)
+	}
 
+	// Check if the current performance Tuned CR is included in the bootcmdline calculation.
+	// Use the actual Tuned CR from the hosted cluster with its real generation.
+	expectedTunedDep := fmt.Sprintf("%s:%d", actualTuned.Name, actualTuned.Generation)
+
+	if !bootcmdlineSync.IsReady(nodePoolName, expectedTunedDep) {
+		klog.Infof("PerformanceProfile %q [%v] (HyperShift): bootcmdline not ready for NodePool %q", profile.Name, expectedTunedDep, nodePoolName)
+		return &ntosync.BootcmdlineNotReadyError{
+			MCPName: nodePoolName,
+			Message: fmt.Sprintf("waiting for bootcmdline to be ready for NodePool %q with Tuned dependency %q", nodePoolName, expectedTunedDep),
+		}
+	}
+
+	if mcMutated != nil {
 		klog.Infof("PerformanceProfile %q (HyperShift): bootcmdline ready for NodePool %q, creating MachineConfig", profile.Name, nodePoolName)
 		cm, err := EncapsulateObjInConfigMap(h.scheme, instance, mfs.MachineConfig, profile.Name, hypershiftconsts.ConfigKey, map[string]string{hypershiftconsts.NTOGeneratedMachineConfigLabel: "true"})
 		if err != nil {

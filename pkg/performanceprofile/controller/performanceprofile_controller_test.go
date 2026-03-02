@@ -727,6 +727,9 @@ var _ = Describe("Controller", func() {
 						},
 					}
 
+					// Signal bootcmdline ready for the mcp-test MCP
+					signalBootcmdlineReady(mcp.Name, tunedPerformance.Name, tunedPerformance.Generation)
+
 					r := newFakeReconciler(profile, mc, kc, tunedPerformance, mcp, infra, clusterOperator)
 
 					Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
