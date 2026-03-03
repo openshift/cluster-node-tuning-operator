@@ -12,7 +12,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/jaypipes/ghw v0.20.0
 	github.com/kevinburke/go-bindata v3.24.0+incompatible
-	github.com/onsi/ginkgo/v2 v2.28.0
+	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
 	github.com/openshift-eng/openshift-tests-extension v0.0.0-20260127124016-0fed2b824818
 	github.com/openshift-kni/debug-tools v0.2.6
@@ -20,6 +20,7 @@ require (
 	github.com/openshift/api v0.0.0-20260223154456-de86ee3bf481
 	github.com/openshift/build-machinery-go v0.0.0-20251023084048-5d77c1a5e5af
 	github.com/openshift/client-go v0.0.0-20260219131751-7e63ce155298
+	github.com/openshift/controller-runtime-common v0.0.0-20260213175913-767fef058eca
 	github.com/openshift/custom-resource-status v1.1.2
 	github.com/openshift/hypershift/api v0.0.0-20260224085943-34e30acde920
 	github.com/openshift/library-go v0.0.0-20260223145824-7b234b47a906

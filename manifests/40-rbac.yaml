@@ -103,6 +103,10 @@ rules:
 - apiGroups: ["config.openshift.io"]
   resources: ["clusterversions", "featuregates"]
   verbs: ["list", "watch"]
+# Needed to for the centralized TLS profile
+- apiGroups: ["config.openshift.io"]
+  resources: ["apiservers"]
+  verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
   resources: ["replicasets"]
   verbs: ["get"]
