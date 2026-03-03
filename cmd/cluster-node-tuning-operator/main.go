@@ -21,6 +21,7 @@ import (
 	paocontroller "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/handler"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/status"
+	tlspkg "github.com/openshift/controller-runtime-common/pkg/tls"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/spf13/cobra"
@@ -122,16 +123,6 @@ func operatorRun() {
 		return
 	}
 
-	tlsOpts := []func(*tls.Config){
-		func(c *tls.Config) {
-			// CVE-2023-44487
-			c.NextProtos = []string{"http/1.1"}
-			// Default minimum version is TLS 1.3.  PQ algorithms will only be supported in TLS 1.3+.
-			// Hybrid key agreements for TLS 1.3 X25519MLKEM768 is supported by default in go 1.24.
-			c.MinVersion = tls.VersionTLS13
-		},
-	}
-
 	// We have two namespaces that we need to watch:
 	// 1. NTO namespace: for NTO resources.  Note this is not necessarily where the operator itself
 	//    runs, for example operator managing HyperShift hosted clusters.
@@ -142,6 +133,20 @@ func operatorRun() {
 		metav1.NamespaceNone: {},
 	}
 	restConfig := ctrl.GetConfigOrDie()
+
+	tlsSecurityProfileSpec, tlsConfig := getInitialTLSProfile(restConfig)
+	tlsOpts := []func(*tls.Config){
+		func(c *tls.Config) {
+			// CVE-2023-44487
+			c.NextProtos = []string{"http/1.1"}
+		},
+		tlsConfig,
+	}
+
+	// Create a context that can be cancelled when there is a need to shut down the manager.
+	ctx, cancel := context.WithCancel(ctrl.SetupSignalHandler())
+	defer cancel()
+
 	le := util.GetLeaderElectionConfig(restConfig, enableLeaderElection)
 	mgr, err := ctrl.NewManager(rest.AddUserAgent(restConfig, version.OperatorFilename), ctrl.Options{
 		Cache:                         cache.Options{DefaultNamespaces: namespaces},
@@ -174,6 +179,9 @@ func operatorRun() {
 	if err := mgr.Add(controller); err != nil {
 		klog.Fatalf("failed to add new controller to the manager: %v", err)
 	}
+
+	// Configure the metrics server to use the central TLS profile.
+	metrics.SetTLSConfigFunc(tlsConfig)
 
 	if err := mgr.Add(metrics.Server{}); err != nil {
 		klog.Fatalf("unable to add metrics server as runnable under the manager: %v", err)
@@ -249,7 +257,16 @@ func operatorRun() {
 			klog.Exitf("unable to create PerformanceProfile controller: %v", err)
 		}
 	}
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+
+	// Set up the TLS security profile watcher controller for both classic and HyperShift clusters.
+	// This will trigger a graceful shutdown when the TLS profile changes.
+	// In classic mode, this watches the local cluster's APIServer.
+	// In HyperShift mode, this watches the hosted cluster's APIServer.
+	if err := setupTLSProfileWatcher(ctx, mgr, cancel, tlsSecurityProfileSpec); err != nil {
+		klog.Fatalf("unable to create TLS security profile watcher controller: %v", err)
+	}
+
+	if err := mgr.Start(ctx); err != nil {
 		klog.Exitf("manager exited with non-zero code: %v", err)
 	}
 }
@@ -294,6 +311,70 @@ func setupFeatureGates(ctx context.Context, config *rest.Config, operatorNamespa
 		return nil, fmt.Errorf("timed out waiting for FeatureGate detection")
 	}
 	return featureGateAccessor.CurrentFeatureGates()
+}
+
+// Try to fetch the TLS profile from the APIServer resource.
+// Fall back to the default (intermediate) profile in case of errors.
+// In HyperShift mode, the restConfig will point to the hosted cluster,
+// so this function will fetch the TLS profile from the hosted cluster's APIServer.
+//
+// Note: According to the OpenShift centralized TLS configuration enhancement, SLOs
+// *should* read the TLS profile from the `HostedCluster` CR spec in the management KAS.
+// However, at the time of the implementation there is no library for doing this and it
+// would make the implementation less readable.  Reconsider fetching the HostedCluster
+// object and getting the TLSProfile from there once there are official libraries supporting
+// this.
+func getInitialTLSProfile(restConfig *rest.Config) (apiconfigv1.TLSProfileSpec, func(*tls.Config)) {
+	// Helper function to get the default TLS profile.
+	getDefaultTLSProfile := func() apiconfigv1.TLSProfileSpec {
+		tlsSecurityProfileSpec, err := tlspkg.GetTLSProfileSpec(nil)
+		if err != nil {
+			// With the current implementation of GetTLSProfileSpec this should never happen, but be defensive.
+			klog.Fatalf("unable to get default TLS profile: %v", err)
+		}
+		return tlsSecurityProfileSpec
+	}
+
+	var tlsSecurityProfileSpec apiconfigv1.TLSProfileSpec
+
+	k8sClient, err := client.New(restConfig, client.Options{Scheme: scheme})
+	if err != nil {
+		klog.Warningf("unable to create Kubernetes client for TLS profile fetch, falling back to default TLS profile: %v", err)
+		tlsSecurityProfileSpec = getDefaultTLSProfile()
+	} else {
+		klog.V(2).Infof("Fetching TLS profile from APIServer resource")
+		tlsSecurityProfileSpec, err = tlspkg.FetchAPIServerTLSProfile(context.Background(), k8sClient)
+		if err != nil {
+			klog.Warningf("unable to get TLS profile from API server, falling back to default TLS profile: %v", err)
+			tlsSecurityProfileSpec = getDefaultTLSProfile()
+		}
+	}
+
+	// Create the TLS configuration function for the webhook and metrics servers.
+	tlsConfig, unsupportedCiphers := tlspkg.NewTLSConfigFromProfile(tlsSecurityProfileSpec)
+	if len(unsupportedCiphers) > 0 {
+		klog.Warningf("TLS configuration contains unsupported ciphers that will be ignored: %v", unsupportedCiphers)
+	}
+
+	klog.Infof("TLS security profile: MinTLSVersion=%s, Ciphers=%v", tlsSecurityProfileSpec.MinTLSVersion, tlsSecurityProfileSpec.Ciphers)
+
+	return tlsSecurityProfileSpec, tlsConfig
+}
+
+func setupTLSProfileWatcher(ctx context.Context, mgr ctrl.Manager, cancel context.CancelFunc, tlsSecurityProfileSpec apiconfigv1.TLSProfileSpec) error {
+	watcher := &tlspkg.SecurityProfileWatcher{
+		Client:                mgr.GetClient(),
+		InitialTLSProfileSpec: tlsSecurityProfileSpec,
+		OnProfileChange: func(ctx context.Context, oldTLSProfileSpec, newTLSProfileSpec apiconfigv1.TLSProfileSpec) {
+			klog.Infof("TLS profile has changed, initiating a shutdown to reload it. %q: %+v, %q: %+v",
+				"old profile", oldTLSProfileSpec,
+				"new profile", newTLSProfileSpec,
+			)
+			cancel()
+		},
+	}
+
+	return watcher.SetupWithManager(mgr)
 }
 
 func main() {
