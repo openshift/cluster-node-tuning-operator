@@ -359,6 +359,22 @@ func GetCoreSiblings(ctx context.Context, node *corev1.Node) (map[int]map[int][]
 	return coreSiblings, err
 }
 
+// GetTwoSiblingsFromCPUSet returns two siblings that are both found in the cpuSet
+func GetTwoSiblingsFromCPUSet(siblings map[int]map[int][]int, cpuSet cpuset.CPUSet) (cpuset.CPUSet, error) {
+	for _, node := range siblings {
+		for _, core := range node {
+			if len(core) != 2 {
+				return cpuset.New(), fmt.Errorf("core %d has %d siblings, wanted 2", core, len(core))
+			}
+			siblingCPUSet := cpuset.New(core...)
+			if siblingCPUSet.IsSubsetOf(cpuSet) {
+				return siblingCPUSet, nil
+			}
+		}
+	}
+	return cpuset.New(), fmt.Errorf("no two siblings found in the given CPU set")
+}
+
 // TunedForNode find tuned pod for appropriate node
 func TunedForNode(node *corev1.Node, sno bool) *corev1.Pod {
 	listOptions := &client.ListOptions{
