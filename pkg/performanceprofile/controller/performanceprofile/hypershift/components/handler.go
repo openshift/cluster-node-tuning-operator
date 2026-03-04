@@ -153,11 +153,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 		if err != nil {
 			return err
 		}
-		// The operator will pick up this new ConfigMap, create the actual Tuned CR on the hosted cluster,
-		// compute bootcmdline and signal ready to the PerformanceProfile controller.  Continue on the next
-		// reconcile.
 		klog.Infof("PerformanceProfile %q: created/updated Tuned CR for pool %q", profile.Name, nodePoolName)
-		return nil
 	}
 
 	// Check bootcmdline sync signal from the operator controller before creating MachineConfig.
