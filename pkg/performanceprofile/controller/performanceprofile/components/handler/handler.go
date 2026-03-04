@@ -101,10 +101,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 		if err := resources.CreateOrUpdateTuned(ctx, h.Client, performanceTuned, profile.Name); err != nil {
 			return err
 		}
-		// No point in checking any further, performanceTuned.Generation will not match below.
-		// Wait for explicit reconcileTrigger or periodic resync.
 		klog.Infof("PerformanceProfile %q: created/updated Tuned CR %q for MCP %q", profile.Name, performanceTuned.Name, opts.ProfileMCP.Name)
-		return nil
 	}
 
 	// Check bootcmdline sync signal from the operator controller before creating MachineConfig.
