@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"os"
 	"reflect"
 	"time"
 
@@ -36,8 +35,7 @@ import (
 	hypershiftconsts "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/consts"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/status"
-
-	operatorv1helpers "github.com/openshift/library-go/pkg/operator/v1helpers"
+	ntosync "github.com/openshift/cluster-node-tuning-operator/pkg/sync"
 
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
@@ -55,6 +53,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	ctrlmanager "sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
@@ -131,6 +130,26 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		},
 	}
 
+	// Set up the bootcmdline sync trigger channel.
+	// When the operator controller signals that bootcmdline is ready for an MCP,
+	// it will send to this channel, triggering immediate reconciliation.
+	// Guard against SetupWithManager being called more than once, e.g. in tests.
+	bootcmdlineSync := ntosync.GetBootcmdlineSync()
+	if old := bootcmdlineSync.GetReconcileTrigger(); old != nil {
+		close(old)
+	}
+	bootcmdlineTrigger := make(chan string, ntosync.PoolsMax)
+	bootcmdlineSync.SetReconcileTrigger(bootcmdlineTrigger)
+
+	// Create a channel source that converts MCP name signals to reconcile requests.
+	bootcmdlineEventChan := make(chan event.GenericEvent, ntosync.PoolsMax)
+	if err := mgr.Add(ctrlmanager.RunnableFunc(func(ctx context.Context) error {
+		r.bootcmdlineTriggerToEvents(ctx, bootcmdlineTrigger, bootcmdlineEventChan)
+		return nil
+	})); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&performancev2.PerformanceProfile{}).
 		Owns(&mcov1.MachineConfig{}, builder.WithPredicates(p)).
@@ -144,7 +163,35 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 			handler.EnqueueRequestsFromMapFunc(r.tunedProfileToPerformanceProfile),
 			builder.WithPredicates(tunedProfilePredicates),
 		).
+		WatchesRawSource(source.Channel(bootcmdlineEventChan,
+			handler.EnqueueRequestsFromMapFunc(r.mcpToPerformanceProfile))).
 		Complete(r)
+}
+
+// bootcmdlineTriggerToEvents converts MCP name signals from the bootcmdline sync
+// to GenericEvents that can be watched by the controller.
+func (r *PerformanceProfileReconciler) bootcmdlineTriggerToEvents(ctx context.Context, trigger <-chan string, events chan<- event.GenericEvent) {
+	defer close(events)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case mcpName, ok := <-trigger:
+			if !ok {
+				return
+			}
+			klog.V(2).Infof("PerformanceProfile controller: received bootcmdline ready signal for MCP %q", mcpName)
+			// Create a synthetic MCP object to use in the event.
+			// The mcpToPerformanceProfile handler will use this to find matching profiles.
+			mcp := &mcov1.MachineConfigPool{}
+			mcp.SetName(mcpName)
+			select {
+			case events <- event.GenericEvent{Object: mcp}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
 }
 
 func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Manager, managementCluster cluster.Cluster) error {
@@ -220,6 +267,26 @@ func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Ma
 		},
 	}
 
+	// Set up the bootcmdline sync trigger channel for HyperShift.
+	// When the operator controller signals that bootcmdline is ready for a NodePool,
+	// it will send to this channel, triggering immediate reconciliation.
+	// Guard against SetupWithManager being called more than once, e.g. in tests.
+	bootcmdlineSync := ntosync.GetBootcmdlineSync()
+	if old := bootcmdlineSync.GetReconcileTrigger(); old != nil {
+		close(old)
+	}
+	bootcmdlineTrigger := make(chan string, ntosync.PoolsMax)
+	bootcmdlineSync.SetReconcileTrigger(bootcmdlineTrigger)
+
+	// Create a channel source that converts NodePool name signals to reconcile requests.
+	bootcmdlineEventChan := make(chan event.GenericEvent, ntosync.PoolsMax)
+	if err := mgr.Add(ctrlmanager.RunnableFunc(func(ctx context.Context) error {
+		r.bootcmdlineTriggerToEventsForHypershift(ctx, bootcmdlineTrigger, bootcmdlineEventChan)
+		return nil
+	})); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("performanceprofile_controller").
 		// we can't use For() and Owns(), because this calls are using the cache of the hosted cluster's client.
@@ -241,7 +308,67 @@ func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Ma
 			&tunedv1.Profile{},
 			handler.TypedEnqueueRequestsFromMapFunc[*tunedv1.Profile](r.tunedProfileToPerformanceProfileForHypershift),
 			tunedProfilePredicates)).
+		WatchesRawSource(source.Channel(bootcmdlineEventChan,
+			handler.EnqueueRequestsFromMapFunc(r.nodePoolToPerformanceProfileForHypershift))).
 		Complete(r)
+}
+
+// bootcmdlineTriggerToEventsForHypershift converts NodePool name signals from the bootcmdline sync
+// to GenericEvents that can be watched by the HyperShift controller.
+// It closes events when it returns so that source.Channel's syncLoop can detect the
+// end-of-stream via the channel-closed path in addition to ctx.Done().
+func (r *PerformanceProfileReconciler) bootcmdlineTriggerToEventsForHypershift(ctx context.Context, trigger <-chan string, events chan<- event.GenericEvent) {
+	defer close(events)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case nodePoolName, ok := <-trigger:
+			if !ok {
+				return
+			}
+			klog.V(2).Infof("PerformanceProfile controller (HyperShift): received bootcmdline ready signal for NodePool %q", nodePoolName)
+			// Create a synthetic object with the NodePool name to use in the event.
+			cm := &corev1.ConfigMap{}
+			cm.SetName(nodePoolName)
+			cm.SetLabels(map[string]string{hypershiftconsts.NodePoolNameLabel: nodePoolName})
+			select {
+			case events <- event.GenericEvent{Object: cm}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
+}
+
+// nodePoolToPerformanceProfileForHypershift maps a NodePool name to PerformanceProfile reconcile requests.
+func (r *PerformanceProfileReconciler) nodePoolToPerformanceProfileForHypershift(ctx context.Context, obj client.Object) []reconcile.Request {
+	nodePoolName := obj.GetName()
+	if labels := obj.GetLabels(); labels != nil {
+		if npName, ok := labels[hypershiftconsts.NodePoolNameLabel]; ok {
+			nodePoolName = npName
+		}
+	}
+
+	cmList := &corev1.ConfigMapList{}
+	err := r.ManagementClient.List(ctx, cmList, client.MatchingLabels{
+		hypershiftconsts.NodePoolNameLabel:                                   nodePoolName,
+		hypershiftconsts.ControllerGeneratedPerformanceProfileConfigMapLabel: "true",
+	})
+	if err != nil {
+		klog.Errorf("failed to get performance profiles ConfigMaps for NodePool %q: %v", nodePoolName, err)
+		return nil
+	}
+	if len(cmList.Items) == 0 {
+		klog.V(4).InfoS("no performance profile ConfigMap found for NodePool", "nodePool", nodePoolName)
+		return nil
+	}
+
+	var requests []reconcile.Request
+	for i := range cmList.Items {
+		requests = append(requests, reconcile.Request{NamespacedName: namespacedName(&cmList.Items[i])})
+	}
+	return requests
 }
 
 func validateLabels(obj client.Object, label, eventType string) bool {
@@ -400,20 +527,6 @@ func validateUpdateEvent(old, new metav1.Object) bool {
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	co, err := resources.GetClusterOperator(ctx, r.Client)
-	if err != nil {
-		klog.Errorf("failed to get ClusterOperator: %v", err)
-		return reconcile.Result{}, err
-	}
-
-	operatorReleaseVersion := os.Getenv("RELEASE_VERSION")
-	operandReleaseVersion := operatorv1helpers.FindOperandVersion(co.Status.Versions, tunedv1.TunedOperandName)
-	if operandReleaseVersion == nil || operatorReleaseVersion != operandReleaseVersion.Version {
-		// Upgrade in progress. Should happen rarely, so we omit V()
-		klog.Infof("operator and operand release versions do not match")
-		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
-	}
-
 	klog.V(4).InfoS("Reconciling", "reqNamespace", req.NamespacedName)
 	defer klog.V(4).InfoS("Exit Reconciling", "reqNamespace", req.NamespacedName)
 
@@ -425,7 +538,7 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		finalizer = hypershiftFinalizer
 	}
 
-	err = r.ManagementClient.Get(ctx, req.NamespacedName, instance)
+	err := r.ManagementClient.Get(ctx, req.NamespacedName, instance)
 	if err != nil {
 		if k8serros.IsNotFound(err) {
 			// Request object isn't found, could have been deleted after reconciled request.
@@ -491,6 +604,8 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	// apply components
+	// Note: If bootcmdline is not yet ready, this will return BootcmdlineNotReadyError.
+	// The operator controller will trigger immediate reconciliation when ready.
 	err = r.ComponentsHandler.Apply(ctx, instance, r.Recorder, &components.Options{
 		ProfileMCP: profileMCP,
 		MachineConfig: components.MachineConfigOptions{
@@ -499,6 +614,14 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		MixedCPUsFeatureGateEnabled: r.isMixedCPUsFeatureGateEnabled(),
 	})
 	if err != nil {
+		// Check if the error is due to bootcmdline sync not being ready yet.
+		// If so, requeue without degrading the profile status - this is a normal wait condition.
+		// The operator controller will trigger immediate reconciliation when bootcmdline is ready,
+		// so the RequeueAfter is just a fallback.
+		if _, isBootcmdlineNotReady := err.(*ntosync.BootcmdlineNotReadyError); isBootcmdlineNotReady {
+			klog.V(2).Infof("PerformanceProfile %q: waiting for bootcmdline ready signal, will be triggered by operator controller", instance.GetName())
+			return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
+		}
 		klog.Errorf("failed to deploy performance profile %q components: %v", instance.GetName(), err)
 		r.Recorder.Eventf(instance, corev1.EventTypeWarning, "Creation failed", "Failed to create all components: %v", err)
 		conditions := status.GetDegradedConditions(status.ConditionReasonComponentsCreationFailed, err.Error())
