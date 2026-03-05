@@ -32,8 +32,8 @@ type BootcmdlineSync struct {
 // The operator controller will trigger immediate reconciliation by SignalReady().  The requeue
 // PerformanceProfile controller's interval serves only as a fallback.
 type BootcmdlineNotReadyError struct {
-	MCPName string
-	Message string
+	PoolName string
+	Message  string
 }
 
 const (

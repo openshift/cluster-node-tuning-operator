@@ -122,8 +122,8 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	if !bootcmdlineSync.IsReady(mcpName, expectedTunedDep) {
 		klog.Infof("PerformanceProfile %q [%v]: bootcmdline not ready for MCP %q", profile.Name, expectedTunedDep, mcpName)
 		return &ntosync.BootcmdlineNotReadyError{
-			MCPName: mcpName,
-			Message: fmt.Sprintf("waiting for bootcmdline to be ready for MCP %q with Tuned dependency %q", mcpName, expectedTunedDep),
+			PoolName: mcpName,
+			Message:  fmt.Sprintf("waiting for bootcmdline to be ready for MCP %q with Tuned dependency %q", mcpName, expectedTunedDep),
 		}
 	}
 

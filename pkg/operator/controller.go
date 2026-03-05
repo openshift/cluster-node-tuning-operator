@@ -813,11 +813,7 @@ func (c *Controller) syncMachineConfig(labels map[string]string, profile *tunedv
 		return err
 	}
 
-	// Get bootcmdlineDeps from Profile annotation
-	bootcmdlineDeps := ""
-	if profile.Annotations != nil {
-		bootcmdlineDeps = profile.Annotations[tunedv1.TunedBootcmdlineDepsAnnotationKey]
-	}
+	bootcmdlineDeps := getBootcmdlineDeps(profile)
 
 	if ok := c.allNodesHaveCurrentBootcmdlineDeps(nodes, bootcmdlineDeps); !ok {
 		klog.V(2).Infof("syncMachineConfig(): bootcmdline for %s not calculated for all nodes, sync canceled", profile.Name)
@@ -897,6 +893,16 @@ func (c *Controller) syncMachineConfig(labels map[string]string, profile *tunedv
 	return nil
 }
 
+// Get bootcmdlineDeps from Profile annotation.
+func getBootcmdlineDeps(profile *tunedv1.Profile) string {
+	bootcmdlineDeps := ""
+	if profile != nil && profile.Annotations != nil {
+		bootcmdlineDeps = profile.Annotations[tunedv1.TunedBootcmdlineDepsAnnotationKey]
+	}
+
+	return bootcmdlineDeps
+}
+
 // allNodesHaveCurrentBootcmdlineDeps returns true if all Nodes in slice 'nodes' have
 // their bootcmdline-deps annotation (TunedBootcmdlineDepsAnnotationKey) values
 // cached in the profilecalculator's cache.  The values also must agree for all nodes
@@ -958,11 +964,7 @@ func (c *Controller) syncMachineConfigHyperShift(nodePoolName string, profile *t
 		return fmt.Errorf("could not fetch a list of Nodes for NodePool %s: %v", nodePoolName, err)
 	}
 
-	// Get bootcmdlineDeps from Profile annotation
-	bootcmdlineDeps := ""
-	if profile.Annotations != nil {
-		bootcmdlineDeps = profile.Annotations[tunedv1.TunedBootcmdlineDepsAnnotationKey]
-	}
+	bootcmdlineDeps := getBootcmdlineDeps(profile)
 
 	if ok := c.allNodesHaveCurrentBootcmdlineDeps(nodes, bootcmdlineDeps); !ok {
 		klog.V(2).Infof("syncMachineConfigHyperShift(): bootcmdline for %s not calculated for all nodes, sync canceled", profile.Name)

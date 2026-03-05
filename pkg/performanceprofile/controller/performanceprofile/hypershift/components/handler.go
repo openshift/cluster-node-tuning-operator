@@ -175,8 +175,8 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 		if k8serrors.IsNotFound(err) {
 			klog.V(2).Infof("PerformanceProfile %q (HyperShift): Tuned CR %q not found in hosted cluster, waiting for it to be created", profile.Name, tunedName)
 			return &ntosync.BootcmdlineNotReadyError{
-				MCPName: nodePoolName,
-				Message: fmt.Sprintf("waiting for Tuned CR %q to be created", tunedName),
+				PoolName: nodePoolName,
+				Message:  fmt.Sprintf("waiting for Tuned CR %q to be created", tunedName),
 			}
 		}
 		return fmt.Errorf("failed to get Tuned CR %q: %w", tunedName, err)
@@ -189,8 +189,8 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	if !bootcmdlineSync.IsReady(nodePoolName, expectedTunedDep) {
 		klog.Infof("PerformanceProfile %q [%v] (HyperShift): bootcmdline not ready for NodePool %q", profile.Name, expectedTunedDep, nodePoolName)
 		return &ntosync.BootcmdlineNotReadyError{
-			MCPName: nodePoolName,
-			Message: fmt.Sprintf("waiting for bootcmdline to be ready for NodePool %q with Tuned dependency %q", nodePoolName, expectedTunedDep),
+			PoolName: nodePoolName,
+			Message:  fmt.Sprintf("waiting for bootcmdline to be ready for NodePool %q with Tuned dependency %q", nodePoolName, expectedTunedDep),
 		}
 	}
 
