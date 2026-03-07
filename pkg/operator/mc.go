@@ -68,29 +68,15 @@ func printMachineConfigPoolsNames(pools []*mcfgv1.MachineConfigPool) string {
 	return sb.String()
 }
 
-// GetMachineConfigNameForPools takes pools a slice of MachineConfigPools and returns
-// a MachineConfig name to be used for MachineConfigPool based matching.
-func GetMachineConfigNameForPools(pools []*mcfgv1.MachineConfigPool) string {
-	var (
-		sb        strings.Builder
-		poolNames []string
-	)
-
-	for _, pool := range pools {
-		if pool == nil {
-			continue
-		}
-		poolNames = append(poolNames, pool.Name)
-	}
-	// See OCPBUGS-24792: the slice of MCP objects can be passed in random order.
-	sort.Strings(poolNames)
+// GetMachineConfigNameForProfile takes a TuneD daemon profile name and returns
+// a MachineConfig name to be used for that profile.
+func GetMachineConfigNameForProfile(profileName string) string {
+	var sb strings.Builder
 
 	sb.WriteString(MachineConfigPrefix)
-	if len(poolNames) > 0 {
+	if profileName != "" {
 		sb.WriteString("-")
-		// Use the first MCP's name out of all alphabetically sorted MCP names. This will either be a custom pool name
-		// or master/worker in that order.
-		sb.WriteString(poolNames[0])
+		sb.WriteString(profileName)
 	}
 
 	return sb.String()
