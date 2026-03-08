@@ -47,7 +47,7 @@ spec:
       move them to swap cache\n#> latency-performance\nvm.swappiness=10\n\n# also
       configured via a sysctl.d file\n# placed here for better reflection of the change\n#>
       rps configuration\nnet.core.rps_default_mask=${not_isolated_cpumask}\n\n\n[selinux]\n#>
-      Custom (atomic host)\navc_cache_threshold=8192\n\n\n[net]\nnf_conntrack_hashsize=131072\n\n\n[bootloader]\n#
+      Custom (atomic host)\navc_cache_threshold=8192\n\n\n\n\n[bootloader]\n#
       set empty values to disable RHEL initrd setting in cpu-partitioning\ninitrd_remove_dir=\ninitrd_dst_img=\ninitrd_add_dir=\n\n#
       overrides cpu-partitioning cmdline\ncmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores}
       tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded}

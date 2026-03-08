@@ -28,7 +28,6 @@ const (
 	templateAdditionalArgs                  = "AdditionalArgs"
 	templateGloballyDisableIrqLoadBalancing = "GloballyDisableIrqLoadBalancing"
 	templateNetDevices                      = "NetDevices"
-	nfConntrackHashsize                     = "nf_conntrack_hashsize=131072"
 	templateRealTimeHint                    = "RealTimeHint"
 	templateHighPowerConsumption            = "HighPowerConsumption"
 	templatePerPodPowerManagement           = "PerPodPowerManagement"
@@ -147,8 +146,6 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 		templateArgs[templateGloballyDisableIrqLoadBalancing] = strconv.FormatBool(true)
 	}
 
-	//set default [net] field first, override if needed.
-	templateArgs[templateNetDevices] = fmt.Sprintf("[net]\n%s", nfConntrackHashsize)
 	if profile.Spec.Net != nil && profile.Spec.Net.UserLevelNetworking != nil &&
 		*profile.Spec.Net.UserLevelNetworking && profile.Spec.CPU.Reserved != nil {
 		reservedSet, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
@@ -191,12 +188,11 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 			if netPluginSequence > 0 {
 				netPluginString = "_" + strconv.Itoa(netPluginSequence)
 			}
-			tunedNetDevicesOutput = append(tunedNetDevicesOutput, fmt.Sprintf("\n[net%s]\ntype=net\ndevices_udev_regex=%s\nchannels=combined %d\n%s", netPluginString, devicesUdevRegex, reserveCPUcount, nfConntrackHashsize))
+			tunedNetDevicesOutput = append(tunedNetDevicesOutput, fmt.Sprintf("\n[net%s]\ntype=net\ndevices_udev_regex=%s\nchannels=combined %d", netPluginString, devicesUdevRegex, reserveCPUcount))
 			netPluginSequence++
 		}
-		//nfConntrackHashsize
 		if len(tunedNetDevicesOutput) == 0 {
-			templateArgs[templateNetDevices] = fmt.Sprintf("[net]\nchannels=combined %d\n%s", reserveCPUcount, nfConntrackHashsize)
+			templateArgs[templateNetDevices] = fmt.Sprintf("[net]\nchannels=combined %d", reserveCPUcount)
 		} else {
 			templateArgs[templateNetDevices] = strings.Join(tunedNetDevicesOutput, "")
 		}
