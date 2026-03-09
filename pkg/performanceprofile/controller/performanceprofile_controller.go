@@ -603,11 +603,16 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 	})
 	if err != nil {
 		// Check if the error is due to bootcmdline sync not being ready yet.
-		// If so, requeue without degrading the profile status - this is a normal wait condition.
+		// If so, set progressing status and requeue - this is a normal wait condition.
 		// The operator controller will trigger immediate reconciliation when bootcmdline is ready,
 		// so the RequeueAfter is just a fallback.
 		if _, isBootcmdlineNotReady := err.(*ntosync.BootcmdlineNotReadyError); isBootcmdlineNotReady {
 			klog.V(2).Infof("PerformanceProfile %q: waiting for bootcmdline ready signal, will be triggered by operator controller", instance.GetName())
+			conditions := status.GetProgressingConditions(status.ConditionReasonWaitingForBootcmdline, "Waiting for bootcmdline ready signal from Node Tuning Operator")
+			if err := r.StatusWriter.Update(ctx, instance, conditions); err != nil {
+				klog.Errorf("failed to update performance profile %q status: %v", instance.GetName(), err)
+				return reconcile.Result{}, err
+			}
 			return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
 		}
 		klog.Errorf("failed to deploy performance profile %q components: %v", instance.GetName(), err)
