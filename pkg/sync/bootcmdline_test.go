@@ -169,10 +169,11 @@ func TestIsReady(t *testing.T) {
 				readyPools: tt.readyPools,
 			}
 
+			// Use t.Setenv to automatically restore environment after subtest
 			if tt.releaseVersion != "" {
-				os.Setenv("RELEASE_VERSION", tt.releaseVersion)
+				t.Setenv("RELEASE_VERSION", tt.releaseVersion)
 			} else {
-				os.Unsetenv("RELEASE_VERSION")
+				t.Setenv("RELEASE_VERSION", "")
 			}
 
 			got := b.IsReady(tt.mcpName, tt.expectedBootcmdlineDep)
@@ -224,5 +225,26 @@ func TestIsReady_ConcurrentAccess(t *testing.T) {
 	// Wait for all goroutines to complete
 	for i := 0; i < 6; i++ {
 		<-done
+	}
+
+	// After concurrent operations, verify correctness with known state
+	if got := b.IsReady("worker", "tuned1:1"); got != false {
+		t.Fatalf("IsReady() after ClearCacheForPool = %v, expected false", got)
+	}
+
+	// Signal ready with known values and verify
+	b.SignalReady("worker", "4.22.0,tuned1:1")
+	if got := b.IsReady("worker", "tuned1:1"); got != true {
+		t.Fatalf("IsReady() with matching deps = %v, expected true", got)
+	}
+
+	// Verify with wrong tuned dependency
+	if got := b.IsReady("worker", "tuned2:2"); got != false {
+		t.Fatalf("IsReady() with non-matching tuned dep = %v, expected false", got)
+	}
+
+	// Verify with wrong pool name
+	if got := b.IsReady("master", "tuned1:1"); got != false {
+		t.Fatalf("IsReady() with non-matching pool = %v, expected false", got)
 	}
 }

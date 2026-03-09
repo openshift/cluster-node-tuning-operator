@@ -1158,6 +1158,14 @@ func reconcileTimes(reconciler *PerformanceProfileReconciler, request reconcile.
 func reconcileWithBootcmdlineSync(reconciler *PerformanceProfileReconciler, request reconcile.Request, profileMCP *mcov1.MachineConfigPool, isHypershiftPlatform bool) reconcile.Result {
 	GinkgoHelper()
 
+	// Clear any leftover bootcmdline sync state from previous tests to ensure
+	// the first reconcile will hit the BootcmdlineNotReadyError path.
+	mcpName := profileMCP.Name
+	if isHypershiftPlatform {
+		mcpName = "nodepool-test"
+	}
+	sync.GetBootcmdlineSync().ClearCacheForPool(mcpName)
+
 	// First reconcile: may create/update Tuned and requeue if bootcmdline not ready
 	result, err := reconciler.Reconcile(context.TODO(), request)
 	ExpectWithOffset(1, err).ToNot(HaveOccurred())
@@ -1263,7 +1271,7 @@ func MCPInterceptor() interceptor.Funcs {
 func signalBootcmdlineReady(mcpName string, tunedName string, tunedGeneration int64) {
 	GinkgoHelper()
 	ntosync := sync.GetBootcmdlineSync()
-	os.Setenv("RELEASE_VERSION", version.Version)
+	GinkgoT().Setenv("RELEASE_VERSION", version.Version)
 	bootcmdlineDeps := fmt.Sprintf("%s,%s:%d", version.Version, tunedName, tunedGeneration)
 	ntosync.SignalReady(mcpName, bootcmdlineDeps)
 }
