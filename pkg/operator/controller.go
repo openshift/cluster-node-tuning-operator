@@ -658,9 +658,6 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 
 			klog.V(2).Infof("syncProfile(): Profile %s not found, creating one [%s]", profileMf.Name, computed.TunedProfileName)
 			profileMf.Annotations = updateDeferredAnnotation(profileMf.Annotations, computed.Deferred)
-			if profileMf.Annotations == nil {
-				profileMf.Annotations = make(map[string]string)
-			}
 			profileMf.Annotations[tunedv1.TunedBootcmdlineDepsAnnotationKey] = computed.BootcmdlineDeps
 			profileMf.Spec.Config.TunedProfile = computed.TunedProfileName
 			profileMf.Spec.Config.Debug = computed.Operand.Debug
@@ -725,9 +722,6 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	}
 
 	anns := updateDeferredAnnotation(profile.Annotations, computed.Deferred)
-	if anns == nil {
-		anns = make(map[string]string)
-	}
 	anns[tunedv1.TunedBootcmdlineDepsAnnotationKey] = computed.BootcmdlineDeps
 
 	// Get current bootcmdlineDeps from annotation
@@ -767,6 +761,9 @@ func (c *Controller) syncProfile(tuned *tunedv1.Tuned, nodeName string) error {
 	return nil
 }
 
+// updateDeferredAnnotation updates the deferred update annotation based on the 'mode'.
+// It either sets or deletes the deferred update annotation depending on whether
+// the 'mode' indicates a deferred update.  This function always returns a non-nil map.
 func updateDeferredAnnotation(anns map[string]string, mode util.DeferMode) map[string]string {
 	if util.IsDeferredUpdate(mode) {
 		return util.SetDeferredUpdateAnnotation(anns, mode)

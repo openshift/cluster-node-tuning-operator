@@ -618,8 +618,8 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			Expect(*tunedProfile.Spec.Profile[0].Data).Should(ContainSubstring("NEW_ARGUMENT"), "Can't find value in Tuned profile")
 
 			// New KubeletConfig, MachineConfig and RuntimeClass will only be created once all nodes within the MCP agree on bootcmdline
-			// parameters.  We didn't add any new nodes in the second MCP (these tests should work with one worker node only), so this
-			// will never happen.
+			// parameters.  Do not check for them, because we want this test to proceed with only one worker node, which is already a
+			// a member of the first MCP.
 
 			By("Checking that the initial MCP does not start updating")
 			Consistently(func() corev1.ConditionStatus {

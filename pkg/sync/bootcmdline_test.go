@@ -164,8 +164,8 @@ func TestIsReady(t *testing.T) {
 
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a new BootcmdlineSync instance for each test to avoid interference
-			b := &BootcmdlineSync{
+			// Create a new bootcmdlineSync instance for each test to avoid interference
+			b := &bootcmdlineSync{
 				readyPools: tt.readyPools,
 			}
 
@@ -185,7 +185,7 @@ func TestIsReady(t *testing.T) {
 
 func TestIsReady_ConcurrentAccess(t *testing.T) {
 	// Test that IsReady can be called concurrently with SignalReady
-	b := &BootcmdlineSync{
+	b := &bootcmdlineSync{
 		readyPools: make(map[string]string),
 	}
 
