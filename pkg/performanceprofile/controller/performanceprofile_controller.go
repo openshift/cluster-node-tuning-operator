@@ -133,13 +133,7 @@ func (r *PerformanceProfileReconciler) SetupWithManager(mgr ctrl.Manager) error 
 	// Set up the bootcmdline sync trigger channel.
 	// When the operator controller signals that bootcmdline is ready for an MCP,
 	// it will send to this channel, triggering immediate reconciliation.
-	// Guard against SetupWithManager being called more than once, e.g. in tests.
-	bootcmdlineSync := ntosync.GetBootcmdlineSync()
-	if old := bootcmdlineSync.GetReconcileTrigger(); old != nil {
-		close(old)
-	}
-	bootcmdlineTrigger := make(chan string, ntosync.PoolsMax)
-	bootcmdlineSync.SetReconcileTrigger(bootcmdlineTrigger)
+	bootcmdlineTrigger := ntosync.GetBootcmdlineSync().SetupReconcileTrigger()
 
 	// Create a channel source that converts MCP name signals to reconcile requests.
 	bootcmdlineEventChan := make(chan event.GenericEvent, ntosync.PoolsMax)
@@ -270,18 +264,12 @@ func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Ma
 	// Set up the bootcmdline sync trigger channel for HyperShift.
 	// When the operator controller signals that bootcmdline is ready for a NodePool,
 	// it will send to this channel, triggering immediate reconciliation.
-	// Guard against SetupWithManager being called more than once, e.g. in tests.
-	bootcmdlineSync := ntosync.GetBootcmdlineSync()
-	if old := bootcmdlineSync.GetReconcileTrigger(); old != nil {
-		close(old)
-	}
-	bootcmdlineTrigger := make(chan string, ntosync.PoolsMax)
-	bootcmdlineSync.SetReconcileTrigger(bootcmdlineTrigger)
+	bootcmdlineTrigger := ntosync.GetBootcmdlineSync().SetupReconcileTrigger()
 
 	// Create a channel source that converts NodePool name signals to reconcile requests.
 	bootcmdlineEventChan := make(chan event.GenericEvent, ntosync.PoolsMax)
 	if err := mgr.Add(ctrlmanager.RunnableFunc(func(ctx context.Context) error {
-		r.bootcmdlineTriggerToEventsForHypershift(ctx, bootcmdlineTrigger, bootcmdlineEventChan)
+		r.bootcmdlineTriggerToEventsForHyperShift(ctx, bootcmdlineTrigger, bootcmdlineEventChan)
 		return nil
 	})); err != nil {
 		return err
@@ -313,11 +301,11 @@ func (r *PerformanceProfileReconciler) SetupWithManagerForHypershift(mgr ctrl.Ma
 		Complete(r)
 }
 
-// bootcmdlineTriggerToEventsForHypershift converts NodePool name signals from the bootcmdline sync
-// to GenericEvents that can be watched by the HyperShift controller.
+// bootcmdlineTriggerToEventsForHyperShift converts NodePool name signals from the bootcmdline sync
+// to GenericEvents that can be watched by the controller.
 // It closes events when it returns so that source.Channel's syncLoop can detect the
 // end-of-stream via the channel-closed path in addition to ctx.Done().
-func (r *PerformanceProfileReconciler) bootcmdlineTriggerToEventsForHypershift(ctx context.Context, trigger <-chan string, events chan<- event.GenericEvent) {
+func (r *PerformanceProfileReconciler) bootcmdlineTriggerToEventsForHyperShift(ctx context.Context, trigger <-chan string, events chan<- event.GenericEvent) {
 	defer close(events)
 	for {
 		select {

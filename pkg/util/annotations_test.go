@@ -164,3 +164,39 @@ func TestDeleteDeferredUpdateAnnotation(t *testing.T) {
 		})
 	}
 }
+
+func TestAnnotationFunctionsNeverReturnNil(t *testing.T) {
+	testCases := []struct {
+		name string
+		anns map[string]string
+	}{
+		{
+			name: "nil input",
+			anns: nil,
+		},
+		{
+			name: "empty map",
+			anns: map[string]string{},
+		},
+		{
+			name: "map with entries",
+			anns: map[string]string{"foo": "bar"},
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, mode := range []DeferMode{DeferNever, DeferAlways} {
+				got := SetDeferredUpdateAnnotation(tt.anns, mode)
+				if got == nil {
+					t.Errorf("SetDeferredUpdateAnnotation(anns=%v, mode=%v) returned nil, expected non-nil map", tt.anns, mode)
+				}
+			}
+
+			got := DeleteDeferredUpdateAnnotation(tt.anns)
+			if got == nil {
+				t.Errorf("DeleteDeferredUpdateAnnotation(anns=%v) returned nil, expected non-nil map", tt.anns)
+			}
+		})
+	}
+}

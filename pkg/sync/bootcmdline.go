@@ -12,9 +12,9 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// BootcmdlineSync provides synchronization for bootcmdline readiness
+// bootcmdlineSync provides synchronization for bootcmdline readiness
 // between the operator controller and the PerformanceProfile controller.
-type BootcmdlineSync struct {
+type bootcmdlineSync struct {
 	mtx sync.RWMutex
 	// readyPools maps pool name to the bootcmdlineDeps string that the bootcmdline
 	// was calculated from. The bootcmdlineDeps is a comma-separated list with
@@ -43,7 +43,7 @@ const (
 )
 
 // Global instance for cross-controller synchronization.
-var globalSync = &BootcmdlineSync{
+var globalSync = &bootcmdlineSync{
 	readyPools: make(map[string]string),
 }
 
@@ -51,22 +51,39 @@ func (e *BootcmdlineNotReadyError) Error() string {
 	return e.Message
 }
 
-// GetBootcmdlineSync returns the global BootcmdlineSync instance.
-func GetBootcmdlineSync() *BootcmdlineSync {
+// GetBootcmdlineSync returns the global bootcmdlineSync instance.
+func GetBootcmdlineSync() *bootcmdlineSync {
 	return globalSync
 }
 
 // SetReconcileTrigger sets the channel that will receive pool names when
 // bootcmdline becomes ready. This should be called during controller setup.
 // The channel should be buffered to avoid blocking the operator controller.
-func (b *BootcmdlineSync) SetReconcileTrigger(ch chan string) {
+func (b *bootcmdlineSync) SetReconcileTrigger(ch chan string) {
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
 	b.reconcileTrigger = ch
 }
 
+// SetupReconcileTrigger creates and configures a new reconcile trigger channel.
+// It closes any existing trigger channel first (guarding against multiple setup calls).
+// Returns the newly created trigger channel with capacity for PoolsMax pool names.
+func (b *bootcmdlineSync) SetupReconcileTrigger() chan string {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	// Close the old trigger channel if it exists (e.g., in tests where SetupWithManager is called multiple times).
+	if b.reconcileTrigger != nil {
+		close(b.reconcileTrigger)
+	}
+
+	// Create and set new trigger channel.
+	b.reconcileTrigger = make(chan string, PoolsMax)
+	return b.reconcileTrigger
+}
+
 // GetReconcileTrigger returns the reconcile trigger channel.
-func (b *BootcmdlineSync) GetReconcileTrigger() chan string {
+func (b *bootcmdlineSync) GetReconcileTrigger() chan string {
 	b.mtx.RLock()
 	defer b.mtx.RUnlock()
 	return b.reconcileTrigger
@@ -87,7 +104,7 @@ func (b *BootcmdlineSync) GetReconcileTrigger() chan string {
 // the pool (one per Tuned Profile), so without deduplication a cluster with N
 // worker nodes would flood the trigger channel with N identical signals on
 // every reconcile burst and potentially even overflow the buffered channel.
-func (b *BootcmdlineSync) SignalReady(pool string, bootcmdlineDeps string) {
+func (b *bootcmdlineSync) SignalReady(pool string, bootcmdlineDeps string) {
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
 
@@ -118,7 +135,7 @@ func (b *BootcmdlineSync) SignalReady(pool string, bootcmdlineDeps string) {
 // This performs a Tuned CR generation-aware check by verifying expectedBootcmdlineDep
 // (format: "name:gen") is present in the full bootcmdlineDeps string that
 // was signaled by the operator controller, and that the RELEASE_VERSION matches.
-func (b *BootcmdlineSync) IsReady(pool string, expectedBootcmdlineDep string) bool {
+func (b *bootcmdlineSync) IsReady(pool string, expectedBootcmdlineDep string) bool {
 	b.mtx.RLock()
 	defer b.mtx.RUnlock()
 
@@ -163,7 +180,7 @@ func (b *BootcmdlineSync) IsReady(pool string, expectedBootcmdlineDep string) bo
 }
 
 // ClearCacheForPool removes the cache entry for the specified pool.
-func (b *BootcmdlineSync) ClearCacheForPool(pool string) {
+func (b *bootcmdlineSync) ClearCacheForPool(pool string) {
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
 

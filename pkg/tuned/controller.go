@@ -1316,10 +1316,7 @@ func (c *Controller) updateTunedProfile(change Change) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to get Profile %s: %v", c.nodeName, err)
 	}
-	bootcmdlineDeps := ""
-	if profile.Annotations != nil {
-		bootcmdlineDeps = profile.Annotations[tunedv1.TunedBootcmdlineDepsAnnotationKey]
-	}
+	bootcmdlineDeps := profile.Annotations[tunedv1.TunedBootcmdlineDepsAnnotationKey]
 
 	annotations := map[string]string{}
 	bootcmdlineAnnotVal, bootcmdlineAnnotSet := node.Annotations[tunedv1.TunedBootcmdlineAnnotationKey]
