@@ -32,7 +32,6 @@ const (
 	ConditionFailedGettingKubeletStatus      = "GettingKubeletStatusFailed"
 	ConditionReasonTunedDegraded             = "TunedProfileDegraded"
 	ConditionFailedGettingTunedProfileStatus = "GettingTunedStatusFailed"
-	ConditionReasonWaitingForBootcmdline     = "WaitingForBootcmdlineReady"
 )
 
 type Writer interface {
