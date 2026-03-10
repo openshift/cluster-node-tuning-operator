@@ -3,10 +3,8 @@ package __performance_workloadhints
 import (
 	"context"
 	"fmt"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/infrastructure"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"sync"
 	"time"
 
@@ -33,6 +31,7 @@ import (
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/infrastructure"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
@@ -58,6 +57,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		ctx                     context.Context = context.Background()
 		isIntel                 bool
 		isAMD                   bool
+		isVM                    bool
 	)
 
 	nodeLabel := testutils.NodeSelectorLabels
@@ -75,6 +75,9 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 		Expect(err).ToNot(HaveOccurred(), "Unable to fetch Vendor ID")
 		isAMD, err = infrastructure.IsAMD(ctx, &workerRTNodes[0])
 		Expect(err).ToNot(HaveOccurred(), "Unable to fetch Vendor ID")
+		// Check first node; all nodes in the pool run on the same infra.
+		isVM, err = infrastructure.IsVM(ctx, &workerRTNodes[0])
+		Expect(err).ToNot(HaveOccurred(), "Unable to fetch VM status")
 		if !hypershift.IsHypershiftCluster() {
 			poolName, err = mcps.GetByProfile(profile)
 			Expect(err).ToNot(HaveOccurred())
@@ -97,6 +100,29 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 			By("Saving the old performance profile")
 			initialProfile = profile.DeepCopy()
 		})
+
+		AfterEach(func() {
+			currentProfile := &performancev2.PerformanceProfile{}
+			if err := testclient.ControlPlaneClient.Get(context.TODO(), client.ObjectKeyFromObject(initialProfile), currentProfile); err != nil {
+				klog.Errorf("failed to get performance profile %q", initialProfile.Name)
+				return
+			}
+
+			if reflect.DeepEqual(currentProfile.Spec, initialProfile.Spec) {
+				return
+			}
+
+			By("Restoring the old performance profile")
+			profiles.UpdateWithRetry(initialProfile)
+
+			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+			profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
+
+			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+			profilesupdate.WaitForTuningUpdated(ctx, profile)
+
+		})
+
 		When("workloadHint RealTime is disabled", func() {
 			It("[test_id:50990] should update kernel arguments and tuned accordingly to realTime Hint enabled by default", Label(string(label.Slow)), func() {
 				currentWorkloadHints := profile.Spec.WorkloadHints
@@ -214,6 +240,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				wg.Wait()
 			})
 		})
+
 		When("HighPower Consumption workload enabled", func() {
 			It("[test_id:50992][crit:high][vendor:cnf-qe@redhat.com][level:acceptance]should update kernel arguments and tuned accordingly", Label(string(label.Slow)), func() {
 				currentWorkloadHints := profile.Spec.WorkloadHints
@@ -383,11 +410,12 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				Expect(cpuSection.Key("enabled").String()).To(Equal("false"))
 			})
 
-			It("[test_id:54178]Verify System is tuned when updating from HighPowerConsumption to PerPodPowermanagment", Label(string(label.Slow)), func() {
+			It("[test_id:54178] Verify System is tuned when updating from HighPowerConsumption to PerPodPowermanagment", Label(string(label.Slow)), func() {
 
 				// This test requires real hardware with powermanagement settings done on BIOS
-				// Using numa nodes to check if we are running on real hardware.
-				checkHardwareCapability(context.TODO(), workerRTNodes)
+				if isVM {
+					Skip("This test is not supported on VMs")
+				}
 
 				// First enable HighPowerConsumption
 				currentWorkloadHints := profile.Spec.WorkloadHints
@@ -515,11 +543,13 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				wg.Wait()
 			})
 
-			It("[test_id:54179]Verify System is tuned when reverting from PerPodPowerManagement to HighPowerConsumption", Label(string(label.Slow)), func() {
+			It("[test_id:54179] Verify System is tuned when reverting from PerPodPowerManagement to HighPowerConsumption", Label(string(label.Slow)), func() {
 
 				// This test requires real hardware with powermanagement settings done on BIOS
-				// Using numa nodes to check if we are running on real hardware.
-				checkHardwareCapability(context.TODO(), workerRTNodes)
+				if isVM {
+					Skip("This test is not supported on VMs")
+				}
+
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				// First enable HighPowerConsumption
 				By("Modifying profile")
@@ -643,7 +673,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				wg.Wait()
 			})
 
-			It("[test_id:54184]Verify enabling both HighPowerConsumption and PerPodPowerManagment fails", Label(string(label.Tier0)), func() {
+			It("[test_id:54184] Verify enabling both HighPowerConsumption and PerPodPowerManagment fails", Label(string(label.Tier0)), func() {
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					PerPodPowerManagement: ptr.To(true),
 					HighPowerConsumption:  ptr.To(true),
@@ -680,11 +710,13 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				var fullPath string
 				var err error
 				// This test requires real hardware with powermanagement settings done on BIOS
-				// Using numa nodes to check if we are running on real hardware.
 				if isAMD {
 					Skip("Crio Powersave annotations test can only be run on Intel systems")
 				}
-				checkHardwareCapability(context.TODO(), workerRTNodes)
+				if isVM {
+					Skip("This test is not supported on VMs")
+				}
+
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					PerPodPowerManagement: ptr.To(true),
@@ -727,6 +759,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				By("creating test pod")
 				err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
 				Expect(err).ToNot(HaveOccurred())
+				defer deleteTestPod(context.TODO(), testpod)
 				testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(testpod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed), "Test pod does not have QoS class of Guaranteed")
@@ -786,12 +819,14 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 			It("[test_id:54186] Verify sysfs parameters of guaranteed pod with performance annotiations", Label(string(label.Slow)), func() {
 
 				// This test requires real hardware with powermanagement settings done on BIOS
-				// Using numa nodes to check if we are running on real hardware
 				var containerCgroup, fullPath string
 				if isAMD {
 					Skip("Crio Performance annotations test can only be run on Intel systems")
 				}
-				checkHardwareCapability(context.TODO(), workerRTNodes)
+				if isVM {
+					Skip("This test is not supported on VMs")
+				}
+
 				currentWorkloadHints := profile.Spec.WorkloadHints
 				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{
 					PerPodPowerManagement: ptr.To(false),
@@ -835,6 +870,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				By("creating test pod")
 				err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
 				Expect(err).ToNot(HaveOccurred())
+				defer deleteTestPod(context.TODO(), testpod)
 				testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(testpod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed), "Test pod does not have QoS class of Guaranteed")
@@ -857,6 +893,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				} else {
 					fullPath = filepath.Join(cgroupRoot, "cpuset", containerCgroup)
 				}
+
 				cpusetCpusPath := filepath.Join(fullPath, "cpuset.cpus")
 				testlog.Infof("test pod %s with container id %s cgroup path %s", testpod.Name, containerID, cpusetCpusPath)
 				By("Verify powersetting of cpus used by the pod")
@@ -889,28 +926,6 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), targetCpus, &workerRTNodes[0], "0", "performance")
 				Expect(err).ToNot(HaveOccurred())
 			})
-		})
-
-		AfterEach(func() {
-			currentProfile := &performancev2.PerformanceProfile{}
-			if err := testclient.ControlPlaneClient.Get(context.TODO(), client.ObjectKeyFromObject(initialProfile), currentProfile); err != nil {
-				klog.Errorf("failed to get performance profile %q", initialProfile.Name)
-				return
-			}
-
-			if reflect.DeepEqual(currentProfile.Spec, initialProfile.Spec) {
-				return
-			}
-
-			By("Restoring the old performance profile")
-			profiles.UpdateWithRetry(initialProfile)
-
-			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-			profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
-
-			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-			profilesupdate.WaitForTuningUpdated(ctx, profile)
-
 		})
 	})
 })
@@ -977,25 +992,4 @@ func checkCpuGovernorsAndResumeLatency(ctx context.Context, cpus []int, targetNo
 		Expect(output).To(Equal(governor))
 	}
 	return nil
-}
-
-// checkHardwareCapability Checks if test is run on baremetal worker
-func checkHardwareCapability(ctx context.Context, workerRTNodes []corev1.Node) {
-	const totalCpus = 32
-	for _, node := range workerRTNodes {
-		numaInfo, err := nodes.GetNumaNodes(ctx, &node)
-		Expect(err).ToNot(HaveOccurred())
-		if len(numaInfo) < 2 {
-			Skip(fmt.Sprintf("This test need 2 NUMA nodes. The number of NUMA nodes on node %s < 2", node.Name))
-		}
-		// Additional check so that test gets skipped on vm with fake numa
-		out, err := nodes.ExecCommand(ctx, &node, []string{"nproc", "--all"})
-		Expect(err).ToNot(HaveOccurred())
-		onlineCPUCount := testutils.ToString(out)
-		onlineCPUInt, err := strconv.Atoi(onlineCPUCount)
-		Expect(err).ToNot(HaveOccurred())
-		if onlineCPUInt < totalCpus {
-			Skip(fmt.Sprintf("This test needs system with %d CPUs to work correctly, current CPUs are %s", totalCpus, onlineCPUCount))
-		}
-	}
 }
