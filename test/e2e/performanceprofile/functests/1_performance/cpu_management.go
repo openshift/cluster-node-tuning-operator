@@ -194,6 +194,33 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			Expect(reservedCPUSet.IsSubsetOf(maskSet)).To(Equal(true), fmt.Sprintf("The init process (pid 1) should have cpu affinity: %s", reservedCPU))
 		})
 
+		It("[test_id:87722][crit:high][level:acceptance] verify Infrastructure pods have cpu affinity of reserved plus isolated cpuset", func() {
+			// we use tuned pod as an example for Infrastructure pods,
+			// when workload partitioning is enabled or strict cpu reservation is enabled
+			// infrastructure pods have cpu affinity matching reserved cpu otherwise
+			// it should have affinity of reserved plus available isolated cpus
+			By("Checking CPU Affinity of Infrastructure pods like tuned")
+			tunedPod := nodes.TunedForNode(workerRTNode, false)
+			ctnName, err := pods.GetContainerIDByName(tunedPod, tunedPod.Spec.Containers[0].Name)
+			Expect(err).ToNot(HaveOccurred())
+			pid, err := nodes.ContainerPid(ctx, workerRTNode, ctnName)
+			Expect(err).ToNot(HaveOccurred())
+			taskSetcmd := []string{"taskset", "-pc", pid}
+			taskSetOutput, err := nodes.ExecCommand(ctx, workerRTNode, taskSetcmd)
+			Expect(err).ToNot(HaveOccurred(), "Unable to get taskset output")
+			ctnCpuset, err := parseTasksetOutput(taskSetOutput)
+			Expect(err).ToNot(HaveOccurred(), "Unable to parse taskset output")
+			testlog.Infof("Tuned Pod affinity: %s", ctnCpuset.String())
+			kubeletConfig, err := nodes.GetKubeletConfig(ctx, workerRTNode)
+			Expect(err).ToNot(HaveOccurred(), "Unable to fetch kubelet config")
+			cpuReservationPolicy := kubeletConfig.CPUManagerPolicyOptions["strict-cpu-reservation"]
+			if checkForWorkloadPartitioning(ctx) || (cpuReservationPolicy == "true") {
+				Expect(ctnCpuset).To(Equal(reservedCPUSet))
+			} else {
+				Expect(ctnCpuset).To(Equal(onlineCPUSet))
+			}
+		})
+
 		It("[test_id:34358] Verify rcu_nocbs kernel argument on the node", func() {
 			By("checking that cmdline contains rcu_nocbs with right value")
 			cmd := []string{"cat", "/proc/cmdline"}
@@ -1581,4 +1608,14 @@ func isPodReady(pod *corev1.Pod) bool {
 		}
 	}
 	return false
+}
+
+// parseTasksetOutput parses the taskset output and returns the CPU set
+func parseTasksetOutput(output []byte) (cpuset.CPUSet, error) {
+	affinityStr := testutils.ToString(output)
+	parts := strings.Split(strings.TrimSpace(affinityStr), ":")
+	if len(parts) < 2 {
+		return cpuset.CPUSet{}, fmt.Errorf("invalid taskset output format: %s", affinityStr)
+	}
+	return cpuset.Parse(strings.TrimSpace(parts[1]))
 }
