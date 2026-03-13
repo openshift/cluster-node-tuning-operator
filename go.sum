@@ -366,6 +366,8 @@ github.com/openshift/build-machinery-go v0.0.0-20251023084048-5d77c1a5e5af h1:Ui
 github.com/openshift/build-machinery-go v0.0.0-20251023084048-5d77c1a5e5af/go.mod h1:8jcm8UPtg2mCAsxfqKil1xrmRMI3a+XU2TZ9fF8A7TE=
 github.com/openshift/client-go v0.0.0-20260219131751-7e63ce155298 h1:V8uz/2Z4hh+49TUxl0nYs0sDn1fB7lTdSMDKAa6TFY8=
 github.com/openshift/client-go v0.0.0-20260219131751-7e63ce155298/go.mod h1:rtH0BhilT6+jn3nWybANEumaBO1vWCKaY8QpwipRy/Y=
+github.com/openshift/controller-runtime-common v0.0.0-20260213175913-767fef058eca h1:EOc/lbyZxtn1b/BvRwnLpbgBg0F+2RUQd3xMiA4/JsQ=
+github.com/openshift/controller-runtime-common v0.0.0-20260213175913-767fef058eca/go.mod h1:59nLF3/IfhAtoQZfUzlCyidTAdlVT6KiVeTicUi2wuA=
 github.com/openshift/custom-resource-status v1.1.2 h1:C3DL44LEbvlbItfd8mT5jWrqPfHnSOQoQf/sypqA6A4=
 github.com/openshift/custom-resource-status v1.1.2/go.mod h1:DB/Mf2oTeiAmVVX1gN+NEqweonAPY0TKUwADizj8+ZA=
 github.com/openshift/hypershift/api v0.0.0-20260224085943-34e30acde920 h1:9qdggBqqBlO7EuRnmTTH+yxNFRsPtU4SoSKLh7WBios=
