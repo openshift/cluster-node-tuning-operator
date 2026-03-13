@@ -18,6 +18,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/manifestset"
 	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/resources"
+	ntosync "github.com/openshift/cluster-node-tuning-operator/pkg/sync"
 )
 
 var _ components.Handler = &handler{}
@@ -68,7 +69,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 	}
 
 	// get mutated performance tuned
-	performanceTunedMutated, err := resources.GetMutatedTuned(ctx, h.Client, components.Tuned)
+	performanceTuned, performanceTunedNeedsUpdate, err := resources.GetMutatedTuned(ctx, h.Client, components.Tuned)
 	if err != nil {
 		return err
 	}
@@ -81,7 +82,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 
 	updated := mcMutated != nil ||
 		kcMutated != nil ||
-		performanceTunedMutated != nil ||
+		performanceTunedNeedsUpdate ||
 		runtimeClassMutated != nil
 
 	// does not update any resources if it no changes to relevant objects and continue to the status update
@@ -89,14 +90,45 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 		return nil
 	}
 
-	if mcMutated != nil {
-		if err := resources.CreateOrUpdateMachineConfig(ctx, h.Client, mcMutated); err != nil {
+	if opts.ProfileMCP == nil {
+		// This can happen when MCP validation fails.
+		return fmt.Errorf("no valid PerformanceProfile's MCP")
+	}
+
+	// Create/update Tuned first, TuneD pods need this to calculate bootcmdline and agree on it.
+	if performanceTunedNeedsUpdate {
+		ntosync.GetBootcmdlineSync().ClearCacheForPool(opts.ProfileMCP.Name) // Do not honor a stale ready signal from a previous generation
+		if err := resources.CreateOrUpdateTuned(ctx, h.Client, performanceTuned, profile.Name); err != nil {
 			return err
+		}
+		klog.Infof("PerformanceProfile %q: created/updated Tuned CR %q for MCP %q", profile.Name, performanceTuned.Name, opts.ProfileMCP.Name)
+	}
+
+	// Check bootcmdline sync signal from the operator controller before creating MachineConfig.
+	// This synchronizes the creation of the PerformanceProfile's MachineConfig (50-performance-*)
+	// with the operator's MachineConfig (50-nto-*) to prevent multiple reboots.
+	// The check is generation-aware.  It verifies that the bootcmdline was calculated with the
+	// current performance Tuned CR identified by its name:generation.  The check is non-blocking.
+	// If not ready, we return an error to requeue.  The operator controller will also trigger
+	// immediate reconciliation when ready.
+	mcpName := opts.ProfileMCP.Name
+	bootcmdlineSync := ntosync.GetBootcmdlineSync()
+
+	// Check if the current performance Tuned CR is included in the bootcmdline calculation.
+	// We use the performanceTuned object which always contains the existing CR (with Generation field)
+	// whether or not it needs updating.
+	expectedTunedDep := fmt.Sprintf("%s:%d", performanceTuned.Name, performanceTuned.Generation)
+
+	if !bootcmdlineSync.IsReady(mcpName, expectedTunedDep) {
+		klog.Infof("PerformanceProfile %q [%v]: bootcmdline not ready for MCP %q", profile.Name, expectedTunedDep, mcpName)
+		return &ntosync.BootcmdlineNotReadyError{
+			PoolName: mcpName,
+			Message:  fmt.Sprintf("waiting for bootcmdline to be ready for MCP %q with Tuned dependency %q", mcpName, expectedTunedDep),
 		}
 	}
 
-	if performanceTunedMutated != nil {
-		if err := resources.CreateOrUpdateTuned(ctx, h.Client, performanceTunedMutated, profile.Name); err != nil {
+	if mcMutated != nil {
+		if err := resources.CreateOrUpdateMachineConfig(ctx, h.Client, mcMutated); err != nil {
 			return err
 		}
 	}

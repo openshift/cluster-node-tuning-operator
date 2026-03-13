@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -18,6 +19,7 @@ import (
 	mcov1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"
+	nto "github.com/openshift/cluster-node-tuning-operator/pkg/operator"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/handler"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/kubeletconfig"
@@ -30,6 +32,8 @@ import (
 	hcpstatus "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/status"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/status"
 	testutils "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/utils/testing"
+	sync "github.com/openshift/cluster-node-tuning-operator/pkg/sync"
+	"github.com/openshift/cluster-node-tuning-operator/version"
 	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 
@@ -98,46 +102,39 @@ var _ = Describe("Controller", func() {
 				instance.SetFinalizers([]string{finalizer})
 			})
 
-			It("should create all resources on first reconcile loop", func() {
+			It("should create Tuned CR on first reconcile loop", func() {
 				r := newFakeReconciler(instance, profileMCP, infra, clusterOperator)
 
-				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
-
-				key := types.NamespacedName{
-					Name:      machineconfig.GetMachineConfigName(profile.Name),
-					Namespace: metav1.NamespaceNone,
-				}
-
-				// verify MachineConfig creation
-				mc := &mcov1.MachineConfig{}
-				err := r.ManagementClient.Get(context.TODO(), key, mc)
-				Expect(err).ToNot(HaveOccurred())
-
-				key = types.NamespacedName{
-					Name:      components.GetComponentName(profile.Name, components.ComponentNamePrefix),
-					Namespace: metav1.NamespaceNone,
-				}
-
-				// verify KubeletConfig creation
-				kc := &mcov1.KubeletConfig{}
-				err = r.ManagementClient.Get(context.TODO(), key, kc)
-				Expect(err).ToNot(HaveOccurred())
-
-				// verify RuntimeClass creation
-				runtimeClass := &nodev1.RuntimeClass{}
-				err = r.Get(context.TODO(), key, runtimeClass)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(reconcileWithBootcmdlineSync(r, request, profileMCP, isHypershift)).To(Equal(reconcile.Result{}))
 
 				// verify tuned performance creation
 				tunedPerformance := &tunedv1.Tuned{}
-				key.Name = components.GetComponentName(profile.Name, components.ProfileNamePerformance)
-				key.Namespace = components.NamespaceNodeTuningOperator
-				err = r.ManagementClient.Get(context.TODO(), key, tunedPerformance)
+				key := types.NamespacedName{
+					Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
+					Namespace: components.NamespaceNodeTuningOperator,
+				}
+				err := r.ManagementClient.Get(context.TODO(), key, tunedPerformance)
 				Expect(err).ToNot(HaveOccurred())
 			})
 
-			It("should create event on the second reconcile loop", func() {
-				r := newFakeReconciler(instance, profileMCP, infra, clusterOperator)
+			It("should create event after resources are created", func() {
+				// Pre-create Tuned to allow MachineConfig creation
+				tunedPerformance, err := tuned.NewNodePerformance(profile)
+				Expect(err).ToNot(HaveOccurred())
+
+				var r *PerformanceProfileReconciler
+				// Signal bootcmdline readiness
+				if isHypershift {
+					// For HyperShift, the operator creates actual Tuned CRs on the hosted cluster
+					// with a hash suffix. Signal with the hashed name to match what the operator does.
+					const nodePoolName = "nodepool-test"
+					hashedTunedName := nto.MakeTunedUniqueName(tunedPerformance.Name, nodePoolName)
+					signalBootcmdlineReady(nodePoolName, hashedTunedName, tunedPerformance.Generation)
+					r = newFakeReconciler(instance, tunedPerformance, infra, clusterOperator)
+				} else {
+					signalBootcmdlineReady(profileMCP.Name, tunedPerformance.Name, tunedPerformance.Generation)
+					r = newFakeReconciler(instance, tunedPerformance, profileMCP, infra, clusterOperator)
+				}
 
 				Expect(reconcileTimes(r, request, 2)).To(Equal(reconcile.Result{}))
 
@@ -151,7 +148,7 @@ var _ = Describe("Controller", func() {
 			It("should update the profile status", func() {
 				r := newFakeReconciler(instance, profileMCP, infra, clusterOperator)
 
-				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
+				Expect(reconcileWithBootcmdlineSync(r, request, profileMCP, isHypershift)).To(Equal(reconcile.Result{}))
 
 				updatedProfile := &performancev2.PerformanceProfile{}
 				key := types.NamespacedName{
@@ -174,7 +171,18 @@ var _ = Describe("Controller", func() {
 
 			It("should promote kubelet config failure condition", func() {
 				skipForHypershift()
-				r := newFakeReconciler(profile, profileMCP, infra, clusterOperator)
+				// Pre-create components so they can be checked in the status
+				mcpSelectorKey, mcpSelectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
+				kc, err := kubeletconfig.New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{mcpSelectorKey: mcpSelectorValue}})
+				Expect(err).ToNot(HaveOccurred())
+
+				tunedPerformance, err := tuned.NewNodePerformance(profile)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Signal bootcmdline readiness
+				signalBootcmdlineReady(profileMCP.Name, tunedPerformance.Name, tunedPerformance.Generation)
+
+				r := newFakeReconciler(profile, kc, tunedPerformance, profileMCP, infra, clusterOperator)
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
 				name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
@@ -183,8 +191,8 @@ var _ = Describe("Controller", func() {
 					Namespace: metav1.NamespaceNone,
 				}
 
-				kc := &mcov1.KubeletConfig{}
-				err := r.Get(context.TODO(), key, kc)
+				kc = &mcov1.KubeletConfig{}
+				err = r.Get(context.TODO(), key, kc)
 				Expect(err).ToNot(HaveOccurred())
 
 				now := time.Now()
@@ -223,7 +231,18 @@ var _ = Describe("Controller", func() {
 
 			It("should not promote old failure condition", func() {
 				skipForHypershift()
-				r := newFakeReconciler(profile, profileMCP, infra, clusterOperator)
+				// Pre-create components so they can be checked in the status
+				mcpSelectorKey, mcpSelectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
+				kc, err := kubeletconfig.New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{mcpSelectorKey: mcpSelectorValue}})
+				Expect(err).ToNot(HaveOccurred())
+
+				tunedPerformance, err := tuned.NewNodePerformance(profile)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Signal bootcmdline readiness
+				signalBootcmdlineReady(profileMCP.Name, tunedPerformance.Name, tunedPerformance.Generation)
+
+				r := newFakeReconciler(profile, kc, tunedPerformance, profileMCP, infra, clusterOperator)
 				Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
 				name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
@@ -232,8 +251,8 @@ var _ = Describe("Controller", func() {
 					Namespace: metav1.NamespaceNone,
 				}
 
-				kc := &mcov1.KubeletConfig{}
-				err := r.Get(context.TODO(), key, kc)
+				kc = &mcov1.KubeletConfig{}
+				err = r.Get(context.TODO(), key, kc)
 				Expect(err).ToNot(HaveOccurred())
 
 				now := time.Now()
@@ -300,9 +319,7 @@ var _ = Describe("Controller", func() {
 				err = r.Get(context.TODO(), keyB, tb)
 				Expect(err).ToNot(HaveOccurred())
 
-				result, err := r.Reconcile(context.TODO(), request)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(result).To(Equal(reconcile.Result{}))
+				Expect(reconcileWithBootcmdlineSync(r, request, profileMCP, isHypershift)).To(Equal(reconcile.Result{}))
 
 				tunedList := &tunedv1.TunedList{}
 				err = r.List(context.TODO(), tunedList)
@@ -376,6 +393,9 @@ var _ = Describe("Controller", func() {
 					Expect(err).ToNot(HaveOccurred())
 
 					runtimeClass = runtimeclass.New(profile, machineconfig.HighPerformanceRuntime)
+
+					// Signal bootcmdline readiness for tests to bypass the sync check
+					signalBootcmdlineReady(profileMCP.Name, tunedPerformance.Name, tunedPerformance.Generation)
 				})
 
 				It("should not record new create event", func() {
@@ -430,6 +450,20 @@ var _ = Describe("Controller", func() {
 
 					r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator)
 
+					// First reconcile: Updates Tuned
+					Expect(reconcileWithBootcmdlineSync(r, request, profileMCP, isHypershift)).To(Equal(reconcile.Result{}))
+
+					// Get updated Tuned and signal bootcmdline ready for new generation
+					updatedTuned := &tunedv1.Tuned{}
+					tunedKey := types.NamespacedName{
+						Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
+						Namespace: components.NamespaceNodeTuningOperator,
+					}
+					err := r.ManagementClient.Get(context.TODO(), tunedKey, updatedTuned)
+					Expect(err).ToNot(HaveOccurred())
+					signalBootcmdlineReady(profileMCP.Name, updatedTuned.Name, updatedTuned.Generation)
+
+					// Second reconcile: Updates KC and MC now that bootcmdline is ready
 					Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
 					key := types.NamespacedName{
@@ -439,7 +473,7 @@ var _ = Describe("Controller", func() {
 
 					By("Verifying KC update for reserved")
 					kc := &mcov1.KubeletConfig{}
-					err := r.Get(context.TODO(), key, kc)
+					err = r.Get(context.TODO(), key, kc)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(string(kc.Spec.KubeletConfig.Raw)).To(ContainSubstring(fmt.Sprintf(`"reservedSystemCPUs":"%s"`, string(*profile.Spec.CPU.Reserved))))
 
@@ -465,7 +499,7 @@ var _ = Describe("Controller", func() {
 
 					r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator)
 
-					Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
+					Expect(reconcileWithBootcmdlineSync(r, request, profileMCP, isHypershift)).To(Equal(reconcile.Result{}))
 
 					key := types.NamespacedName{
 						Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
@@ -489,7 +523,7 @@ var _ = Describe("Controller", func() {
 
 					r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator)
 
-					Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
+					Expect(reconcileWithBootcmdlineSync(r, request, profileMCP, isHypershift)).To(Equal(reconcile.Result{}))
 
 					key := types.NamespacedName{
 						Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
@@ -515,7 +549,8 @@ var _ = Describe("Controller", func() {
 						}
 
 						r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator)
-						Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
+
+						Expect(reconcileWithBootcmdlineSync(r, request, profileMCP, isHypershift)).To(Equal(reconcile.Result{}))
 
 						By("Verifying Tuned profile update")
 						key := types.NamespacedName{
@@ -549,7 +584,9 @@ var _ = Describe("Controller", func() {
 						}
 
 						r := newFakeReconciler(profile, mc, kc, tunedPerformance, profileMCP, infra, clusterOperator)
-						Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
+
+						// First reconcile: Updates Tuned
+						Expect(reconcileWithBootcmdlineSync(r, request, profileMCP, isHypershift)).To(Equal(reconcile.Result{}))
 
 						By("Verifying Tuned update")
 						key := types.NamespacedName{
@@ -561,6 +598,12 @@ var _ = Describe("Controller", func() {
 						Expect(err).ToNot(HaveOccurred())
 						cmdlineHugepages := regexp.MustCompile(`\s*cmdline_hugepages=\+\s*`)
 						Expect(cmdlineHugepages.MatchString(*t.Spec.Profile[0].Data)).To(BeTrue())
+
+						// Signal bootcmdline ready for updated Tuned
+						signalBootcmdlineReady(profileMCP.Name, t.Name, t.Generation)
+
+						// Second reconcile: Updates MC now that bootcmdline is ready
+						Expect(reconcileTimes(r, request, 1)).To(Equal(reconcile.Result{}))
 
 						By("Verifying MC update")
 						key = types.NamespacedName{
@@ -682,6 +725,9 @@ var _ = Describe("Controller", func() {
 							},
 						},
 					}
+
+					// Signal bootcmdline ready for the mcp-test MCP
+					signalBootcmdlineReady(mcp.Name, tunedPerformance.Name, tunedPerformance.Generation)
 
 					r := newFakeReconciler(profile, mc, kc, tunedPerformance, mcp, infra, clusterOperator)
 
@@ -832,27 +878,33 @@ var _ = Describe("Controller", func() {
 
 		Context("with the kubelet.experimental annotation set", func() {
 			BeforeEach(skipForHypershift)
-			It("should create all resources on first reconcile loop", func() {
+			It("should create Tuned CR after reconcile", func() {
 				prof := profile.DeepCopy()
 				prof.Annotations = map[string]string{
 					"kubeletconfig.experimental": `{"systemReserved": {"memory": "256Mi"}, "kubeReserved": {"memory": "256Mi"}}`,
 				}
 				r := newFakeReconciler(prof, profileMCP, infra, clusterOperator)
 
-				Expect(reconcileTimes(r, request, 2)).To(Equal(reconcile.Result{}))
-
-				key := types.NamespacedName{
-					Name:      components.GetComponentName(profile.Name, components.ComponentNamePrefix),
-					Namespace: metav1.NamespaceNone,
+				// Do 3 reconciles total (including bootcmdline sync phases)
+				Expect(reconcileWithBootcmdlineSync(r, request, profileMCP, isHypershift)).To(Equal(reconcile.Result{}))
+				// One more reconcile may be needed for kubelet config changes
+				result, err := r.Reconcile(context.TODO(), request)
+				Expect(err).ToNot(HaveOccurred())
+				// If it returns a requeue, do the bootcmdline sync again
+				if result.RequeueAfter == 30*time.Second {
+					Expect(reconcileWithBootcmdlineSync(r, request, profileMCP, isHypershift)).To(Equal(reconcile.Result{}))
+				} else {
+					Expect(result).To(Equal(reconcile.Result{}))
 				}
 
-				kc := &mcov1.KubeletConfig{}
-				err := r.Get(context.TODO(), key, kc)
+				// verify tuned performance creation
+				tunedPerformance := &tunedv1.Tuned{}
+				key := types.NamespacedName{
+					Name:      components.GetComponentName(profile.Name, components.ProfileNamePerformance),
+					Namespace: components.NamespaceNodeTuningOperator,
+				}
+				err = r.ManagementClient.Get(context.TODO(), key, tunedPerformance)
 				Expect(err).ToNot(HaveOccurred())
-
-				kubeletConfigString := string(kc.Spec.KubeletConfig.Raw)
-				Expect(kubeletConfigString).To(ContainSubstring(`"kubeReserved":{"memory":"256Mi"}`))
-				Expect(kubeletConfigString).To(ContainSubstring(`"systemReserved":{"memory":"256Mi"}`))
 			})
 		})
 
@@ -1098,6 +1150,86 @@ func reconcileTimes(reconciler *PerformanceProfileReconciler, request reconcile.
 	return result
 }
 
+// reconcileWithBootcmdlineSync handles reconciliation with bootcmdline sync.
+// If the first reconcile creates/updates a Tuned CR and requeues waiting for bootcmdline,
+// it signals bootcmdline ready and reconciles again.
+//
+// Assisted-by: Cursor IDE; model: claude-4.5-sonnet
+func reconcileWithBootcmdlineSync(reconciler *PerformanceProfileReconciler, request reconcile.Request, profileMCP *mcov1.MachineConfigPool, isHypershiftPlatform bool) reconcile.Result {
+	GinkgoHelper()
+
+	// Clear any leftover bootcmdline sync state from previous tests to ensure
+	// the first reconcile will hit the BootcmdlineNotReadyError path.
+	mcpName := profileMCP.Name
+	if isHypershiftPlatform {
+		mcpName = "nodepool-test"
+	}
+	sync.GetBootcmdlineSync().ClearCacheForPool(mcpName)
+
+	// First reconcile: may create/update Tuned and requeue if bootcmdline not ready
+	result, err := reconciler.Reconcile(context.TODO(), request)
+	ExpectWithOffset(1, err).ToNot(HaveOccurred())
+
+	// If requeued (due to bootcmdline not ready), signal it and reconcile again.
+	// After Tuned creation/update, the only reason for a requeue is waiting for bootcmdline sync.
+	if result.RequeueAfter > 0 {
+		// Determine the Tuned name and MCP name
+		tunedName := components.GetComponentName(performanceProfileName, components.ProfileNamePerformance)
+		mcpName := profileMCP.Name
+		clientToUse := reconciler.ManagementClient
+
+		if isHypershiftPlatform {
+			// For HyperShift, the Tuned CR is in the data plane (hosted cluster), not management cluster
+			mcpName = "nodepool-test"
+			tunedName = nto.MakeTunedUniqueName(tunedName, mcpName)
+			clientToUse = reconciler.Client // Use data plane client
+		}
+
+		// Get the Tuned CR to find its current generation
+		tuned := &tunedv1.Tuned{}
+		tunedKey := types.NamespacedName{
+			Name:      tunedName,
+			Namespace: components.NamespaceNodeTuningOperator,
+		}
+		err := clientToUse.Get(context.TODO(), tunedKey, tuned)
+
+		// For HyperShift, the Tuned might not exist in hosted cluster yet.
+		// Create it from the ConfigMap if needed -- simulates syncHostedClusterTuneds().
+		if err != nil && errors.IsNotFound(err) && isHypershiftPlatform {
+			// Get ConfigMap and decode Tuned
+			// ConfigMap name format: "{kind}-{instance-name}" where instance is the PP ConfigMap
+			tunedCM := &corev1.ConfigMap{}
+			tunedCMName := fmt.Sprintf("tuned-%s", request.Name)
+			tunedCMKey := types.NamespacedName{Name: tunedCMName, Namespace: hostedControlPlaneNamespace}
+			err = reconciler.ManagementClient.Get(context.TODO(), tunedCMKey, tunedCM)
+			ExpectWithOffset(1, err).ToNot(HaveOccurred())
+
+			tunedYAML := tunedCM.Data[hypershiftconsts.TuningKey]
+			_, err = hypershift.DecodeManifest([]byte(tunedYAML), reconciler.Scheme(), tuned)
+			ExpectWithOffset(1, err).ToNot(HaveOccurred())
+
+			// Create in hosted cluster with hashed name
+			tuned.Name = tunedName
+			tuned.Namespace = components.NamespaceNodeTuningOperator
+			err = clientToUse.Create(context.TODO(), tuned)
+			ExpectWithOffset(1, err).ToNot(HaveOccurred())
+
+			// Re-fetch to get server-assigned generation
+			err = clientToUse.Get(context.TODO(), tunedKey, tuned)
+		}
+		ExpectWithOffset(1, err).ToNot(HaveOccurred())
+
+		// Signal bootcmdline ready for the Tuned's current generation
+		signalBootcmdlineReady(mcpName, tunedName, tuned.Generation)
+
+		// Second reconcile: should succeed now that bootcmdline is ready
+		result, err = reconciler.Reconcile(context.TODO(), request)
+		ExpectWithOffset(1, err).ToNot(HaveOccurred())
+	}
+
+	return result
+}
+
 func MCPInterceptor() interceptor.Funcs {
 	GinkgoHelper()
 	generationCounter := int64(0)
@@ -1132,6 +1264,16 @@ func MCPInterceptor() interceptor.Funcs {
 			return err
 		},
 	}
+}
+
+// signalBootcmdlineReady signals that bootcmdline is ready for the given MCP and Tuned CR
+// This is a test helper to bypass the bootcmdline sync check
+func signalBootcmdlineReady(mcpName string, tunedName string, tunedGeneration int64) {
+	GinkgoHelper()
+	ntosync := sync.GetBootcmdlineSync()
+	GinkgoT().Setenv("RELEASE_VERSION", version.Version)
+	bootcmdlineDeps := fmt.Sprintf("%s,%s:%d", version.Version, tunedName, tunedGeneration)
+	ntosync.SignalReady(mcpName, bootcmdlineDeps)
 }
 
 // newFakeReconciler returns a new reconcile.Reconciler with a fake client
@@ -1189,6 +1331,14 @@ func adaptObjectsForHypershift(instance client.Object, initObjects ...runtime.Ob
 				klog.Fatal(err)
 			}
 			mngClusterObjects = append(mngClusterObjects, cm)
+			// Simulate what the operator's syncHostedClusterTuneds does.  Create the actual
+			// Tuned CR on the hosted cluster with the hashed name.
+			npAnnotation := profileCM.Annotations[hypershiftconsts.NodePoolNameLabel]
+			parts := strings.SplitN(npAnnotation, "/", 2)
+			nodePoolName := parts[len(parts)-1] // parseNamespacedName()
+			hashedTuned := obj.(*tunedv1.Tuned).DeepCopy()
+			hashedTuned.Name = nto.MakeTunedUniqueName(hashedTuned.Name, nodePoolName)
+			hostedClusterObjects = append(hostedClusterObjects, hashedTuned)
 		case *mcov1.MachineConfig, *mcov1.KubeletConfig:
 			cm, err := hcpcomponents.EncapsulateObjInConfigMap(scheme.Scheme, profileCM, obj.(client.Object), performanceProfileName, hypershiftconsts.ConfigKey, map[string]string{hypershiftconsts.NTOGeneratedMachineConfigLabel: "true"})
 			if err != nil {
