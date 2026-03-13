@@ -63,6 +63,9 @@ import (
 const (
 	openshiftFinalizer  = "foreground-deletion"
 	hypershiftFinalizer = "hypershift.openshift.io/foreground-deletion"
+
+	// statusUpdateRequeueAfter is the delay before retrying reconcile after a failure to update performance profile status.
+	statusUpdateRequeueAfter = 30 * time.Second
 )
 
 // PerformanceProfileReconciler reconciles a PerformanceProfile object
@@ -502,13 +505,14 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 		conditions := status.GetDegradedConditions(status.ConditionReasonComponentsCreationFailed, err.Error())
 		if err := r.StatusWriter.Update(ctx, instance, conditions); err != nil {
 			klog.Errorf("failed to update performance profile %q status: %v", instance.GetName(), err)
-			return reconcile.Result{}, err
+			return reconcile.Result{RequeueAfter: statusUpdateRequeueAfter}, err
 		}
 		return reconcile.Result{}, err
 	}
 	err = r.StatusWriter.UpdateOwnedConditions(ctx, instance)
 	if err != nil {
 		klog.Errorf("failed to update performance profile %q status: %v", instance.GetName(), err)
+		return ctrl.Result{RequeueAfter: statusUpdateRequeueAfter}, err
 	}
 	return ctrl.Result{}, nil
 }
@@ -538,7 +542,7 @@ func (r *PerformanceProfileReconciler) getAndValidateMCP(ctx context.Context, in
 		conditions := status.GetDegradedConditions(status.ConditionFailedToFindMachineConfigPool, err.Error())
 		if err := r.StatusWriter.Update(ctx, profile, conditions); err != nil {
 			klog.Errorf("failed to update performance profile %q status: %v", profile.GetName(), err)
-			return nil, &reconcile.Result{}, err
+			return nil, &reconcile.Result{RequeueAfter: statusUpdateRequeueAfter}, err
 		}
 		return nil, &reconcile.Result{}, nil
 	}
@@ -547,7 +551,7 @@ func (r *PerformanceProfileReconciler) getAndValidateMCP(ctx context.Context, in
 		conditions := status.GetDegradedConditions(status.ConditionBadMachineConfigLabels, err.Error())
 		if err := r.StatusWriter.Update(ctx, profile, conditions); err != nil {
 			klog.Errorf("failed to update performance profile %q status: %v", profile.GetName(), err)
-			return nil, &reconcile.Result{}, err
+			return nil, &reconcile.Result{RequeueAfter: statusUpdateRequeueAfter}, err
 		}
 		return nil, &reconcile.Result{}, nil
 	}
