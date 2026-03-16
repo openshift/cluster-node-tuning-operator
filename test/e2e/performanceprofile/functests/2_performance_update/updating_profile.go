@@ -1255,9 +1255,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 					By(fmt.Sprintf("creating a test pod using high-performance runtime class on node %s", workerRTNodes[i].Name))
 					Expect(testclient.DataPlaneClient.Create(context.TODO(), testpod)).ToNot(HaveOccurred())
 					DeferCleanup(func() {
-						By(fmt.Sprintf("deleting the test pod from node %s", workerRTNodes[i].Name))
-						Expect(testclient.DataPlaneClient.Delete(context.TODO(), testpod)).ToNot(HaveOccurred())
-						Expect(pods.WaitForDeletion(context.TODO(), testpod, pods.DefaultDeletionTimeout*time.Second)).ToNot(HaveOccurred())
+						By(fmt.Sprintf("deleting the test pod from node %s", testpod.Spec.NodeName))
+						Expect(pods.DeleteAndSync(context.TODO(), testclient.DataPlaneClient, testpod)).To(Succeed())
 					})
 					testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 					Expect(err).ToNot(HaveOccurred())

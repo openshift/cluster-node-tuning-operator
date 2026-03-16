@@ -12,7 +12,6 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -248,7 +247,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		})
 
 		AfterEach(func() {
-			deleteTestPod(context.TODO(), testpod)
+			Expect(pods.DeleteAndSync(context.TODO(), testclient.DataPlaneClient, testpod)).To(Succeed())
 		})
 
 		DescribeTable("Verify CPU usage by stress PODs", func(ctx context.Context, guaranteed bool) {
@@ -339,7 +338,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 		AfterEach(func() {
-			deleteTestPod(context.TODO(), testpod)
+			Expect(pods.DeleteAndSync(context.TODO(), testclient.DataPlaneClient, testpod)).To(Succeed())
 		})
 		When("kubelet is restart", func() {
 			It("[test_id: 73501] defaultCpuset should not change", func() {
@@ -422,7 +421,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 
 		AfterEach(func() {
 			if testpod != nil {
-				deleteTestPod(context.TODO(), testpod)
+				Expect(pods.DeleteAndSync(context.TODO(), testclient.DataPlaneClient, testpod)).To(Succeed())
 			}
 		})
 
@@ -481,7 +480,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 				fmt.Sprintf("IRQ still active on CPU%s", psr))
 
 			By("Checking that after removing POD default smp affinity is returned back to all active CPUs")
-			deleteTestPod(context.TODO(), testpod)
+			Expect(pods.DeleteAndSync(context.TODO(), testclient.DataPlaneClient, testpod)).To(Succeed())
 			defaultSmpAffinitySet, err = nodes.GetDefaultSmpAffinitySet(context.TODO(), workerRTNode)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -580,7 +579,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			if testpod == nil {
 				return
 			}
-			deleteTestPod(context.TODO(), testpod)
+			Expect(pods.DeleteAndSync(context.TODO(), testclient.DataPlaneClient, testpod)).To(Succeed())
 		})
 
 		It("[test_id:49149] should reject pods which request integral CPUs not aligned with machine SMT level", func() {
@@ -633,7 +632,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			if testpod == nil {
 				return
 			}
-			deleteTestPod(context.TODO(), testpod)
+			Expect(pods.DeleteAndSync(context.TODO(), testclient.DataPlaneClient, testpod)).To(Succeed())
 		})
 
 		DescribeTable("Verify Hyper-Thread aware scheduling for guaranteed pods",
@@ -680,7 +679,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 					testpod = startHTtestPod(ctx, cpuCount)
 					Expect(checkPodHTSiblings(ctx, testpod)).To(BeTrue(), "Pod cpu set does not map to host cpu sibling pairs")
 					By("Deleting test pod...")
-					deleteTestPod(ctx, testpod)
+					Expect(pods.DeleteAndSync(ctx, testclient.DataPlaneClient, testpod)).To(Succeed())
 				}
 			},
 
@@ -873,13 +872,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 		AfterAll(func() {
 			for podUID, testpod := range allTestpods {
 				testlog.Infof("deleting test pod %s/%s UID=%q", testpod.Namespace, testpod.Name, podUID)
-				err := testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(testpod), testpod)
-				Expect(err).ToNot(HaveOccurred())
-				err = testclient.DataPlaneClient.Delete(ctx, testpod)
-				Expect(err).ToNot(HaveOccurred())
-
-				err = pods.WaitForDeletion(ctx, testpod, pods.DefaultDeletionTimeout*time.Second)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(pods.DeleteAndSync(ctx, testclient.DataPlaneClient, testpod)).To(Succeed())
 			}
 		})
 
@@ -983,7 +976,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			defer func() {
 				if guaranteedPod != nil {
 					testlog.Infof("deleting pod %q", guaranteedPod.Name)
-					deleteTestPod(ctx, guaranteedPod)
+					Expect(pods.DeleteAndSync(ctx, testclient.DataPlaneClient, guaranteedPod)).To(Succeed())
 				}
 			}()
 
@@ -1014,7 +1007,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			defer func() {
 				if bestEffortPod != nil {
 					testlog.Infof("deleting pod %q", bestEffortPod.Name)
-					deleteTestPod(ctx, bestEffortPod)
+					Expect(pods.DeleteAndSync(ctx, testclient.DataPlaneClient, bestEffortPod)).To(Succeed())
 				}
 			}()
 
@@ -1142,11 +1135,11 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			defer func() {
 				if guPod != nil {
 					testlog.Infof("deleting pod %q", guPod.Name)
-					deleteTestPod(ctx, guPod)
+					Expect(pods.DeleteAndSync(ctx, testclient.DataPlaneClient, guPod)).To(Succeed())
 				}
 				if buPod != nil {
 					testlog.Infof("deleting pod %q", buPod.Name)
-					deleteTestPod(ctx, buPod)
+					Expect(pods.DeleteAndSync(ctx, testclient.DataPlaneClient, buPod)).To(Succeed())
 				}
 			}()
 		})
@@ -1399,24 +1392,6 @@ func getTestPodWithAnnotations(annotations map[string]string, cpus int) *corev1.
 	testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNode.Name}
 
 	return testpod
-}
-
-func deleteTestPod(ctx context.Context, testpod *corev1.Pod) (types.UID, bool) {
-	// it possible that the pod already was deleted as part of the test, in this case we want to skip teardown
-	err := testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(testpod), testpod)
-	if errors.IsNotFound(err) {
-		return "", false
-	}
-
-	testpodUID := testpod.UID
-
-	err = testclient.DataPlaneClient.Delete(ctx, testpod)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = pods.WaitForDeletion(ctx, testpod, pods.DefaultDeletionTimeout*time.Second)
-	Expect(err).ToNot(HaveOccurred())
-
-	return testpodUID, true
 }
 
 func cpuSpecToString(cpus *performancev2.CPU) (string, error) {
