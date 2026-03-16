@@ -14,7 +14,6 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -339,7 +338,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					testlog.Infof("OVS service pid %s is using cpus %s", pid, cpumask)
 					Expect(ctnCpuset.Equals(cpumask)).To(BeTrue(), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ctnCpuset, pid, cpumask)
 				}
-				deleteTestPod(ctx, testpod)
+				Expect(pods.DeleteAndSync(ctx, testclient.DataPlaneClient, testpod)).To(Succeed())
 
 			})
 
@@ -416,7 +415,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				}
 				// Delete testpod1
 				testlog.Infof("Deleting pod %v", testpod1.Name)
-				deleteTestPod(context.TODO(), testpod1)
+				Expect(pods.DeleteAndSync(context.TODO(), testclient.DataPlaneClient, testpod1)).To(Succeed())
 
 				time.Sleep(30 * time.Second)
 				// Check the cpus of ovnkubenode pods
@@ -433,7 +432,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					Expect(ovnContainerCpuset2.Equals(cpumask)).To(BeTrue(), "affinity of ovn kube node pods(%s) do not match with ovservices pid %s (%s)", ovnContainerCpuset2, pid, cpumask)
 				}
 				// Delete testpod2
-				deleteTestPod(context.TODO(), testpod2)
+				Expect(pods.DeleteAndSync(context.TODO(), testclient.DataPlaneClient, testpod2)).To(Succeed())
 			})
 
 			It("[test_id:64103] ovs process affinity still excludes guaranteed pods after reboot", func() {
@@ -654,12 +653,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				}
 				testlog.Infof("Deleting one of the pods of the deployment %q", dpObj.String())
 				podToDelete := podList.Items[0]
-				err = testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(&podToDelete), &podToDelete)
-				Expect(err).ToNot(HaveOccurred())
-				err = testclient.DataPlaneClient.Delete(ctx, &podToDelete)
-				Expect(err).ToNot(HaveOccurred())
-				err = pods.WaitForDeletion(ctx, &podToDelete, pods.DefaultDeletionTimeout*time.Second)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(pods.DeleteAndSync(ctx, testclient.DataPlaneClient, &podToDelete)).To(Succeed())
 
 				Eventually(func() bool {
 					err = testclient.DataPlaneClient.Get(context.TODO(), dpObj, dp)
@@ -750,21 +744,6 @@ func checkCpuCount(ctx context.Context, workerNode *corev1.Node) {
 	if onlineCPUInt <= minRequiredCPUs {
 		Skip(fmt.Sprintf("This test requires more than %d isolated CPUs, current available CPUs: %s", minRequiredCPUs, onlineCPUCount))
 	}
-}
-
-// deleteTestPod removes guaranteed pod
-func deleteTestPod(ctx context.Context, testpod *corev1.Pod) {
-	// it possible that the pod already was deleted as part of the test, in this case we want to skip teardown
-	err := testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(testpod), testpod)
-	if errors.IsNotFound(err) {
-		return
-	}
-
-	err = testclient.DataPlaneClient.Delete(ctx, testpod)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = pods.WaitForDeletion(ctx, testpod, pods.DefaultDeletionTimeout*time.Second)
-	Expect(err).ToNot(HaveOccurred())
 }
 
 // ovnCnfNodePod returns OVN Kubenode pods running on the worker cnf node

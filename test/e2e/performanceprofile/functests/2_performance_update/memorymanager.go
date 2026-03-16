@@ -25,7 +25,6 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/cpuset"
 	"k8s.io/utils/ptr"
@@ -727,16 +726,7 @@ func (mm MMPod) createPodTemplate(profile *performancev2.PerformanceProfile, gu 
 
 // removePod Delete test pod
 func (mm MMPod) removePod(ctx context.Context, testPod *corev1.Pod) error {
-	err := testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(testPod), testPod)
-	if errors.IsNotFound(err) {
-		return err
-	}
-	err = testclient.DataPlaneClient.Delete(ctx, testPod)
-	if err != nil {
-		return err
-	}
-
-	return pods.WaitForDeletion(ctx, testPod, pods.DefaultDeletionTimeout*time.Second)
+	return pods.DeleteAndSync(ctx, testclient.DataPlaneClient, testPod)
 }
 
 // InitializePod initialize pods which we want to be in running state
