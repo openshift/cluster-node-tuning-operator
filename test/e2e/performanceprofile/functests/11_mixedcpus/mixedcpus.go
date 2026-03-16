@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -41,6 +44,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/poolname"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/resources"
 )
 
 const (
@@ -508,6 +512,311 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
 				profilesupdate.WaitForTuningUpdated(context.TODO(), profile)
 			})
+		})
+	})
+
+	Context("Check exec-cpu-affinity feature", func() {
+		BeforeEach(func() {
+			ns := getTestingNamespace()
+			Expect(testclient.DataPlaneClient.Create(ctx, &ns)).ToNot(HaveOccurred())
+			DeferCleanup(func() {
+				Expect(testclient.DataPlaneClient.Delete(ctx, &ns)).ToNot(HaveOccurred())
+				Expect(namespaces.WaitForDeletion(testutils.NamespaceTesting, 5*time.Minute)).ToNot(HaveOccurred())
+			})
+		})
+
+		When("exec-cpu-affinity is enabled (default in PP)", func() {
+			var workerRTNode *corev1.Node
+			var profile, initialProfile *performancev2.PerformanceProfile
+			var getter cgroup.ControllersGetter
+			var updatedShared, updatedIsolated cpuset.CPUSet
+			var needsUpdate bool
+
+			BeforeEach(func() {
+				needsUpdate = false
+
+				By("Checking if exec-cpu-affinity is enabled by default in the profile")
+				var err error
+				profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(profile).ToNot(BeNil(), "Failed to get performance profile")
+				initialProfile = profile.DeepCopy()
+				val, ok := profile.Annotations[performancev2.PerformanceProfileExecCPUAffinityAnnotation]
+				if ok {
+					Expect(val).NotTo(Equal(performancev2.PerformanceProfileExecCPUAffinityDisable), "exec-cpu-affinity is disabled in the profile")
+				}
+
+				workerRTNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
+				Expect(err).ToNot(HaveOccurred())
+				workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes)
+				Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("error looking for the optional selector: %v", err))
+				Expect(workerRTNodes).ToNot(BeEmpty())
+				workerRTNode = &workerRTNodes[0]
+
+				getter, err = cgroup.BuildGetter(ctx, testclient.DataPlaneClient, testclient.K8sClient)
+				Expect(err).ToNot(HaveOccurred())
+
+				By("Updating performance profile to have enough shared cpus if needed")
+				updatedIsolated = *mustParse(string(*profile.Spec.CPU.Isolated))
+				updatedShared = *mustParse(string(*profile.Spec.CPU.Shared))
+
+				if updatedShared.Size() < 2 {
+					testlog.Info("shared cpuset has less than 2 cpus; this test requires at least 2 shared cpus; update the profile")
+
+					// we need at least 4 total isolated and shared CPUs:
+					// 1 as a buffer for node's base load
+					// 1 as the test gu pod requests
+					// 2 as shared cpus
+					minIsolatedCpus := 3
+					if updatedShared.Size() == 0 {
+						minIsolatedCpus = 4
+					}
+					if updatedIsolated.Size() < minIsolatedCpus {
+						Skip(fmt.Sprintf("isolated cpuset has less than %d cpus; this test requires at least another %d isolated cpus", minIsolatedCpus, minIsolatedCpus))
+					}
+
+					coreSiblings, err := nodes.GetCoreSiblings(ctx, workerRTNode)
+					Expect(err).ToNot(HaveOccurred())
+					updatedShared, err = nodes.GetTwoSiblingsFromCPUSet(coreSiblings, updatedIsolated)
+					if err != nil {
+						testlog.Info("no two siblings found in the given CPU set, looks like the initial profile does not respect hyperthreading; proceed then with this state and pick first two isolated CPUs as the shared CPUs")
+						updatedShared = cpuset.New(updatedIsolated.List()[0], updatedIsolated.List()[1])
+					}
+
+					updatedIsolated = updatedIsolated.Difference(updatedShared)
+
+					testlog.Infof("CPU update:shared cpu %q isolated cpus %q", updatedShared.String(), updatedIsolated.String())
+					profile.Spec.CPU.Isolated = cpuSetToPerformanceCPUSet(&updatedIsolated)
+					profile.Spec.CPU.Shared = cpuSetToPerformanceCPUSet(&updatedShared)
+					profile.Spec.WorkloadHints.MixedCpus = ptr.To(true) // if not already
+
+					profiles.UpdateWithRetry(profile)
+
+					poolName := poolname.GetByProfile(context.TODO(), profile)
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+					profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.WaitForTuningUpdated(context.TODO(), profile)
+					needsUpdate = true
+				}
+			})
+
+			AfterEach(func() {
+				if !needsUpdate {
+					By("no need for a revert")
+					return
+				}
+
+				By("Reverting the cluster to previous state")
+				profiles.UpdateWithRetry(initialProfile)
+				poolName := poolname.GetByProfile(context.TODO(), initialProfile)
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+				profilesupdate.WaitForTuningUpdating(context.TODO(), initialProfile)
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.WaitForTuningUpdated(context.TODO(), initialProfile)
+			})
+
+			DescribeTable("should pin exec process to the first CPU that belongs to the right CPU set in the container, that is expected to take charge of exec process (isolated or shared)", func(qos corev1.PodQOSClass, containersResources []corev1.ResourceList) {
+				By("Creating the test pod")
+				isolatedCpus, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+				Expect(err).ToNot(HaveOccurred(), "Failed to parse isolated CPUs")
+				switch qos {
+				case corev1.PodQOSGuaranteed:
+					totalPodCpus := resources.TotalCPUsRoundedUp(containersResources)
+					if isolatedCpus.Size() < totalPodCpus {
+						Skip("Skipping test: Insufficient isolated CPUs")
+					}
+				case corev1.PodQOSBurstable:
+					maxPodCpus := resources.MaxCPURequestsRoundedUp(containersResources)
+					if isolatedCpus.Size() < maxPodCpus {
+						Skip("Skipping test: Insufficient isolated CPUs")
+					}
+				case corev1.PodQOSBestEffort:
+					testlog.Info("test best-effort pod")
+				default:
+					Fail("Invalid QoS class")
+				}
+
+				testPod, err := pods.MakePodWithResources(workerRTNode.Name, qos, containersResources)
+				Expect(err).ToNot(HaveOccurred(), "Failed to make test pod")
+				Expect(testclient.DataPlaneClient.Create(ctx, testPod)).To(Succeed(), "Failed to create test pod")
+				DeferCleanup(func() {
+					Expect(pods.DeleteAndSync(ctx, testclient.DataPlaneClient, testPod)).To(Succeed())
+				})
+				testPod, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testPod), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
+				Expect(err).ToNot(HaveOccurred())
+
+				cpusetCfg := &controller.CpuSet{}
+				for _, container := range testPod.Spec.Containers {
+					/* we need to verify the below scenarios:
+					 1. non gu pod -> exec process will be pinned to any CPU
+					 2. gu pods:
+					    2.1 containers requesting whole CPUs:
+							a. with Shared CPU -> exec process is pinned to the FIRST SHARED CPU
+							b. without Shared CPU -> exec process is pinned to the FIRST ISOLATED CPU of the container
+						2.2 containers requesting fractional CPUs -> exec process is pinned to ANY CPU
+					*/
+
+					isExclusiveCPURequest := false
+					retries := 1
+
+					if qos == corev1.PodQOSGuaranteed {
+						milliCPU := container.Resources.Requests.Cpu().MilliValue()
+						isExclusiveCPURequest = (milliCPU % 1000) == 0
+					}
+
+					if !isExclusiveCPURequest {
+						testlog.Infof("exec process should be pinned to any CPU of the isolated set")
+					}
+
+					By(fmt.Sprintf("Prepare comparable data for container %s, resource list: %v", container.Name, container.Resources.String()))
+					Expect(getter.Container(ctx, testPod, container.Name, cpusetCfg)).To(Succeed(), "Failed to get cpuset config for the container")
+
+					cpusIncludingShared, err := cpuset.Parse(cpusetCfg.Cpus)
+					Expect(err).ToNot(HaveOccurred(), "Failed to parse cpuset config for test pod cpus=%q", cpusetCfg.Cpus)
+					Expect(cpusIncludingShared.Size()).ToNot(BeZero(), "Failed to get cpuset config for test pod cpus=%q", cpusetCfg.Cpus)
+					testlog.Infof("all CPUs dedicated for the container (including shared if requested): %s", cpusIncludingShared.String())
+					firstCPU := cpusIncludingShared.List()[0]
+
+					isSharedCPUsRequested := container.Resources.Limits.Name(sharedCpusResource, resource.DecimalSI).Value() > 0
+					if isSharedCPUsRequested {
+						cntShared := cpusIncludingShared.Difference(updatedIsolated)
+						reserved := mustParse(string(*profile.Spec.CPU.Reserved))
+						cntShared = cntShared.Difference(*reserved)
+						Expect(cntShared.Size()).ToNot(BeZero(), "no shared CPUs found for container %s", container.Name)
+						Expect(cntShared.Equals(updatedShared)).To(BeTrue(), "shared CPUs are not as configured in the profile; found=%s, expected=%s", cntShared.String(), updatedShared.String())
+						firstCPU = cntShared.List()[0]
+						testlog.Infof("container %s: first shared CPU: %d; all shared CPUs: %s", container.Name, firstCPU, cntShared.String())
+					}
+
+					// try high enough times to ensure that even with low cpus count, the functionality is preserved
+					if isExclusiveCPURequest {
+						cpuRequest := container.Resources.Requests.Name(corev1.ResourceCPU, resource.DecimalSI).Value()
+						if isSharedCPUsRequested {
+							cpuRequest = int64(updatedShared.Size())
+						}
+
+						// The concept of retries is to avoid false positives on first check.
+						// especially when the number of allowed cpus is low, the possibility to
+						// choose the correct (first) CPU is anyway high; with retries we ensure
+						// that even with this high possibility, retrying many times still gives
+						// us the correct result.
+						// the formula is to start with 5 retries (`oc exec` entries to the container)
+						// for CPUset of size 2, and reduce that when the number is higher, down
+						// to 1 retry minimum.
+						retries = int(math.Ceil(float64(10) / float64(cpuRequest)))
+					}
+
+					testlog.Infof("expected CPU affinity: pinToFirstCPU: %t, retries: %d", isExclusiveCPURequest, retries)
+					if isExclusiveCPURequest {
+						testlog.Infof("expected CPU affinity: affinityToShared: %t, affinityToIsolated: %t", isSharedCPUsRequested, !isSharedCPUsRequested)
+					} else {
+						testlog.Infof("expected CPU affinity: Any CPU from the allowed list")
+					}
+
+					// Sample the pinned CPU multiple times per run to ensure the process stays pinned (not a single racy snapshot).
+					// Field 39 in /proc/<pid>/stat is the processor number.
+					// See proc_pid_stat(5): https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html
+					By(fmt.Sprintf("Run exec commands on the pod in parallel and verify the process is pinned to the right CPU for container %s", container.Name))
+					const samplesPerRun = 5
+					const sampleIntervalSec = 1
+					cmd := []string{"/bin/bash", "-c", fmt.Sprintf(
+						"sleep 10 & SLPID=$!; sleep 0.5; for ((i=1;i<=%d;i++)); do awk '{print $39}' /proc/$SLPID/stat; sleep %d; done",
+						samplesPerRun, sampleIntervalSec)}
+					execProcessCPUSamples := make([][]int, retries)
+					g, _ := errgroup.WithContext(ctx)
+					for i := 0; i < retries; i++ {
+						idx := i
+						g.Go(func() error {
+							output, err := pods.ExecCommandOnPod(testclient.K8sClient, testPod, container.Name, cmd)
+							if err != nil {
+								return fmt.Errorf("exec command failed for run %d: %w", idx, err)
+							}
+							strout := strings.TrimSpace(string(output))
+							testlog.Infof("entry %d: exec command output (samples): \n%s", idx, strout)
+							var samples []int
+							for _, line := range strings.Split(strout, "\n") {
+								line = strings.TrimSpace(line)
+								if line == "" {
+									continue
+								}
+								cpu, err := strconv.Atoi(line)
+								if err != nil {
+									return fmt.Errorf("entry %d: failed to parse processor number from %q: %w", idx, line, err)
+								}
+								samples = append(samples, cpu)
+							}
+							if len(samples) == 0 {
+								return fmt.Errorf("entry %d: no valid samples", idx)
+							}
+							if len(samples) < samplesPerRun {
+								testlog.Warningf("entry %d: got %d/%d samples (process may have exited early)", idx, len(samples), samplesPerRun)
+							}
+							execProcessCPUSamples[idx] = samples
+							return nil
+						})
+					}
+					Expect(g.Wait()).ToNot(HaveOccurred(), "One or more exec commands failed")
+					for i := 0; i < retries; i++ {
+						testlog.Infof("process samples of entry %d: %v", i, execProcessCPUSamples[i])
+						for _, cpu := range execProcessCPUSamples[i] {
+							if isExclusiveCPURequest {
+								Expect(cpu).To(Equal(firstCPU), "Exec process CPU is not the correct first CPU")
+							} else {
+								Expect(cpusIncludingShared.Contains(cpu)).To(BeTrue(), "Exec process CPU %d is not part of the cpuset: %s", cpu, cpusIncludingShared.String())
+							}
+						}
+					}
+				}
+			},
+				Entry("guaranteed pod with mixed containers: exec process on container with whole CPUs should be pinned to the first shared CPU; and on container with fractional CPUs should be pinned to any CPU even if shared is specified",
+					corev1.PodQOSGuaranteed,
+					[]corev1.ResourceList{
+						{ // cnt1 resources
+							corev1.ResourceCPU:    resource.MustParse("2"),
+							corev1.ResourceMemory: resource.MustParse("100Mi"),
+							sharedCpusResource:    resource.MustParse("1"),
+						},
+						{ // cnt2 resources
+							corev1.ResourceCPU:    resource.MustParse("2300m"),
+							corev1.ResourceMemory: resource.MustParse("100Mi"),
+							sharedCpusResource:    resource.MustParse("1"),
+						},
+					}),
+				Entry("guaranteed pod with mixed containers: with shared CPU and without shared CPU",
+					corev1.PodQOSGuaranteed,
+					[]corev1.ResourceList{
+						{ // cnt1 resources
+							corev1.ResourceCPU:    resource.MustParse("2"),
+							corev1.ResourceMemory: resource.MustParse("100Mi"),
+							sharedCpusResource:    resource.MustParse("1"),
+						},
+						{ // cnt2 resources
+							corev1.ResourceCPU:    resource.MustParse("2"),
+							corev1.ResourceMemory: resource.MustParse("100Mi"),
+						},
+						{ // cnt3 resources
+							corev1.ResourceCPU:    resource.MustParse("2300m"),
+							corev1.ResourceMemory: resource.MustParse("100Mi"),
+						},
+					}),
+				Entry("best-effort pod with shared CPU request",
+					corev1.PodQOSBestEffort,
+					// shared CPUs are only allowed for guaranteed pods
+					[]corev1.ResourceList{
+						//cnt1 resources
+						{},
+					}),
+				Entry("burstable pod with shared CPU request",
+					corev1.PodQOSBurstable,
+					// shared CPUs are only allowed for guaranteed pods
+					[]corev1.ResourceList{
+						{ // cnt1 resources
+							corev1.ResourceCPU:    resource.MustParse("2"),
+							corev1.ResourceMemory: resource.MustParse("100Mi"),
+						},
+					}),
+			)
 		})
 	})
 })

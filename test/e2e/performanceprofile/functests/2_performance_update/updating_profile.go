@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -1283,6 +1285,154 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			Entry("test without ContainerRuntimeConfig", false),
 			Entry("create and test with ContainerRuntimeConfig", true),
 		)
+
+		When("exec-cpu-affinity is disabled", func() {
+			// by default the exec-cpu-affinity is enabled, thus this requires an update to the profile
+			var getter cgroup.ControllersGetter
+			var initialProfile, profile *performancev2.PerformanceProfile
+			var needsUpdate bool
+
+			BeforeEach(func() {
+				needsUpdate = false
+
+				var err error
+				getter, err = cgroup.BuildGetter(context.TODO(), testclient.DataPlaneClient, testclient.K8sClient)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(getter).ToNot(BeNil())
+
+				By("Checking if exec-cpu-affinity is disabled, if not disable it")
+				initialProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+				Expect(err).ToNot(HaveOccurred(), "Failed to get performance profile")
+				Expect(initialProfile).ToNot(BeNil(), "Failed to get performance profile")
+				profile = initialProfile.DeepCopy()
+				needsUpdate = false
+				if initialProfile.Annotations == nil {
+					profile.Annotations = make(map[string]string)
+				}
+
+				val, ok := profile.Annotations[performancev2.PerformanceProfileExecCPUAffinityAnnotation]
+				if !ok || val != performancev2.PerformanceProfileExecCPUAffinityDisable {
+					profile.Annotations[performancev2.PerformanceProfileExecCPUAffinityAnnotation] = performancev2.PerformanceProfileExecCPUAffinityDisable
+					needsUpdate = true
+				}
+
+				if !needsUpdate {
+					testlog.Infof("profile already has disabled execCPUAffinity: %+v", initialProfile.Annotations)
+					return
+				}
+
+				By("Updating the profile")
+				profiles.UpdateWithRetry(profile)
+				poolName := poolname.GetByProfile(context.TODO(), profile)
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+				profilesupdate.WaitForTuningUpdating(context.TODO(), profile)
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.WaitForTuningUpdated(context.TODO(), profile)
+
+			})
+
+			AfterEach(func() {
+				if !needsUpdate {
+					By("no need for a revert")
+					return
+				}
+				By("Restoring the profile")
+				profiles.UpdateWithRetry(initialProfile)
+				poolName := poolname.GetByProfile(context.TODO(), initialProfile)
+				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+				profilesupdate.WaitForTuningUpdating(context.TODO(), initialProfile)
+				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				profilesupdate.WaitForTuningUpdated(context.TODO(), initialProfile)
+			})
+
+			It("should pin exec process to any exclusive CPU - guaranteed pod single container", func() {
+				By("Creating a guaranteed test pod")
+				ctx := context.TODO()
+				testPod := testpodTemplate.DeepCopy()
+				testPod.Spec.NodeName = workerRTNodes[0].Name
+				testPod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNodes[0].Name}
+				testPod.Spec.Containers[0].Resources.Limits = corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("2"),
+					corev1.ResourceMemory: resource.MustParse("100Mi"),
+				}
+				Expect(testclient.DataPlaneClient.Create(ctx, testPod)).To(Succeed(), "Failed to create test pod: %+v", testPod)
+				DeferCleanup(func() {
+					if testPod == nil {
+						By("test pod was not created, skipping")
+						return
+					}
+					testlog.Infof("deleting pod %q", testPod.Name)
+					Expect(pods.DeleteAndSync(ctx, testclient.DataPlaneClient, testPod)).To(Succeed())
+				})
+
+				testPod, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testPod), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
+				Expect(err).ToNot(HaveOccurred())
+
+				cpusetCfg := &controller.CpuSet{}
+				Expect(getter.Container(ctx, testPod, testPod.Spec.Containers[0].Name, cpusetCfg)).To(Succeed(), "Failed to get cpuset config for test pod")
+				cpusList, err := cpuset.Parse(cpusetCfg.Cpus)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(cpusList.Size()).ToNot(BeZero())
+				testlog.Infof("allowed CPUs: %s; now exclude reserved and shared CPUs", cpusList.String())
+
+				reservedCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
+				Expect(err).ToNot(HaveOccurred())
+				Expect(reservedCPUs.Size()).ToNot(BeZero())
+				testlog.Infof("reserved CPUs: %s", reservedCPUs.String())
+				sharedCPUs := cpuset.CPUSet{}
+				if profile.Spec.CPU.Shared != nil {
+					sharedCPUs, err = cpuset.Parse(string(*profile.Spec.CPU.Shared))
+					Expect(err).ToNot(HaveOccurred())
+					Expect(sharedCPUs.Size()).ToNot(BeZero())
+					testlog.Infof("shared CPUs: %s", sharedCPUs.String())
+				}
+				testlog.Infof("reserved CPUs: %s", reservedCPUs.String())
+				testlog.Infof("shared CPUs: %s", sharedCPUs.String())
+				exclusiveCPUs := cpusList.Difference(reservedCPUs).Difference(sharedCPUs)
+				Expect(exclusiveCPUs.Size()).ToNot(BeZero())
+				firstExclusiveCPU := exclusiveCPUs.List()[0]
+				testlog.Infof("first exclusive CPU: %d, all exclusive CPUs: %s", firstExclusiveCPU, exclusiveCPUs.String())
+
+				// The concept of retries is to avoid false positives on first check. We set a
+				// high enough number of retries to ensure that the exec process is not pinned
+				// to the first exclusive CPU always.
+				// The test finishes successfully. If, with all retries, the exec process is pinned to the first exclusive CPU,
+				// then something is likely wrong in the flow and must be investigated, hence the test fails.
+				retries := 10
+				By("Run exec commands on the pod in parallel and verify the process is pinned not only to the first exclusive CPU")
+				// Field 39 in /proc/<pid>/stat is the processor number
+				// See proc_pid_stat(5): https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html
+				cmd := []string{"/bin/bash", "-c", "sleep 10 & SLPID=$!; sleep 0.5; awk '{print $39}' /proc/$SLPID/stat"}
+				execProcessCPUs := make([]int, retries)
+				g, _ := errgroup.WithContext(ctx)
+				for i := 0; i < retries; i++ {
+					idx := i
+					g.Go(func() error {
+						output, err := pods.ExecCommandOnPod(testclient.K8sClient, testPod, testPod.Spec.Containers[0].Name, cmd)
+						if err != nil {
+							return fmt.Errorf("exec command failed for run %d: %w", idx, err)
+						}
+						strout := strings.TrimSpace(string(output))
+						testlog.Infof("entry %d: exec command output: %s", idx, strout)
+						cpu, err := strconv.Atoi(strout)
+						if err != nil {
+							return fmt.Errorf("entry %d: failed to parse processor number from %q: %w", idx, strout, err)
+						}
+
+						if !exclusiveCPUs.Contains(cpu) {
+							return fmt.Errorf("entry %d: exec process was pinned to a reserved or shared CPU %d", idx, cpu)
+						}
+
+						execProcessCPUs[idx] = cpu
+						return nil
+					})
+				}
+				Expect(g.Wait()).ToNot(HaveOccurred(), "One or more exec commands failed")
+
+				Expect(execProcessCPUs).ToNot(HaveEach(firstExclusiveCPU),
+					"exec process was always pinned to the first exclusive CPU %d across all %d retries", firstExclusiveCPU, retries)
+			})
+		})
 	})
 
 	Context("Verify single hyperthread allocation", Label(string(label.Tier2)), func() {
