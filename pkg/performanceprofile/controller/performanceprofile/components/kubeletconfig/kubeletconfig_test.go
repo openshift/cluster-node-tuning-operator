@@ -206,4 +206,18 @@ var _ = Describe("Kubelet Config", func() {
 		})
 
 	})
+
+	Context("with mutually exclusive options", func() {
+		It("should return an error when both MixedCPUs and DRA resource management are enabled", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
+			_, err := New(profile, &components.KubeletConfigOptions{
+				MachineConfigPoolSelector: map[string]string{selectorKey: selectorValue},
+				MixedCPUsEnabled:          true,
+				DRAResourceManagement:     true,
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("mixed CPUs mode and DRA resource management features are mutually exclusive"))
+		})
+	})
 })
