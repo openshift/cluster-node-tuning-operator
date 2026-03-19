@@ -758,8 +758,10 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 				By("creating test pod")
 				err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
+				DeferCleanup(func() {
+					Expect(pods.DeleteAndSync(context.TODO(), testclient.DataPlaneClient, testpod)).To(Succeed())
+				})
 				Expect(err).ToNot(HaveOccurred())
-				defer deleteTestPod(context.TODO(), testpod)
 				testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(testpod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed), "Test pod does not have QoS class of Guaranteed")
@@ -809,7 +811,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				}
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), otherCpus, &workerRTNodes[0], "0", "performance")
 				Expect(err).ToNot(HaveOccurred())
-				deleteTestPod(context.TODO(), testpod)
+				Expect(pods.DeleteAndSync(context.TODO(), testclient.DataPlaneClient, testpod)).To(Succeed())
 				//Verify after the pod is deleted the cpus assigned to container have default powersave settings
 				By("Verify after pod is delete cpus assigned to container have default powersave settings")
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), targetCpus, &workerRTNodes[0], "0", "performance")
@@ -869,8 +871,10 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 
 				By("creating test pod")
 				err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
+				DeferCleanup(func() {
+					Expect(pods.DeleteAndSync(context.TODO(), testclient.DataPlaneClient, testpod)).To(Succeed())
+				})
 				Expect(err).ToNot(HaveOccurred())
-				defer deleteTestPod(context.TODO(), testpod)
 				testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(testpod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed), "Test pod does not have QoS class of Guaranteed")
@@ -920,7 +924,7 @@ var _ = Describe("[rfe_id:49062][workloadHints] Telco friendly workload specific
 				//Verify cpus not assigned to the pod have default power settings
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), otherCpus, &workerRTNodes[0], "0", "performance")
 				Expect(err).ToNot(HaveOccurred())
-				deleteTestPod(context.TODO(), testpod)
+				Expect(pods.DeleteAndSync(context.TODO(), testclient.DataPlaneClient, testpod)).To(Succeed())
 				//Test after pod is deleted the governors are set back to default for the cpus that were alloted to containers.
 				By("Verify after pod is delete cpus assigned to container have default powersave settings")
 				err = checkCpuGovernorsAndResumeLatency(context.TODO(), targetCpus, &workerRTNodes[0], "0", "performance")
@@ -956,21 +960,6 @@ func getTunedStructuredData(profile *performancev2.PerformanceProfile) *ini.File
 	cfg, err := ini.Load(tunedData)
 	Expect(err).ToNot(HaveOccurred())
 	return cfg
-}
-
-// deleteTestPod removes guaranteed pod
-func deleteTestPod(ctx context.Context, testpod *corev1.Pod) {
-	// it possible that the pod already was deleted as part of the test, in this case we want to skip teardown
-	err := testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(testpod), testpod)
-	if errors.IsNotFound(err) {
-		return
-	}
-
-	err = testclient.DataPlaneClient.Delete(ctx, testpod)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = pods.WaitForDeletion(ctx, testpod, pods.DefaultDeletionTimeout*time.Second)
-	Expect(err).ToNot(HaveOccurred())
 }
 
 // checkCpuGovernorsAndResumeLatency  Checks power and latency settings of the cpus

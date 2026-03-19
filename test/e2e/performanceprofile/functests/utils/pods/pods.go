@@ -20,11 +20,15 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/remotecommand"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/events"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 )
 
 // DefaultDeletionTimeout contains the default pod deletion timeout in seconds
@@ -51,10 +55,74 @@ func GetTestPod() *corev1.Pod {
 	}
 }
 
+func MakePodWithResources(nodeName string, qos corev1.PodQOSClass, containersResources []corev1.ResourceList) (*corev1.Pod, error) {
+	if len(containersResources) == 0 {
+		return nil, fmt.Errorf("no containers resources provided")
+	}
+
+	podContainers := []corev1.Container{}
+	for i, containerResources := range containersResources {
+		cnt := corev1.Container{
+			Name:    fmt.Sprintf("test%d", i+1),
+			Image:   images.Test(),
+			Command: []string{"sleep", "10h"},
+		}
+		cnt.Resources.Requests = containerResources
+
+		if qos == corev1.PodQOSGuaranteed {
+			cnt.Resources.Limits = containerResources
+		}
+
+		podContainers = append(podContainers, cnt)
+	}
+
+	testPod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: "test-",
+			Namespace:    testutils.NamespaceTesting,
+		},
+		Spec: corev1.PodSpec{
+			Containers:   podContainers,
+			NodeSelector: map[string]string{testutils.LabelHostname: nodeName},
+		},
+	}
+
+	profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+	if err != nil {
+		return nil, err
+	}
+	runtimeClass := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+	testPod.Spec.RuntimeClassName = &runtimeClass
+	return testPod, nil
+}
+
+func DeleteAndSync(ctx context.Context, cli client.Client, pod *corev1.Pod) error {
+	if pod == nil {
+		klog.InfoS("pod is nil, skipping deletion")
+		return nil
+	}
+
+	if cli == nil {
+		return fmt.Errorf("client is nil")
+	}
+	klog.InfoS("delete pod and waiting for deletion", "namespace", pod.Namespace, "name", pod.Name)
+
+	err := cli.Delete(ctx, pod)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			klog.InfoS("pod already deleted")
+			return nil
+		}
+		return err
+	}
+
+	return WaitForDeletion(ctx, cli, pod, DefaultDeletionTimeout*time.Second)
+}
+
 // WaitForDeletion waits until the pod will be removed from the cluster
-func WaitForDeletion(ctx context.Context, pod *corev1.Pod, timeout time.Duration) error {
+func WaitForDeletion(ctx context.Context, cli client.Client, pod *corev1.Pod, timeout time.Duration) error {
 	return wait.PollUntilContextTimeout(ctx, time.Second, timeout, true, func(ctx context.Context) (bool, error) {
-		if err := testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(pod), pod); errors.IsNotFound(err) {
+		if err := cli.Get(ctx, client.ObjectKeyFromObject(pod), pod); errors.IsNotFound(err) {
 			return true, nil
 		}
 		return false, nil

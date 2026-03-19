@@ -14,7 +14,6 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -1278,7 +1277,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 			}
 			ctx := context.Background()
 			testlog.Infof("deleting pod %q", testPod.Name)
-			deleteTestPod(ctx, testPod)
+			Expect(pods.DeleteAndSync(ctx, testclient.DataPlaneClient, testPod)).To(Succeed())
 		})
 
 		It("[test_id:77727] should align containers which request less than a L3 group size exclusive CPUs", func(ctx context.Context) {
@@ -1429,7 +1428,7 @@ func waitForDeploymentPodsDeletion(ctx context.Context, targetNode *corev1.Node,
 	}).WithTimeout(time.Minute * 5).WithPolling(time.Second * 30).Should(BeTrue())
 	for _, pod := range podList.Items {
 		testlog.TaggedInfof("cleanup", "Deleting pod %s", pod.Name)
-		err := pods.WaitForDeletion(ctx, &pod, pods.DefaultDeletionTimeout*time.Second)
+		err := pods.WaitForDeletion(ctx, testclient.DataPlaneClient, &pod, pods.DefaultDeletionTimeout*time.Second)
 		Expect(err).ToNot(HaveOccurred())
 	}
 }
@@ -1581,22 +1580,4 @@ func makeLLCPod(nodeName string, guaranteedCPUs int) *corev1.Pod {
 	runtimeClass := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
 	testPod.Spec.RuntimeClassName = &runtimeClass
 	return testPod
-}
-
-func deleteTestPod(ctx context.Context, testpod *corev1.Pod) bool {
-	GinkgoHelper()
-
-	// it possible that the pod already was deleted as part of the test, in this case we want to skip teardown
-	err := testclient.DataPlaneClient.Get(ctx, client.ObjectKeyFromObject(testpod), testpod)
-	if apierrors.IsNotFound(err) {
-		return false
-	}
-
-	err = testclient.DataPlaneClient.Delete(ctx, testpod)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = pods.WaitForDeletion(ctx, testpod, pods.DefaultDeletionTimeout*time.Second)
-	Expect(err).ToNot(HaveOccurred())
-
-	return true
 }
