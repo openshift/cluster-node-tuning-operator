@@ -262,13 +262,15 @@ func operatorRun() {
 	// This will trigger a graceful shutdown when the TLS profile changes.
 	// In classic mode, this watches the local cluster's APIServer.
 	// In HyperShift mode, this watches the hosted cluster's APIServer.
-	if err := setupTLSProfileWatcher(ctx, mgr, cancel, tlsSecurityProfileSpec); err != nil {
+	if err := setupTLSProfileWatcher(mgr, cancel, tlsSecurityProfileSpec); err != nil {
 		klog.Fatalf("unable to create TLS security profile watcher controller: %v", err)
 	}
 
 	if err := mgr.Start(ctx); err != nil {
-		klog.Exitf("manager exited with non-zero code: %v", err)
+		klog.Exitf("manager stopped with an error: %v", err)
 	}
+
+	klog.Infof("manager stopped cleanly")
 }
 
 func setupFeatureGates(ctx context.Context, config *rest.Config, operatorNamespace string) (featuregates.FeatureGate, error) {
@@ -361,7 +363,7 @@ func getInitialTLSProfile(restConfig *rest.Config) (apiconfigv1.TLSProfileSpec, 
 	return tlsSecurityProfileSpec, tlsConfig
 }
 
-func setupTLSProfileWatcher(ctx context.Context, mgr ctrl.Manager, cancel context.CancelFunc, tlsSecurityProfileSpec apiconfigv1.TLSProfileSpec) error {
+func setupTLSProfileWatcher(mgr ctrl.Manager, cancel context.CancelFunc, tlsSecurityProfileSpec apiconfigv1.TLSProfileSpec) error {
 	watcher := &tlspkg.SecurityProfileWatcher{
 		Client:                mgr.GetClient(),
 		InitialTLSProfileSpec: tlsSecurityProfileSpec,
