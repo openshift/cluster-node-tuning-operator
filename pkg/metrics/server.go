@@ -36,8 +36,9 @@ const (
 )
 
 type Server struct {
-	caBundle   string
-	caBundleCh chan string
+	caBundle      string
+	caBundleCh    chan string
+	tlsConfigFunc func(*tls.Config)
 }
 
 var (
@@ -46,6 +47,12 @@ var (
 
 func init() {
 	server = Server{caBundleCh: make(chan string)}
+}
+
+// SetTLSConfigFunc sets the TLS configuration function to be used by the metrics server.
+// This should be called before starting the server.
+func SetTLSConfigFunc(tlsConfigFunc func(*tls.Config)) {
+	server.tlsConfigFunc = tlsConfigFunc
 }
 
 // In classic clusters, DumpCA stores the root certificate bundle which is used to verify
@@ -75,19 +82,13 @@ func buildServer(port int, caBundle string) *http.Server {
 	caCertPool := x509.NewCertPool()
 	var clientAuthHandler http.Handler = handler
 
-	// Default minimum version is TLS 1.3.  PQ algorithms will only be supported in TLS 1.3+.
-	// Hybrid key agreements for TLS 1.3 X25519MLKEM768 is supported by default in go 1.24.
-	tlsConfig.MinVersion = tls.VersionTLS13
-	tlsConfig.CipherSuites = []uint16{
-		// Drop
-		// - 64-bit block cipher 3DES as it is vulnerable to SWEET32 attack.
-		// - CBC encryption method.
-		// - RSA key exchange.
-		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-		tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-		tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+	// Apply the TLS configuration from the central TLS profile.
+	if server.tlsConfigFunc != nil {
+		server.tlsConfigFunc(tlsConfig)
 	}
-	tlsConfig.NextProtos = []string{"http/1.1"} // CVE-2023-44487
+
+	// CVE-2023-44487 mitigation.
+	tlsConfig.NextProtos = []string{"http/1.1"}
 
 	if len(caBundle) > 0 {
 		if caCertPool.AppendCertsFromPEM([]byte(caBundle)) {
