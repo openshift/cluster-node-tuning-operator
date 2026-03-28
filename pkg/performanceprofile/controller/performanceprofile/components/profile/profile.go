@@ -94,3 +94,17 @@ func IsMixedCPUsEnabled(profile *performancev2.PerformanceProfile) bool {
 	}
 	return *profile.Spec.WorkloadHints.MixedCpus
 }
+
+// IsExecCPUAffinityEnabled checks if exec-cpu-affinity feature should be enabled
+func IsExecCPUAffinityEnabled(profile *performancev2.PerformanceProfile) bool {
+	if profile.Annotations != nil {
+		val, ok := profile.Annotations[performancev2.PerformanceProfileExecCPUAffinityAnnotation]
+		if ok && val == performancev2.PerformanceProfileExecCPUAffinityDisable {
+			// run the legacy behavior and disable exec-cpu-affinity
+			return false
+		}
+	}
+
+	// The default behavior is to enable exec-cpu-affinity whenever profile is applied
+	return true
+}

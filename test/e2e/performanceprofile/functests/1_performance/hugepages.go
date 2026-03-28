@@ -128,11 +128,7 @@ var _ = Describe("[performance]Hugepages", Ordered, func() {
 		var testpod *corev1.Pod
 
 		AfterEach(func() {
-			err := testclient.DataPlaneClient.Delete(context.TODO(), testpod)
-			Expect(err).ToNot(HaveOccurred())
-
-			err = pods.WaitForDeletion(context.TODO(), testpod, pods.DefaultDeletionTimeout*time.Second)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(pods.DeleteAndSync(context.TODO(), testclient.DataPlaneClient, testpod)).To(Succeed())
 		})
 
 		It("[test_id:27477][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Huge pages support for container workloads", func() {

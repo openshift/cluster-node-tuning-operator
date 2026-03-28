@@ -105,15 +105,7 @@ var _ = Describe("[performance] Latency Test", Ordered, func() {
 
 	AfterEach(func() {
 		if latencyTestPod != nil {
-			err = testclient.Client.Delete(context.TODO(), latencyTestPod)
-			if err != nil {
-				testlog.Error(err)
-			}
-
-			err = pods.WaitForDeletion(context.TODO(), latencyTestPod, pods.DefaultDeletionTimeout*time.Second)
-			if err != nil {
-				testlog.Error(err)
-			}
+			Expect(pods.DeleteAndSync(context.TODO(), testclient.DataPlaneClient, latencyTestPod)).To(Succeed())
 		}
 
 		maximumLatency = -1
