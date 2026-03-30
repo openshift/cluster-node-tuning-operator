@@ -6,6 +6,7 @@
 package block
 
 import (
+	"context"
 	"strconv"
 	"strings"
 
@@ -108,7 +109,7 @@ type win32PhysicalDisk struct {
 	MediaType physicalDiskMediaType
 }
 
-func (i *Info) load() error {
+func (i *Info) load(ctx context.Context) error {
 	win32DiskDriveDescriptions, err := getDiskDrives()
 	if err != nil {
 		return err

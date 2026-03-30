@@ -21,10 +21,12 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strings"
 
 	"github.com/jaypipes/ghw"
 	"github.com/jaypipes/ghw/pkg/cpu"
 	"github.com/jaypipes/ghw/pkg/option"
+	"github.com/jaypipes/ghw/pkg/snapshot"
 	"github.com/jaypipes/ghw/pkg/topology"
 
 	v1 "k8s.io/api/core/v1"
@@ -38,21 +40,50 @@ func NewGHWHandler(mustGatherDirPath string, node *v1.Node) (*GHWHandler, error)
 	if err != nil {
 		return nil, fmt.Errorf("can't obtain the node path %s: %v", nodeName, err)
 	}
-	_, err = os.Stat(path.Join(nodepath, nodeName, sysInfoFileName))
+	snapshotPath := path.Join(nodepath, nodeName, sysInfoFileName)
+	_, err = os.Stat(snapshotPath)
 	if err != nil {
 		return nil, fmt.Errorf("can't obtain the path: %s for node %s: %v", nodeName, nodepath, err)
 	}
-	options := ghw.WithSnapshot(ghw.SnapshotOptions{
-		Path: path.Join(nodepath, nodeName, sysInfoFileName),
-	})
-	ghwHandler := &GHWHandler{snapShotOptions: options, Node: node}
+
+	var chrootPath string
+	var tmpDir string
+
+	if strings.HasSuffix(snapshotPath, ".tgz") || strings.HasSuffix(snapshotPath, ".tar.gz") {
+		tmpDir, err = snapshot.Unpack(snapshotPath)
+		if err != nil {
+			if tmpDir != "" {
+				_ = os.RemoveAll(tmpDir)
+			}
+			return nil, fmt.Errorf("failed to unpack snapshot %s: %v", snapshotPath, err)
+		}
+		chrootPath = tmpDir
+	} else {
+		chrootPath = snapshotPath
+	}
+
+	options := option.WithChroot(chrootPath)
+	ghwHandler := &GHWHandler{
+		snapShotOptions: options,
+		Node:            node,
+		tmpDir:          tmpDir,
+	}
 	return ghwHandler, nil
 }
 
 // GHWHandler is a wrapper around ghw to get the API object
 type GHWHandler struct {
-	snapShotOptions *option.Option
+	snapShotOptions option.Option
 	Node            *v1.Node
+	tmpDir          string
+}
+
+// Cleanup removes any temporary directories created during handler initialization
+func (ghwHandler *GHWHandler) Cleanup() error {
+	if ghwHandler.tmpDir != "" {
+		return os.RemoveAll(ghwHandler.tmpDir)
+	}
+	return nil
 }
 
 // CPU returns a CPUInfo struct that contains information about the CPUs on the host system

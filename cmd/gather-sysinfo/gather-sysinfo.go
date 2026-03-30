@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -67,7 +68,14 @@ func collectMachineinfo(knitOpts *knit.KnitOptions, destPath string) error {
 }
 
 func makeSnapshot(cmd *cobra.Command, knitOpts *knit.KnitOptions, opts *snapshotOptions, args []string) error {
-	fileSpecs := dedupExpectedContent(kniExpectedCloneContent(), snapshot.ExpectedCloneContent())
+	ctx := context.Background()
+
+	fileSpecs, err := snapshot.ExpectedCloneContent(ctx)
+	if err != nil {
+		return fmt.Errorf("error getting expected clone content: %v", err)
+	}
+	fileSpecs = dedupExpectedContent(kniExpectedCloneContent(), fileSpecs)
+
 	if opts.dumpList {
 		for _, fileSpec := range fileSpecs {
 			fmt.Printf("%s\n", fileSpec)
@@ -77,12 +85,6 @@ func makeSnapshot(cmd *cobra.Command, knitOpts *knit.KnitOptions, opts *snapshot
 
 	if opts.output == "" {
 		return fmt.Errorf("--output is required")
-	}
-
-	if knitOpts.Debug {
-		snapshot.SetTraceFunction(func(msg string, args ...interface{}) {
-			knitOpts.Log.Printf(msg, args...)
-		})
 	}
 
 	scratchDir, err := os.MkdirTemp("", "perf-must-gather-*")
@@ -95,7 +97,7 @@ func makeSnapshot(cmd *cobra.Command, knitOpts *knit.KnitOptions, opts *snapshot
 		fileSpecs = chrootFileSpecs(fileSpecs, opts.rootDir)
 	}
 
-	if err := snapshot.CopyFilesInto(fileSpecs, scratchDir, nil); err != nil {
+	if err := snapshot.CopyFilesInto(ctx, fileSpecs, scratchDir, nil); err != nil {
 		return fmt.Errorf("error cloning extra files into %q: %v", scratchDir, err)
 	}
 
@@ -115,10 +117,10 @@ func makeSnapshot(cmd *cobra.Command, knitOpts *knit.KnitOptions, opts *snapshot
 
 	dest := opts.output
 	if dest == "-" {
-		err = snapshot.PackWithWriter(os.Stdout, scratchDir)
+		err = snapshot.PackWithWriter(ctx, os.Stdout, scratchDir)
 		dest = "stdout"
 	} else {
-		err = snapshot.PackFrom(dest, scratchDir)
+		err = snapshot.PackFrom(ctx, dest, scratchDir)
 	}
 	if err != nil {
 		return fmt.Errorf("error packing %q to %q: %v", scratchDir, dest, err)

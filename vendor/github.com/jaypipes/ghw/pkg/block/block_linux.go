@@ -7,13 +7,14 @@ package block
 
 import (
 	"bufio"
+	"context"
 	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
-	"github.com/jaypipes/ghw/pkg/context"
+	"github.com/jaypipes/ghw/internal/log"
 	"github.com/jaypipes/ghw/pkg/linuxpath"
 	"github.com/jaypipes/ghw/pkg/util"
 )
@@ -22,9 +23,8 @@ const (
 	sectorSize = 512
 )
 
-func (i *Info) load() error {
-	paths := linuxpath.New(i.ctx)
-	i.Disks = disks(i.ctx, paths)
+func (i *Info) load(ctx context.Context) error {
+	i.Disks = disks(ctx)
 	var tsb uint64
 	for _, d := range i.Disks {
 		tsb += d.SizeBytes
@@ -219,12 +219,16 @@ func diskWWN(paths *linuxpath.Paths, disk string) string {
 // but just the name. In other words, "sda", not "/dev/sda" and "nvme0n1" not
 // "/dev/nvme0n1") and returns a slice of pointers to Partition structs
 // representing the partitions in that disk
-func diskPartitions(ctx *context.Context, paths *linuxpath.Paths, disk string) []*Partition {
+func diskPartitions(
+	ctx context.Context,
+	paths *linuxpath.Paths,
+	disk string,
+) []*Partition {
 	out := make([]*Partition, 0)
 	path := filepath.Join(paths.SysBlock, disk)
 	files, err := os.ReadDir(path)
 	if err != nil {
-		ctx.Warn("failed to read disk partitions: %s\n", err)
+		log.Warn(ctx, "failed to read disk partitions: %s\n", err)
 		return out
 	}
 	for _, file := range files {
@@ -315,7 +319,8 @@ func diskIsRemovable(paths *linuxpath.Paths, disk string) bool {
 	return removable == "1"
 }
 
-func disks(ctx *context.Context, paths *linuxpath.Paths) []*Disk {
+func disks(ctx context.Context) []*Disk {
+	paths := linuxpath.New(ctx)
 	// In Linux, we could use the fdisk, lshw or blockdev commands to list disk
 	// information, however all of these utilities require root privileges to
 	// run. We can get all of this information by examining the /sys/block
@@ -422,7 +427,11 @@ func diskTypes(dname string) (
 	return driveType, storageController
 }
 
-func diskIsRotational(ctx *context.Context, paths *linuxpath.Paths, devName string) bool {
+func diskIsRotational(
+	ctx context.Context,
+	paths *linuxpath.Paths,
+	devName string,
+) bool {
 	path := filepath.Join(paths.SysBlock, devName, "queue", "rotational")
 	contents := util.SafeIntFromFile(ctx, path)
 	return contents == 1

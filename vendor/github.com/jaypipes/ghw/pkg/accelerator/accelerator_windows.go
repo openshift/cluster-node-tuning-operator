@@ -5,7 +5,9 @@
 
 package accelerator
 
-func (i *Info) load() error {
+import "context"
+
+func (i *Info) load(ctx context.Context) error {
 	i.Devices = []*AcceleratorDevice{}
 	return nil
 }

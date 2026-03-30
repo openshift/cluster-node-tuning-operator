@@ -9,6 +9,8 @@
 package cpu
 
 import (
+	"context"
+
 	"github.com/yusufpapurcu/wmi"
 )
 
@@ -21,7 +23,7 @@ type win32Processor struct {
 	NumberOfCores             uint32
 }
 
-func (i *Info) load() error {
+func (i *Info) load(ctx context.Context) error {
 	// Getting info from WMI
 	var win32descriptions []win32Processor
 	if err := wmi.Query(wmqlProcessor, &win32descriptions); err != nil {

@@ -1,20 +1,20 @@
-//go:build !linux && !windows
-// +build !linux,!windows
+//go:build !linux
+// +build !linux
 
 // Use and distribution licensed under the Apache license version 2.
 //
 // See the COPYING file in the root project directory for full text.
 //
 
-package gpu
+package usb
 
 import (
 	"context"
 	"runtime"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 func (i *Info) load(ctx context.Context) error {
-	return errors.New("gpuFillInfo not implemented on " + runtime.GOOS)
+	return errors.New("usb load not implemented on " + runtime.GOOS)
 }
