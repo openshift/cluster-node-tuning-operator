@@ -857,7 +857,7 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 
 	AfterEach(func() {
 		if handle != nil {
-			Expect(handle.Cleanup()).ToNot(HaveOccurred())
+			Expect(handle.Cleanup()).To(Succeed())
 			handle = nil
 		}
 	})
@@ -1401,7 +1401,7 @@ var _ = Describe("PerformanceProfileCreator: Check if Hyperthreading enabled/dis
 
 	AfterEach(func() {
 		if handle != nil {
-			Expect(handle.Cleanup()).ToNot(HaveOccurred())
+			Expect(handle.Cleanup()).To(Succeed())
 			handle = nil
 		}
 	})

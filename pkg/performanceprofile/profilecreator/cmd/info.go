@@ -45,7 +45,7 @@ func executeInfoMode(mustGatherDirPath string, createForHypershift bool, infoOpt
 		for _, handlers := range clusterData {
 			for _, handler := range handlers {
 				if err := handler.Cleanup(); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to cleanup handler: %v\n", err)
+					Alert("Warning: failed to cleanup handler: %v\n", err)
 				}
 			}
 		}

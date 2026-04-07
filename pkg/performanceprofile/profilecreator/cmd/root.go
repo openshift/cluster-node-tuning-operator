@@ -162,7 +162,7 @@ func NewRootCommand() *cobra.Command {
 			defer func() {
 				for _, handler := range nodesHandlers {
 					if err := handler.Cleanup(); err != nil {
-						fmt.Fprintf(os.Stderr, "Warning: failed to cleanup handler: %v\n", err)
+						Alert("Warning: failed to cleanup handler: %v\n", err)
 					}
 				}
 			}()
