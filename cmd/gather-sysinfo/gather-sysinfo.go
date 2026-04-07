@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"os"
@@ -68,7 +67,7 @@ func collectMachineinfo(knitOpts *knit.KnitOptions, destPath string) error {
 }
 
 func makeSnapshot(cmd *cobra.Command, knitOpts *knit.KnitOptions, opts *snapshotOptions, args []string) error {
-	ctx := context.Background()
+	ctx := cmd.Context()
 
 	fileSpecs, err := snapshot.ExpectedCloneContent(ctx)
 	if err != nil {
