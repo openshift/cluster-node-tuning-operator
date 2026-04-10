@@ -41,6 +41,16 @@ func executeInfoMode(mustGatherDirPath string, createForHypershift bool, infoOpt
 	if err != nil {
 		return fmt.Errorf("failed to parse the cluster data: %w", err)
 	}
+	defer func() {
+		for _, handlers := range clusterData {
+			for _, handler := range handlers {
+				if err := handler.Cleanup(); err != nil {
+					Alert("Warning: failed to cleanup handler: %v\n", err)
+				}
+			}
+		}
+	}()
+
 	clusterInfo := makeClusterInfoFromClusterData(clusterData)
 	if err := showClusterInfo(clusterInfo, infoOpts); err != nil {
 		return fmt.Errorf("unable to show cluster info %w", err)

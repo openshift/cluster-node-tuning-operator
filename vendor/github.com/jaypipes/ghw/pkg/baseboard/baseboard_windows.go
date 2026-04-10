@@ -6,6 +6,8 @@
 package baseboard
 
 import (
+	"context"
+
 	"github.com/yusufpapurcu/wmi"
 )
 
@@ -19,7 +21,7 @@ type win32Baseboard struct {
 	Product      *string
 }
 
-func (i *Info) load() error {
+func (i *Info) load(ctx context.Context) error {
 	// Getting data from WMI
 	var win32BaseboardDescriptions []win32Baseboard
 	if err := wmi.Query(wqlBaseboard, &win32BaseboardDescriptions); err != nil {

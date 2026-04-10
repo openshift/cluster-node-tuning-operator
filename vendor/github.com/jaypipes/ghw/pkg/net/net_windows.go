@@ -6,6 +6,7 @@
 package net
 
 import (
+	"context"
 	"strings"
 
 	"github.com/yusufpapurcu/wmi"
@@ -27,7 +28,7 @@ type win32NetworkAdapter struct {
 	PhysicalAdapter *bool
 }
 
-func (i *Info) load() error {
+func (i *Info) load(ctx context.Context) error {
 	// Getting info from WMI
 	var win32NetDescriptions []win32NetworkAdapter
 	if err := wmi.Query(wqlNetworkAdapter, &win32NetDescriptions); err != nil {

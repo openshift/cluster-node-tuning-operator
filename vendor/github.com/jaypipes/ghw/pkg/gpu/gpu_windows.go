@@ -6,6 +6,7 @@
 package gpu
 
 import (
+	"context"
 	"strings"
 
 	"github.com/jaypipes/pcidb"
@@ -46,7 +47,7 @@ type win32PnPEntity struct {
 	PNPDeviceID       string
 }
 
-func (i *Info) load() error {
+func (i *Info) load(ctx context.Context) error {
 	// Getting data from WMI
 	var win32VideoControllerDescriptions []win32VideoController
 	if err := wmi.Query(wqlVideoController, &win32VideoControllerDescriptions); err != nil {

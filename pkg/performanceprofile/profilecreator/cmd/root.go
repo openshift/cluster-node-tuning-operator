@@ -159,6 +159,13 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			defer func() {
+				for _, handler := range nodesHandlers {
+					if err := handler.Cleanup(); err != nil {
+						Alert("Warning: failed to cleanup handler: %v\n", err)
+					}
+				}
+			}()
 
 			err = profilecreator.EnsureNodesHaveTheSameHardware(nodesHandlers, tols)
 			if err != nil {

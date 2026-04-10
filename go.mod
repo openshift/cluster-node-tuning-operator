@@ -10,7 +10,7 @@ require (
 	github.com/docker/go-units v0.5.0
 	github.com/go-logr/stdr v1.2.2
 	github.com/google/go-cmp v0.7.0
-	github.com/jaypipes/ghw v0.20.0
+	github.com/jaypipes/ghw v0.23.0
 	github.com/kevinburke/go-bindata v3.24.0+incompatible
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1

@@ -232,6 +232,7 @@ var _ = Describe("PerformanceProfileCreator: Consuming GHW Snapshot from Must Ga
 			Expect(err).ToNot(HaveOccurred())
 			handle, err := NewGHWHandler(mustGatherDirAbsolutePath, node)
 			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(handle.Cleanup)
 			cpuInfo, err := handle.CPU()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(len(cpuInfo.Processors)).To(Equal(2))
@@ -853,6 +854,14 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 	BeforeEach(func() {
 		node = newTestNode(worker1)
 	})
+
+	AfterEach(func() {
+		if handle != nil {
+			Expect(handle.Cleanup()).To(Succeed())
+			handle = nil
+		}
+	})
+
 	Context("Check if reserved and isolated CPUs are properly populated in the performance profile", func() {
 		It("Ensure reserved CPUs populated are correctly when splitReservedCPUsAcrossNUMA is disabled and disableHT is disabled", func() {
 			reservedCPUCount = 20 // random number, no special meaning
@@ -1390,6 +1399,13 @@ var _ = Describe("PerformanceProfileCreator: Check if Hyperthreading enabled/dis
 	var handle *GHWHandler
 	var err error
 
+	AfterEach(func() {
+		if handle != nil {
+			Expect(handle.Cleanup()).To(Succeed())
+			handle = nil
+		}
+	})
+
 	Context("Check if hyperthreading is enabled on the system or not", func() {
 		It("Ensure we detect correctly that hyperthreading is enabled on a system", func() {
 			node = newTestNode(worker1)
@@ -1608,11 +1624,13 @@ var _ = Describe("PerformanceProfileCreator: Ensuring Nodes hardware equality", 
 			Expect(err).ToNot(HaveOccurred())
 			node1Handle, err := NewGHWHandler(mustGatherDirAbsolutePath, node1)
 			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(node1Handle.Cleanup)
 
 			node2, err := getNode(mustGatherDirAbsolutePath, worker1+".yaml")
 			Expect(err).ToNot(HaveOccurred())
 			node2Handle, err := NewGHWHandler(mustGatherDirAbsolutePath, node2)
 			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(node2Handle.Cleanup)
 
 			nodeHandles := []*GHWHandler{node1Handle, node2Handle}
 			tols := toleration.Set{}
@@ -1632,11 +1650,13 @@ var _ = Describe("PerformanceProfileCreator: Ensuring Nodes hardware equality", 
 			Expect(err).ToNot(HaveOccurred())
 			node1Handle, err := NewGHWHandler(mustGatherDirAbsolutePath, node1)
 			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(node1Handle.Cleanup)
 
 			node2, err := getNode(mustGatherDirAbsolutePath, worker2+".yaml")
 			Expect(err).ToNot(HaveOccurred())
 			node2Handle, err := NewGHWHandler(mustGatherDirAbsolutePath, node2)
 			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(node2Handle.Cleanup)
 
 			nodeHandles := []*GHWHandler{node1Handle, node2Handle}
 			err = EnsureNodesHaveTheSameHardware(nodeHandles, toleration.Set{})
