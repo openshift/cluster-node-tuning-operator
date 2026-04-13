@@ -12,7 +12,7 @@ summary=Openshift node optimized for deterministic performance at the cost of in
 #     openshift-node,cpu-partitioning
 #     openshift-node,cpu-partitioning,openshift-node-performance-rt-<PerformanceProfile name>
 include=openshift-node,cpu-partitioning${f:regex_search_ternary:${f:exec:uname:-r}:rt:,openshift-node-performance-rt-{{.PerformanceProfileName}}:};
-    openshift-node-performance-${f:lscpu_check:Vendor ID\:\s*GenuineIntel:intel:Vendor ID\:\s*AuthenticAMD:amd:Architecture\:\s*aarch64:arm}-${f:lscpu_check:Architecture\:\s*x86_64:x86:Architecture\:\s*aarch64:aarch64}-{{.PerformanceProfileName}}
+    openshift-node-performance-${f:lscpu_check:Vendor ID\:\s*GenuineIntel:intel:Vendor ID\:\s*AuthenticAMD:amd:Architecture\:\s*aarch64:arm:Architecture\:\s*ppc64le:ibm}-${f:lscpu_check:Architecture\:\s*x86_64:x86:Architecture\:\s*aarch64:aarch64:Architecture\:\s*ppc64le:ppc64le}-{{.PerformanceProfileName}}
 
 # Inheritance of base profiles legend:
 # cpu-partitioning -> network-latency -> latency-performance
