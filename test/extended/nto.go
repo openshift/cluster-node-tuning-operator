@@ -36,6 +36,9 @@ var _ = g.Describe("[sig-tuning-node] PSAP should", g.Label("conformance"), func
 	})
 
 	g.It("[Jira:NTO]OCP-37415-Allow setting isolated_cores without touching the default_irq_affinity[OTP][Disruptive][Suite:openshift/conformance/serial]", g.Label("Serial"), func() {
+		g.By("fail intentionally for debugging in the CI to see if the tests are actually running")
+		o.Expect(err).To(o.HaveOccurred())
+
 		// test requires NTO to be installed
 		if !isNTO {
 			g.Skip("NTO is not installed - skipping test ...")
