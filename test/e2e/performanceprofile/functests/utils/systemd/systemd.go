@@ -19,3 +19,9 @@ func ShowProperty(ctx context.Context, unitfile string, property string, node *c
 	out, err := nodes.ExecCommand(ctx, node, cmd)
 	return string(out), err
 }
+
+func ShowPropertyValue(ctx context.Context, unitfile string, property string, node *corev1.Node) (string, error) {
+	cmd := []string{"/bin/bash", "-c", fmt.Sprintf("chroot /rootfs systemctl show -p %s %s --value --no-pager", property, unitfile)}
+	out, err := nodes.ExecCommand(ctx, node, cmd)
+	return string(out), err
+}
