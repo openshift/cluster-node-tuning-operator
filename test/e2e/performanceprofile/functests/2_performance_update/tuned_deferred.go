@@ -25,9 +25,9 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
+	utilpoolname "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/poolname"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 	tunedutil "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
@@ -65,9 +65,8 @@ var _ = Describe("Tuned Deferred tests of performance profile", Ordered, Label(s
 		Expect(err).ToNot(HaveOccurred())
 		initialPolicy = profile.Spec.NUMA.TopologyPolicy
 
-		poolName, err = mcps.GetByProfile(profile)
-		Expect(err).ToNot(HaveOccurred())
-		testlog.Infof("using performanceMCP: %q", poolName)
+		poolName = utilpoolname.GetByProfile(context.TODO(), profile)
+		testlog.Infof("using tuning pool (MCP or nodepool): %q", poolName)
 	})
 
 	Context("Tuned Deferred status", func() {
