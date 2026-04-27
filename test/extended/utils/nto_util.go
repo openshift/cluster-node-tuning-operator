@@ -8,12 +8,14 @@ import (
 	"strings"
 	"sync"
 
+	extendedbindata "github.com/openshift/cluster-node-tuning-operator/test/extended/bindata"
+
 	o "github.com/onsi/gomega"
 )
 
 var (
-	fixtureDirLock sync.Once
-	fixtureDir     string
+	embeddedFixtureDir     string
+	embeddedFixtureDirOnce sync.Once
 )
 
 // Logf is a simple logging function to replace e2e.Logf
@@ -21,65 +23,49 @@ func Logf(format string, args ...interface{}) {
 	fmt.Printf(format+"\n", args...)
 }
 
-// FixturePath returns the path to a test fixture file
-func FixturePath(elem ...string) string {
-	if len(elem) == 0 {
-		panic("must specify path")
+// testdataBindataRel returns the asset name under test/extended/testdata (go-bindata), e.g.
+// ("nto", "x.yaml") -> nto/x.yaml; ("testdata", "nto", "x.yaml") is the same.
+func testdataBindataRel(elem []string) string {
+	if elem[0] == "testdata" {
+		return filepath.ToSlash(filepath.Join(elem[1:]...))
 	}
+	return filepath.ToSlash(filepath.Join(elem...))
+}
 
-	// Determine the base directory for test fixtures
-	// This should be the absolute path to test/extended/testdata
-	fixtureDirLock.Do(func() {
-		// Get the current working directory or package directory
-		cwd, err := os.Getwd()
+func materializeTestdataFixture(rel string, data []byte) string {
+	embeddedFixtureDirOnce.Do(func() {
+		d, err := os.MkdirTemp("", "nto-test-ext-fixtures-")
 		if err != nil {
-			panic(err)
+			panic(fmt.Sprintf("TestdataFixturePath: temp dir: %v", err))
 		}
-
-		// Find the project root by looking for go.mod
-		projectRoot := cwd
-		for {
-			if _, err := os.Stat(filepath.Join(projectRoot, "go.mod")); err == nil {
-				break
-			}
-			parent := filepath.Dir(projectRoot)
-			if parent == projectRoot {
-				// Reached filesystem root without finding go.mod
-				panic("could not find project root (go.mod)")
-			}
-			projectRoot = parent
-		}
-
-		fixtureDir = filepath.Join(projectRoot, "test", "extended", "testdata")
+		embeddedFixtureDir = d
 	})
-
-	// Build the path to the fixture
-	var pathComponents []string
-	switch {
-	case len(elem) > 3 && elem[0] == ".." && elem[1] == ".." && elem[2] == "examples":
-		pathComponents = append([]string{filepath.Dir(filepath.Dir(fixtureDir))}, elem[2:]...)
-	case len(elem) > 3 && elem[0] == ".." && elem[1] == ".." && elem[2] == "install":
-		pathComponents = append([]string{filepath.Dir(filepath.Dir(fixtureDir))}, elem[2:]...)
-	case len(elem) > 3 && elem[0] == ".." && elem[1] == "integration":
-		pathComponents = append([]string{filepath.Dir(fixtureDir), "test"}, elem[1:]...)
-	case elem[0] == "testdata":
-		pathComponents = append([]string{fixtureDir}, elem[1:]...)
-	default:
-		pathComponents = append([]string{fixtureDir}, elem...)
+	dest := filepath.Join(embeddedFixtureDir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(dest), 0750); err != nil {
+		panic(fmt.Sprintf("TestdataFixturePath: mkdir: %v", err))
 	}
-
-	fullPath := filepath.Join(pathComponents...)
-
-	// Verify the path exists
-	if _, err := os.Stat(fullPath); err != nil {
-		panic(fmt.Sprintf("Fixture path does not exist: %s (error: %v)", fullPath, err))
+	if err := os.WriteFile(dest, data, 0644); err != nil {
+		panic(fmt.Sprintf("TestdataFixturePath: write %q: %v", dest, err))
 	}
-
-	p, err := filepath.Abs(fullPath)
+	p, err := filepath.Abs(dest)
 	if err != nil {
 		panic(err)
 	}
 	return p
+}
+
+// TestdataFixturePath materializes a manifest from test/extended/bindata (YAML from test/extended/testdata)
+// into a temp file and returns its absolute path for use with oc -f. It does not read the repository filesystem.
+func TestdataFixturePath(elem ...string) string {
+	if len(elem) == 0 {
+		panic("must specify path")
+	}
+	rel := testdataBindataRel(elem)
+	data, err := extendedbindata.Asset(rel)
+	if err != nil {
+		panic(fmt.Sprintf("TestdataFixturePath: unknown asset %q (from %v): %v", rel, elem, err))
+	}
+	return materializeTestdataFixture(rel, data)
 }
 
 // IsNTOPodInstalled will return true if any pod is found in the given namespace, and false otherwise

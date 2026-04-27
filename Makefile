@@ -23,6 +23,8 @@ endif
 OUT_DIR=_output
 GOBINDATA_BIN=$(OUT_DIR)/go-bindata
 BINDATA=pkg/manifests/bindata.go
+BINDATA_OTE=test/extended/bindata/bindata.go
+TESTDATA_OTE=$(shell find test/extended/testdata -type f \( -name '*.yaml' -o -name '*.yml' \) 2>/dev/null)
 ASSETS=$(shell find assets -name \*.yaml)
 GO=GOARCH=$(GOARCH) GO111MODULE=on GOFLAGS=-mod=vendor go
 GO_BUILD_RECIPE=$(GO) build -o $(OUT_DIR)/$(PACKAGE_BIN) -ldflags '-X $(PACKAGE)/version.Version=$(REV)' $(PACKAGE_MAIN)
@@ -82,6 +84,13 @@ build: $(BINDATA) pkg/generated build-performance-profile-creator build-gather-s
 $(BINDATA): $(GOBINDATA_BIN) $(ASSETS)
 	$(GOBINDATA_BIN) -mode 420 -modtime 1 -pkg manifests -o $(BINDATA) assets/...
 	gofmt -s -w $(BINDATA)
+
+$(BINDATA_OTE): $(GOBINDATA_BIN) $(TESTDATA_OTE)
+	$(GOBINDATA_BIN) -mode 420 -modtime 1 -pkg manifests_ote -o $(BINDATA_OTE) test/extended/testdata/...
+	gofmt -s -w $(BINDATA_OTE)
+
+.PHONY: update-ote-bindata
+update-ote-bindata: $(BINDATA_OTE)
 
 pkg/generated: $(API_TYPES)
 	hack/update-codegen.sh
@@ -149,7 +158,8 @@ test-fuzz:
 
 clean:
 	$(GO) clean $(PACKAGE_MAIN)
-	rm -rf $(BINDATA) $(OUT_DIR) tmp
+	rm -f $(BINDATA) $(BINDATA_OTE)
+	rm -rf $(OUT_DIR) tmp
 
 local-image:
 	$(IMAGE_BUILD_CMD) $(IMAGE_BUILD_EXTRA_OPTS) -t $(IMAGE) -f $(DOCKERFILE) .
@@ -166,7 +176,7 @@ local-image-push:
 # $3 - manifests directory
 $(call add-profile-manifests,manifests,./profile-patches,./manifests)
 
-.PHONY: all build deepcopy crd-schema-gen test-e2e update-manifests verify verify-gofmt clean local-image local-image-push verify-codegen-crds
+.PHONY: all build deepcopy crd-schema-gen test-e2e update-manifests update-ote-bindata verify verify-gofmt clean local-image local-image-push verify-codegen-crds
 
 # PAO
 
@@ -312,6 +322,6 @@ pao-clean-e2e:
 
 
 .PHONY: cluster-node-tuning-operator-test-ext
-cluster-node-tuning-operator-test-ext:
+cluster-node-tuning-operator-test-ext: $(BINDATA_OTE)
 	@echo "Building cluster-node-tuning-operator-test-ext"
 	GO_COMPLIANCE_POLICY=exempt_all CGO_ENABLED=0 $(GO) build -mod=vendor -v -o $(OUT_DIR)/cluster-node-tuning-operator-test-ext ./cmd/cluster-node-tuning-operator-test-ext
