@@ -8,4 +8,5 @@ tmp
 /*.sh
 /TODO
 pkg/manifests/bindata.go
+test/extended/bindata/bindata.go
 cover.out
