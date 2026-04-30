@@ -1,4 +1,4 @@
-package extended
+package specs
 
 import (
 	"strings"
@@ -7,16 +7,15 @@ import (
 
 	g "github.com/onsi/ginkgo/v2"
 	o "github.com/onsi/gomega"
+	oteg "github.com/openshift-eng/openshift-tests-extension/pkg/ginkgo"
 )
 
-var _ = g.Describe("[sig-tuning-node] PSAP should", g.Label("conformance"), func() {
+var _ = g.Describe("[sig-tuning-node] NTO should", g.Label("conformance"), func() {
 	defer g.GinkgoRecover()
 
 	var (
-		oc            = utils.NewCLIWithoutNamespace("nto-test")
-		ntoNamespace  = "openshift-cluster-node-tuning-operator"
-		ntoFixture    = func(name string) string { return utils.FixturePath("nto", name) }
-		ntoIRQSMPFile = ntoFixture("default-irq-smp-affinity.yaml")
+		oc           = utils.NewCLIWithoutNamespace("nto-test")
+		ntoNamespace = "openshift-cluster-node-tuning-operator"
 
 		isNTO         bool
 		iaasPlatform  string
@@ -35,11 +34,13 @@ var _ = g.Describe("[sig-tuning-node] PSAP should", g.Label("conformance"), func
 		utils.Logf("Cloud provider is: %v", iaasPlatform)
 	})
 
-	g.It("[Jira:NTO]OCP-37415-Allow setting isolated_cores without touching the default_irq_affinity[OTP][Disruptive][Suite:openshift/conformance/serial]", g.Label("Serial"), func() {
+	g.It("[test_id:37415][OTP]Allow setting isolated_cores without touching the default_irq_affinity [Disruptive]", g.Label("ReleaseGate"), oteg.Informing(), func() {
 		// test requires NTO to be installed
 		if !isNTO {
 			g.Skip("NTO is not installed - skipping test ...")
 		}
+
+		ntoIRQSMPFile := utils.TestdataFixturePath("nto", "default-irq-smp-affinity.yaml")
 
 		isSNO := utils.IsSNOCluster(oc)
 		// Prior to choose worker nodes with machineset

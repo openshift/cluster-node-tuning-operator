@@ -9,6 +9,7 @@ https://github.com/openshift-eng/openshift-tests-extension/blob/main/cmd/example
 package main
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
 	"strings"
@@ -21,8 +22,15 @@ import (
 	"github.com/spf13/cobra"
 
 	// The import below is necessary to ensure that the NTO operator tests are registered with the extension.
-	_ "github.com/openshift/cluster-node-tuning-operator/test/extended"
+	_ "github.com/openshift/cluster-node-tuning-operator/test/extended/specs"
 )
+
+//go:embed fixture_catalog.txt
+var ntoFixtureCatalog string
+
+func init() {
+	_ = ntoFixtureCatalog
+}
 
 func main() {
 	registry := e.NewRegistry()
@@ -33,7 +41,8 @@ func main() {
 		Name:    "openshift/cluster-node-tuning-operator/conformance/parallel",
 		Parents: []string{"openshift/conformance/parallel"},
 		Qualifiers: []string{
-			`!(name.contains("[Serial]") || name.contains("[Slow]"))`,
+			`(labels.exists(l, l=="ReleaseGate")) &&
+			!(name.contains("[Serial]") || name.contains("[Slow]"))`,
 		},
 	})
 
@@ -42,7 +51,20 @@ func main() {
 		Name:    "openshift/cluster-node-tuning-operator/conformance/serial",
 		Parents: []string{"openshift/conformance/serial"},
 		Qualifiers: []string{
-			`name.contains("[Serial]")`,
+			`(labels.exists(l, l=="ReleaseGate")) &&
+			name.contains("[Serial]")`,
+			// refer to https://github.com/openshift/origin/blob/main/pkg/testsuites/standard_suites.go
+		},
+	})
+
+	// Suite: disruptive
+	// See: https://github.com/openshift/release/blob/508c08ff3d8dbff48604b94484a0ce63983710ba/ci-operator/config/openshift/release/openshift-release-main__nightly-4.22.yaml#L2462
+	ext.AddSuite(e.Suite{
+		Name:    "openshift/cluster-node-tuning-operator/disruptive",
+		Parents: []string{"openshift/disruptive-longrunning"},
+		Qualifiers: []string{
+			`(labels.exists(l, l=="ReleaseGate")) &&
+			name.contains("[Disruptive]")`,
 		},
 	})
 
@@ -51,13 +73,17 @@ func main() {
 		Name:    "openshift/cluster-node-tuning-operator/optional/slow",
 		Parents: []string{"openshift/optional/slow"},
 		Qualifiers: []string{
-			`name.contains("[Slow]")`,
+			`(labels.exists(l, l=="ReleaseGate")) &&
+			name.contains("[Slow]")`,
 		},
 	})
 
 	// Suite: all (includes everything)
 	ext.AddSuite(e.Suite{
 		Name: "openshift/cluster-node-tuning-operator/all",
+		Qualifiers: []string{
+			`(labels.exists(l, l=="ReleaseGate"))`,
+		},
 	})
 
 	specs, err := g.BuildExtensionTestSpecsFromOpenShiftGinkgoSuite()
