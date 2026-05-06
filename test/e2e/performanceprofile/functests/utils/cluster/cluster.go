@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	configv1 "github.com/openshift/api/config/v1"
 	clientconfigv1 "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	corev1 "k8s.io/api/core/v1"
@@ -46,4 +47,20 @@ func IsControlPlaneSchedulable(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	return schedulerInfo.Spec.MastersSchedulable, nil
+}
+
+// IsWorkloadPartitioningEnabled checks whether CPU partitioning is enabled
+// cluster-wide by querying the Infrastructure resource's CPUPartitioning status.
+func IsWorkloadPartitioningEnabled(ctx context.Context) (bool, error) {
+	cfg, err := config.GetConfig()
+	if err != nil {
+		return false, err
+	}
+
+	openshiftConfigClient := clientconfigv1.NewForConfigOrDie(cfg)
+	infra, err := openshiftConfigClient.Infrastructures().Get(ctx, "cluster", metav1.GetOptions{})
+	if err != nil {
+		return false, err
+	}
+	return infra.Status.CPUPartitioning == configv1.CPUPartitioningAllNodes, nil
 }
