@@ -28,4 +28,4 @@ objects:
 parameters:
 - name: TUNED_NAME
 - name: SYSCTLPARM
-- name: SYSCTLVALUE    
+- name: SYSCTLVALUE
