@@ -308,7 +308,7 @@ func (ntoRes *NtoResource) CreateIRQSMPAffinityProfileIfNotExist(oc *CLI) {
 	output, err := oc.AsAdmin().WithoutNamespace().Run("get").Args("tuned", ntoRes.Name, "-n", ntoRes.Namespace).Output()
 	if strings.Contains(output, "NotFound") || strings.Contains(output, "No resources") || err != nil {
 		Logf("no tuned in project: %s, create one: %s", ntoRes.Namespace, ntoRes.Name)
-		processedTemplate, err := oc.AsAdmin().WithoutNamespace().Run("process").Args("--ignore-unknown-parameters=true", "-f", ntoRes.Template, "-p", "TUNED_NAME="+ntoRes.Name, "-p", "SYSCTLPARM="+ntoRes.Sysctlparm, "-p", "SYSCTLVALUE="+ntoRes.Sysctlvalue, "-o", "yaml").Output()
+		processedTemplate, err := oc.AsAdmin().WithoutNamespace().Run("process").Args("-n", ntoRes.Namespace, "--ignore-unknown-parameters=true", "-f", ntoRes.Template, "-p", "TUNED_NAME="+ntoRes.Name, "-p", "SYSCTLPARM="+ntoRes.Sysctlparm, "-p", "SYSCTLVALUE="+ntoRes.Sysctlvalue, "-o", "yaml").Output()
 		o.Expect(err).NotTo(o.HaveOccurred())
 		Logf("Processed template:\n%s", processedTemplate)
 		err = oc.AsAdmin().WithoutNamespace().Run("create").Args("-n", ntoRes.Namespace, "-f", "-").InputString(processedTemplate).Execute()
