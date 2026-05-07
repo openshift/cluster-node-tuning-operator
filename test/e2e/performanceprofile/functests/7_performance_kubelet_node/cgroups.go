@@ -94,7 +94,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 		Expect(err).ToNot(HaveOccurred(), "Unable to check if workload partitioning is enabled")
 		testlog.Infof("Workload partitioning enabled: %v", isWorkloadPartitioningEnabled)
 
-		Expect(profile.Spec.CPU.Reserved).NotTo(BeNil())
+		Expect(profile.Spec.CPU.Reserved).ToNot(BeNil())
 		reservedCPUSet, err = cpuset.Parse(string(*profile.Spec.CPU.Reserved))
 		Expect(err).ToNot(HaveOccurred(), "Failed to parse reserved CPUs from profile")
 		testlog.Infof("Reserved CPUSet: %s", reservedCPUSet)
@@ -149,11 +149,11 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					containerCpuset, err := cpuset.Parse(cpus)
 					Expect(err).ToNot(HaveOccurred())
 					if isWorkloadPartitioningEnabled {
-						Expect(containerCpuset).To(Equal(reservedCPUSet),
+						Expect(containerCpuset.Equals(reservedCPUSet)).To(BeTrue(),
 							"Under workload partitioning, OVN pod cpuset.cpus should match reserved cpus, got %s expected %s", containerCpuset, reservedCPUSet)
 					} else {
-						Expect(containerCpuset).To(Equal(onlineCPUSet),
-							"Burstable pod containers cpuset.cpus do not match total online cpus")
+						Expect(containerCpuset.Equals(onlineCPUSet)).To(BeTrue(),
+							"Burstable pod containers cpuset.cpus do not match total online cpus, got %s expected %s", containerCpuset, onlineCPUSet)
 					}
 				}
 
@@ -352,7 +352,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				Expect(testclient.DataPlaneClient.Create(ctx, dp)).To(Succeed(), "Unable to create Deployment")
 
 				defer func() {
-					testlog.Infof("Deleting Deployment %s", dp.Name)
+					testlog.Infof("Deleting Deployment %s from Namespace %s", dp.Name, dp.Namespace)
 					Expect(testclient.DataPlaneClient.Delete(ctx, dp)).To(Succeed())
 					Eventually(func() bool {
 						affinities := getOvsAffinities(ctx, ovsSystemdServices, workerRTNode)
@@ -386,8 +386,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				By("Verifying affinities before reboot")
 				collectAndVerify("before-reboot")
 
-				By("Rebooting the worker node")
-				testlog.TaggedInfof("Reboot", "Node %q: Rebooting", workerRTNode.Name)
+				By(fmt.Sprintf("Rebooting the worker node %q", workerRTNode.Name))
 				_, _ = nodes.ExecCommand(ctx, workerRTNode, []string{"sh", "-c", "chroot /rootfs systemctl reboot"})
 				nodes.WaitForNotReadyOrFail("Reboot", workerRTNode.Name, 10*time.Minute, 30*time.Second)
 				nodes.WaitForReadyOrFail("Reboot", workerRTNode.Name, 10*time.Minute, 30*time.Second)
@@ -399,6 +398,12 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				collectAndVerify("after-reboot")
 			})
 
+			// This test must run on both compact/SNO clusters (where workerRTNode is
+			// itself a control-plane node) and MNO clusters with schedulable control
+			// plane. On MNO, the CP node may be governed by a different profile, so we
+			// avoid relying on the worker profile's reservedCPUSet. Instead we verify
+			// OVS affinity against the node's online CPU set, which is always correct
+			// regardless of which profile manages the node.
 			It("Verify OVS affinity is not restricted to reserved CPUs after control plane node reboot", func() {
 				isSchedulable, err := cluster.IsControlPlaneSchedulable(ctx)
 				Expect(err).ToNot(HaveOccurred(), "Unable to check if control plane is schedulable")
@@ -434,17 +439,16 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 
 				cpOvsServices := ovsSystemdServicesOnOvsSlice(ctx, cpNode)
 
-				By("Verify OVS affinity before reboot is not restricted to reserved CPUs")
+				By("Verify OVS affinity before reboot spans all online CPUs")
 				ovsBeforeReboot := getOvsAffinities(ctx, cpOvsServices, cpNode)
 				for pid, mask := range ovsBeforeReboot {
 					testlog.Infof("Control plane OVS pid %s affinity before reboot: %s", pid, mask)
-					Expect(mask.Equals(reservedCPUSet)).To(BeFalse(),
-						"OVS pid %s affinity (%s) should not be restricted to reserved CPUs (%s) before reboot",
-						pid, mask, reservedCPUSet)
+					Expect(mask.Equals(cpOnlineCPUs)).To(BeTrue(),
+						"OVS pid %s affinity (%s) should match online CPUs (%s) before reboot",
+						pid, mask, cpOnlineCPUs)
 				}
 
-				By("Rebooting the control plane node")
-				testlog.TaggedInfof("Reboot", "Control plane node %q: Rebooting", cpNode.Name)
+				By(fmt.Sprintf("Rebooting the control plane node %q", cpNode.Name))
 				_, _ = nodes.ExecCommand(ctx, cpNode, []string{"sh", "-c", "chroot /rootfs systemctl reboot"})
 				nodes.WaitForNotReadyOrFail("Reboot", cpNode.Name, 10*time.Minute, 30*time.Second)
 				nodes.WaitForReadyOrFail("Reboot", cpNode.Name, 10*time.Minute, 30*time.Second)
@@ -456,23 +460,13 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				}, 5*time.Minute, 10*time.Second).Should(Succeed(),
 					"OVN pod did not become ready on control plane node after reboot")
 
-				By("Verify OVS affinity after reboot is not restricted to reserved CPUs")
+				By("Verify OVS affinity after reboot spans all online CPUs")
 				ovsAfterReboot := getOvsAffinities(ctx, cpOvsServices, cpNode)
 				for pid, mask := range ovsAfterReboot {
 					testlog.Infof("Control plane OVS pid %s affinity after reboot: %s", pid, mask)
-					Expect(mask.Equals(reservedCPUSet)).To(BeFalse(),
-						"OVS pid %s affinity (%s) should not be restricted to reserved CPUs (%s) after reboot",
-						pid, mask, reservedCPUSet)
-					if isWorkloadPartitioningEnabled {
-						expected := expectedOvsAffinity(cpOnlineCPUs, reservedCPUSet, cpuset.New())
-						Expect(mask).To(Equal(expected),
-							"OVS pid %s affinity (%s) should equal expected (%s) under WP",
-							pid, mask, expected)
-					} else {
-						Expect(mask).To(Equal(cpOnlineCPUs),
-							"OVS pid %s affinity (%s) should match online CPUs (%s)",
-							pid, mask, cpOnlineCPUs)
-					}
+					Expect(mask.Equals(cpOnlineCPUs)).To(BeTrue(),
+						"OVS pid %s affinity (%s) should match online CPUs (%s) after reboot",
+						pid, mask, cpOnlineCPUs)
 				}
 			})
 
@@ -651,13 +645,13 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				}
 			})
 
-			It("Verify OVS falls to reserved-only when all isolated CPUs are exhausted under workload partitioning", func() {
+			It("Verify OVS affinity excludes CPUs pinned by guaranteed pods under workload partitioning", func() {
 				checkCpuCount(ctx, workerRTNode)
 
 				isolatedCPUs := onlineCPUSet.Difference(reservedCPUSet)
 				isolatedCount := isolatedCPUs.Size()
 				if isolatedCount < 2 {
-					Skip("Not enough isolated CPUs to exhaust")
+					Skip("Not enough isolated CPUs to run this test")
 				}
 
 				nodeLoad, err := baseload.ForNode(ctx, testclient.DataPlaneClient, workerRTNode.Name)
@@ -667,7 +661,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				testlog.Infof("Isolated CPUs: %d, already consumed: %d, available (even-aligned): %d",
 					isolatedCount, nodeLoad.CPURequestedCores(), availableCPUs)
 				if availableCPUs < 2 {
-					Skip(fmt.Sprintf("Not enough available isolated CPUs to exhaust: %d available out of %d total", availableCPUs, isolatedCount))
+					Skip(fmt.Sprintf("Not enough available isolated CPUs: %d available out of %d total", availableCPUs, isolatedCount))
 				}
 
 				By(fmt.Sprintf("Creating GU pods to consume %d available isolated CPUs", availableCPUs))
@@ -713,12 +707,20 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					}, 5*time.Minute, 10*time.Second).Should(BeTrue())
 				}()
 
-				By("Verify OVS affinity contains all reserved CPUs")
+				guPodCPUs := cpuset.New()
+				for _, p := range guPods {
+					guPodCPUs = guPodCPUs.Union(getGuPodCPUs(ctx, p))
+				}
+				expected := expectedOvsAffinity(onlineCPUSet, reservedCPUSet, guPodCPUs)
+				testlog.Infof("GU pod CPUs: %s, expected OVS affinity: %s", guPodCPUs, expected)
+
+				By("Verify OVS affinity excludes the guaranteed pods' pinned CPUs")
 				ovsAffinities := getOvsAffinities(ctx, ovsSystemdServices, workerRTNode)
 				for pid, mask := range ovsAffinities {
-					testlog.Infof("OVS pid %s affinity: %s (reserved: %s)", pid, mask, reservedCPUSet)
-					Expect(reservedCPUSet.IsSubsetOf(mask)).To(BeTrue(),
-						"Reserved CPUs (%s) should be a subset of OVS affinity (%s) for pid %s", reservedCPUSet, mask, pid)
+					testlog.Infof("OVS pid %s affinity: %s (expected: %s)", pid, mask, expected)
+					Expect(mask.Equals(expected)).To(BeTrue(),
+						"OVS pid %s affinity (%s) should equal expected (%s) after GU pod pinning",
+						pid, mask, expected)
 				}
 			})
 		})
@@ -745,6 +747,7 @@ func cpuSpecToString(cpus *performancev2.CPU) string {
 
 // checkCpuCount check if the node has sufficient cpus
 func checkCpuCount(ctx context.Context, workerNode *corev1.Node) {
+	GinkgoHelper()
 	out, err := nodes.ExecCommand(ctx, workerNode, []string{"nproc", "--all"})
 	if err != nil {
 		Fail(fmt.Sprintf("Failed to fetch online CPUs: %v", err))
@@ -863,6 +866,7 @@ func newDeployment() *appsv1.Deployment {
 
 // ovsSystemdServicesOnOvsSlice returns the systemd services dependent on ovs.slice cgroup
 func ovsSystemdServicesOnOvsSlice(ctx context.Context, workerRTNode *corev1.Node) []string {
+	GinkgoHelper()
 	ovsServices, err := systemd.ShowProperty(context.TODO(), "ovs.slice", "RequiredBy", workerRTNode)
 	Expect(err).ToNot(HaveOccurred())
 	serviceList := strings.Split(strings.TrimSpace(ovsServices), "=")
@@ -896,6 +900,7 @@ func ovsPids(ctx context.Context, ovsSystemdServices []string, workerRTNode *cor
 
 // taskSet returns cpus used by the pid
 func taskSet(ctx context.Context, pid string, workerRTNode *corev1.Node) cpuset.CPUSet {
+	GinkgoHelper()
 	cmd := []string{"taskset", "-pc", pid}
 	out, err := nodes.ExecCommand(ctx, workerRTNode, cmd)
 	Expect(err).ToNot(HaveOccurred(), "unable to fetch cpus using taskset")
@@ -925,16 +930,17 @@ func ovsSwitchdThreadAffinity(ctx context.Context, workerRTNode *corev1.Node) ([
 }
 
 // expectedOvsAffinity computes the expected OVS process CPU affinity set.
-// Formula: (Allocatable - GU_Pinned) ∪ Reserved
-// where Allocatable = Online - Reserved (i.e., the isolated CPUs).
+// Formula: Online - GU_Pinned
+// Guaranteed pods are pinned exclusively to isolated CPUs, so removing them
+// from the full online set yields the correct expected affinity.
 func expectedOvsAffinity(onlineCPUs, reservedCPUs, guPodCPUs cpuset.CPUSet) cpuset.CPUSet {
-	isolated := onlineCPUs.Difference(reservedCPUs)
-	return isolated.Difference(guPodCPUs).Union(reservedCPUs)
+	return onlineCPUs.Difference(guPodCPUs)
 }
 
 // getOvnContainerAffinity returns the CPU affinity of the first OVN container
 // on the given node, waiting 30s for affinity to stabilise.
 func getOvnContainerAffinity(ctx context.Context, node *corev1.Node) cpuset.CPUSet {
+	GinkgoHelper()
 	ovnPod, err := ovnCnfNodePod(ctx, node)
 	Expect(err).ToNot(HaveOccurred(), "Unable to get ovnPod")
 	containerIds, err := ovnPodContainers(&ovnPod)
@@ -950,6 +956,7 @@ func getOvnContainerAffinity(ctx context.Context, node *corev1.Node) cpuset.CPUS
 // getOvsAffinities returns a pid-to-cpuset map for all OVS service processes
 // on the given node, waiting 30s for affinity to stabilise.
 func getOvsAffinities(ctx context.Context, services []string, node *corev1.Node) map[string]cpuset.CPUSet {
+	GinkgoHelper()
 	pidList, err := ovsPids(ctx, services, node)
 	Expect(err).ToNot(HaveOccurred())
 	time.Sleep(30 * time.Second)
@@ -960,6 +967,7 @@ func getOvsAffinities(ctx context.Context, services []string, node *corev1.Node)
 
 // verifyOvsAffinity asserts that every OVS process has the given expected CPU set.
 func verifyOvsAffinity(ovsAffinities map[string]cpuset.CPUSet, expected cpuset.CPUSet) {
+	GinkgoHelper()
 	for pid, mask := range ovsAffinities {
 		testlog.Infof("OVS pid %s affinity: %s (expected: %s)", pid, mask, expected)
 		Expect(mask).To(Equal(expected))
@@ -972,6 +980,7 @@ func verifyOvsAffinity(ovsAffinities map[string]cpuset.CPUSet, expected cpuset.C
 //   - Without WP: asserts all OVS pids match the OVN container affinity.
 func verifyOvsMatchesExpected(isWP bool, ovnAffinity cpuset.CPUSet,
 	ovsAffinities map[string]cpuset.CPUSet, onlineCPUs, reservedCPUs, guCPUs cpuset.CPUSet) {
+	GinkgoHelper()
 	if isWP {
 		Expect(ovnAffinity).To(Equal(reservedCPUs),
 			"Under WP, OVN container should be restricted to reserved cpus")
@@ -985,6 +994,7 @@ func verifyOvsMatchesExpected(isWP bool, ovnAffinity cpuset.CPUSet,
 // createGuPod creates a 2-CPU Guaranteed QoS pod on the given node, waits for
 // it to be ready, and returns it.
 func createGuPod(ctx context.Context, node *corev1.Node) *corev1.Pod {
+	GinkgoHelper()
 	testpod := pods.GetTestPod()
 	testpod.Namespace = testutils.NamespaceTesting
 	testpod.Spec.Containers[0].Resources = corev1.ResourceRequirements{
@@ -1006,6 +1016,7 @@ func createGuPod(ctx context.Context, node *corev1.Node) *corev1.Pod {
 // waitForDeploymentReady polls until the deployment has the expected number of
 // ready replicas and returns the matching pod list.
 func waitForDeploymentReady(ctx context.Context, dp *appsv1.Deployment, listOpts *client.ListOptions, replicas int32) *corev1.PodList {
+	GinkgoHelper()
 	podList := &corev1.PodList{}
 	dpObj := client.ObjectKeyFromObject(dp)
 	Eventually(func() bool {
@@ -1035,6 +1046,7 @@ func waitForDeploymentReady(ctx context.Context, dp *appsv1.Deployment, listOpts
 // collectGuCPUsFromPodList lists pods matching the given options and returns
 // the union of all their exclusively pinned CPUs.
 func collectGuCPUsFromPodList(ctx context.Context, namespace string, listOpts *client.ListOptions) cpuset.CPUSet {
+	GinkgoHelper()
 	podList := &corev1.PodList{}
 	err := testclient.DataPlaneClient.List(ctx, podList, listOpts)
 	Expect(err).ToNot(HaveOccurred())
@@ -1048,6 +1060,7 @@ func collectGuCPUsFromPodList(ctx context.Context, namespace string, listOpts *c
 // getGuPodCPUs extracts the exclusively pinned CPUs from a Guaranteed QoS pod
 // by running taskset inside the pod.
 func getGuPodCPUs(ctx context.Context, pod *corev1.Pod) cpuset.CPUSet {
+	GinkgoHelper()
 	cmd := []string{"taskset", "-pc", "1"}
 	outputb, err := pods.ExecCommandOnPod(testclient.K8sClient, pod, "", cmd)
 	Expect(err).ToNot(HaveOccurred())
