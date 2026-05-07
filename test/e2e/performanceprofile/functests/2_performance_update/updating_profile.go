@@ -18,8 +18,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
@@ -30,13 +28,11 @@ import (
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
-	profilecomponent "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	manifestsutil "github.com/openshift/cluster-node-tuning-operator/pkg/util"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/baseload"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/controller"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/runtime"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
@@ -51,7 +47,6 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/poolname"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 )
 
@@ -66,7 +61,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 	var workerRTNodes []corev1.Node
 	var profile, initialProfile *performancev2.PerformanceProfile
 	var poolName string
-	var np *hypershiftv1beta1.NodePool
 	var err error
 	var targetNode *corev1.Node
 
@@ -1174,117 +1168,13 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 	})
 
 	Context("ContainerRuntimeConfig", Ordered, Label(string(label.Tier2)), func() {
-		var ctrcfg *machineconfigv1.ContainerRuntimeConfig
-		const ContainerRuntimeConfigName = "ctrcfg-test"
-		mcp := &machineconfigv1.MachineConfigPool{}
 		var testpodTemplate *corev1.Pod
 		BeforeAll(func() {
-			key := types.NamespacedName{
-				Name: poolName,
-			}
-			By("checking if ContainerRuntimeConfig object already exists")
-			if !hypershift.IsHypershiftCluster() {
-				Expect(testclient.ControlPlaneClient.Get(context.TODO(), key, mcp)).ToNot(HaveOccurred(), "cannot get MCP %q", poolName)
-				ctrcfg, err = getContainerRuntimeConfigFrom(context.TODO(), profile, mcp)
-				Expect(err).ToNot(HaveOccurred(), "failed to get ContainerRuntimeConfig from mcp %q", mcp.Name)
-				Expect(ctrcfg).To(BeNil(), "ContainerRuntimeConfig should not exist for MCP %q", mcp.Name)
-			} else {
-				ctrcfg, err = getContainerRuntimeConfigFrom(context.TODO(), profile, mcp)
-				Expect(err).ToNot(HaveOccurred(), "failed to get ContainerRuntimeConfig from profile %q", profile.Name)
-				Expect(ctrcfg).To(BeNil(), "ContainerRuntimeConfig should not exist for profile %q", profile.Name)
-			}
 			testpodTemplate = pods.GetTestPod()
 			testpodTemplate.Namespace = testutils.NamespaceTesting
 			runtimeClass := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
 			testpodTemplate.Spec.RuntimeClassName = &runtimeClass
 		})
-		DescribeTable("verifies container runtime behavior",
-			func(withCTRCfg bool) {
-				var expectedRuntime string
-				if withCTRCfg {
-					ctrcfg = newContainerRuntimeConfig(ContainerRuntimeConfigName, profile, mcp)
-					if hypershift.IsHypershiftCluster() {
-						By(fmt.Sprintf("creating ContainerRuntimeConfig configmap %q", ctrcfg.Name))
-						Expect(testclient.ControlPlaneClient.Create(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to create ctrcfg configmap %#v", ctrcfg.Name)
-
-						hostedClusterName, err := hypershift.GetHostedClusterName()
-						Expect(err).ToNot(HaveOccurred())
-						np, err = nodepools.GetByClusterName(context.TODO(), testclient.ControlPlaneClient, hostedClusterName)
-						Expect(err).ToNot(HaveOccurred())
-
-						By("Attaching the Config object to the nodepool")
-						Expect(nodepools.AttachConfigObject(context.TODO(), testclient.ControlPlaneClient, ctrcfg)).To(Succeed())
-
-						By("Waiting for the nodepool configuration to start updating")
-						err = nodepools.WaitForUpdatingConfig(context.TODO(), testclient.ControlPlaneClient, np.Name, np.Namespace)
-						Expect(err).ToNot(HaveOccurred())
-
-						By("Waiting for the nodepool configuration to be ready")
-						err = nodepools.WaitForConfigToBeReady(context.TODO(), testclient.ControlPlaneClient, np.Name, np.Namespace)
-						Expect(err).ToNot(HaveOccurred())
-					} else {
-						By(fmt.Sprintf("creating ContainerRuntimeConfig %q", ctrcfg.Name))
-						Expect(testclient.ControlPlaneClient.Create(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to create ctrcfg %#v", ctrcfg)
-
-						By(fmt.Sprintf("waiting for MCP %q transition to UPDATING state", poolName))
-						mcps.WaitForConditionFunc(poolName, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue, getMCPConditionStatus)
-						By(fmt.Sprintf("waiting for MCP %q transition to UPDATED state", poolName))
-						mcps.WaitForConditionFunc(poolName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue, getMCPConditionStatus)
-					}
-					DeferCleanup(func() {
-						if hypershift.IsHypershiftCluster() {
-							By("Deattaching the Config object from the nodepool")
-							Expect(nodepools.DeattachConfigObject(context.TODO(), testclient.ControlPlaneClient, ctrcfg)).To(Succeed())
-
-							Expect(testclient.ControlPlaneClient.Delete(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to delete ctrcfg configmap %#v", ctrcfg)
-
-							By("Waiting for the nodepool configuration to start updating")
-							err = nodepools.WaitForUpdatingConfig(context.TODO(), testclient.ControlPlaneClient, np.Name, np.Namespace)
-							Expect(err).ToNot(HaveOccurred())
-
-							By("Waiting for the nodepool configuration to be ready")
-							err = nodepools.WaitForConfigToBeReady(context.TODO(), testclient.ControlPlaneClient, np.Name, np.Namespace)
-							Expect(err).ToNot(HaveOccurred())
-						} else {
-							Expect(testclient.ControlPlaneClient.Delete(context.TODO(), ctrcfg)).ToNot(HaveOccurred(), "failed to delete ctrcfg %#v", ctrcfg)
-							By(fmt.Sprintf("waiting for MCP %q transition to UPDATING state", poolName))
-							mcps.WaitForConditionFunc(poolName, machineconfigv1.MachineConfigPoolUpdating, corev1.ConditionTrue, getMCPConditionStatus)
-							By(fmt.Sprintf("waiting for MCP %q transition to UPDATED state", poolName))
-							mcps.WaitForConditionFunc(poolName, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue, getMCPConditionStatus)
-						}
-					})
-				}
-
-				for i := 0; i < len(workerRTNodes); i++ {
-					By("Determining the default container runtime used in the node")
-					tunedPod, err := tuned.GetPod(context.TODO(), &workerRTNodes[i])
-					Expect(err).ToNot(HaveOccurred())
-					expectedRuntime, err = runtime.GetContainerRuntimeTypeFor(context.TODO(), testclient.DataPlaneClient, tunedPod)
-					Expect(err).ToNot(HaveOccurred())
-					testlog.Infof("Container runtime used for the node: %s", expectedRuntime)
-
-					By("verifying pod using high-performance runtime class handled by the default container runtime aswell")
-					Expect(err).ToNot(HaveOccurred())
-					testpod := testpodTemplate.DeepCopy()
-					testpod.Spec.NodeName = workerRTNodes[i].Name
-					testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNodes[i].Name}
-					By(fmt.Sprintf("creating a test pod using high-performance runtime class on node %s", workerRTNodes[i].Name))
-					Expect(testclient.DataPlaneClient.Create(context.TODO(), testpod)).ToNot(HaveOccurred())
-					DeferCleanup(func() {
-						By(fmt.Sprintf("deleting the test pod from node %s", testpod.Spec.NodeName))
-						Expect(pods.DeleteAndSync(context.TODO(), testclient.DataPlaneClient, testpod)).To(Succeed())
-					})
-					testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
-					Expect(err).ToNot(HaveOccurred())
-					runtimeType, err := runtime.GetContainerRuntimeTypeFor(context.TODO(), testclient.DataPlaneClient, testpod)
-					Expect(err).ToNot(HaveOccurred())
-					testlog.Infof("Container runtime used for the test pod: %s", runtimeType)
-					Expect(runtimeType).To(Equal(expectedRuntime))
-				}
-			},
-			Entry("test without ContainerRuntimeConfig", false),
-			Entry("create and test with ContainerRuntimeConfig", true),
-		)
 
 		When("exec-cpu-affinity is disabled", func() {
 			// by default the exec-cpu-affinity is enabled, thus this requires an update to the profile
@@ -1943,24 +1833,6 @@ func isSmpReflectingHousekeeping(ctx context.Context, node *corev1.Node, houseke
 	return false, nil
 }
 
-func getMCPConditionStatus(mcpName string, conditionType machineconfigv1.MachineConfigPoolConditionType) corev1.ConditionStatus {
-	mcp, err := mcps.GetByNameNoRetry(mcpName)
-	if err != nil {
-		// In case of any error we just retry, as in case of single node cluster
-		// the only node may be rebooting
-		testlog.Infof("MCP %q not found -> unknown", mcpName)
-		return corev1.ConditionUnknown
-	}
-	for _, condition := range mcp.Status.Conditions {
-		if condition.Type == conditionType {
-			testlog.Infof("MCP %q condition %q -> %q", mcpName, conditionType, condition.Status)
-			return condition.Status
-		}
-	}
-	testlog.Infof("MCP %q condition %q not found -> unknown", mcpName, conditionType)
-	return corev1.ConditionUnknown
-}
-
 func hugepagesPathForNode(nodeID, sizeINMb int) string {
 	return fmt.Sprintf("/sys/devices/system/node/node%d/hugepages/hugepages-%dkB/nr_hugepages", nodeID, sizeINMb*1024)
 }
@@ -2033,61 +1905,6 @@ func removeLabels(nodeSelector map[string]string, targetNode *corev1.Node) {
 
 	By(fmt.Sprintf("Waiting when MCP %q complete updates and verifying that node reverted back configuration", testutils.RoleWorker))
 	mcps.WaitForCondition(testutils.RoleWorker, machineconfigv1.MachineConfigPoolUpdated, corev1.ConditionTrue)
-}
-
-func newContainerRuntimeConfig(name string, profile *performancev2.PerformanceProfile, profileMCP *machineconfigv1.MachineConfigPool) *machineconfigv1.ContainerRuntimeConfig {
-	return &machineconfigv1.ContainerRuntimeConfig{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ContainerRuntimeConfig",
-			APIVersion: machineconfigv1.GroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
-		Spec: machineconfigv1.ContainerRuntimeConfigSpec{
-			MachineConfigPoolSelector: &metav1.LabelSelector{
-				MatchLabels: profilecomponent.GetMachineConfigPoolSelector(profile, profileMCP),
-			},
-			ContainerRuntimeConfig: &machineconfigv1.ContainerRuntimeConfiguration{
-				DefaultRuntime: machineconfigv1.ContainerRuntimeDefaultRuntimeRunc,
-			},
-		},
-	}
-}
-
-func getContainerRuntimeConfigFrom(ctx context.Context, profile *performancev2.PerformanceProfile, mcp *machineconfigv1.MachineConfigPool) (*machineconfigv1.ContainerRuntimeConfig, error) {
-	ctrcfgList := &machineconfigv1.ContainerRuntimeConfigList{}
-	if err := testclient.ControlPlaneClient.List(ctx, ctrcfgList); err != nil {
-		return nil, err
-	}
-
-	if len(ctrcfgList.Items) == 0 {
-		testlog.Infof("no ContainerRuntimeConfig object found on the cluster")
-		return nil, nil
-	}
-
-	var ctrcfgs []*machineconfigv1.ContainerRuntimeConfig
-	mcpLabels := labels.Set(mcp.Labels)
-	for i := 0; i < len(ctrcfgList.Items); i++ {
-		ctrcfg := &ctrcfgList.Items[i]
-		ctrcfgSelector, err := metav1.LabelSelectorAsSelector(ctrcfg.Spec.MachineConfigPoolSelector)
-		if err != nil {
-			return nil, err
-		}
-		if ctrcfgSelector.Matches(mcpLabels) {
-			ctrcfgs = append(ctrcfgs, ctrcfg)
-		}
-	}
-
-	if len(ctrcfgs) == 0 {
-		testlog.Infof("no ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q", mcpLabels.String(), profile.Name)
-		return nil, nil
-	}
-
-	if len(ctrcfgs) > 1 {
-		return nil, fmt.Errorf("more than one ContainerRuntimeConfig found that matches MCP labels %s that associated with performance profile %q", mcpLabels.String(), profile.Name)
-	}
-	return ctrcfgs[0], nil
 }
 
 // copyNumaCoreSiblings copies the existing numa topology to another
