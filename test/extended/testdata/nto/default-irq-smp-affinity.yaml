@@ -9,23 +9,23 @@ objects:
       name: ${TUNED_NAME}
     spec:
       profile:
-      - data: |
-          [main]
-          summary=An OpenShift profile to test [scheduler] default_irq_smp_affinity option
-          include=openshift-node
-          [scheduler]
-          # isolated_cores take a list of ranges; e.g. isolated_cores=2,4-7
-          isolated_cores=1
-          # the cpulist in 'default_irq_smp_affinity' is unpacked and written directly to /proc/irq/default_smp_affinity
-          # default_irq_smp_affinity=1
-          ${SYSCTLPARM}=${SYSCTLVALUE}
-        name: ${TUNED_NAME}
+        - data: |
+            [main]
+            summary=An OpenShift profile to test [scheduler] default_irq_smp_affinity option
+            include=openshift-node
+            [scheduler]
+            # isolated_cores take a list of ranges; e.g. isolated_cores=2,4-7
+            isolated_cores=1
+            # the cpulist in 'default_irq_smp_affinity' is unpacked and written directly to /proc/irq/default_smp_affinity
+            # default_irq_smp_affinity=1
+            ${SYSCTLPARM}=${SYSCTLVALUE}
+          name: ${TUNED_NAME}
       recommend:
-      - match:
-        - label: tuned.openshift.io/default-irq-smp-affinity
-        priority: 18
-        profile: ${TUNED_NAME}
+        - match:
+            - label: tuned.openshift.io/default-irq-smp-affinity
+          priority: 18
+          profile: ${TUNED_NAME}
 parameters:
-- name: TUNED_NAME
-- name: SYSCTLPARM
-- name: SYSCTLVALUE
+  - name: TUNED_NAME
+  - name: SYSCTLPARM
+  - name: SYSCTLVALUE
