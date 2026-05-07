@@ -17,7 +17,6 @@ var _ = g.Describe("[Jira:Node Tuning Operator][sig-tuning-node] should", g.Labe
 		oc           = utils.NewCLIWithoutNamespace("nto-test")
 		ntoNamespace = "openshift-cluster-node-tuning-operator"
 
-		isNTO         bool
 		iaasPlatform  string
 		tunedNodeName string
 		err           error
@@ -25,13 +24,17 @@ var _ = g.Describe("[Jira:Node Tuning Operator][sig-tuning-node] should", g.Labe
 
 	g.BeforeEach(func() {
 		// ensure NTO operator is installed
-		isNTO = utils.IsNTOPodInstalled(oc, ntoNamespace)
+		utils.SkipNoNTO(oc, ntoNamespace)
 		// get IaaS platform
 		platformOutput, err := oc.AsAdmin().WithoutNamespace().Run("get").Args("infrastructure", "cluster", "-o=jsonpath={.status.platform}").Output()
 		if err == nil {
 			iaasPlatform = strings.ToLower(platformOutput)
 		}
 		utils.Logf("Cloud provider is: %v", iaasPlatform)
+	})
+
+	g.AfterEach(func() {
+		// Cleanup resources (use defer)
 	})
 
 	// A dummy test that should always pass.  It should land in "openshift/cluster-node-tuning-operator/conformance/parallel" suite.
@@ -54,12 +57,7 @@ var _ = g.Describe("[Jira:Node Tuning Operator][sig-tuning-node] should", g.Labe
 		o.Expect(true).To(o.BeTrue())
 	})
 
-	g.It("[test_id:37415][OTP]Allow setting isolated_cores without touching the default_irq_affinity [Disruptive]", g.Label("ReleaseGate"), oteg.Informing(), func() {
-		// test requires NTO to be installed
-		if !isNTO {
-			g.Skip("NTO is not installed - skipping test ...")
-		}
-
+	g.It("[test_id:37415][OTP]Allow setting isolated_cores without touching the default_irq_affinity [Disruptive]", oteg.Informing(), func() {
 		ntoIRQSMPFile := utils.TestdataFixturePath(g.GinkgoT(), "nto", "default-irq-smp-affinity.yaml")
 
 		isSNO := utils.IsSNOCluster(oc)
