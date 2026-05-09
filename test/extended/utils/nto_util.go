@@ -6,62 +6,80 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	extendedbindata "github.com/openshift/cluster-node-tuning-operator/test/extended/bindata"
+	"sync"
 
 	o "github.com/onsi/gomega"
 )
 
-type FixtureTB interface {
-	Helper()
-	TempDir() string
-}
+var (
+	fixtureDirLock sync.Once
+	fixtureDir     string
+)
 
 // Logf is a simple logging function to replace e2e.Logf
 func Logf(format string, args ...interface{}) {
 	fmt.Printf(format+"\n", args...)
 }
 
-// bindataAssetKey returns the go-bindata asset name (paths under the testdata tree; see Makefile -prefix).
-func bindataAssetKey(elem []string) string {
-	key := filepath.ToSlash(filepath.Join(elem...))
-	if key == "testdata" {
-		return ""
+// FixturePath returns the path to a test fixture file
+func FixturePath(elem ...string) string {
+	if len(elem) == 0 {
+		panic("must specify path")
 	}
-	return strings.TrimPrefix(key, "testdata/")
-}
 
-func materializeTestdataFixture(tb FixtureTB, rel string, data []byte) string {
-	tb.Helper()
-	base := tb.TempDir()
-	dest := filepath.Join(base, filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(dest), 0750); err != nil {
-		panic(fmt.Sprintf("TestdataFixturePath: mkdir: %v", err))
+	// Determine the base directory for test fixtures
+	// This should be the absolute path to test/extended/testdata
+	fixtureDirLock.Do(func() {
+		// Get the current working directory or package directory
+		cwd, err := os.Getwd()
+		if err != nil {
+			panic(err)
+		}
+
+		// Find the project root by looking for go.mod
+		projectRoot := cwd
+		for {
+			if _, err := os.Stat(filepath.Join(projectRoot, "go.mod")); err == nil {
+				break
+			}
+			parent := filepath.Dir(projectRoot)
+			if parent == projectRoot {
+				// Reached filesystem root without finding go.mod
+				panic("could not find project root (go.mod)")
+			}
+			projectRoot = parent
+		}
+
+		fixtureDir = filepath.Join(projectRoot, "test", "extended", "testdata")
+	})
+
+	// Build the path to the fixture
+	var pathComponents []string
+	switch {
+	case len(elem) > 3 && elem[0] == ".." && elem[1] == ".." && elem[2] == "examples":
+		pathComponents = append([]string{filepath.Dir(filepath.Dir(fixtureDir))}, elem[2:]...)
+	case len(elem) > 3 && elem[0] == ".." && elem[1] == ".." && elem[2] == "install":
+		pathComponents = append([]string{filepath.Dir(filepath.Dir(fixtureDir))}, elem[2:]...)
+	case len(elem) > 3 && elem[0] == ".." && elem[1] == "integration":
+		pathComponents = append([]string{filepath.Dir(fixtureDir), "test"}, elem[1:]...)
+	case elem[0] == "testdata":
+		pathComponents = append([]string{fixtureDir}, elem[1:]...)
+	default:
+		pathComponents = append([]string{fixtureDir}, elem...)
 	}
-	if err := os.WriteFile(dest, data, 0644); err != nil {
-		panic(fmt.Sprintf("TestdataFixturePath: write %q: %v", dest, err))
+
+	fullPath := filepath.Join(pathComponents...)
+
+	// Verify the path exists
+	if _, err := os.Stat(fullPath); err != nil {
+		panic(fmt.Sprintf("Fixture path does not exist: %s (error: %v)", fullPath, err))
 	}
-	p, err := filepath.Abs(dest)
+
+	p, err := filepath.Abs(fullPath)
 	if err != nil {
 		panic(err)
 	}
 	return p
-}
-
-// TestdataFixturePath materializes a manifest from go-bindata into a file under tb.TempDir()
-// and returns its absolute path for use with oc -f.  The directory is removed when the test
-// completes.
-func TestdataFixturePath(tb FixtureTB, elem ...string) string {
-	tb.Helper()
-	if len(elem) == 0 {
-		panic("must specify path")
-	}
-	key := bindataAssetKey(elem)
-	data, err := extendedbindata.Asset(key)
-	if err != nil {
-		panic(fmt.Sprintf("TestdataFixturePath: unknown asset %q (from %v): %v", key, elem, err))
-	}
-	return materializeTestdataFixture(tb, key, data)
 }
 
 // IsNTOPodInstalled will return true if any pod is found in the given namespace, and false otherwise

@@ -22,11 +22,7 @@ endif
 # Build-specific variables
 OUT_DIR=_output
 GOBINDATA_BIN=$(OUT_DIR)/go-bindata
-BINDATA_NTO=pkg/manifests/bindata.go
-BINDATA_OTE=test/extended/bindata/bindata.go
-BINDATA=$(BINDATA_NTO) $(BINDATA_OTE)
-TESTDATA_OTE_DIR=test/extended/testdata
-TESTDATA_OTE=$(shell find $(TESTDATA_OTE_DIR) -type f \( -name '*.yaml' -o -name '*.yml' \) 2>/dev/null)
+BINDATA=pkg/manifests/bindata.go
 ASSETS=$(shell find assets -name \*.yaml)
 GO=GOARCH=$(GOARCH) GO111MODULE=on GOFLAGS=-mod=vendor go
 GO_BUILD_RECIPE=$(GO) build -o $(OUT_DIR)/$(PACKAGE_BIN) -ldflags '-X $(PACKAGE)/version.Version=$(REV)' $(PACKAGE_MAIN)
@@ -83,11 +79,9 @@ update-tuned-submodule:
 build: $(BINDATA) pkg/generated build-performance-profile-creator build-gather-sysinfo cluster-node-tuning-operator-test-ext
 	$(GO_BUILD_RECIPE)
 
-$(BINDATA): $(GOBINDATA_BIN) $(ASSETS) $(TESTDATA_OTE)
-	$(GOBINDATA_BIN) -mode 420 -modtime 1 -pkg manifests -o $(BINDATA_NTO) assets/...
-	gofmt -s -w $(BINDATA_NTO)
-	$(GOBINDATA_BIN) -mode 420 -modtime 1 -pkg manifests_ote -prefix $(TESTDATA_OTE_DIR) -o $(BINDATA_OTE) $(TESTDATA_OTE_DIR)/...
-	gofmt -s -w $(BINDATA_OTE)
+$(BINDATA): $(GOBINDATA_BIN) $(ASSETS)
+	$(GOBINDATA_BIN) -mode 420 -modtime 1 -pkg manifests -o $(BINDATA) assets/...
+	gofmt -s -w $(BINDATA)
 
 pkg/generated: $(API_TYPES)
 	hack/update-codegen.sh
@@ -318,6 +312,6 @@ pao-clean-e2e:
 
 
 .PHONY: cluster-node-tuning-operator-test-ext
-cluster-node-tuning-operator-test-ext: $(BINDATA_OTE)
+cluster-node-tuning-operator-test-ext:
 	@echo "Building cluster-node-tuning-operator-test-ext"
 	GO_COMPLIANCE_POLICY=exempt_all CGO_ENABLED=0 $(GO) build -mod=vendor -v -o $(OUT_DIR)/cluster-node-tuning-operator-test-ext ./cmd/cluster-node-tuning-operator-test-ext
