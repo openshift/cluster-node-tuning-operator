@@ -21,7 +21,7 @@ import (
 	"github.com/spf13/cobra"
 
 	// The import below is necessary to ensure that the NTO operator tests are registered with the extension.
-	_ "github.com/openshift/cluster-node-tuning-operator/test/extended/specs"
+	_ "github.com/openshift/cluster-node-tuning-operator/test/extended"
 )
 
 func main() {
@@ -33,8 +33,7 @@ func main() {
 		Name:    "openshift/cluster-node-tuning-operator/conformance/parallel",
 		Parents: []string{"openshift/conformance/parallel"},
 		Qualifiers: []string{
-			`(labels.exists(l, l=="ReleaseGate")) &&
-			!(name.contains("[Serial]") || name.contains("[Slow]"))`,
+			`!(name.contains("[Serial]") || name.contains("[Slow]"))`,
 		},
 	})
 
@@ -43,20 +42,7 @@ func main() {
 		Name:    "openshift/cluster-node-tuning-operator/conformance/serial",
 		Parents: []string{"openshift/conformance/serial"},
 		Qualifiers: []string{
-			`(labels.exists(l, l=="ReleaseGate")) &&
-			name.contains("[Serial]")`,
-			// refer to https://github.com/openshift/origin/blob/main/pkg/testsuites/standard_suites.go
-		},
-	})
-
-	// Suite: disruptive
-	// See: https://github.com/openshift/release/blob/508c08ff3d8dbff48604b94484a0ce63983710ba/ci-operator/config/openshift/release/openshift-release-main__nightly-4.22.yaml#L2462
-	ext.AddSuite(e.Suite{
-		Name:    "openshift/cluster-node-tuning-operator/disruptive",
-		Parents: []string{"openshift/disruptive-longrunning"},
-		Qualifiers: []string{
-			`(labels.exists(l, l=="ReleaseGate")) &&
-			name.contains("[Disruptive]")`,
+			`name.contains("[Serial]")`,
 		},
 	})
 
@@ -65,23 +51,30 @@ func main() {
 		Name:    "openshift/cluster-node-tuning-operator/optional/slow",
 		Parents: []string{"openshift/optional/slow"},
 		Qualifiers: []string{
-			`(labels.exists(l, l=="ReleaseGate")) &&
-			name.contains("[Slow]")`,
+			`name.contains("[Slow]")`,
 		},
 	})
 
 	// Suite: all (includes everything)
 	ext.AddSuite(e.Suite{
 		Name: "openshift/cluster-node-tuning-operator/all",
-		Qualifiers: []string{
-			`(labels.exists(l, l=="ReleaseGate"))`,
-		},
 	})
 
 	specs, err := g.BuildExtensionTestSpecsFromOpenShiftGinkgoSuite()
 	if err != nil {
 		panic(fmt.Sprintf("couldn't build extension test specs from ginkgo: %+v", err.Error()))
 	}
+
+	// Ensure [Disruptive] tests are also [Serial]
+	specs = specs.Walk(func(spec *et.ExtensionTestSpec) {
+		if strings.Contains(spec.Name, "[Disruptive]") && !strings.Contains(spec.Name, "[Serial]") {
+			spec.Name = strings.ReplaceAll(
+				spec.Name,
+				"[Disruptive]",
+				"[Serial][Disruptive]",
+			)
+		}
+	})
 
 	// Preserve original-name labels for renamed tests
 	specs = specs.Walk(func(spec *et.ExtensionTestSpec) {
