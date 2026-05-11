@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/systemd"
 	e2etuned "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/tuned"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/util"
 	"github.com/openshift/cluster-node-tuning-operator/test/framework"
@@ -40,7 +42,7 @@ var (
 	cs = framework.NewClientSet()
 )
 
-var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
+var _ = Describe("[performance] IRQBalance", Ordered, func() {
 	var workerRTNodes []corev1.Node
 	var targetNode *corev1.Node
 	var profile, initialProfile *performancev2.PerformanceProfile
@@ -301,6 +303,20 @@ var _ = Describe("[performance] Checking IRQBalance settings", Ordered, func() {
 			Expect(out).To(Equal("0"), "file %s does not contain the expect output; expected=0 actual=%s", fullPath, out)
 		})
 	})
+
+	// Automates OCPBUGS-45112 - Config test
+	// Default StartLimitBurst=5 was too low - each pod created/deleted would trigger a restart of irqbalance
+	// Systemd coalesces concurrent requests, making the reproduction by deployment impractical.
+	It("[test_id:88711] should have irqbalance StartLimitBurst >= 100", Label(string(label.Tier0)), func() {
+		startLimitBurst, err := systemd.ShowPropertyValue(context.TODO(), "irqbalance.service", "StartLimitBurst", targetNode)
+		Expect(err).ToNot(HaveOccurred())
+		startLimitBurst = strings.TrimSpace(startLimitBurst)
+		testlog.Infof("irqbalance.service StartLimitBurst=%s on node %s", startLimitBurst, targetNode.Name)
+		startLimitBurstInt, err := strconv.Atoi(startLimitBurst)
+		Expect(err).ToNot(HaveOccurred(), "unexpected StartLimitBurst value %q", startLimitBurst)
+		Expect(startLimitBurstInt).To(BeNumerically(">=", 100), "irqbalance StartLimitBurst must be >=100 (OCPBUGS-45112)")
+	})
+
 })
 
 // nodes.BannedCPUs fails (!!!) if the current banned list is empty because, deep down, ExecCommandOnNode expects non-empty stdout.
