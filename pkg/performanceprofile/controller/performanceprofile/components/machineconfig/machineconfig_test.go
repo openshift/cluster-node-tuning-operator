@@ -258,6 +258,30 @@ var _ = Describe("Machine Config", func() {
 		})
 	})
 
+	Context("stalld backend configuration", func() {
+		It("should include stalld sysconfig and systemd dropin files", func() {
+			profile := testutils.NewPerformanceProfile("test")
+
+			mc, err := New(profile, &components.MachineConfigOptions{})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+			Expect(json.Unmarshal(mc.Spec.Config.Raw, &result)).To(Succeed())
+
+			fileContents := map[string]string{}
+			for _, f := range result.Storage.Files {
+				Expect(f.Contents.Source).ToNot(BeNil(), "file %s has nil source", f.Path)
+				base64Data := strings.TrimPrefix(*f.Contents.Source, "data:text/plain;charset=utf-8;base64,")
+				decoded, err := base64.StdEncoding.DecodeString(base64Data)
+				Expect(err).ToNot(HaveOccurred())
+				fileContents[f.Path] = string(decoded)
+			}
+
+			Expect(fileContents).To(HaveKeyWithValue("/etc/sysconfig/stalld-backend", "BE=\"-b sched_debug\"\n"))
+			Expect(fileContents).To(HaveKeyWithValue("/etc/systemd/system/stalld.service.d/stalld-backend.conf", "[Service]\nEnvironmentFile=/etc/sysconfig/stalld-backend\n"))
+		})
+	})
+
 	Context("check listToString ", func() {
 		It("should create string from CPUSet", func() {
 			res := components.ListToString(CPUs)

@@ -342,6 +342,22 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				Expect(tunedExitTime).To(BeNumerically("<", kubeletStartTime), "kubelet started before ocp-tuned-one-shot.service exits")
 			}
 		})
+
+		It("Should have the stalld service configured with the stalld-backend drop-in", func() {
+			for _, node := range workerRTNodes {
+				By("verify that the stalld systemd unit has the stalld-backend drop-in path")
+				out, err := systemd.ShowProperty(context.TODO(), "stalld.service", "DropInPaths", &node)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(out).To(ContainSubstring("/etc/systemd/system/stalld.service.d/stalld-backend.conf"),
+					"stalld.service on node %s does not have the stalld-backend.conf drop-in: %s", node.Name, out)
+
+				By("verify that the stalld systemd unit has the stalld-backend environment file")
+				out, err = systemd.ShowProperty(context.TODO(), "stalld.service", "EnvironmentFiles", &node)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(out).To(ContainSubstring("/etc/sysconfig/stalld-backend"),
+					"stalld.service on node %s does not have /etc/sysconfig/stalld-backend in EnvironmentFiles: %s", node.Name, out)
+			}
+		})
 	})
 
 	Context("Tuned kernel parameters", Label(string(label.Tier0)), func() {
