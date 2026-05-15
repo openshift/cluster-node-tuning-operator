@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+  <testsuites tests="1" disabled="0" errors="0" failures="0" time="5.8269e-05">
+      <testsuite name="Performance Addon Operator configuration" package="/home/shajmakh/ghrepo/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/0_config" tests="1" disabled="0" skipped="0" errors="0" failures="0" time="5.8269e-05" timestamp="2026-05-18T15:04:26">
+          <properties>
+              <property name="SuiteSucceeded" value="true"></property>
+              <property name="SuiteHasProgrammaticFocus" value="false"></property>
+              <property name="SpecialSuiteFailureReason" value=""></property>
+              <property name="SuiteLabels" value="[]"></property>
+              <property name="RandomSeed" value="1779105864"></property>
+              <property name="RandomizeAllSpecs" value="false"></property>
+              <property name="LabelFilter" value=""></property>
+              <property name="FocusStrings" value=""></property>
+              <property name="SkipStrings" value=""></property>
+              <property name="FocusFiles" value=""></property>
+              <property name="SkipFiles" value=""></property>
+              <property name="FailOnPending" value="false"></property>
+              <property name="FailOnEmpty" value="false"></property>
+              <property name="FailFast" value="false"></property>
+              <property name="FlakeAttempts" value="2"></property>
+              <property name="DryRun" value="false"></property>
+              <property name="ParallelTotal" value="1"></property>
+              <property name="OutputInterceptorMode" value=""></property>
+          </properties>
+          <testcase name="[ReportAfterSuite] e2e serial suite" classname="Performance Addon Operator configuration" status="passed" time="1.8916e-05">
+              <system-err>&gt; Enter [ReportAfterSuite] TOP-LEVEL - /home/shajmakh/ghrepo/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/0_config/test_suite_performance_config_test.go:65 @ 05/18/26 15:04:26.157&#xA;&lt; Exit [ReportAfterSuite] TOP-LEVEL - /home/shajmakh/ghrepo/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/0_config/test_suite_performance_config_test.go:65 @ 05/18/26 15:04:26.157 (0s)&#xA;</system-err>
+          </testcase>
+      </testsuite>
+  </testsuites>

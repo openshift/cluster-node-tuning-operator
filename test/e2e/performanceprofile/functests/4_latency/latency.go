@@ -291,13 +291,13 @@ func getLatencyTestCpus() (int, error) {
 	return defaultTestCpus, nil
 }
 
-// getLatencyTestMemory returns the memory limit for the latency test pod based on
+// GetLatencyTestMemory returns the memory limit for the latency test pod based on
 // LATENCY_TEST_MEMORY and the CPU count.
 // If LATENCY_TEST_MEMORY is unset, it returns defaultTestMemory.
 // If set to "dynamic", it returns max(32Mi per CPU, defaultTestMemory); when cpus is unset or
 // less than 1, it returns defaultTestMemory without scaling.
 // Any other value must be a valid Kubernetes resource quantity (e.g. "512Mi") and is returned as-is.
-func getLatencyTestMemory(cpus int) (string, error) {
+func GetLatencyTestMemory(cpus int) (string, error) {
 	if val, ok := os.LookupEnv("LATENCY_TEST_MEMORY"); ok {
 		if val == dynamicMemory {
 			// Defensive check: fall back to default memory if the CPU count was not normalized
@@ -383,7 +383,7 @@ func getLatencyTestPod(profile *performancev2.PerformanceProfile, node *corev1.N
 	}
 
 	var err error
-	latencyTestMemory, err = getLatencyTestMemory(latencyTestCpus)
+	latencyTestMemory, err = GetLatencyTestMemory(latencyTestCpus)
 	Expect(err).ToNot(HaveOccurred())
 
 	latencyTestRunnerArgs := []string{

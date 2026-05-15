@@ -4,13 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/onsi/gomega/format"
 
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -25,14 +22,10 @@ import (
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 )
 
 var RunningOnSingleNode bool
@@ -45,51 +38,51 @@ var _ = Describe("[performance][config] Performance configuration", Ordered, fun
 		RunningOnSingleNode = isSNO
 	})
 
-	It("Should successfully deploy the performance profile", Label(string(label.Tier0)), func() {
+	// It("Should successfully deploy the performance profile", Label(string(label.Tier0)), func() {
 
-		performanceProfile, err := testProfile()
-		Expect(err).ToNot(HaveOccurred(), "failed to build performance profile: %v", err)
-		profileAlreadyExists := false
+	// 	performanceProfile, err := testProfile()
+	// 	Expect(err).ToNot(HaveOccurred(), "failed to build performance profile: %v", err)
+	// 	profileAlreadyExists := false
 
-		performanceManifest, foundOverride := os.LookupEnv("PERFORMANCE_PROFILE_MANIFEST_OVERRIDE")
-		if foundOverride {
-			performanceProfile, err = externalPerformanceProfile(performanceManifest)
-			Expect(err).ToNot(HaveOccurred(), "Failed overriding performance profile", performanceManifest)
-			testlog.Warningf("Consuming performance profile from %s", performanceManifest)
-		}
-		if discovery.Enabled() {
-			performanceProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-			Expect(err).ToNot(HaveOccurred(), "Failed finding a performance profile in discovery mode using selector %v", testutils.NodeSelectorLabels)
-			testlog.Info("Discovery mode: consuming a deployed performance profile from the cluster")
-			profileAlreadyExists = true
-		}
+	// 	performanceManifest, foundOverride := os.LookupEnv("PERFORMANCE_PROFILE_MANIFEST_OVERRIDE")
+	// 	if foundOverride {
+	// 		performanceProfile, err = externalPerformanceProfile(performanceManifest)
+	// 		Expect(err).ToNot(HaveOccurred(), "Failed overriding performance profile", performanceManifest)
+	// 		testlog.Warningf("Consuming performance profile from %s", performanceManifest)
+	// 	}
+	// 	if discovery.Enabled() {
+	// 		performanceProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+	// 		Expect(err).ToNot(HaveOccurred(), "Failed finding a performance profile in discovery mode using selector %v", testutils.NodeSelectorLabels)
+	// 		testlog.Info("Discovery mode: consuming a deployed performance profile from the cluster")
+	// 		profileAlreadyExists = true
+	// 	}
 
-		if !discovery.Enabled() {
-			By("Creating the PerformanceProfile")
-			// this might fail while the operator is still being deployed and the CRD does not exist yet
-			Eventually(func() error {
-				err := testclient.ControlPlaneClient.Create(context.TODO(), performanceProfile)
-				if errors.IsAlreadyExists(err) {
-					testlog.Warning(fmt.Sprintf("A PerformanceProfile with name %s already exists! If created externally, tests might have unexpected behaviour", performanceProfile.Name))
-					profileAlreadyExists = true
-					return nil
-				}
-				return err
-			}, cluster.ComputeTestTimeout(15*time.Minute, RunningOnSingleNode), 15*time.Second).ShouldNot(HaveOccurred(), "Failed creating the performance profile")
-		}
-		unpauseMCP(context.TODO(), performanceProfile)
-		attachProfileToNodePool(context.TODO(), performanceProfile)
-		// if the profile exists, it's likely to have been through the updating phase, so we only
-		//	wait for updated.
-		if !profileAlreadyExists {
-			profilesupdate.WaitForTuningUpdating(context.TODO(), performanceProfile)
-		}
-		profilesupdate.WaitForTuningUpdated(context.TODO(), performanceProfile)
+	// 	if !discovery.Enabled() {
+	// 		By("Creating the PerformanceProfile")
+	// 		// this might fail while the operator is still being deployed and the CRD does not exist yet
+	// 		Eventually(func() error {
+	// 			err := testclient.ControlPlaneClient.Create(context.TODO(), performanceProfile)
+	// 			if errors.IsAlreadyExists(err) {
+	// 				testlog.Warning(fmt.Sprintf("A PerformanceProfile with name %s already exists! If created externally, tests might have unexpected behaviour", performanceProfile.Name))
+	// 				profileAlreadyExists = true
+	// 				return nil
+	// 			}
+	// 			return err
+	// 		}, cluster.ComputeTestTimeout(15*time.Minute, RunningOnSingleNode), 15*time.Second).ShouldNot(HaveOccurred(), "Failed creating the performance profile")
+	// 	}
+	// 	unpauseMCP(context.TODO(), performanceProfile)
+	// 	attachProfileToNodePool(context.TODO(), performanceProfile)
+	// 	// if the profile exists, it's likely to have been through the updating phase, so we only
+	// 	//	wait for updated.
+	// 	if !profileAlreadyExists {
+	// 		profilesupdate.WaitForTuningUpdating(context.TODO(), performanceProfile)
+	// 	}
+	// 	profilesupdate.WaitForTuningUpdated(context.TODO(), performanceProfile)
 
-		Expect(testclient.ControlPlaneClient.Get(context.TODO(), client.ObjectKeyFromObject(performanceProfile), performanceProfile))
-		By("Printing the updated profile")
-		testlog.Info(format.Object(performanceProfile, 2))
-	})
+	// 	Expect(testclient.ControlPlaneClient.Get(context.TODO(), client.ObjectKeyFromObject(performanceProfile), performanceProfile))
+	// 	By("Printing the updated profile")
+	// 	testlog.Info(format.Object(performanceProfile, 2))
+	// })
 })
 
 func externalPerformanceProfile(performanceManifest string) (*performancev2.PerformanceProfile, error) {

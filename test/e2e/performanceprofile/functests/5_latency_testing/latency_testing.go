@@ -13,6 +13,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
+
+	"k8s.io/klog"
+
+	latency "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/4_latency"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
@@ -33,8 +37,15 @@ const (
 	hwlatdetecMaxLatency = "HWLATDETECT_MAXIMUM_LATENCY"
 	cyclictestMaxLatency = "CYCLICTEST_MAXIMUM_LATENCY"
 	latencyTestCpus      = "LATENCY_TEST_CPUS"
+	latencyTestMemory    = "LATENCY_TEST_MEMORY"
+	defaultTestMemory    = "1Gi"
 	//invalid values error messages
-	unexpectedError = "Unexpected error"
+	incorrectMemory     = incorrectMsgPart1 + latencyTestMemory + incorrectMsgPart2 + mustBeValidQuantity
+	mustBeValidQuantity = ".*it must be a valid quantity"
+	invalidNumberMemory = incorrectMsgPart1 + latencyTestMemory + invalidNumber + mustBeValidQuantity
+	dynamicMemory       = "dynamic"
+	memoryFactor        = 32
+	unexpectedError     = "Unexpected error"
 	//incorrect values error messages
 	incorrectMsgPart1                  = "the environment variable "
 	incorrectMsgPart2                  = " has incorrect value"
@@ -90,6 +101,7 @@ type latencyTest struct {
 	cyclictestMaxLatency  string
 	hwlatdetectMaxLatency string
 	testCpus              string
+	testMemory            string
 	outputMsgs            []string
 	toolToTest            string
 	ginkgoTimeout         string
@@ -170,6 +182,141 @@ var _ = DescribeTable("Test latency measurement tools tests", func(testGroup []l
 	Entry("[test_id:42856] Hwlatdetect - Verify that the latency tool test should print an expected error message when passing invalid environment variables values", getNegativeTests(hwlatdetect), negativeTesting),
 )
 
+// var _ = Describe("Latency pod testing", func() {
+// 	var testRun latencyTest
+// 	var latencyTestPod *corev1.Pod
+// 	When("checking pod's resources", func() {
+
+// 		BeforeEach(func() {
+// 			clearEnv()
+// 			testRun = latencyTest{
+// 				testRuntime:    "120", // high enough to allow doing the validation on the scheduled pod
+// 				testMaxLatency: untunedLatencyThreshold,
+// 				testCpus:       "4", // good default for all tools
+// 			}
+// 		})
+
+// 		AfterEach(func(ctx context.Context) {
+// 			Expect(pods.DeleteAndSync(ctx, testclient.DataPlaneClient, latencyTestPod)).To(Succeed())
+// 		})
+
+// 		DescribeTable("should have correct default memory amount when LATENCY_TEST_MEMORY is unset", func(ctx context.Context, toolName string) {
+// 			testDescription := setEnvAndGetDescription(testRun)
+// 			By(testDescription)
+
+// 			cancel := runTest(ctx, toolName)
+// 			defer cancel()
+
+// 			By("Get the latency test pod and examining its resources")
+// 			podlist := &corev1.PodList{}
+// 			Eventually(func(g Gomega) {
+// 				g.Expect(testclient.Client.List(ctx, podlist, client.InNamespace(testutils.NamespaceTesting))).To(Succeed(), "no latency pods were found")
+// 				g.Expect(podlist.Items).ToNot(BeEmpty(), "no latency pods were found yet")
+// 			}).WithTimeout(5 * time.Minute).WithPolling(1 * time.Second).Should(Succeed())
+// 			Expect(podlist.Items).To(HaveLen(1))
+// 			cancel()
+
+// 			latencyTestPod = &podlist.Items[0]
+// 			Expect(latencyTestPod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
+// 			Expect(latencyTestPod.Spec.Containers[0].Resources.Limits.Memory().String()).To(Equal(defaultTestMemory))
+// 		},
+// 			Entry("- oslat", oslat),
+// 			Entry("- cyclictest", cyclictest),
+// 			Entry("- hwlatdetect", hwlatdetect),
+// 		)
+
+// 		DescribeTable("should have correct memory amount when LATENCY_TEST_MEMORY is set to a valid quantity", func(ctx context.Context, toolName string) {
+// 			testRun.testMemory = "512Mi"
+// 			testDescription := setEnvAndGetDescription(testRun)
+// 			By(testDescription)
+
+// 			cancel := runTest(ctx, toolName)
+// 			defer cancel()
+
+// 			By("Get the latency test pod and examining its resources")
+// 			podlist := &corev1.PodList{}
+// 			Eventually(func(g Gomega) {
+// 				g.Expect(testclient.Client.List(ctx, podlist, client.InNamespace(testutils.NamespaceTesting))).To(Succeed(), "no latency pods were found")
+// 				g.Expect(podlist.Items).ToNot(BeEmpty(), "no latency pods were found yet")
+// 			}).WithTimeout(5 * time.Minute).WithPolling(1 * time.Second).Should(Succeed())
+// 			Expect(podlist.Items).To(HaveLen(1))
+// 			cancel()
+
+// 			latencyTestPod = &podlist.Items[0]
+// 			Expect(latencyTestPod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
+// 			Expect(latencyTestPod.Spec.Containers[0].Resources.Limits.Memory().String()).To(Equal(testRun.testMemory))
+// 		},
+// 			Entry("- oslat", oslat),
+// 			Entry("- cyclictest", cyclictest),
+// 			Entry("- hwlatdetect", hwlatdetect),
+// 		)
+
+// 		FDescribeTable("should have correct memory amount when LATENCY_TEST_MEMORY is set to dynamic with default CPUs", func(ctx context.Context, toolName string) {
+// 			testRun.testMemory = dynamicMemory
+// 			testDescription := setEnvAndGetDescription(testRun)
+// 			By(testDescription)
+
+// 			cancel := runTest(ctx, toolName)
+// 			defer cancel()
+
+// 			By("Get the latency test pod and examining its resources")
+// 			podlist := &corev1.PodList{}
+// 			Eventually(func(g Gomega) {
+// 				g.Expect(testclient.Client.List(ctx, podlist, client.InNamespace(testutils.NamespaceTesting))).To(Succeed(), "no latency pods were found")
+// 				g.Expect(podlist.Items).ToNot(BeEmpty(), "no latency pods were found yet")
+// 			}).WithTimeout(5 * time.Minute).WithPolling(1 * time.Second).Should(Succeed())
+// 			Expect(podlist.Items).To(HaveLen(1))
+// 			cancel()
+
+// 			latencyTestPod = &podlist.Items[0]
+// 			Expect(latencyTestPod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
+// 			autodetectedCPUs := latencyTestPod.Spec.Containers[0].Resources.Limits.Cpu()
+// 			expectedMem := memoryFactor * autodetectedCPUs.Value()
+// 			computedMem := resource.MustParse(fmt.Sprintf("%dMi", expectedMem))
+// 			defaultMem := resource.MustParse(defaultTestMemory)
+
+// 			expectedPodMemory := defaultMem
+// 			if computedMem.Cmp(defaultMem) > 0 {
+// 				expectedPodMemory = computedMem
+// 			}
+// 			Expect(latencyTestPod.Spec.Containers[0].Resources.Limits.Memory().String()).To(Equal(expectedPodMemory.String()))
+// 		},
+// 			Entry("- oslat", oslat),
+// 			Entry("- cyclictest", cyclictest),
+// 			Entry("- hwlatdetect", hwlatdetect),
+// 		)
+
+// 		DescribeTable("should have correct memory amount when LATENCY_TEST_MEMORY is set to dynamic with low count of user specified CPUs - defaults to 1Gi", func(ctx context.Context, toolName string) {
+// 			testRun.testMemory = dynamicMemory
+// 			cpus := 4
+// 			testRun.testCpus = fmt.Sprint(cpus)
+// 			testDescription := setEnvAndGetDescription(testRun)
+// 			By(testDescription)
+
+// 			cancel := runTest(ctx, toolName)
+// 			defer cancel()
+
+// 			By("Get the latency test pod and examining its resources")
+// 			podlist := &corev1.PodList{}
+// 			Eventually(func(g Gomega) {
+// 				g.Expect(testclient.Client.List(ctx, podlist, client.InNamespace(testutils.NamespaceTesting))).To(Succeed(), "no latency pods were found")
+// 				g.Expect(podlist.Items).ToNot(BeEmpty(), "no latency pods were found yet")
+// 			}).WithTimeout(5 * time.Minute).WithPolling(1 * time.Second).Should(Succeed())
+// 			Expect(podlist.Items).To(HaveLen(1))
+// 			cancel()
+
+// 			latencyTestPod = &podlist.Items[0]
+// 			Expect(latencyTestPod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
+// 			Expect(latencyTestPod.Spec.Containers[0].Resources.Limits.Memory().String()).To(Equal(defaultTestMemory))
+// 		},
+// 			Entry("- oslat", oslat),
+// 			Entry("- cyclictest", cyclictest),
+// 			Entry("- hwlatdetect", hwlatdetect),
+// 		)
+// 	})
+// })
+
+
 func setEnvAndGetDescription(tst latencyTest) string {
 	sb := bytes.NewBufferString("")
 	testName := tst.toolToTest
@@ -199,6 +346,9 @@ func setEnvAndGetDescription(tst latencyTest) string {
 	if tst.testCpus != "" {
 		setEnvWriteDescription(latencyTestCpus, tst.testCpus, sb, &nonDefaultValues)
 	}
+	if tst.testMemory != "" {
+		setEnvWriteDescription(latencyTestMemory, tst.testMemory, sb, &nonDefaultValues)
+	}
 	if !nonDefaultValues {
 		fmt.Fprint(sb, "With default values of the environment variables")
 	}
@@ -220,6 +370,7 @@ func clearEnv() {
 	os.Unsetenv(cyclictestMaxLatency)
 	os.Unsetenv(hwlatdetecMaxLatency)
 	os.Unsetenv(latencyTestCpus)
+	os.Unsetenv(latencyTestMemory)
 }
 
 func getValidValuesTests(toolToTest string) []latencyTest {
@@ -313,4 +464,21 @@ func getNegativeTests(toolToTest string) []latencyTest {
 		testSet = append(testSet, latencyTest{testRuntime: "2", hwlatdetectMaxLatency: "-3", outputMsgs: []string{invalidNumberHwlatdetectMaxLatency, fail}, toolToTest: toolToTest})
 	}
 	return testSet
+}
+
+func runTest(ctx context.Context, toolName string) context.CancelFunc {
+	runCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		cmd := exec.CommandContext(runCtx, testExecutablePath, "-ginkgo.v", "-ginkgo.focus", toolName)
+		output, err := cmd.CombinedOutput()
+		if runCtx.Err() != nil {
+			// spec ended or caller called cancel(); don't treat as failure
+			return
+		}
+		if err != nil {
+			klog.Errorf("latency test subprocess error: %v", err)
+		}
+		klog.Infof("latency test subprocess output: %s", output)
+	}()
+	return cancel
 }
