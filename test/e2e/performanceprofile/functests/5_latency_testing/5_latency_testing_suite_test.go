@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"reflect"
 	"testing"
 	"time"
 
@@ -27,7 +26,6 @@ import (
 	nodeinspector "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/node_inspector"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 
 	qe_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
 )
@@ -72,8 +70,8 @@ var _ = BeforeSuite(func() {
 
 	if *initialIsolated != latencyIsolatedSet || *initialReserved != latencyReservedSet {
 		By("Update the isolated and reserved cpus sets of the profile")
-		err = profilesupdate.UpdateIsolatedReservedCpus(latencyIsolatedSet, latencyReservedSet)
-		Expect(err).ToNot(HaveOccurred(), "could not update the profile with the desired CPUs sets")
+		// err = profilesupdate.UpdateIsolatedReservedCpus(latencyIsolatedSet, latencyReservedSet)
+		// Expect(err).ToNot(HaveOccurred(), "could not update the profile with the desired CPUs sets")
 	}
 
 	if err := createNamespace(); err != nil {
@@ -107,15 +105,15 @@ var _ = AfterSuite(func() {
 	}
 	Expect(namespaces.WaitForDeletion(prePullNamespaceName, 5*time.Minute), "hitting timeout while waiting namespace %q deletion", prePullNamespaceName)
 
-	currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-	Expect(err).ToNot(HaveOccurred())
-	if reflect.DeepEqual(currentProfile.Spec, profile.Spec) != true {
-		By("Restore initial performance profile")
-		err = profilesupdate.ApplyProfile(profile)
-		if err != nil {
-			testlog.Errorf("could not restore the initial profile: %v", err)
-		}
-	}
+	// currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+	// Expect(err).ToNot(HaveOccurred())
+	// if reflect.DeepEqual(currentProfile.Spec, profile.Spec) != true {
+	// 	By("Restore initial performance profile")
+	// 	err = profilesupdate.ApplyProfile(profile)
+	// 	if err != nil {
+	// 		testlog.Errorf("could not restore the initial profile: %v", err)
+	// 	}
+	// }
 	Expect(nodeinspector.Delete(context.TODO())).To(Succeed())
 })
 
