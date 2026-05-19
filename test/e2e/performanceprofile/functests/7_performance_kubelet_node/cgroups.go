@@ -415,7 +415,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 			// (for example ROLE_WORKER_CNF=masters). Keep the baseline aligned with
 			// the selected profile by validating OVS affinity against
 			// reserved+isolated from that profile.
-			It("Verify OVS affinity is not restricted to reserved CPUs after control plane node reboot", func() {
+			It("[test_id: 89066] Verify OVS affinity is not restricted to reserved CPUs after control plane node reboot", func() {
 				isSchedulable, err := cluster.IsControlPlaneSchedulable(ctx)
 				Expect(err).ToNot(HaveOccurred(), "Unable to check if control plane is schedulable")
 				if !isSchedulable {
@@ -563,7 +563,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				}
 			})
 
-			It("Verify OVN pod is restricted to reserved CPUs under workload partitioning", func() {
+			It("[test_id:89062] Verify OVN pod is restricted to reserved CPUs under workload partitioning", func() {
 				ovnPod, err := ovnCnfNodePod(ctx, workerRTNode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get ovnPod")
 				containerIds, err := ovnPodContainers(&ovnPod)
@@ -582,7 +582,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				}
 			})
 
-			It("Verify OVS affinity is wider than OVN pod under workload partitioning", func() {
+			It("[test_id:89063] Verify OVS affinity is wider than OVN pod under workload partitioning", func() {
 				By("Get OVN container affinity")
 				ovnPod, err := ovnCnfNodePod(ctx, workerRTNode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get ovnPod")
@@ -612,7 +612,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				}
 			})
 
-			It("Verify reserved CPUs are always included in OVS affinity under workload partitioning", func() {
+			It("[test_id:89064] Verify reserved CPUs are always included in OVS affinity under workload partitioning", func() {
 				checkCpuCount(ctx, workerRTNode)
 
 				By("Verify reserved CPUs are part of OVS affinity before creating GU pods")
@@ -649,7 +649,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 				}
 			})
 
-			It("Verify OVS affinity excludes CPUs pinned by guaranteed pods under workload partitioning", func() {
+			It("[test_id:89065] Verify OVS affinity excludes CPUs pinned by guaranteed pods under workload partitioning", func() {
 				checkCpuCount(ctx, workerRTNode)
 
 				isolatedCPUs := isolatedCPUSet
