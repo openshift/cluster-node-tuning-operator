@@ -391,6 +391,16 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 		addContent(ignitionConfig, content, ovsDynamicPinningTriggerHostFile, &ovsMode)
 	}
 
+	// Configure a systemd dropin and sysconfig file so stalld uses sched_debug as its backend.
+	// The dropin has no effect if stalld is not running, so it is safe to include unconditionally.
+	// This can potentially be removed when RHEL-175242 is fixed.
+	stalldSysconfigContent := []byte("BE=\"-b sched_debug\"\n")
+	stalldSysconfigMode := 0644
+	addContent(ignitionConfig, stalldSysconfigContent, "/etc/sysconfig/stalld-backend", &stalldSysconfigMode)
+
+	stalldDropinContent := []byte("[Service]\nEnvironmentFile=/etc/sysconfig/stalld-backend\n")
+	addContent(ignitionConfig, stalldDropinContent, "/etc/systemd/system/stalld.service.d/stalld-backend.conf", &stalldSysconfigMode)
+
 	if opts.MixedCPUsEnabled {
 		// ContainersLimit should be exposed as user-facing API in future updates
 		content, err := renderMixedCPUsConfig(defaultContainersLimit, filepath.Join("configs", mixedCPUsConfig))
