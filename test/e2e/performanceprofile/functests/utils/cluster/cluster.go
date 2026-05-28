@@ -4,12 +4,10 @@ import (
 	"context"
 	"time"
 
-	clientconfigv1 "github.com/openshift/client-go/config/clientset/versioned/typed/config/v1"
+	configv1 "github.com/openshift/api/config/v1"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
 )
 
 // IsSingleNode validates if the environment is single node cluster
@@ -34,16 +32,19 @@ func ComputeTestTimeout(baseTimeout time.Duration, isSno bool) time.Duration {
 
 // Check if the control plane nodes are schedulable, returns true if schedulable else false
 func IsControlPlaneSchedulable(ctx context.Context) (bool, error) {
-	// Get the rest.Config using the helper function
-	cfg, err := config.GetConfig()
-	if err != nil {
+	scheduler := &configv1.Scheduler{}
+	if err := testclient.ControlPlaneClient.Get(ctx, client.ObjectKey{Name: "cluster"}, scheduler); err != nil {
 		return false, err
 	}
+	return scheduler.Spec.MastersSchedulable, nil
+}
 
-	openshiftConfigClient := clientconfigv1.NewForConfigOrDie(cfg)
-	schedulerInfo, err := openshiftConfigClient.Schedulers().Get(ctx, "cluster", metav1.GetOptions{})
-	if err != nil {
+// IsWorkloadPartitioningEnabled checks whether CPU partitioning is enabled
+// cluster-wide by querying the Infrastructure resource's CPUPartitioning status.
+func IsWorkloadPartitioningEnabled(ctx context.Context) (bool, error) {
+	infra := &configv1.Infrastructure{}
+	if err := testclient.ControlPlaneClient.Get(ctx, client.ObjectKey{Name: "cluster"}, infra); err != nil {
 		return false, err
 	}
-	return schedulerInfo.Spec.MastersSchedulable, nil
+	return infra.Status.CPUPartitioning == configv1.CPUPartitioningAllNodes, nil
 }
