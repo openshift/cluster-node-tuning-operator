@@ -987,7 +987,7 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			expectedCpuset, err = cpuset.Parse(reservedCpus)
 			Expect(err).ToNot(HaveOccurred(), "Unable to parse reserved CPU set %s", reservedCpus)
 
-			platformServices = []string{"systemd", "crio", "kubelet", "ovs-vswitchd"}
+			platformServices = []string{"systemd", "crio", "kubelet"}
 		})
 
 		It("[test_id: 83851] verify platform services are restricted to reserved cpus", Label(string(label.Tier0)), func() {
