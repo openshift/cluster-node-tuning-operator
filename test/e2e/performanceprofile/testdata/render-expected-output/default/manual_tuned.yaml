@@ -47,9 +47,15 @@ spec:
       move them to swap cache\n#> latency-performance\nvm.swappiness=10\n\n# also
       configured via a sysctl.d file\n# placed here for documentation purposes and
       commented out due\n# to a tuned logging bug complaining about duplicate sysctl:\n#
-      \  https://issues.redhat.com/browse/RHEL-18972\n#> rps configuration\n# net.core.rps_default_mask=${not_isolated_cpumask}\n\n\n[selinux]\n#>
-      Custom (atomic host)\navc_cache_threshold=8192\n\n\n\n[bootloader]\n#
-      !! The names are important for Intel and are referenced in openshift-node-performance-intel-x86\n\n#
+      \  https://issues.redhat.com/browse/RHEL-18972\n#> rps configuration\n# net.core.rps_default_mask=${not_isolated_cpumask}\n\n#
+      cpu-partitioning for RHEL disables it (= 0)\n# OCP is too dynamic when partitioning
+      and needs to evacuate\n# scheduled timers when starting a guaranteed workload
+      (= 1)\n# This has an unfortunate side-effect that HRTIMERs break\n# and cyclictest
+      results will be affected, but there is no\n# way around that. Not enabling this
+      breaks cpu pinned\n# workload isolation for example when any TCP timeout\n#
+      and keep alive timers are present.\nkernel.timer_migration=1\n\n[selinux]\n#>
+      Custom (atomic host)\navc_cache_threshold=8192\n\n\n\n[bootloader]\n# !! The
+      names are important for Intel and are referenced in openshift-node-performance-intel-x86\n\n#
       set empty values to disable RHEL initrd setting in cpu-partitioning\ninitrd_remove_dir=\ninitrd_dst_img=\ninitrd_add_dir=\n\n#
       overrides cpu-partitioning cmdline\ncmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores}
       tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded}\n\n#
@@ -60,10 +66,7 @@ spec:
   - data: "[main]\nsummary=Real time profile to override unsupported settings\n\n[sysctl]\n#Real
       time kernel doesn't support the following kernel parameters.\n#The openshift-node-performance
       profile inherits these kernel parameters from the network-latency profile. \n#Therefore,
-      if the real time kernel is detected they will be dropped, meaning won't be applied.\ndrop=kernel.numa_balancing,net.core.busy_read,net.core.busy_poll\n\n\n#
-      cpu-partitioning and RealTimeHint for RHEL disable it (= 0)\n# OCP is too dynamic
-      when partitioning and needs to evacuate\n# scheduled timers when starting a
-      guaranteed workload (= 1)\n# But only when kernel-rt is in use or HRTIMERs break\nkernel.timer_migration=1\n\n"
+      if the real time kernel is detected they will be dropped, meaning won't be applied.\ndrop=kernel.numa_balancing,net.core.busy_read,net.core.busy_poll\n\n"
     name: openshift-node-performance-rt-manual
   - data: |+
       [main]
