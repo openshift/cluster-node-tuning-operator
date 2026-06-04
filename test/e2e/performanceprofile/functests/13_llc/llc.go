@@ -301,9 +301,6 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				}
 				numaInfo, err := nodes.GetNumaNodes(ctx, &cnfnode)
 				Expect(err).ToNot(HaveOccurred(), "Unable to get numa information from the node")
-				if len(numaInfo) < 2 {
-					Skip(fmt.Sprintf("This test need 2 Numa nodes. The number of numa nodes on node %s < 2", cnfnode.Name))
-				}
 
 				getCCX = nodes.GetL3SharedCPUs(&cnfnode)
 				reserved, err = getCCX(0)
@@ -1090,9 +1087,6 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				}
 
 				nosmt = transformToNoSMT(coresiblings)
-				if len(numaInfo) < 2 {
-					Skip(fmt.Sprintf("This test need 2 Numa nodes. The number of numa nodes on node %s < 2", cnfnode.Name))
-				}
 				Expect(err).ToNot(HaveOccurred())
 			}
 			if !hasBaremetal {
