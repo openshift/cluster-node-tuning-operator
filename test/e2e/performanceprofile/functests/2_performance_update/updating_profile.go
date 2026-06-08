@@ -783,9 +783,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		It("[test_id:50966]verify offlined parameter accepts multiple ranges of cpuid's", func() {
 			var reserved, isolated, offlined cpuset.CPUSet
 			numaTopology := copyNumaCoreSiblings(numaCoreSiblings)
-			if len(numaCoreSiblings) < 2 {
-				Skip(fmt.Sprintf("This test need 2 NUMA nodes, available only %d", len(numaCoreSiblings)))
-			}
 			if len(numaCoreSiblings[0]) < 20 {
 				Skip("This test needs systems with at least 20 cores per socket")
 			}
@@ -856,9 +853,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		It("[test_id:50968]verify cpus mentioned in reserved or isolated cannot be offline", func() {
 			var reserved, isolated, offlined cpuset.CPUSet
 			numaTopology := copyNumaCoreSiblings(numaCoreSiblings)
-			if len(numaCoreSiblings) < 2 {
-				Skip(fmt.Sprintf("This test need 2 NUMA nodes, available only %d", len(numaCoreSiblings)))
-			}
 			// Get reserved core siblings from 0, 1
 			for reservedCores := 0; reservedCores < 2; reservedCores++ {
 				// Get the cpu siblings from the selected core and delete the siblings
@@ -921,6 +915,8 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 		It("[test_id:50970]Offline CPUID's from multiple numa nodes", func() {
 			var reserved, isolated, offlined cpuset.CPUSet
 			numaTopology := copyNumaCoreSiblings(numaCoreSiblings)
+			// Here we explicitly want to offline cpus from different numa nodes,
+			// hence this test requires systems with multiple numa nodes.
 			if len(numaCoreSiblings) < 2 {
 				Skip(fmt.Sprintf("This test need 2 NUMA nodes, available only %d", len(numaCoreSiblings)))
 			}
