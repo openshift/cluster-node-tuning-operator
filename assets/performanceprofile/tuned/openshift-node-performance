@@ -120,6 +120,15 @@ vm.swappiness=10
 #> rps configuration
 # net.core.rps_default_mask=${not_isolated_cpumask}
 
+# cpu-partitioning for RHEL disables it (= 0)
+# OCP is too dynamic when partitioning and needs to evacuate
+# scheduled timers when starting a guaranteed workload (= 1)
+# This has an unfortunate side-effect that HRTIMERs break
+# and cyclictest results will be affected, but there is no
+# way around that. Not enabling this breaks cpu pinned
+# workload isolation for example when any TCP timeout
+# and keep alive timers are present.
+kernel.timer_migration=1
 
 [selinux]
 #> Custom (atomic host)
