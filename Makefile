@@ -318,4 +318,4 @@ pao-clean-e2e:
 .PHONY: cluster-node-tuning-operator-test-ext
 cluster-node-tuning-operator-test-ext: $(BINDATA_OTE)
 	@echo "Building cluster-node-tuning-operator-test-ext"
-	GO_COMPLIANCE_POLICY=exempt_all CGO_ENABLED=0 $(GO) build -mod=vendor -v -o $(OUT_DIR)/cluster-node-tuning-operator-test-ext ./cmd/cluster-node-tuning-operator-test-ext
+	GO_COMPLIANCE_POLICY=exempt_all CGO_ENABLED=0 $(GO) build -mod=vendor -v -ldflags "-s -w" -o $(OUT_DIR)/cluster-node-tuning-operator-test-ext ./cmd/cluster-node-tuning-operator-test-ext
