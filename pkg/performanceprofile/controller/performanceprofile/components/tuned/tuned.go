@@ -63,12 +63,21 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 	templateArgs[templatePerformanceProfileName] = profile.Name
 
 	if profile.Spec.CPU.Isolated != nil {
-		minifiedCpuSet, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+		isolatedSet, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
 		if err != nil {
 			return nil, fmt.Errorf("cannot parse isolated cpuset: %v", err)
 		}
-		templateArgs[templateIsolatedCpus] = minifiedCpuSet.String()
-		templateArgs[templateIsolatedCpuList] = minifiedCpuSet.List()
+
+		if profile.Spec.CPU.Dedicated != nil {
+			dedicatedSet, err := cpuset.Parse(string(*profile.Spec.CPU.Dedicated))
+			if err != nil {
+				return nil, fmt.Errorf("cannot parse dedicated cpuset: %v", err)
+			}
+			isolatedSet = isolatedSet.Union(dedicatedSet)
+		}
+
+		templateArgs[templateIsolatedCpus] = isolatedSet.String()
+		templateArgs[templateIsolatedCpuList] = isolatedSet.List()
 	}
 
 	if profile.Spec.CPU.Reserved != nil {
