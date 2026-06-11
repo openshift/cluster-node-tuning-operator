@@ -29,7 +29,7 @@ TESTDATA_OTE_DIR=test/extended/testdata
 TESTDATA_OTE=$(shell find $(TESTDATA_OTE_DIR) -type f \( -name '*.yaml' -o -name '*.yml' \) 2>/dev/null)
 ASSETS=$(shell find assets -name \*.yaml)
 GO=GOARCH=$(GOARCH) GO111MODULE=on GOFLAGS=-mod=vendor go
-GO_BUILD_RECIPE=$(GO) build -o $(OUT_DIR)/$(PACKAGE_BIN) -ldflags '-X $(PACKAGE)/version.Version=$(REV)' $(PACKAGE_MAIN)
+GO_BUILD_RECIPE=$(GO) build -o $(OUT_DIR)/$(PACKAGE_BIN) -ldflags '-s -w -X $(PACKAGE)/version.Version=$(REV)' $(PACKAGE_MAIN)
 GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
 REV=$(shell git describe --long --tags --match='v*' --always --dirty)
 
@@ -270,8 +270,7 @@ cluster-clean-pao:
 .PHONY: build-performance-profile-creator
 build-performance-profile-creator:
 	@echo "Building Performance Profile Creator (PPC)"
-	LDFLAGS="-s -w -X ${PACKAGE}/cmd/performance-profile-creator/version.Version=${REV} "; \
-	$(GO) build  -v $(LDFLAGS) -o $(OUT_DIR)/performance-profile-creator ./cmd/performance-profile-creator
+	$(GO) build -v -ldflags "-s -w -X $(PACKAGE)/cmd/performance-profile-creator/version.Version=$(REV)" -o $(OUT_DIR)/performance-profile-creator ./cmd/performance-profile-creator
 
 .PHONY: arm-kernel-pagesize                                                                                                                                                                                                                                      
 arm-kernelpagesize: $(BINDATA)
@@ -287,8 +286,7 @@ performance-profile-creator-tests: build-performance-profile-creator
 .PHONY: build-gather-sysinfo
 build-gather-sysinfo:
 	@echo "Building gather-sysinfo"
-	LDFLAGS="-s -w -X ${PACKAGE}/cmd/gather-sysinfo/version.Version=${REV} "; \
-	$(GO) build -v $(LDFLAGS) -o $(OUT_DIR)/gather-sysinfo ./cmd/gather-sysinfo
+	$(GO) build -v -ldflags "-s -w -X $(PACKAGE)/cmd/gather-sysinfo/version.Version=$(REV)" -o $(OUT_DIR)/gather-sysinfo ./cmd/gather-sysinfo
 
 .PHONY: gather-sysinfo-tests
 gather-sysinfo-tests: build-gather-sysinfo
@@ -320,4 +318,4 @@ pao-clean-e2e:
 .PHONY: cluster-node-tuning-operator-test-ext
 cluster-node-tuning-operator-test-ext: $(BINDATA_OTE)
 	@echo "Building cluster-node-tuning-operator-test-ext"
-	GO_COMPLIANCE_POLICY=exempt_all CGO_ENABLED=0 $(GO) build -mod=vendor -v -o $(OUT_DIR)/cluster-node-tuning-operator-test-ext ./cmd/cluster-node-tuning-operator-test-ext
+	GO_COMPLIANCE_POLICY=exempt_all CGO_ENABLED=0 $(GO) build -mod=vendor -v -ldflags "-s -w" -o $(OUT_DIR)/cluster-node-tuning-operator-test-ext ./cmd/cluster-node-tuning-operator-test-ext
