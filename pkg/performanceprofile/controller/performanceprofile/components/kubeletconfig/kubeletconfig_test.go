@@ -9,6 +9,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/yaml"
 
+	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	k8seviction "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/k8simported/eviction"
 
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
@@ -205,6 +206,55 @@ var _ = Describe("Kubelet Config", func() {
 			Expect(manifest).To(ContainSubstring(`full-pcpus-only: "false"`))
 		})
 
+	})
+
+	Context("with dedicated CPUs", func() {
+		It("should include dedicated CPUs in reservedSystemCPUs", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			dedicatedCPUs := performancev2.CPUSet("10-11")
+			profile.Spec.CPU.Dedicated = &dedicatedCPUs
+			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
+			kc, err := New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{selectorKey: selectorValue}})
+			Expect(err).ToNot(HaveOccurred())
+
+			y, err := yaml.Marshal(kc)
+			Expect(err).ToNot(HaveOccurred())
+
+			manifest := string(y)
+			Expect(manifest).To(ContainSubstring("reservedSystemCPUs: 0-3,10-11"))
+		})
+
+		It("should include both dedicated and shared CPUs in reservedSystemCPUs when mixed CPUs is enabled", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			dedicatedCPUs := performancev2.CPUSet("10-11")
+			profile.Spec.CPU.Dedicated = &dedicatedCPUs
+			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
+			kc, err := New(profile, &components.KubeletConfigOptions{
+				MachineConfigPoolSelector: map[string]string{selectorKey: selectorValue},
+				MixedCPUsEnabled:          true,
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			y, err := yaml.Marshal(kc)
+			Expect(err).ToNot(HaveOccurred())
+
+			manifest := string(y)
+			Expect(manifest).To(ContainSubstring("reservedSystemCPUs: 0-3,8-11"))
+		})
+
+		It("should not change reservedSystemCPUs when dedicated is nil", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			profile.Spec.CPU.Dedicated = nil
+			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
+			kc, err := New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{selectorKey: selectorValue}})
+			Expect(err).ToNot(HaveOccurred())
+
+			y, err := yaml.Marshal(kc)
+			Expect(err).ToNot(HaveOccurred())
+
+			manifest := string(y)
+			Expect(manifest).To(ContainSubstring("reservedSystemCPUs: 0-3"))
+		})
 	})
 
 	Context("with mutually exclusive options", func() {
