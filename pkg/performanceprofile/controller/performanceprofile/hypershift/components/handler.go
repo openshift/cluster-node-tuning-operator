@@ -93,12 +93,15 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 		klog.Infof("ignoring reconcile loop for pause performance profile %s", profile.Name)
 		return nil
 	}
-	// set missing options
-	options.MachineConfig.MixedCPUsEnabled = options.MixedCPUsFeatureGateEnabled && profileutil.IsMixedCPUsEnabled(profile)
-	options.DRAResourceManagement = profileutil.IsDRAManaged(profile)
+
+	profileutil.SetMissingOptions(profile, options)
 
 	mfs, err := manifestset.GetNewComponents(profile, options)
 	if err != nil {
+		return err
+	}
+
+	if err := profileutil.ValidateDedicatedCPUsPrerequisites(profile, options, mfs.KubeletConfig); err != nil {
 		return err
 	}
 
