@@ -53,6 +53,11 @@ func (in *CPU) DeepCopyInto(out *CPU) {
 		*out = new(CPUSet)
 		**out = **in
 	}
+	if in.Dedicated != nil {
+		in, out := &in.Dedicated, &out.Dedicated
+		*out = new(CPUSet)
+		**out = **in
+	}
 	return
 }
 
@@ -207,6 +212,11 @@ func (in *Net) DeepCopyInto(out *Net) {
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
+	}
+	if in.DisableOvsDynamicPinning != nil {
+		in, out := &in.DisableOvsDynamicPinning, &out.DisableOvsDynamicPinning
+		*out = new(bool)
+		**out = **in
 	}
 	return
 }

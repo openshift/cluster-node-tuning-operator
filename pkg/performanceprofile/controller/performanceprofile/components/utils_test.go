@@ -33,7 +33,7 @@ var cpuListToHexMask = []listToMask{
 }
 
 func intersectHelper(cpuListA, cpuListB string) ([]int, error) {
-	cpuLists, err := NewCPULists(cpuListA, cpuListB, "", "")
+	cpuLists, err := NewCPULists(cpuListA, cpuListB, "", "", "")
 	if err != nil {
 		return nil, err
 	}

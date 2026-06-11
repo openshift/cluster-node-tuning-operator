@@ -70,6 +70,9 @@ const (
 
 	// ControlplaneSched features be added in tests that test when control plane schedulable is enabled
 	CtrlPlaneSchedulable Feature = "controlplane-schedulable"
+
+	// DedicatedCPUs should be added in tests that test dedicated CPUs for DPDK vSwitch/vRouter
+	DedicatedCPUs Feature = "dedicated-cpus"
 )
 
 // Tier is a label to classify tests under specific grade/level
