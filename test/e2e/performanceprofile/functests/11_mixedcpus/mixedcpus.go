@@ -32,7 +32,6 @@ import (
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/controller"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/runtime"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/deployments"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
@@ -49,6 +48,7 @@ import (
 
 const (
 	kubeletMixedCPUsConfigFile = "/etc/kubernetes/openshift-workload-mixed-cpus"
+	crioRuntimesConfigFile     = "/etc/crio/crio.conf.d/99-runtimes.conf"
 	sharedCpusResource         = "workload.openshift.io/enable-shared-cpus"
 	// the minimal number of cores for running the test is as follows:
 	// reserved = one core, shared = one core, infra workload = one core, test pod = one core - 4 in total
@@ -106,7 +106,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 				reservedSystemCpus.String(), reserved.String(), shared.String())
 		})
 
-		It("should update runtime configuration with the given shared cpuset", func() {
+		It("should update CRI-O configuration with the given shared cpuset", func() {
 			workers, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
 			// test arbitrary one should be good enough
@@ -116,7 +116,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 				"/rootfs",
 				"/bin/bash",
 				"-c",
-				fmt.Sprintf("/bin/awk  -F '\"' '/shared_cpuset.*/ { print $2 }' %s", runtime.CRIORuntimeConfigFile),
+				fmt.Sprintf("/bin/awk  -F '\"' '/shared_cpuset.*/ { print $2 }' %s", crioRuntimesConfigFile),
 			}
 			out, err := nodes.ExecCommand(ctx, worker, cmd)
 			cpus := testutils.ToString(out)

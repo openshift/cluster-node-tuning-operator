@@ -11,7 +11,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/controller"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cgroup/runtime"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 )
@@ -25,7 +24,7 @@ func NewManager(c client.Client, k8sClient *kubernetes.Clientset) *ControllersMa
 	return &ControllersManager{client: c, k8sClient: k8sClient}
 }
 
-func (cm *ControllersManager) CpuSet(ctx context.Context, pod *corev1.Pod, containerName, childName, runtimeType string) (*controller.CpuSet, error) {
+func (cm *ControllersManager) CpuSet(ctx context.Context, pod *corev1.Pod, containerName, childName string) (*controller.CpuSet, error) {
 	cfg := &controller.CpuSet{}
 	dirPath := path.Join(controller.CgroupMountPoint, "cpuset", childName)
 	store := map[string]*string{
@@ -42,7 +41,7 @@ func (cm *ControllersManager) CpuSet(ctx context.Context, pod *corev1.Pod, conta
 	return cfg, nil
 }
 
-func (cm *ControllersManager) Cpu(ctx context.Context, pod *corev1.Pod, containerName, childName, runtimeType string) (*controller.Cpu, error) {
+func (cm *ControllersManager) Cpu(ctx context.Context, pod *corev1.Pod, containerName, childName string) (*controller.Cpu, error) {
 	cfg := &controller.Cpu{}
 	dirPath := path.Join(controller.CgroupMountPoint, "cpu", childName)
 	cmd := []string{
@@ -91,19 +90,15 @@ func (cm *ControllersManager) Pod(ctx context.Context, pod *corev1.Pod, controll
 }
 
 func (cm *ControllersManager) Container(ctx context.Context, pod *corev1.Pod, containerName string, controllerConfig interface{}) error {
-	runtimeType, err := runtime.GetContainerRuntimeTypeFor(ctx, cm.client, pod)
-	if err != nil {
-		return err
-	}
 	switch cc := controllerConfig.(type) {
 	case *controller.CpuSet:
-		cfg, err := cm.CpuSet(ctx, pod, containerName, "", runtimeType)
+		cfg, err := cm.CpuSet(ctx, pod, containerName, "")
 		if err != nil {
 			return err
 		}
 		*cc = *cfg
 	case *controller.Cpu:
-		cfg, err := cm.Cpu(ctx, pod, containerName, "", runtimeType)
+		cfg, err := cm.Cpu(ctx, pod, containerName, "")
 		if err != nil {
 			return err
 		}
@@ -111,7 +106,7 @@ func (cm *ControllersManager) Container(ctx context.Context, pod *corev1.Pod, co
 	default:
 		return fmt.Errorf("failed to get the controller config type")
 	}
-	return err
+	return nil
 }
 
 func (cm *ControllersManager) Child(ctx context.Context, pod *corev1.Pod, containerName, childName string, controllerConfig interface{}) error {
