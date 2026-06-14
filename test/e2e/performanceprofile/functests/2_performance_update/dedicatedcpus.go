@@ -78,7 +78,7 @@ var _ = Describe("[performance] Dedicated CPUs for DPDK", Ordered, Label(string(
 			reservedSet.String(), newIsolatedSet.String(), dedicatedSet.String())
 
 		ctx := context.TODO()
-		isWPEnabled, err := cluster.IsWorkloadPartitioningEnabled(ctx)
+		isWPEnabled, err := cluster.IsWorkloadPartitioningEnabled(ctx, testclient.Client)
 		Expect(err).ToNot(HaveOccurred())
 
 		By("Updating the profile with dedicated CPUs and disableOvsDynamicPinning")

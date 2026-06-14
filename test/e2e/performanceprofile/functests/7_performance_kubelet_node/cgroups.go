@@ -97,7 +97,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 
 		ovsSystemdServices = ovsSystemdServicesOnOvsSlice(ctx, workerRTNode)
 
-		isWorkloadPartitioningEnabled, err = cluster.IsWorkloadPartitioningEnabled(ctx)
+		isWorkloadPartitioningEnabled, err = cluster.IsWorkloadPartitioningEnabled(ctx, testclient.Client)
 		Expect(err).ToNot(HaveOccurred(), "Unable to check if workload partitioning is enabled")
 		testlog.Infof("Workload partitioning enabled: %v", isWorkloadPartitioningEnabled)
 

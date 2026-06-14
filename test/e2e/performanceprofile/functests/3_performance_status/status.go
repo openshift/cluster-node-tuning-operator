@@ -218,7 +218,8 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 	Context("Dedicated CPUs prerequisites", Label(string(label.DedicatedCPUs), string(label.OpenShift), string(label.Tier2)), func() {
 		It("should report Degraded when workload partitioning is disabled", func() {
 			ctx := context.TODO()
-			isWPEnabled, err := cluster.IsWorkloadPartitioningEnabled(ctx)
+
+			isWPEnabled, err := cluster.IsWorkloadPartitioningEnabled(ctx, testclient.Client)
 			Expect(err).ToNot(HaveOccurred())
 			if isWPEnabled {
 				Skip("Workload partitioning is enabled, skipping Degraded prerequisite test")
