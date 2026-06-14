@@ -314,7 +314,7 @@ var _ = Describe("Machine Config", func() {
 
 	Context("check systemd units", func() {
 		It("should generate clear-banned-cpus unit", func() {
-			unit, err := getSystemdContent(getIRQBalanceBannedCPUsOptions())
+			unit, err := getSystemdContent(getIRQBalanceBannedCPUsOptions(""))
 			Expect(err).ToNot(HaveOccurred())
 			expected := `[Unit]
 Description=Clear the IRQBalance Banned CPU mask early in the boot
@@ -464,6 +464,197 @@ resources = { "cpushares" = 0, "cpuset" = "" }
 			mc, err := BootstrapWorkloadPinningMC("master", nil)
 			Expect(err).To(HaveOccurred())
 			Expect(mc).To(BeNil())
+		})
+	})
+})
+
+var _ = Describe("Machine Config dedicated CPUs and OVS dynamic pinning", func() {
+	Context("OVS dynamic pinning trigger file", func() {
+		It("should be present when DisableOvsDynamicPinning is false", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			mc, err := New(profile, &components.MachineConfigOptions{
+				DisableOVSDynamicPinning: false,
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
+			Expect(err).ToNot(HaveOccurred())
+
+			found := false
+			for _, f := range result.Storage.Files {
+				if f.Path == ovsDynamicPinningTriggerHostFile {
+					found = true
+					break
+				}
+			}
+			Expect(found).To(BeTrue(), "OVS dynamic pinning trigger file should be present")
+		})
+
+		It("should be absent when DisableOvsDynamicPinning is true", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			mc, err := New(profile, &components.MachineConfigOptions{
+				DisableOVSDynamicPinning: true,
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
+			Expect(err).ToNot(HaveOccurred())
+
+			for _, f := range result.Storage.Files {
+				Expect(f.Path).ToNot(Equal(ovsDynamicPinningTriggerHostFile),
+					"OVS dynamic pinning trigger file should not be present")
+			}
+		})
+
+		It("should still create OVS slice when DisableOvsDynamicPinning is true", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			mc, err := New(profile, &components.MachineConfigOptions{
+				DisableOVSDynamicPinning: true,
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
+			Expect(err).ToNot(HaveOccurred())
+
+			foundOvsSlice := false
+			for _, f := range result.Storage.Files {
+				if strings.Contains(f.Path, ovsSliceName) {
+					foundOvsSlice = true
+					break
+				}
+			}
+			Expect(foundOvsSlice).To(BeTrue(), "OVS slice definition should still be present")
+		})
+	})
+
+	Context("dedicated CPUs slice and configure service", func() {
+		It("should create dedicatedcpus.slice when dedicated CPUs are specified", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			mc, err := New(profile, &components.MachineConfigOptions{
+				DedicatedCPUs: "4-7",
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
+			Expect(err).ToNot(HaveOccurred())
+
+			found := false
+			for _, f := range result.Storage.Files {
+				if f.Path == "/etc/systemd/system/dedicatedcpus.slice" {
+					found = true
+					break
+				}
+			}
+			Expect(found).To(BeTrue(), "dedicatedcpus.slice should be present in ignition files")
+		})
+
+		It("should create dedicated-cpus-configure service when dedicated CPUs are specified", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			mc, err := New(profile, &components.MachineConfigOptions{
+				DedicatedCPUs: "4-7",
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
+			Expect(err).ToNot(HaveOccurred())
+
+			found := false
+			for _, u := range result.Systemd.Units {
+				if u.Name == "dedicated-cpus-configure.service" {
+					found = true
+					Expect(u.Enabled).ToNot(BeNil())
+					Expect(*u.Enabled).To(BeTrue())
+				}
+			}
+			Expect(found).To(BeTrue(), "dedicated-cpus-configure.service should be present")
+		})
+
+		It("should create dedicated-cpus-configure script when dedicated CPUs are specified", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			mc, err := New(profile, &components.MachineConfigOptions{
+				DedicatedCPUs: "4-7",
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
+			Expect(err).ToNot(HaveOccurred())
+
+			found := false
+			for _, f := range result.Storage.Files {
+				if f.Path == "/usr/local/bin/dedicated-cpus-configure.sh" {
+					found = true
+					break
+				}
+			}
+			Expect(found).To(BeTrue(), "dedicated-cpus-configure.sh script should be present")
+		})
+
+		It("should not create dedicatedcpus.slice when dedicated CPUs are not specified", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			mc, err := New(profile, &components.MachineConfigOptions{})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
+			Expect(err).ToNot(HaveOccurred())
+
+			for _, f := range result.Storage.Files {
+				Expect(f.Path).ToNot(Equal("/etc/systemd/system/dedicatedcpus.slice"),
+					"dedicatedcpus.slice should not be present when no dedicated CPUs")
+			}
+			for _, u := range result.Systemd.Units {
+				Expect(u.Name).ToNot(Equal("dedicated-cpus-configure.service"),
+					"dedicated-cpus-configure.service should not be present when no dedicated CPUs")
+			}
+		})
+	})
+
+	Context("IRQBALANCE_BANNED_CPUS for dedicated CPUs", func() {
+		It("should set IRQBALANCE_BANNED_CPUS when dedicated CPUs are specified", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			dedicatedCPUs := performancev2.CPUSet("2-3")
+			profile.Spec.CPU.Dedicated = &dedicatedCPUs
+			mc, err := New(profile, &components.MachineConfigOptions{
+				DedicatedCPUs: "2-3",
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
+			Expect(err).ToNot(HaveOccurred())
+
+			found := false
+			for _, u := range result.Systemd.Units {
+				if u.Name == "clear-irqbalance-banned-cpus.service" && u.Contents != nil {
+					if strings.Contains(*u.Contents, "DEDICATED_CPUS=c") {
+						found = true
+					}
+				}
+			}
+			Expect(found).To(BeTrue(), "DEDICATED_CPUS should be set to hex mask of dedicated CPUs 2-3 (0xc)")
+		})
+
+		It("should not set IRQBALANCE_BANNED_CPUS when dedicated CPUs are not specified", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			mc, err := New(profile, &components.MachineConfigOptions{})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
+			Expect(err).ToNot(HaveOccurred())
+
+			for _, u := range result.Systemd.Units {
+				if u.Name == "clear-irqbalance-banned-cpus.service" && u.Contents != nil {
+					Expect(*u.Contents).ToNot(ContainSubstring("IRQBALANCE_BANNED_CPUS"),
+						"IRQBALANCE_BANNED_CPUS should not be set when no dedicated CPUs")
+				}
+			}
 		})
 	})
 })
