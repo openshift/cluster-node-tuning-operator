@@ -28,6 +28,7 @@ import (
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/events"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/images"
+	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 )
 
@@ -339,4 +340,44 @@ func CheckPODSchedulingFailed(c client.Client, pod *corev1.Pod) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// DumpPodStateOnFailure logs detailed diagnostics for a pod that failed to
+// reach the expected state: phase, conditions, container states, events, and
+// logs. It is a no-op when err is nil.
+func DumpStateOnFailure(ctx context.Context, k8sClient *kubernetes.Clientset, pod *corev1.Pod, err error) {
+	if err == nil {
+		return
+	}
+	testlog.Infof("Dumping pod %s/%s state on failure: phase=%s node=%s reason=%s message=%s",
+		pod.Namespace, pod.Name, pod.Status.Phase, pod.Spec.NodeName, pod.Status.Reason, pod.Status.Message)
+
+	for _, cond := range pod.Status.Conditions {
+		if cond.Status != corev1.ConditionTrue {
+			testlog.Infof("  condition %s=%s reason=%s message=%s", cond.Type, cond.Status, cond.Reason, cond.Message)
+		}
+	}
+
+	for _, cs := range pod.Status.ContainerStatuses {
+		if cs.State.Waiting != nil {
+			testlog.Infof("  container %s waiting: reason=%s message=%s",
+				cs.Name, cs.State.Waiting.Reason, cs.State.Waiting.Message)
+		}
+		if cs.State.Terminated != nil {
+			testlog.Infof("  container %s terminated: reason=%s message=%s exitCode=%d",
+				cs.Name, cs.State.Terminated.Reason, cs.State.Terminated.Message, cs.State.Terminated.ExitCode)
+		}
+	}
+
+	events, err := k8sClient.CoreV1().Events(pod.Namespace).List(ctx,
+		metav1.ListOptions{FieldSelector: fmt.Sprintf("involvedObject.name=%s", pod.Name)})
+	if err == nil {
+		for _, evt := range events.Items {
+			testlog.Infof("  event: %s %s: %s", evt.Type, evt.Reason, evt.Message)
+		}
+	}
+
+	if logs, err := GetLogs(k8sClient, pod); err == nil && logs != "" {
+		testlog.Infof("Pod logs:\n%s", logs)
+	}
 }

@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
+	"k8s.io/utils/cpuset"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	ign2types "github.com/coreos/ignition/config/v2_2/types"
@@ -29,6 +30,7 @@ import (
 	hypershiftconsts "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/hypershift/consts"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	hypershiftutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
@@ -210,6 +212,58 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 
 			By("Waiting for the node pool configuration to be ready")
 			Expect(nodepools.WaitForConfigToBeReady(ctx, testclient.ControlPlaneClient, np.Name, np.Namespace)).To(Succeed())
+		})
+	})
+
+	Context("Dedicated CPUs prerequisites", Label(string(label.DedicatedCPUs), string(label.OpenShift), string(label.Tier2)), func() {
+		It("should report Degraded when workload partitioning is disabled", func() {
+			ctx := context.TODO()
+			isWPEnabled, err := cluster.IsWorkloadPartitioningEnabled(ctx)
+			Expect(err).ToNot(HaveOccurred())
+			if isWPEnabled {
+				Skip("Workload partitioning is enabled, skipping Degraded prerequisite test")
+			}
+
+			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+			initialSpec := *profile.Spec.DeepCopy()
+
+			isolatedSet, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+			Expect(err).ToNot(HaveOccurred())
+			isolatedList := isolatedSet.List()
+			Expect(len(isolatedList)).To(BeNumerically(">=", 2),
+				"need at least 2 isolated CPUs to designate as dedicated")
+
+			dedicatedSet := cpuset.New(isolatedList[0])
+			remainingIsolated := cpuset.New(isolatedList[1:]...)
+			dedicatedCPUs := performancev2.CPUSet(dedicatedSet.String())
+			newIsolated := performancev2.CPUSet(remainingIsolated.String())
+
+			By("Setting dedicated CPUs on the profile without workload partitioning")
+			currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+			currentProfile.Spec.CPU.Isolated = &newIsolated
+			currentProfile.Spec.CPU.Dedicated = &dedicatedCPUs
+			profiles.UpdateWithRetry(currentProfile)
+
+			defer func() {
+				By("Reverting the profile to its initial state")
+				currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+				Expect(err).ToNot(HaveOccurred())
+				currentProfile.Spec = initialSpec
+				currentProfile.Spec.CPU.Dedicated = nil
+				profiles.UpdateWithRetry(currentProfile)
+				profiles.WaitForCondition(testutils.NodeSelectorLabels, v1.ConditionAvailable, corev1.ConditionTrue)
+			}()
+
+			By("Waiting for Degraded condition")
+			profiles.WaitForCondition(testutils.NodeSelectorLabels, v1.ConditionDegraded, corev1.ConditionTrue)
+
+			By("Verifying the Degraded message contains the prerequisite error")
+			conditionMessage := profiles.GetConditionMessage(testutils.NodeSelectorLabels, v1.ConditionDegraded)
+			Expect(conditionMessage).To(ContainSubstring(
+				"dedicated CPUs require either Workload Partitioning (CPUPartitioningAllNodes) " +
+					"or the strict-cpu-reservation Kubelet CPUManager policy option to be enabled"))
 		})
 	})
 })
