@@ -155,33 +155,32 @@ var _ = Describe("[performance] Dedicated CPUs for DPDK", Ordered, Label(string(
 				cmdlineStr := testutils.ToString(cmdline)
 
 				By(fmt.Sprintf("Verifying isolcpus includes dedicated CPUs on node %s", node.Name))
-				for _, cpu := range expectedIsolatedPlusDedicated.List() {
-					Expect(cmdlineStr).To(
-						MatchRegexp(`isolcpus=\S*%d`, cpu),
-						fmt.Sprintf("isolcpus should include CPU %d (isolated+dedicated)", cpu))
-				}
+				isolcpusSet := parseCPUSetFromKernelParam(cmdlineStr, "isolcpus")
+				Expect(isolcpusSet.IsEmpty()).To(BeFalse(), "isolcpus param not found in cmdline")
+				Expect(expectedIsolatedPlusDedicated.IsSubsetOf(isolcpusSet)).To(BeTrue(),
+					fmt.Sprintf("isolcpus=%s should include all isolated+dedicated CPUs %s",
+						isolcpusSet.String(), expectedIsolatedPlusDedicated.String()))
 
 				By(fmt.Sprintf("Verifying nohz_full includes dedicated CPUs on node %s", node.Name))
-				for _, cpu := range dedicatedSet.List() {
-					Expect(cmdlineStr).To(
-						MatchRegexp(`nohz_full=\S*%d`, cpu),
-						fmt.Sprintf("nohz_full should include dedicated CPU %d", cpu))
-				}
+				nohzSet := parseCPUSetFromKernelParam(cmdlineStr, "nohz_full")
+				Expect(nohzSet.IsEmpty()).To(BeFalse(), "nohz_full param not found in cmdline")
+				Expect(dedicatedSet.IsSubsetOf(nohzSet)).To(BeTrue(),
+					fmt.Sprintf("nohz_full=%s should include dedicated CPUs %s",
+						nohzSet.String(), dedicatedSet.String()))
 
 				By(fmt.Sprintf("Verifying rcu_nocbs includes dedicated CPUs on node %s", node.Name))
-				for _, cpu := range dedicatedSet.List() {
-					Expect(cmdlineStr).To(
-						MatchRegexp(`rcu_nocbs=\S*%d`, cpu),
-						fmt.Sprintf("rcu_nocbs should include dedicated CPU %d", cpu))
-				}
+				rcuSet := parseCPUSetFromKernelParam(cmdlineStr, "rcu_nocbs")
+				Expect(rcuSet.IsEmpty()).To(BeFalse(), "rcu_nocbs param not found in cmdline")
+				Expect(dedicatedSet.IsSubsetOf(rcuSet)).To(BeTrue(),
+					fmt.Sprintf("rcu_nocbs=%s should include dedicated CPUs %s",
+						rcuSet.String(), dedicatedSet.String()))
 
 				By(fmt.Sprintf("Verifying systemd.cpu_affinity excludes dedicated CPUs on node %s", node.Name))
-				Expect(cmdlineStr).To(ContainSubstring("systemd.cpu_affinity="))
-				for _, cpu := range dedicatedSet.List() {
-					cpuAffinityRegex := fmt.Sprintf(`systemd\.cpu_affinity=\S*\b%d\b`, cpu)
-					Expect(cmdlineStr).ToNot(MatchRegexp(cpuAffinityRegex),
-						fmt.Sprintf("systemd.cpu_affinity should not contain dedicated CPU %d", cpu))
-				}
+				affinitySet := parseCPUSetFromKernelParam(cmdlineStr, "systemd.cpu_affinity")
+				Expect(affinitySet.IsEmpty()).To(BeFalse(), "systemd.cpu_affinity param not found in cmdline")
+				Expect(affinitySet.Intersection(dedicatedSet).IsEmpty()).To(BeTrue(),
+					fmt.Sprintf("systemd.cpu_affinity=%s should not contain dedicated CPUs %s",
+						affinitySet.String(), dedicatedSet.String()))
 
 				By(fmt.Sprintf("Verifying kubelet reservedSystemCPUs is union of reserved+dedicated on node %s", node.Name))
 				kubeletConfig, err := nodes.GetKubeletConfig(ctx, node)
@@ -331,6 +330,31 @@ var _ = Describe("[performance] Dedicated CPUs for DPDK", Ordered, Label(string(
 		})
 	})
 })
+
+// parseCPUSetFromKernelParam extracts the CPU list from a kernel cmdline
+// parameter like "isolcpus=managed_irq,1-5" or "nohz_full=2-5" and returns it
+// as a cpuset.CPUSet. For isolcpus, non-numeric flag prefixes (e.g.
+// "managed_irq,") are stripped before parsing.
+func parseCPUSetFromKernelParam(cmdline, param string) cpuset.CPUSet {
+	for _, field := range strings.Fields(cmdline) {
+		if !strings.HasPrefix(field, param+"=") {
+			continue
+		}
+		val := strings.TrimPrefix(field, param+"=")
+		for i, c := range val {
+			if c >= '0' && c <= '9' {
+				val = val[i:]
+				break
+			}
+		}
+		set, err := cpuset.Parse(val)
+		if err != nil {
+			return cpuset.New()
+		}
+		return set
+	}
+	return cpuset.New()
+}
 
 // parseHexMaskToCPUSet converts a comma-separated hex bitmask (e.g.
 // "ff,fffffffe" or "00000040") into a cpuset.CPUSet by setting each
