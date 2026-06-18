@@ -11,6 +11,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"gopkg.in/ini.v1"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -105,13 +106,41 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				"tuned CR name owned by a performance profile CR should only be %q", tunedExpectedName)
 		})
 
+		// When a higher-priority Tuned profile wraps the performance profile via include=<pp-profile>,
+		// the active profile name is the wrapper (e.g. ran-du-performance), not the performance profile name.
 		It("[test_id:37127] Node should point to right tuned profile", func() {
+			ctx := context.TODO()
+			performanceProfileName := components.GetComponentName(testutils.PerformanceProfileName, components.ProfileNamePerformance)
+
+			// Get all Tuned profiles once (for lookup)
+			tunedList := &tunedv1.TunedList{}
+			Expect(testclient.ControlPlaneClient.List(ctx, tunedList)).To(Succeed(),
+				"failed to list Tuned profiles")
+
 			for _, node := range workerRTNodes {
-				tuned := nodes.TunedForNode(&node, RunningOnSingleNode)
-				activeProfile, err := pods.WaitForPodOutput(context.TODO(), testclient.K8sClient, tuned, []string{"cat", "/etc/tuned/active_profile"})
-				Expect(err).ToNot(HaveOccurred(), "Error getting the tuned active profile")
-				activeProfileName := string(activeProfile)
-				Expect(strings.TrimSpace(activeProfileName)).To(Equal(tunedExpectedName), "active profile name mismatch got %q expected %q", activeProfileName, tunedExpectedName)
+				By(fmt.Sprintf("Checking tuned profile on node %s", node.Name))
+				key := types.NamespacedName{
+					Name:      node.Name,
+					Namespace: components.NamespaceNodeTuningOperator,
+				}
+
+				Eventually(func(g Gomega) {
+					tunedProfile := &tunedv1.Profile{}
+					g.Expect(testclient.DataPlaneClient.Get(ctx, key, tunedProfile)).To(Succeed(),
+						"failed to get Tuned profile for node %s", node.Name)
+
+					activeProfile := tunedProfile.Status.TunedProfile
+					testlog.Infof("Node %s has active tuned profile: %q", node.Name, activeProfile)
+
+					// Check if this node's active profile traces back to the performance profile
+					tracesToPerformanceProfile := profileIncludesTarget(activeProfile, performanceProfileName, tunedList)
+
+					g.Expect(tracesToPerformanceProfile).To(BeTrue(),
+						"node %s active profile %q does not include performance profile %q",
+						node.Name, activeProfile, performanceProfileName)
+				}).WithTimeout(cluster.ComputeTestTimeout(120*time.Second, RunningOnSingleNode)).
+					WithPolling(testPollInterval * time.Second).
+					To(Succeed())
 			}
 		})
 
@@ -1407,4 +1436,143 @@ func findCondition(conditions []tunedv1.StatusCondition, conditionType string) *
 		}
 	}
 	return nil
+}
+
+// profileIncludesTarget checks if startProfile includes targetProfile,
+// either directly or through a chain of includes.
+//
+// Example: if "wrapper-b" includes "wrapper-a" and "wrapper-a" includes "perf-profile",
+// then profileIncludesTarget("wrapper-b", "perf-profile", ...) returns true.
+//
+// This walks the include chain step by step until it finds the target or hits a dead end.
+func profileIncludesTarget(startProfile, targetProfile string, tunedList *tunedv1.TunedList) bool {
+	// Build a lookup map: profile name -> list of profiles it includes
+	includesMap := buildProfileIncludesMap(tunedList)
+
+	// Walk the include chain, starting from startProfile
+	current := startProfile
+	visited := make(map[string]bool) // Prevent infinite loops
+	maxHops := len(includesMap)
+	chain := []string{startProfile} // Track the chain for logging
+
+	for hop := 0; hop < maxHops; hop++ {
+		// Found it?
+		if current == targetProfile {
+			testlog.Infof("Profile chain validated: %s", strings.Join(chain, " → "))
+			return true
+		}
+
+		// Already visited? (cycle detection)
+		if visited[current] {
+			testlog.Warningf("Cycle detected in profile chain at %q", current)
+			return false
+		}
+		visited[current] = true
+
+		// What does the current profile include?
+		includedProfiles, exists := includesMap[current]
+		if !exists {
+			testlog.Warningf("Profile %q not found in cluster", current)
+			return false // Profile not found
+		}
+
+		// Check if it directly includes the target
+		for _, included := range includedProfiles {
+			if included == targetProfile {
+				chain = append(chain, targetProfile)
+				testlog.Infof("Profile chain validated: %s", strings.Join(chain, " → "))
+				return true
+			}
+		}
+
+		// Find the next profile in the chain (first include that exists in our map)
+		nextProfile := ""
+		for _, included := range includedProfiles {
+			if _, exists := includesMap[included]; exists {
+				nextProfile = included
+				break
+			}
+		}
+
+		if nextProfile == "" {
+			testlog.Warningf("Dead end in profile chain at %q (no valid includes found)", current)
+			return false // Dead end - no more includes
+		}
+
+		// Move to the next profile in the chain
+		chain = append(chain, nextProfile)
+		current = nextProfile
+	}
+
+	// Shouldn't reach here unless chain is unreasonably deep
+	testlog.Warningf("Profile chain exceeded maximum depth of %d hops", maxHops)
+	return false
+}
+
+// buildProfileIncludesMap creates a map of profile name -> list of profiles it includes
+// This extracts only the include= statements, not the entire profile data
+func buildProfileIncludesMap(tunedList *tunedv1.TunedList) map[string][]string {
+	result := make(map[string][]string)
+
+	for _, tuned := range tunedList.Items {
+		for _, profile := range tuned.Spec.Profile {
+			if profile.Name == nil || profile.Data == nil {
+				continue
+			}
+
+			profileName := *profile.Name
+			includes := extractIncludedProfiles(*profile.Data)
+			result[profileName] = includes
+		}
+	}
+	return result
+}
+
+// extractIncludedProfiles parses the profile data using the gopkg.in/ini.v1 library
+// (same library used by the Tuned controller) and extracts profile names from include= statements.
+// For example, "include=profile-a,profile-b" returns ["profile-a", "profile-b"]
+// Tuned variables like ${f:...} are skipped since they require runtime expansion.
+func extractIncludedProfiles(profileData string) []string {
+	cfg, err := ini.Load([]byte(profileData))
+	if err != nil || cfg == nil {
+		// Invalid INI data - return empty list
+		return []string{}
+	}
+
+	// Check if the [main] section has an "include" key
+	if !cfg.Section("main").HasKey("include") {
+		return []string{}
+	}
+
+	// Get the include value
+	includeValue := cfg.Section("main").Key("include").String()
+	if includeValue == "" {
+		return []string{}
+	}
+
+	// Split by comma and filter out invalid entries
+	parts := strings.Split(includeValue, ",")
+	var includes []string
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+
+		// Skip empty parts
+		if part == "" {
+			continue
+		}
+
+		// Skip if it contains variable syntax (${...}) - these need runtime expansion
+		if strings.Contains(part, "${") {
+			continue
+		}
+
+		// Skip conditional loading prefixes (parts starting with -)
+		if strings.HasPrefix(part, "-") {
+			continue
+		}
+
+		includes = append(includes, part)
+	}
+	return includes
 }
