@@ -2,7 +2,6 @@ package __arm
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -18,7 +17,6 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/infrastructure"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/poolname"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 )
@@ -34,7 +32,6 @@ var _ = Describe("[rfe_id:80342] kernelPageSize configuration validation on aarc
 	var (
 		workerRTNodes               []corev1.Node
 		perfProfile, initialProfile *performancev2.PerformanceProfile
-		poolName                    string
 		err                         error
 		ctx                         context.Context = context.Background()
 		isArm                       bool
@@ -50,10 +47,8 @@ var _ = Describe("[rfe_id:80342] kernelPageSize configuration validation on aarc
 		workerRTNode = workerRTNodes[0]
 
 		perfProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-		initialProfile = perfProfile.DeepCopy()
-
-		poolName = poolname.GetByProfile(ctx, perfProfile)
 		Expect(err).ToNot(HaveOccurred())
+		initialProfile = perfProfile.DeepCopy()
 
 		isArm, err = infrastructure.IsARM(ctx, &workerRTNode)
 		Expect(err).ToNot(HaveOccurred())
@@ -61,33 +56,15 @@ var _ = Describe("[rfe_id:80342] kernelPageSize configuration validation on aarc
 			Skip("This test requires an aarch64 arm CPU")
 		}
 
-		By("Make sure that the performance profile starts the test suite with 4k kernelPageSize and real time kernel disabled")
-		currentKernelPageSize, err := getKernelPageSizeFromNode(ctx, workerRTNode)
-		Expect(err).ToNot(HaveOccurred())
-
-		var realTimeKernelEnabled bool
-		var validKernelPageSize bool
-
-		if perfProfile.Spec.RealTimeKernel != nil {
-			realTimeKernelEnabled = *perfProfile.Spec.RealTimeKernel.Enabled
+		By("Ensuring profile baseline: kernelPageSize=4k, no hugepages, RT disabled")
+		perfProfile.Spec.HugePages = nil
+		perfProfile.Spec.KernelPageSize = ptr.To(performancev2.KernelPageSize(kernelPageSize4k))
+		perfProfile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
+			Enabled: ptr.To(false),
 		}
 
-		if perfProfile.Spec.KernelPageSize != nil {
-			validKernelPageSize = currentKernelPageSize != kernelPageSizeBytes4k
-		}
-
-		if realTimeKernelEnabled || validKernelPageSize {
-			perfProfile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
-				Enabled: ptr.To(false),
-			}
-			*perfProfile.Spec.KernelPageSize = kernelPageSize4k
-			profiles.UpdateWithRetry(perfProfile)
-
-			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-			profilesupdate.WaitForTuningUpdating(ctx, perfProfile)
-
-			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-			profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
+		if !equality.Semantic.DeepEqual(perfProfile.Spec, initialProfile.Spec) {
+			profilesupdate.ApplyProfileAndWait(ctx, perfProfile)
 		}
 	})
 
@@ -96,18 +73,8 @@ var _ = Describe("[rfe_id:80342] kernelPageSize configuration validation on aarc
 		profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 
-		currentSpec, _ := json.Marshal(profile.Spec)
-		spec, _ := json.Marshal(initialProfile.Spec)
-
-		// revert only if the profile changes
-		if !equality.Semantic.DeepEqual(currentSpec, spec) {
-			profiles.UpdateWithRetry(initialProfile)
-
-			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-			profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
-
-			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-			profilesupdate.WaitForTuningUpdated(ctx, initialProfile)
+		if !equality.Semantic.DeepEqual(profile.Spec, initialProfile.Spec) {
+			profilesupdate.ApplyProfileAndWait(ctx, initialProfile)
 		}
 	})
 
@@ -118,18 +85,12 @@ var _ = Describe("[rfe_id:80342] kernelPageSize configuration validation on aarc
 					By(fmt.Sprintf("Modifying the profile to use %s", newKernelPageSize))
 					klog.Infof("Changing kernelPageSize to: %s from: %s", newKernelPageSize, *perfProfile.Spec.KernelPageSize)
 					perfProfile.Spec.KernelPageSize = ptr.To(performancev2.KernelPageSize(newKernelPageSize))
-					profiles.UpdateWithRetry(perfProfile)
-
-					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-					profilesupdate.WaitForTuningUpdating(ctx, perfProfile)
-
-					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-					profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
+					profilesupdate.ApplyProfileAndWait(ctx, perfProfile)
 
 					By(fmt.Sprintf("Verifying the kernelPageSize has changed to %s on the affected node", expectedKernelPageSize))
 					kernelPageSize, err := getKernelPageSizeFromNode(ctx, workerRTNode)
 					Expect(err).ToNot(HaveOccurred())
-					Expect(kernelPageSize).To(Equal(expectedKernelPageSize))
+					Expect(kernelPageSize).To(Equal(expectedKernelPageSize), "kernel page size mismatch on node")
 				},
 				Entry("[test_id:80459] should accept 64k kernelPageSize", kernelPageSize64k, kernelPageSizeBytes64k),
 				Entry("[test_id:80461] should accept 4k kernelPageSize", kernelPageSize4k, kernelPageSizeBytes4k),
