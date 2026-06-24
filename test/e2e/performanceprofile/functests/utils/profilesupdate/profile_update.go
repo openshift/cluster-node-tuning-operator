@@ -22,6 +22,7 @@ import (
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/mcps"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodepools"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/poolname"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 )
 
@@ -127,4 +128,17 @@ func WaitForTuningUpdated(ctx context.Context, profile *performancev2.Performanc
 	testlog.Infof("wait for node pool %q transition into config ready state", client.ObjectKeyFromObject(np).String())
 	err = nodepools.WaitForConfigToBeReady(ctx, testclient.ControlPlaneClient, np.Name, np.Namespace)
 	Expect(err).ToNot(HaveOccurred())
+}
+
+// ApplyProfileAndWait updates the profile and waits for the MCP rollout (or nodepool on hypershift) to complete.
+// Replaces the common 3-step pattern: UpdateWithRetry + WaitForTuningUpdating + WaitForTuningUpdated.
+func ApplyProfileAndWait(ctx context.Context, profile *performancev2.PerformanceProfile) {
+	GinkgoHelper()
+	poolName := poolname.GetByProfile(ctx, profile)
+	By("Updating the performance profile")
+	profiles.UpdateWithRetry(profile)
+	By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+	WaitForTuningUpdating(ctx, profile)
+	By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+	WaitForTuningUpdated(ctx, profile)
 }
