@@ -36,13 +36,23 @@ import (
 )
 
 const (
-	oslatTestName        = "oslat"
-	cyclictestTestName   = "cyclictest"
-	hwlatdetectTestName  = "hwlatdetect"
-	defaultTestDelay     = 0
-	defaultTestRuntime   = "300"
-	defaultMaxLatency    = -1
-	defaultTestCpus      = -1
+	//tools names
+	oslatTestName       = "oslat"
+	cyclictestTestName  = "cyclictest"
+	hwlatdetectTestName = "hwlatdetect"
+
+	//default values
+	defaultTestDelay   = 0
+	defaultTestRuntime = "300"
+	defaultMaxLatency  = -1
+	defaultTestCpus    = -1
+	defaultTestMemory  = "1Gi"
+
+	//dynamic memory mode values
+	// 32Mi per requested CPU should be reasonable for the test
+	perCpuMemoryFactor = 32
+	memoryFactorFormat = "Mi"
+
 	minCpuAmountForOslat = 2
 )
 
@@ -51,13 +61,14 @@ var (
 	latencyTestRuntime = defaultTestRuntime
 	maximumLatency     = defaultMaxLatency
 	latencyTestCpus    = defaultTestCpus
+	latencyTestMemory  = defaultTestMemory
 )
 
 // LATENCY_TEST_DELAY delay the run of the binary, can be useful to give time to the CPU manager reconcile loop
 // to update the default CPU pool
 // LATENCY_TEST_RUNTIME: the amount of time in seconds that the latency test should run
 // LATENCY_TEST_CPUS: the amount of CPUs the pod which run the latency test should request
-
+// LATENCY_TEST_MEMORY: the amount of memory the pod which run the latency test should request
 var _ = Describe("[performance] Latency Test", Ordered, func() {
 	var workerRTNode *corev1.Node
 	var profile *performancev2.PerformanceProfile
@@ -286,6 +297,47 @@ func getLatencyTestCpus() (int, error) {
 	return defaultTestCpus, nil
 }
 
+// getLatencyTestMemory returns the memory limit for the latency test pod based on
+// LATENCY_TEST_MEMORY and the CPU count.If LATENCY_TEST_MEMORY is unset, it returns
+// it returns an auto-scaled memory based on perCpuMemoryFactor per CPU. If explicitly
+// set to a valid value, it returns the value and ignores the CPU count. Otherwise,
+// it returns an error on invalid inputs
+func getLatencyTestMemory(cpus int) (string, error) {
+	if val, ok := os.LookupEnv("LATENCY_TEST_MEMORY"); ok {
+		q, err := resource.ParseQuantity(val)
+		if err != nil {
+			return val, fmt.Errorf("the environment variable LATENCY_TEST_MEMORY has incorrect value %q, it must be a valid quantity: %w", val, err)
+		}
+		if q.Sign() <= 0 {
+			return val, fmt.Errorf("the environment variable LATENCY_TEST_MEMORY has invalid value %q, it must be greater than 0", val)
+		}
+		return val, nil
+	}
+
+	// Defensive check: fall back to default memory if the CPU count was not normalized
+	if cpus == defaultTestCpus || cpus < 1 {
+		return defaultTestMemory, nil
+	}
+
+	defaultQuantity, err := resource.ParseQuantity(defaultTestMemory)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse default quantity %q: %w", defaultTestMemory, err)
+	}
+
+	computedInt := perCpuMemoryFactor * cpus
+	computedQuantity, err := resource.ParseQuantity(fmt.Sprintf("%d%s", computedInt, memoryFactorFormat))
+	if err != nil {
+		return "", fmt.Errorf("failed to parse computed quantity %q: %w", fmt.Sprintf("%d%s", computedInt, memoryFactorFormat), err)
+	}
+
+	if computedQuantity.Cmp(defaultQuantity) > 0 {
+		return computedQuantity.String(), nil
+	}
+
+	// floor at default for backward compatibility
+	return defaultTestMemory, nil
+}
+
 // getMaximumLatency should look for one of the following environment variables:
 // OSLAT_MAXIMUM_LATENCY: the expected maximum latency for all buckets in us
 // CYCLICTEST_MAXIMUM_LATENCY: the expected maximum latency for all buckets in us
@@ -333,6 +385,10 @@ func getLatencyTestPod(profile *performancev2.PerformanceProfile, node *corev1.N
 		latencyTestCpus = cpus.Size() - 1
 	}
 
+	var err error
+	latencyTestMemory, err = getLatencyTestMemory(latencyTestCpus)
+	Expect(err).ToNot(HaveOccurred(), "failed to compute latency pod's memory: %v", err)
+
 	latencyTestRunnerArgs := []string{
 		"-logtostderr=false",
 		"-alsologtostderr=true",
@@ -369,7 +425,7 @@ func getLatencyTestPod(profile *performancev2.PerformanceProfile, node *corev1.N
 					Resources: corev1.ResourceRequirements{
 						Limits: corev1.ResourceList{
 							corev1.ResourceCPU:    resource.MustParse(strconv.Itoa(latencyTestCpus)),
-							corev1.ResourceMemory: resource.MustParse("1Gi"),
+							corev1.ResourceMemory: resource.MustParse(latencyTestMemory),
 						},
 					},
 					SecurityContext: &corev1.SecurityContext{
