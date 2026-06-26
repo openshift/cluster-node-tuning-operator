@@ -192,6 +192,29 @@ var _ = Describe("Machine Config", func() {
 			Expect(content).ToNot(BeEmpty(), "crio runtime config not found")
 			Expect(content).To(Not(ContainSubstring("exec_cpu_affinity = \"first\"")))
 		})
+
+		It("should create machine config with min_injected_gomaxprocs set to 4", func() {
+			profile := testutils.NewPerformanceProfile("test")
+
+			mc, err := New(profile, &components.MachineConfigOptions{})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+			Expect(json.Unmarshal(mc.Spec.Config.Raw, &result)).To(Succeed())
+
+			var content string
+			for _, f := range result.Storage.Files {
+				if f.Path == crioRuntimeConfigPath {
+					base64Data := strings.TrimPrefix(*f.Contents.Source, "data:text/plain;charset=utf-8;base64,")
+					decoded, err := base64.StdEncoding.DecodeString(base64Data)
+					Expect(err).ToNot(HaveOccurred())
+					content = string(decoded)
+					break
+				}
+			}
+			Expect(content).ToNot(BeEmpty(), "crio runtime config not found")
+			Expect(content).To(ContainSubstring("min_injected_gomaxprocs = 4"))
+		})
 	})
 
 	Context("machine config creation with enabled RPS using alternative values", func() {
