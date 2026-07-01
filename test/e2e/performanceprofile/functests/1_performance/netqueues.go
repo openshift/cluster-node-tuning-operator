@@ -150,7 +150,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 				if err != nil {
 					return false
 				}
-				return strings.ContainsAny(string(out), device)
+				return strings.Contains(string(out), device)
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "could not get a tuned profile set with devices_udev_regex")
 
 			nodesDevices = make(map[string]map[string]int)
@@ -197,7 +197,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 				if err != nil {
 					return false
 				}
-				return strings.ContainsAny(string(out), device)
+				return strings.Contains(string(out), device)
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "could not get a tuned profile set with devices_udev_regex")
 
 			nodesDevices = make(map[string]map[string]int)
@@ -253,7 +253,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 				if err != nil {
 					return false
 				}
-				return strings.ContainsAny(string(out), device)
+				return strings.Contains(string(out), device)
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "could not get a tuned profile set with devices_udev_regex")
 
 			nodesDevices = make(map[string]map[string]int)
@@ -311,7 +311,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 				if err != nil {
 					return false
 				}
-				return strings.ContainsAny(string(out), device)
+				return strings.Contains(string(out), device)
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "could not get a tuned profile set with devices_udev_regex")
 
 			nodesDevices = make(map[string]map[string]int)
