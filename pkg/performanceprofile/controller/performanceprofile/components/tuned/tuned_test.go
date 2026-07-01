@@ -727,4 +727,27 @@ var _ = Describe("Tuned", func() {
 			})
 		})
 	})
+
+	Context("with dedicated CPUs", func() {
+		It("should include dedicated CPUs in isolated_cores", func() {
+			dedicatedCPUs := performancev2.CPUSet("10-11")
+			profile.Spec.CPU.Dedicated = &dedicatedCPUs
+			tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
+			variables, err := tunedData.GetSection("variables")
+			Expect(err).ToNot(HaveOccurred())
+			isolatedCores := variables.Key("isolated_cores").String()
+			set, err := cpuset.Parse(isolatedCores)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(set.List()).To(ContainElements(4, 5, 10, 11))
+		})
+
+		It("should include dedicated CPUs in nohz_full and rcu_nocbs via isolated_cores", func() {
+			dedicatedCPUs := performancev2.CPUSet("10-11")
+			profile.Spec.CPU.Dedicated = &dedicatedCPUs
+			tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
+			bootLoaderSection, err := tunedData.GetSection("bootloader")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(bootLoaderSection.Key("cmdline_cpu_part").String()).To(Equal(cmdlineCPUsPartitioning))
+		})
+	})
 })

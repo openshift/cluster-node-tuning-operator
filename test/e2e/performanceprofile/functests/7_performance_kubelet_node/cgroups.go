@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/utils/cpuset"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
@@ -96,7 +97,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 
 		ovsSystemdServices = ovsSystemdServicesOnOvsSlice(ctx, workerRTNode)
 
-		isWorkloadPartitioningEnabled, err = cluster.IsWorkloadPartitioningEnabled(ctx)
+		isWorkloadPartitioningEnabled, err = cluster.IsWorkloadPartitioningEnabled(ctx, testclient.Client)
 		Expect(err).ToNot(HaveOccurred(), "Unable to check if workload partitioning is enabled")
 		testlog.Infof("Workload partitioning enabled: %v", isWorkloadPartitioningEnabled)
 
@@ -698,6 +699,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 					err := testclient.DataPlaneClient.Create(ctx, testpod)
 					Expect(err).ToNot(HaveOccurred())
 					testpod, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
+					pods.DumpStateOnFailure(ctx, testclient.K8sClient, testpod, err)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(testpod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
 					guPods = append(guPods, testpod)
@@ -737,6 +739,73 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 						"OVS pid %s affinity (%s) should equal expected (%s) after GU pod pinning",
 						pid, mask, expected)
 				}
+			})
+		})
+
+		Context("disableOvsDynamicPinning", Label(string(label.DedicatedCPUs), string(label.Tier2)), func() {
+			It("should remove the activation file and stop dynamic affinity adjustment", func() {
+				By("Verifying the activation file exists before disabling")
+				cmd := []string{"ls", activation_file}
+				_, err := nodes.ExecCommand(ctx, workerRTNode, cmd)
+				Expect(err).ToNot(HaveOccurred(), "activation file should exist before disabling OVS dynamic pinning")
+
+				By("Capturing OVS service affinity before disabling")
+				ovsAffinitiesBefore := getOvsAffinities(ctx, ovsSystemdServices, workerRTNode)
+				Expect(ovsAffinitiesBefore).ToNot(BeEmpty(), "expected non-empty OVS affinities")
+
+				By("Setting disableOvsDynamicPinning=true on the profile")
+				currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+				Expect(err).ToNot(HaveOccurred())
+				savedSpec := *currentProfile.Spec.DeepCopy()
+
+				if currentProfile.Spec.Net == nil {
+					currentProfile.Spec.Net = &performancev2.Net{}
+				}
+				currentProfile.Spec.Net.DisableOvsDynamicPinning = ptr.To(true)
+				profiles.UpdateWithRetry(currentProfile)
+
+				profilesupdate.WaitForTuningUpdating(ctx, currentProfile)
+				profilesupdate.WaitForTuningUpdated(ctx, currentProfile)
+
+				By("Verifying the activation file is absent after disabling")
+				_, err = nodes.ExecCommand(ctx, workerRTNode, cmd)
+				Expect(err).To(HaveOccurred(),
+					"activation file should not exist when disableOvsDynamicPinning=true")
+
+				By("Verifying OVS processes retain their systemd service affinity")
+				ovsAffinitiesAfter := getOvsAffinities(ctx, ovsSystemdServices, workerRTNode)
+				for pid, mask := range ovsAffinitiesAfter {
+					testlog.Infof("OVS pid %s affinity with dynamic pinning disabled: %s", pid, mask)
+				}
+
+				By("Creating a GU pod and verifying OVS affinity does not change")
+				guPod := createGuPod(ctx, workerRTNode)
+				ovsAffinitiesWithPod := getOvsAffinities(ctx, ovsSystemdServices, workerRTNode)
+				for pid, mask := range ovsAffinitiesWithPod {
+					testlog.Infof("OVS pid %s affinity with GU pod (dynamic pinning disabled): %s", pid, mask)
+					if afterMask, ok := ovsAffinitiesAfter[pid]; ok {
+						Expect(mask.Equals(afterMask)).To(BeTrue(),
+							fmt.Sprintf("OVS pid %s affinity should not change with dynamic pinning disabled (before: %s, after: %s)",
+								pid, afterMask, mask))
+					}
+				}
+
+				By("Deleting the GU pod")
+				Expect(pods.DeleteAndSync(ctx, testclient.DataPlaneClient, guPod)).To(Succeed())
+
+				By("Reverting the profile to re-enable OVS dynamic pinning")
+				currentProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+				Expect(err).ToNot(HaveOccurred())
+				currentProfile.Spec = savedSpec
+				profiles.UpdateWithRetry(currentProfile)
+
+				profilesupdate.WaitForTuningUpdating(ctx, currentProfile)
+				profilesupdate.WaitForTuningUpdated(ctx, currentProfile)
+
+				By("Verifying the activation file is back after re-enabling")
+				_, err = nodes.ExecCommand(ctx, workerRTNode, cmd)
+				Expect(err).ToNot(HaveOccurred(),
+					"activation file should exist after re-enabling OVS dynamic pinning")
 			})
 		})
 
@@ -1040,6 +1109,7 @@ func createGuPod(ctx context.Context, node *corev1.Node) *corev1.Pod {
 	err := testclient.DataPlaneClient.Create(ctx, testpod)
 	Expect(err).ToNot(HaveOccurred())
 	testpod, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 5*time.Minute)
+	pods.DumpStateOnFailure(ctx, testclient.K8sClient, testpod, err)
 	Expect(err).ToNot(HaveOccurred())
 	Expect(testpod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
 	testlog.Infof("GU pod %s pinned to cpus %s", testpod.Name, getGuPodCPUs(ctx, testpod))

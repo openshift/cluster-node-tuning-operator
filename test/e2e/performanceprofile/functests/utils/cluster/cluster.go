@@ -41,9 +41,12 @@ func IsControlPlaneSchedulable(ctx context.Context) (bool, error) {
 
 // IsWorkloadPartitioningEnabled checks whether CPU partitioning is enabled
 // cluster-wide by querying the Infrastructure resource's CPUPartitioning status.
-func IsWorkloadPartitioningEnabled(ctx context.Context) (bool, error) {
+// The caller must pass the appropriate client: on HyperShift the controller
+// reads the hosted cluster's Infrastructure, so tests should use the data-plane
+// client (testclient.Client) to match.
+func IsWorkloadPartitioningEnabled(ctx context.Context, cli client.Client) (bool, error) {
 	infra := &configv1.Infrastructure{}
-	if err := testclient.ControlPlaneClient.Get(ctx, client.ObjectKey{Name: "cluster"}, infra); err != nil {
+	if err := cli.Get(ctx, client.ObjectKey{Name: "cluster"}, infra); err != nil {
 		return false, err
 	}
 	return infra.Status.CPUPartitioning == configv1.CPUPartitioningAllNodes, nil

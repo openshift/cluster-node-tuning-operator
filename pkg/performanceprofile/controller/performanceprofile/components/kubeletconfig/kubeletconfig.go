@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 	"k8s.io/utils/cpuset"
 
@@ -31,6 +32,7 @@ const (
 	experimentalKubeletSnippetAnnotation         = "kubeletconfig.experimental"
 	cpuManagerPolicyStatic                       = "static"
 	cpuManagerPolicyOptionFullPCPUsOnly          = "full-pcpus-only"
+	cpuManagerPolicyOptionStrictCPUReservation   = "strict-cpu-reservation"
 	memoryManagerPolicyStatic                    = "Static"
 	defaultKubeReservedMemory                    = "500Mi"
 	defaultSystemReservedMemory                  = "500Mi"
@@ -156,19 +158,29 @@ func setKubeletConfigForCPUAndMemoryManagers(profile *performancev2.PerformanceP
 	}
 
 	if profile.Spec.CPU != nil && profile.Spec.CPU.Reserved != nil {
-		kubeletConfig.ReservedSystemCPUs = string(*profile.Spec.CPU.Reserved)
-	}
-
-	if opts.MixedCPUsEnabled {
-		sharedCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Shared))
-		if err != nil {
-			return err
-		}
 		reservedCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
 		if err != nil {
 			return err
 		}
-		kubeletConfig.ReservedSystemCPUs = reservedCPUs.Union(sharedCPUs).String()
+
+		if profile.Spec.CPU.Dedicated != nil {
+			dedicatedCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Dedicated))
+			if err != nil {
+				return err
+			}
+			// dedicated CPUs are added to the reserved CPUs set to ensure they are not used for any container workloads initiated by kubelet.
+			reservedCPUs = reservedCPUs.Union(dedicatedCPUs)
+		}
+
+		if opts.MixedCPUsEnabled {
+			sharedCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Shared))
+			if err != nil {
+				return err
+			}
+			reservedCPUs = reservedCPUs.Union(sharedCPUs)
+		}
+
+		kubeletConfig.ReservedSystemCPUs = reservedCPUs.String()
 	}
 
 	if profile.Spec.NUMA != nil {
@@ -231,4 +243,21 @@ func validateOptions(opts *components.KubeletConfigOptions) error {
 	}
 
 	return nil
+}
+
+// HasStrictCPUReservation returns true if the generated KubeletConfig has the
+// strict-cpu-reservation CPUManager policy option enabled.
+func HasStrictCPUReservation(kc *machineconfigv1.KubeletConfig) bool {
+	if kc == nil || kc.Spec.KubeletConfig == nil || len(kc.Spec.KubeletConfig.Raw) == 0 {
+		return false
+	}
+
+	kubeletConfig := &kubeletconfigv1beta1.KubeletConfiguration{}
+	if err := json.Unmarshal(kc.Spec.KubeletConfig.Raw, kubeletConfig); err != nil {
+		klog.V(4).Infof("failed to unmarshal KubeletConfig payload: %v", err)
+		return false
+	}
+
+	v, ok := kubeletConfig.CPUManagerPolicyOptions[cpuManagerPolicyOptionStrictCPUReservation]
+	return ok && v == "true"
 }

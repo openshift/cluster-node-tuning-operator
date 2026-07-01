@@ -138,6 +138,13 @@ type CPU struct {
 	// alongside the isolated, exclusive resources that are being used already by those workloads.
 	// +optional
 	Shared *CPUSet `json:"shared,omitempty"`
+	// Dedicated defines a set of CPUs fully isolated from the operating system
+	// and Kubernetes scheduling, intended for exclusive use by user-space
+	// processes (for example, infrastructure networking workloads such as
+	// DPDK-based vSwitch or vRouter). WorkloadPartitioning or --strict-cpu-reservation
+	// kubelet CPUManager policy option are a prerequisite for this feature.
+	// +optional
+	Dedicated *CPUSet `json:"dedicated,omitempty"`
 }
 
 // CPUfrequency defines cpu frequencies for isolated and reserved cpus
@@ -203,6 +210,10 @@ type Net struct {
 	// set with a netqueue count equal to CPU.Reserved .
 	// If no devices are specified then the default is all devices.
 	Devices []Device `json:"devices,omitempty"`
+	// DisableOvsDynamicPinning when set to true, prevents OVN-Kubernetes
+	// from dynamically adjusting OVS thread CPU affinity at runtime.
+	// +optional
+	DisableOvsDynamicPinning *bool `json:"disableOvsDynamicPinning,omitempty"`
 }
 
 // Device defines a way to represent a network device in several options:

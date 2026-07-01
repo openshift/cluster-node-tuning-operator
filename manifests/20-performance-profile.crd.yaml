@@ -509,6 +509,16 @@ spec:
                         offloads the complexity of cpu load balancing to the application.
                         Defaults to "true"
                       type: boolean
+                    dedicated:
+                      description: |-
+                        Dedicated defines a set of CPUs fully isolated from the operating system
+                        and Kubernetes scheduling, intended for exclusive use by user-space
+                        processes (for example, infrastructure networking workloads such as
+                        DPDK-based vSwitch or vRouter). These CPUs receive full kernel-level
+                        isolation (isolcpus=domain,managed_irq, nohz_full, rcu_nocbs), are
+                        excluded from Kubelet scheduling (all QoS classes), banned from
+                        irqbalance, and excluded from systemd CPU affinity.
+                      type: string
                     isolated:
                       description: |-
                         Isolated defines a set of CPUs that will be used to give to application threads the most execution time possible,
@@ -625,6 +635,11 @@ spec:
                           vendorID:
                             description: Network device vendor ID represnted as a 16 bit Hexmadecimal number.
                             type: string
+                    disableOvsDynamicPinning:
+                      description: |-
+                        DisableOvsDynamicPinning when set to true, prevents OVN-Kubernetes
+                        from dynamically adjusting OVS thread CPU affinity at runtime.
+                      type: boolean
                     userLevelNetworking:
                       description: UserLevelNetworking when enabled - sets either all or specified network devices queue size to the amount of reserved CPUs. Defaults to "false".
                       type: boolean

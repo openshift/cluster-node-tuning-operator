@@ -75,6 +75,10 @@ const (
 	ovsDynamicPinningTriggerFile     = "ovs-enable-dynamic-cpu-affinity"
 	ovsDynamicPinningTriggerHostFile = "/var/lib/ovn-ic/etc/enable_dynamic_cpu_affinity"
 
+	dedicatedCPUsSliceName           = "dedicatedcpus.slice"
+	dedicatedCPUsSliceDefinitionFile = "dedicatedcpus.slice"
+	dedicatedCPUsConfigure           = "dedicated-cpus-configure"
+
 	cpusetConfigure = "cpuset-configure"
 
 	// ExecCPUAffinity config
@@ -123,6 +127,7 @@ const (
 	templateCrioSharedCPUsAnnotation = "CrioSharedCPUsAnnotation"
 	templateExecCPUAffinity          = "ExecCPUAffinity"
 	templateMinInjectedGOMAXPROCS    = "MinInjectedGOMAXPROCS"
+	templateDedicatedCpus            = "DedicatedCpus"
 )
 
 const crioMinGOMAXPROCS = 4
@@ -339,7 +344,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 		})
 	}
 
-	clearIRQBalanceBannedCPUsService, err := getSystemdContent(getIRQBalanceBannedCPUsOptions())
+	clearIRQBalanceBannedCPUsService, err := getSystemdContent(getIRQBalanceBannedCPUsOptions(opts.DedicatedCPUs))
 	if err != nil {
 		return nil, err
 	}
@@ -386,12 +391,45 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 		addContent(ignitionConfig, serviceOvsSlice, "/etc/systemd/system/ovs-vswitchd.service.d/"+templateOvsSliceUsageFile, &ovsMode)
 		addContent(ignitionConfig, serviceOvsSlice, "/etc/systemd/system/ovsdb-server.service.d/"+templateOvsSliceUsageFile, &ovsMode)
 
-		// Tell OVN-K to enable dynamic cpu pinning
-		content, err := getTemplatedOvsFile(assets.Configs, filepath.Join("configs", ovsDynamicPinningTriggerFile), ovsSliceName)
+		if !opts.DisableOVSDynamicPinning {
+			content, err := getTemplatedOvsFile(assets.Configs, filepath.Join("configs", ovsDynamicPinningTriggerFile), ovsSliceName)
+			if err != nil {
+				return nil, err
+			}
+			addContent(ignitionConfig, content, ovsDynamicPinningTriggerHostFile, &ovsMode)
+		}
+	}
+
+	if opts.DedicatedCPUs != "" {
+		sliceContent, err := renderTemplatedFile(assets.Configs, filepath.Join("configs", dedicatedCPUsSliceDefinitionFile), map[string]string{
+			templateDedicatedCpus: opts.DedicatedCPUs,
+		})
 		if err != nil {
 			return nil, err
 		}
-		addContent(ignitionConfig, content, ovsDynamicPinningTriggerHostFile, &ovsMode)
+		dedicatedMode := 0644
+		addContent(ignitionConfig, sliceContent, "/etc/systemd/system/"+dedicatedCPUsSliceName, &dedicatedMode)
+
+		scriptContent, err := renderTemplatedFile(assets.Scripts, fmt.Sprintf("scripts/%s.sh", dedicatedCPUsConfigure), map[string]string{
+			templateDedicatedCpus: opts.DedicatedCPUs,
+		})
+		if err != nil {
+			return nil, err
+		}
+		dst := getBashScriptPath(dedicatedCPUsConfigure)
+		scriptFileMode := 0700
+		addContent(ignitionConfig, scriptContent, dst, &scriptFileMode)
+
+		dedicatedConfigureServiceContent, err := getSystemdContent(getDedicatedCpusConfigureOptions())
+		if err != nil {
+			return nil, err
+		}
+		dedicatedConfigureService := dedicatedConfigureServiceContent
+		ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
+			Contents: &dedicatedConfigureService,
+			Enabled:  ptr.To(true),
+			Name:     getSystemdService(dedicatedCPUsConfigure),
+		})
 	}
 
 	// Configure a systemd dropin and sysconfig file so stalld uses sched_debug as its backend.
@@ -458,21 +496,22 @@ func GetHugepagesSizeKilobytes(hugepagesSize performancev2.HugePageSize) (string
 	return strconv.FormatInt(size/1024, 10), nil
 }
 
-func getTemplatedOvsFile(fsys fs.FS, templateName string, name string) ([]byte, error) {
-	templateArgs := make(map[string]string)
-	templateArgs[templateOvsSliceName] = name
-
-	sliceTemplate, err := template.ParseFS(fsys, templateName)
+func renderTemplatedFile(fsys fs.FS, templateName string, args map[string]string) ([]byte, error) {
+	tmpl, err := template.ParseFS(fsys, templateName)
 	if err != nil {
 		return nil, err
 	}
-
-	slice := &bytes.Buffer{}
-	if err := sliceTemplate.Execute(slice, templateArgs); err != nil {
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, args); err != nil {
 		return nil, err
 	}
+	return buf.Bytes(), nil
+}
 
-	return slice.Bytes(), nil
+func getTemplatedOvsFile(fsys fs.FS, templateName string, name string) ([]byte, error) {
+	return renderTemplatedFile(fsys, templateName, map[string]string{
+		templateOvsSliceName: name,
+	})
 }
 
 func getOvsSliceDefinition(name string) ([]byte, error) {
@@ -502,8 +541,32 @@ func getCpusetConfigureServiceOptions() []*unit.UnitOption {
 	}
 }
 
-func getIRQBalanceBannedCPUsOptions() []*unit.UnitOption {
+func getDedicatedCpusConfigureOptions() []*unit.UnitOption {
 	return []*unit.UnitOption{
+		// [Unit]
+		// Description
+		unit.NewUnitOption(systemdSectionUnit, systemdDescription, "Configure cgroup v2 cpuset partition for dedicated CPUs"),
+		// Requires
+		unit.NewUnitOption(systemdSectionUnit, "Requires", dedicatedCPUsSliceName),
+		// Before
+		unit.NewUnitOption(systemdSectionUnit, systemdBefore, systemdServiceKubelet),
+		// After
+		unit.NewUnitOption(systemdSectionUnit, systemdAfter, dedicatedCPUsSliceName),
+		// [Service]
+		// Type
+		unit.NewUnitOption(systemdSectionService, systemdType, systemdServiceTypeOneshot),
+		// RemainAfterExit
+		unit.NewUnitOption(systemdSectionService, systemdRemainAfterExit, systemdTrue),
+		// ExecStart
+		unit.NewUnitOption(systemdSectionService, systemdExecStart, getBashScriptPath(dedicatedCPUsConfigure)),
+		// [Install]
+		// WantedBy
+		unit.NewUnitOption(systemdSectionInstall, systemdWantedBy, systemdTargetMultiUser),
+	}
+}
+
+func getIRQBalanceBannedCPUsOptions(dedicatedCPUs string) []*unit.UnitOption {
+	opts := []*unit.UnitOption{
 		// [Unit]
 		// Description
 		unit.NewUnitOption(systemdSectionUnit, systemdDescription, "Clear the IRQBalance Banned CPU mask early in the boot"),
@@ -521,6 +584,17 @@ func getIRQBalanceBannedCPUsOptions() []*unit.UnitOption {
 		// WantedBy
 		unit.NewUnitOption(systemdSectionInstall, systemdWantedBy, systemdTargetMultiUser),
 	}
+	if dedicatedCPUs != "" {
+		dedicatedMask, err := components.CPUListToHexMask(dedicatedCPUs)
+		if err != nil {
+			klog.Errorf("failed to convert dedicated CPUs %q to hex mask: %v", dedicatedCPUs, err)
+			return opts
+		}
+		opts = append(opts,
+			unit.NewUnitOption(systemdSectionService, systemdEnvironment, getSystemdEnvironment("DEDICATED_CPUS", dedicatedMask)),
+		)
+	}
+	return opts
 }
 
 func getHugepagesAllocationUnitOptions(hugepagesSize string, hugepagesCount int32, numaNode int32) []*unit.UnitOption {

@@ -1031,6 +1031,62 @@ var _ = Describe("Controller", func() {
 			})
 		})
 
+		Context("with dedicated CPUs prerequisite validation", func() {
+			BeforeEach(skipForHypershift)
+
+			It("should degrade when dedicated CPUs set without workload partitioning or strict-cpu-reservation", func() {
+				dedicated := performancev2.CPUSet("10-11")
+				profile.Spec.CPU.Dedicated = &dedicated
+				profile.SetFinalizers([]string{openshiftFinalizer})
+
+				r := newFakeReconciler(profile, profileMCP, infra, clusterOperator)
+				result, err := r.Reconcile(context.TODO(), request)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("dedicated CPUs require either Workload Partitioning"))
+				Expect(result).To(Equal(reconcile.Result{}))
+
+				updatedProfile := &performancev2.PerformanceProfile{}
+				key := types.NamespacedName{
+					Name:      profile.Name,
+					Namespace: metav1.NamespaceNone,
+				}
+				Expect(r.Get(context.TODO(), key, updatedProfile)).ToNot(HaveOccurred())
+				degradedCondition := conditionsv1.FindStatusCondition(updatedProfile.Status.Conditions, conditionsv1.ConditionDegraded)
+				Expect(degradedCondition).ToNot(BeNil())
+				Expect(degradedCondition.Status).To(Equal(corev1.ConditionTrue))
+				Expect(degradedCondition.Reason).To(Equal(status.ConditionDedicatedCPUsPrerequisiteNotMet))
+			})
+
+			It("should not degrade when dedicated CPUs set with workload partitioning enabled", func() {
+				dedicated := performancev2.CPUSet("10-11")
+				profile.Spec.CPU.Dedicated = &dedicated
+				profile.SetFinalizers([]string{openshiftFinalizer})
+				infra = testutils.NewInfraResource(true)
+
+				r := newFakeReconciler(profile, profileMCP, infra, clusterOperator)
+				Expect(reconcileWithBootcmdlineSync(r, request, profileMCP, false)).To(Equal(reconcile.Result{}))
+			})
+
+			It("should not degrade when dedicated CPUs set with strict-cpu-reservation annotation", func() {
+				dedicated := performancev2.CPUSet("10-11")
+				profile.Spec.CPU.Dedicated = &dedicated
+				profile.Annotations = map[string]string{
+					"kubeletconfig.experimental": `{"cpuManagerPolicyOptions": {"strict-cpu-reservation": "true"}}`,
+				}
+				profile.SetFinalizers([]string{openshiftFinalizer})
+
+				r := newFakeReconciler(profile, profileMCP, infra, clusterOperator)
+				Expect(reconcileWithBootcmdlineSync(r, request, profileMCP, false)).To(Equal(reconcile.Result{}))
+			})
+
+			It("should not degrade when dedicated CPUs are not set", func() {
+				profile.SetFinalizers([]string{openshiftFinalizer})
+
+				r := newFakeReconciler(profile, profileMCP, infra, clusterOperator)
+				Expect(reconcileWithBootcmdlineSync(r, request, profileMCP, false)).To(Equal(reconcile.Result{}))
+			})
+		})
+
 		It("should map machine config pool to the performance profile", func() {
 			skipForHypershift()
 			mcp := &mcov1.MachineConfigPool{

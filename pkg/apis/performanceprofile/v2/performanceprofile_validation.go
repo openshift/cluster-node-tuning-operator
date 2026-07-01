@@ -187,14 +187,17 @@ func (r *PerformanceProfile) validateCPUs() field.ErrorList {
 		}
 
 		if cpus.Isolated != nil && cpus.Reserved != nil {
-			var offlined, shared string
+			var offlined, shared, dedicated string
 			if cpus.Offlined != nil {
 				offlined = string(*cpus.Offlined)
 			}
 			if cpus.Shared != nil {
 				shared = string(*cpus.Shared)
 			}
-			cpuLists, err := components.NewCPULists(string(*cpus.Reserved), string(*cpus.Isolated), offlined, shared)
+			if cpus.Dedicated != nil {
+				dedicated = string(*cpus.Dedicated)
+			}
+			cpuLists, err := components.NewCPULists(string(*cpus.Reserved), string(*cpus.Isolated), offlined, shared, dedicated)
 			if err != nil {
 				allErrs = append(allErrs, field.InternalError(field.NewPath("spec.cpu"), err))
 				// If err != nil then the cpuList is nil and we can't continue with the function logic
