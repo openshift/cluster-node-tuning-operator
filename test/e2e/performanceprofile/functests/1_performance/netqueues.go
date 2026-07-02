@@ -36,6 +36,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 	var profile, initialProfile *performancev2.PerformanceProfile
 	var tunedConfPath, performanceProfileName string
 	var reservedCPUCount int
+	var baselineMultiQueueNICs map[string]map[nodes.NodeInterface]int
 
 	BeforeAll(func() {
 		if discovery.Enabled() && testutils.ProfileNotFound {
@@ -79,6 +80,12 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 
 		tunedConfPath = filepath.Join(tunedprofilesDirectory, tunedPaoProfile, "tuned.conf")
 
+		By("Discovering multi-queue capable NICs before any profile changes")
+		baselineMultiQueueNICs = discoverMultiQueueNICs(context.TODO(), workerRTNodes)
+		if len(baselineMultiQueueNICs) == 0 {
+			Skip("No multi-queue capable NICs found on worker nodes")
+		}
+
 		By("Ensuring a baseline of UserLevelNetworking=true, no device filter")
 		desiredNet := &performancev2.Net{UserLevelNetworking: ptr.To(true)}
 		if !equality.Semantic.DeepEqual(profile.Spec.Net, desiredNet) {
@@ -100,30 +107,26 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 
 	Context("Updating performance profile for netqueues", func() {
 		It("[test_id:40308][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Network device queues Should be set to the profile's reserved CPUs count", func() {
-			nodesDevices := make(map[string]map[string]int)
 			By("To all non virtual network devices when no devices are specified under profile.Spec.Net.Devices")
-			err := checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, reservedCPUCount)
+			err := waitForNICsToMatchReservedCPU(context.TODO(), workerRTNodes, baselineMultiQueueNICs, reservedCPUCount)
 			if err != nil {
 				Skip("Skipping Test: Unable to set Network queue size to reserved cpu count")
 			}
 		})
 
 		It("[test_id:40543] Add interfaceName and verify the interface netqueues are equal to reserved cpus count.", func() {
-			nodesDevices := make(map[string]map[string]int)
-			deviceSupport, err := checkDeviceSupport(context.TODO(), workerRTNodes, nodesDevices)
-			Expect(err).ToNot(HaveOccurred())
-			if !deviceSupport {
-				Skip("Skipping Test: There are no supported Network Devices")
-			}
-			nodeName, device := getRandomNodeDevice(nodesDevices)
+			nodeName, device := getRandomNodeDevice(baselineMultiQueueNICs)
+
+			var err error
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
+
 			By("Enable UserLevelNetworking and add Devices in Profile")
 			profile.Spec.Net = &performancev2.Net{
 				UserLevelNetworking: ptr.To(true),
 				Devices: []performancev2.Device{
 					{
-						InterfaceName: &device,
+						InterfaceName: &device.Name,
 					},
 				},
 			}
@@ -143,28 +146,23 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 				if err != nil {
 					return false
 				}
-				return strings.Contains(string(out), device)
+				return strings.Contains(string(out), device.Name)
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "could not get a tuned profile set with devices_udev_regex")
 
-			nodesDevices = make(map[string]map[string]int)
-			err = checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, reservedCPUCount)
+			err = waitForNICsToMatchReservedCPU(context.TODO(), workerRTNodes, baselineMultiQueueNICs, reservedCPUCount)
 			if err != nil {
 				Skip("Skipping Test: Unable to set Network queue size to reserved cpu count")
 			}
 		})
 
 		It("[test_id:40545] Verify reserved cpus count is applied to specific supported networking devices using wildcard matches", func() {
-			nodesDevices := make(map[string]map[string]int)
-			var device, devicePattern string
-			deviceSupport, err := checkDeviceSupport(context.TODO(), workerRTNodes, nodesDevices)
-			Expect(err).ToNot(HaveOccurred())
-			if !deviceSupport {
-				Skip("Skipping Test: There are no supported Network Devices")
-			}
-			nodeName, device := getRandomNodeDevice(nodesDevices)
-			devicePattern = device[:len(device)-1] + "*"
+			nodeName, device := getRandomNodeDevice(baselineMultiQueueNICs)
+			devicePattern := device.Name[:len(device.Name)-1] + "*"
+
+			var err error
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
+
 			By("Enable UserLevelNetworking and add Devices in Profile")
 			profile.Spec.Net = &performancev2.Net{
 				UserLevelNetworking: ptr.To(true),
@@ -189,37 +187,35 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 				if err != nil {
 					return false
 				}
-				return strings.Contains(string(out), device)
+				return strings.Contains(string(out), device.Name)
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "could not get a tuned profile set with devices_udev_regex")
 
-			nodesDevices = make(map[string]map[string]int)
-			err = checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, reservedCPUCount)
+			err = waitForNICsToMatchReservedCPU(context.TODO(), workerRTNodes, baselineMultiQueueNICs, reservedCPUCount)
 			if err != nil {
 				Skip("Skipping Test: Unable to set Network queue size to reserved cpu count")
 			}
 		})
 
 		It("[test_id:72051] Verify reserved cpus count is applied to all but specific supported networking device using a negative match", func() {
-			nodesDevices := make(map[string]map[string]int)
-			var device, devicePattern string
-			deviceSupport, err := checkDeviceSupport(context.TODO(), workerRTNodes, nodesDevices)
-			Expect(err).ToNot(HaveOccurred())
-			if !deviceSupport {
-				Skip("Skipping Test: There are no supported Network Devices")
-			}
-
 			// Remove nodes with only one NIC as that cannot be used to check this behavior
 			// this is done by removing the NIC entries to avoid deleting from the map while iterating
-			for node, nics := range nodesDevices {
-				if len(nics) < 2 {
-					nodesDevices[node] = nil
+			nodesWithMultipleNICs := make(map[string]map[nodes.NodeInterface]int)
+			for node, nics := range baselineMultiQueueNICs {
+				if len(nics) >= 2 {
+					nodesWithMultipleNICs[node] = nics
 				}
 			}
+			if len(nodesWithMultipleNICs) == 0 {
+				Skip("No nodes with multiple NICs available to test negative device match")
+			}
 
-			nodeName, device := getRandomNodeDevice(nodesDevices)
-			devicePattern = "!" + device
+			nodeName, device := getRandomNodeDevice(baselineMultiQueueNICs)
+			devicePattern := "!" + device.Name
+
+			var err error
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
+
 			By("Enable UserLevelNetworking and add Devices in Profile")
 			profile.Spec.Net = &performancev2.Net{
 				UserLevelNetworking: ptr.To(true),
@@ -244,34 +240,23 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 				if err != nil {
 					return false
 				}
-				return strings.Contains(string(out), device)
+				return strings.Contains(string(out), device.Name)
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "could not get a tuned profile set with devices_udev_regex")
 
-			nodesDevices = make(map[string]map[string]int)
-			err = checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, reservedCPUCount)
+			err = waitForNICsToMatchReservedCPU(context.TODO(), workerRTNodes, baselineMultiQueueNICs, reservedCPUCount)
 			if err != nil {
 				Skip("Skipping Test: Unable to set Network queue size to reserved cpu count")
 			}
-
-			// After at least one NIC was configured, make sure that the selected NIC was NOT it
-
-			Expect(nodesDevices).To(HaveKey(node.Name))
-			Expect(nodesDevices[node.Name]).To(HaveKey(device))
-			Expect(nodesDevices[node.Name][device]).ToNot(Equal(reservedCPUCount))
 		})
 
 		It("[test_id:40668] Verify reserved cpu count is added to networking devices matched with vendor and Device id", func() {
-			nodesDevices := make(map[string]map[string]int)
-			deviceSupport, err := checkDeviceSupport(context.TODO(), workerRTNodes, nodesDevices)
-			Expect(err).ToNot(HaveOccurred())
-			if !deviceSupport {
-				Skip("Skipping Test: There are no supported Network Devices")
-			}
-			nodeName, device := getRandomNodeDevice(nodesDevices)
+			nodeName, device := getRandomNodeDevice(baselineMultiQueueNICs)
 			node, err := nodes.GetByName(nodeName)
 			Expect(err).ToNot(HaveOccurred())
-			vid := getVendorID(context.TODO(), *node, device)
-			did := getDeviceID(context.TODO(), *node, device)
+
+			vid := getVendorID(context.TODO(), *node, device.Name)
+			did := getDeviceID(context.TODO(), *node, device.Name)
+
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -280,7 +265,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 				UserLevelNetworking: ptr.To(true),
 				Devices: []performancev2.Device{
 					{
-						InterfaceName: &device,
+						InterfaceName: &device.Name,
 					},
 					{
 						VendorID: &vid,
@@ -302,11 +287,10 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 				if err != nil {
 					return false
 				}
-				return strings.Contains(string(out), device)
+				return strings.Contains(string(out), device.Name)
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "could not get a tuned profile set with devices_udev_regex")
 
-			nodesDevices = make(map[string]map[string]int)
-			err = checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, reservedCPUCount)
+			err = waitForNICsToMatchReservedCPU(context.TODO(), workerRTNodes, baselineMultiQueueNICs, reservedCPUCount)
 			if err != nil {
 				Skip("Skipping Test: Unable to set Network queue size to reserved cpu count")
 			}
@@ -314,71 +298,94 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 	})
 })
 
-// Check a device that supports multiple queues and set with with reserved CPU size exists
-func checkDeviceSetWithReservedCPU(ctx context.Context, workerRTNodes []corev1.Node, nodesDevices map[string]map[string]int, reservedCPUCount int) error {
-	return wait.PollUntilContextTimeout(ctx, 5*time.Second, 90*time.Second, true, func(ctx context.Context) (bool, error) {
-		deviceSupport, err := checkDeviceSupport(ctx, workerRTNodes, nodesDevices)
-		Expect(err).ToNot(HaveOccurred())
-		if !deviceSupport {
-			return false, nil
-		}
-		for _, devices := range nodesDevices {
-			for _, size := range devices {
-				if size == reservedCPUCount {
-					return true, nil
+// waitForNICsToMatchReservedCPU polls the pre-discovered multi-queue NICs until all
+// have their combined channel count equal to reservedCPUCount, indicating TuneD has
+// applied the net queue configuration. Returns an error on timeout.
+func waitForNICsToMatchReservedCPU(ctx context.Context, workerRTNodes []corev1.Node, baselineMultiQueueNICs map[string]map[nodes.NodeInterface]int, reservedCPUCount int) error {
+	nodesByName := make(map[string]corev1.Node, len(workerRTNodes))
+	for _, workerNode := range workerRTNodes {
+		nodesByName[workerNode.Name] = workerNode
+	}
+	err := wait.PollUntilContextTimeout(ctx, 5*time.Second, 3*time.Minute, true,
+		func(ctx context.Context) (bool, error) {
+			for nodeName, nodeSupportedNics := range baselineMultiQueueNICs {
+				node := nodesByName[nodeName]
+				for supportedNic := range nodeSupportedNics {
+					channels, err := getCombinedChannels(ctx, node, supportedNic)
+					if err != nil || channels == 0 {
+						testlog.Warningf("NIC %s on %s: unexpected error or unavailable: %v", supportedNic.Name, nodeName, err)
+						return false, nil
+					}
+					if channels != reservedCPUCount {
+						testlog.Infof("not all NICs ready - %s combined(%d) != reserved(%d), retrying (%s)", supportedNic.Name, channels, reservedCPUCount, nodeName)
+						return false, nil
+					}
 				}
 			}
-		}
-		return false, nil
-	})
+			return true, nil
+		})
+
+	return err
 }
 
-// Check if the device support multiple queues
-func checkDeviceSupport(ctx context.Context, workernodes []corev1.Node, nodesDevices map[string]map[string]int) (bool, error) {
-	cmdGetPhysicalDevices := []string{"find", "/sys/class/net", "-type", "l", "-not", "-lname", "*virtual*", "-printf", "%f "}
-	var channelCurrentCombined int
-	var noSupportedDevices = true
-	var err error
+// getCombinedChannels returns the current combined channel count for a NIC, or 0 if unsupported.
+func getCombinedChannels(ctx context.Context, node corev1.Node, iface nodes.NodeInterface) (int, error) {
+	if !iface.Physical {
+		return 0, nil
+	}
+	cmdCombinedChannelsCurrent := []string{"bash", "-c",
+		fmt.Sprintf("ethtool -l %s | sed -n '/Current hardware settings:/,/Combined:/{s/^Combined:\\s*//p}'", iface.Name)}
+	out, err := nodes.ExecCommand(ctx, &node, cmdCombinedChannelsCurrent)
+	if err != nil {
+		testlog.Warningf("failed to get combined: exec error: %v", err)
+		return 0, fmt.Errorf("ethtool exec failed: %w", err)
+	}
+	// sed extracts the Combined value: either "n/a" (unsupported) or a numeric string
+	if strings.Contains(string(out), "n/a") {
+		return 0, nil
+	}
+	combinedChannels, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		testlog.Warningf("failed to get combined: failed to parse combined channels: %v", err)
+		return 0, fmt.Errorf("failed to parse combined channels: %w", err)
+	}
+	if combinedChannels <= 1 {
+		testlog.Infof("combined not supported: (combined<=1)")
+		return 0, nil
+	}
+	return combinedChannels, nil
+}
+
+// discoverMultiQueueNICs returns a snapshot of all NICs with combined channels > 1
+// across the given nodes. Result is keyed by node name → NodeInterface → combined channel count.
+// Returns an empty map if no qualifying NICs are found; errors are logged and the NIC is skipped.
+func discoverMultiQueueNICs(ctx context.Context, workernodes []corev1.Node) map[string]map[nodes.NodeInterface]int {
+	multiQueueNICs := make(map[string]map[nodes.NodeInterface]int)
 	for _, node := range workernodes {
-		if nodesDevices[node.Name] == nil {
-			nodesDevices[node.Name] = make(map[string]int)
+		interfaces, err := nodes.GetNodeInterfaces(ctx, node)
+		if err != nil {
+			testlog.Warningf("Failed to get interfaces on %s: %v", node.Name, err)
+			continue
 		}
-		tunedPod := nodes.TunedForNode(&node, RunningOnSingleNode)
-		phyDevs, err := pods.WaitForPodOutput(ctx, testclient.K8sClient, tunedPod, cmdGetPhysicalDevices)
-		Expect(err).ToNot(HaveOccurred())
-		for _, d := range strings.Split(string(phyDevs), " ") {
-			if d == "" {
+		testlog.Infof("Discovering multi-queue NICs on %s", node.Name)
+		nodeNICs := make(map[nodes.NodeInterface]int)
+		for _, iface := range interfaces {
+			channels, err := getCombinedChannels(ctx, node, iface)
+			if err != nil {
+				testlog.Warningf("%s: Couldn't get combined, skipping: %v", iface.Name, err)
 				continue
 			}
-			_, err := pods.WaitForPodOutput(ctx, testclient.K8sClient, tunedPod, []string{"ethtool", "-l", d})
-			if err == nil {
-				cmdCombinedChannelsCurrent := []string{"bash", "-c",
-					fmt.Sprintf("ethtool -l %s | sed -n '/Current hardware settings:/,/Combined:/{s/^Combined:\\s*//p}'", d)}
-				out, err := pods.WaitForPodOutput(ctx, testclient.K8sClient, tunedPod, cmdCombinedChannelsCurrent)
-				Expect(err).ToNot(HaveOccurred())
-				if strings.Contains(string(out), "n/a") {
-					fmt.Printf("Device %s doesn't support multiple queues\n", d)
-				} else {
-					channelCurrentCombined, err = strconv.Atoi(strings.TrimSpace(string(out)))
-					if err != nil {
-						testlog.Warningf(fmt.Sprintf("unable to retrieve current multi-purpose channels hardware settings for device %s on %s",
-							d, node.Name))
-					}
-					if channelCurrentCombined == 1 {
-						fmt.Printf("Device %s doesn't support multiple queues\n", d)
-					} else {
-						fmt.Printf("Device %s supports multiple queues\n", d)
-						nodesDevices[node.Name][d] = channelCurrentCombined
-						noSupportedDevices = false
-					}
-				}
+			if channels == 0 {
+				continue
 			}
+			testlog.Infof("Discovered %s: multi-queue (combined=%d)", iface.Name, channels)
+			nodeNICs[iface] = channels
+		}
+		if len(nodeNICs) > 0 {
+			multiQueueNICs[node.Name] = nodeNICs
 		}
 	}
-	if noSupportedDevices {
-		return false, err
-	}
-	return true, err
+	return multiQueueNICs
 }
 
 func getVendorID(ctx context.Context, node corev1.Node, device string) string {
@@ -399,17 +406,12 @@ func getDeviceID(ctx context.Context, node corev1.Node, device string) string {
 	return stdout
 }
 
-func getRandomNodeDevice(nodesDevices map[string]map[string]int) (string, string) {
-	node := ""
-	device := ""
-	for n := range nodesDevices {
-		node = n
-		for d := range nodesDevices[node] {
-			if d != "" {
-				device = d
-				return node, device
-			}
+func getRandomNodeDevice(multiQueueNICs map[string]map[nodes.NodeInterface]int) (string, nodes.NodeInterface) {
+	Expect(multiQueueNICs).ToNot(BeEmpty(), "getRandomNodeDevice: multiQueueNICs map is empty")
+	for node, nics := range multiQueueNICs {
+		for iface := range nics {
+			return node, iface
 		}
 	}
-	return node, device
+	return "", nodes.NodeInterface{}
 }
