@@ -31,6 +31,10 @@ import (
 
 const tunedprofilesDirectory string = "/var/lib/ocp-tuned/profiles"
 
+// When TuneD applies ethtool -L on the br-ex uplink NIC, the node loses
+// connectivity for ~30s. Any exec into the node during that window will
+// time out, so node-reaching calls must either be inside a poll/Eventually
+// loop or placed before the profile update that triggers the blackout.
 var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(string(label.Tier1)), func() {
 	var workerRTNodes []corev1.Node
 	var profile, initialProfile *performancev2.PerformanceProfile
@@ -65,7 +69,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 		reservedCPUCount = reservedCPUs.Size()
 
 		tunedPaoProfile := fmt.Sprintf("openshift-node-performance-%s", performanceProfileName)
-		//Verify the tuned profile is created on the worker-cnf nodes:
+		By("Verify the tuned profile is created on the worker-cnf nodes")
 		// direct the error to /dev/null on purpose because tuneD always shows the following error:
 		// "Cannot talk to TuneD daemon via DBus. Is TuneD daemon running?"
 		// Which causes the test to fail, but it's a false-positive
@@ -99,6 +103,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 		currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 		if !equality.Semantic.DeepEqual(currentProfile.Spec, initialProfile.Spec) {
+			testlog.Infof("current profile.Spec differs from initial, reverting: current=%+v", currentProfile.Spec)
 			By("Reverting to initial Profile")
 			currentProfile.Spec = initialProfile.Spec
 			profiles.UpdateWithRetry(currentProfile)
@@ -107,13 +112,14 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 
 	Context("Updating performance profile for netqueues", func() {
 		It("[test_id:40308][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Network device queues Should be set to the profile's reserved CPUs count", func() {
-			By("To all non virtual network devices when no devices are specified under profile.Spec.Net.Devices")
+			By("Verifying all non-virtual NICs converged to reserved CPU count")
 			err := waitForNICsToMatchReservedCPU(context.TODO(), workerRTNodes, baselineMultiQueueNICs, reservedCPUCount)
 			Expect(err).ToNot(HaveOccurred(), "no NIC matched reserved CPU count %d within timeout", reservedCPUCount)
 		})
 
 		It("[test_id:40543] Add interfaceName and verify the interface netqueues are equal to reserved cpus count.", func() {
 			nodeName, device := getRandomNodeDevice(baselineMultiQueueNICs)
+			testlog.Infof("Selected NIC %s on node %s (combined=%d)", device.Name, nodeName, baselineMultiQueueNICs[nodeName][device])
 
 			var err error
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
@@ -135,12 +141,10 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 			By("Updating the performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			//Verify the tuned profile is created on the worker-cnf nodes:
+			By("Verify the tuned profile is created on the worker-cnf nodes")
 			tunedCmd := []string{"bash", "-c",
 				fmt.Sprintf("grep devices_udev_regex %s", tunedConfPath)}
-
 			tunedPod := nodes.TunedForNode(node, RunningOnSingleNode)
-
 			Eventually(func() bool {
 				out, err := pods.WaitForPodOutput(context.TODO(), testclient.K8sClient, tunedPod, tunedCmd)
 				if err != nil {
@@ -149,15 +153,16 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 				return strings.Contains(string(out), device.Name)
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "could not get a tuned profile set with devices_udev_regex")
 
+			By("Verifying the configured NIC's combined channels converged to reserved CPU count")
 			err = waitForNICsToMatchReservedCPU(context.TODO(), workerRTNodes, targetNICs, reservedCPUCount)
 			Expect(err).ToNot(HaveOccurred(), "NIC %s on %s: combined channels did not converge to %d", device.Name, nodeName, reservedCPUCount)
 		})
 
 		It("[test_id:40545] Verify reserved cpus count is applied to specific supported networking devices using wildcard matches", func() {
 			nodeName, device := getRandomNodeDevice(baselineMultiQueueNICs)
-
 			devicePattern := device.Name[:len(device.Name)-1] + "*"
 			expectedUdevRegex := device.Name[:len(device.Name)-1] + ".*"
+			testlog.Infof("Selected NIC %s on node %s, wildcard pattern %q, expected udev regex %q", device.Name, nodeName, devicePattern, expectedUdevRegex)
 
 			var err error
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
@@ -187,14 +192,13 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 				{InterfaceName: &devicePattern},
 			}
 
+			By("Updating the performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			//Verify the tuned profile is created on the worker-cnf nodes:
+			By("Verify the tuned profile is created on the worker-cnf nodes")
 			tunedCmd := []string{"bash", "-c",
 				fmt.Sprintf("grep devices_udev_regex %s", tunedConfPath)}
-
 			tunedPod := nodes.TunedForNode(node, RunningOnSingleNode)
-
 			Eventually(func() bool {
 				out, err := pods.WaitForPodOutput(context.TODO(), testclient.K8sClient, tunedPod, tunedCmd)
 				if err != nil {
@@ -203,6 +207,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 				return strings.Contains(string(out), expectedUdevRegex)
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "tuned config does not contain %q", expectedUdevRegex)
 
+			By("Verifying all NICs matching the wildcard converged to reserved CPU count")
 			err = waitForNICsToMatchReservedCPU(context.TODO(), workerRTNodes, matchedNICs, reservedCPUCount)
 			Expect(err).ToNot(HaveOccurred(), "NICs matching %q did not converge to reserved CPU count %d", devicePattern, reservedCPUCount)
 		})
@@ -222,6 +227,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 
 			nodeName, device := getRandomNodeDevice(nodesWithMultipleNICs)
 			devicePattern := "!" + device.Name
+			testlog.Infof("Selected NIC %s on node %s, negated pattern %q", device.Name, nodeName, devicePattern)
 
 			var err error
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
@@ -249,18 +255,18 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 			preUpdateCombined, err := getCombinedChannels(context.TODO(), *node, device)
 			Expect(err).ToNot(HaveOccurred())
 
-			By("Enable UserLevelNetworking and add Devices in Profile")
+			By("Adding negated device filter to profile")
 			profile.Spec.Net.Devices = []performancev2.Device{
 				{InterfaceName: &devicePattern},
 			}
+
+			By("Updating the performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			//Verify the tuned profile is created on the worker-cnf nodes:
+			By("Verify the tuned profile is created on the worker-cnf nodes")
 			tunedCmd := []string{"bash", "-c",
 				fmt.Sprintf("grep devices_udev_regex %s", tunedConfPath)}
-
 			tunedPod := nodes.TunedForNode(node, RunningOnSingleNode)
-
 			Eventually(func() bool {
 				out, err := pods.WaitForPodOutput(context.TODO(), testclient.K8sClient, tunedPod, tunedCmd)
 				if err != nil {
@@ -269,6 +275,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 				return strings.Contains(string(out), devicePattern)
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "tuned config does not contain %q", devicePattern)
 
+			By("Verifying all NICs except the negated one converged to reserved CPU count")
 			err = waitForNICsToMatchReservedCPU(context.TODO(), workerRTNodes, expectedNICs, reservedCPUCount)
 			Expect(err).ToNot(HaveOccurred(), "NICs (excluding %s) did not converge to reserved CPU count %d", device.Name, reservedCPUCount)
 
@@ -283,17 +290,17 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 
 		It("[test_id:40668] Verify reserved cpu count is added to networking devices matched with vendor and Device id", func() {
 			nodeName, device := getRandomNodeDevice(baselineMultiQueueNICs)
+
+			var err error
+			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+
 			node, err := nodes.GetByName(nodeName)
 			Expect(err).ToNot(HaveOccurred())
 
 			vid := getVendorID(context.TODO(), *node, device.Name)
 			did := getDeviceID(context.TODO(), *node, device.Name)
-
-			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-			Expect(err).ToNot(HaveOccurred())
-
-			node, err = nodes.GetByName(nodeName)
-			Expect(err).ToNot(HaveOccurred())
+			testlog.Infof("Selected NIC %s on node %s, vendorID=%s, deviceID=%s", device.Name, nodeName, vid, did)
 
 			By("Building vendor+device ID matched NIC map before profile update (exec calls need node reachable)")
 			matchedNICs := make(map[string]map[nodes.NodeInterface]int)
@@ -321,12 +328,13 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 					DeviceID: &did,
 				},
 			}
+
+			By("Updating the performance profile")
 			profiles.UpdateWithRetry(profile)
 
-			//Verify the tuned profile is created on the worker-cnf nodes:
+			By("Verify the tuned profile is created on the worker-cnf nodes")
 			tunedCmd := []string{"bash", "-c",
 				fmt.Sprintf("grep devices_udev_regex %s", tunedConfPath)}
-
 			tunedPod := nodes.TunedForNode(node, RunningOnSingleNode)
 			Eventually(func() bool {
 				out, err := pods.WaitForPodOutput(context.TODO(), testclient.K8sClient, tunedPod, tunedCmd)
@@ -336,6 +344,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 				return strings.Contains(string(out), device.Name) && strings.Contains(string(out), vid) && strings.Contains(string(out), did)
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "could not get a tuned profile set with devices_udev_regex")
 
+			By("Verifying all NICs matching vendor+device ID converged to reserved CPU count")
 			err = waitForNICsToMatchReservedCPU(context.TODO(), workerRTNodes, matchedNICs, reservedCPUCount)
 			Expect(err).ToNot(HaveOccurred(), "NICs matching vendorID=%s deviceID=%s did not converge to reserved CPU count %d", vid, did, reservedCPUCount)
 		})
@@ -450,6 +459,9 @@ func getDeviceID(ctx context.Context, node corev1.Node, device string) string {
 	return stdout
 }
 
+// getRandomNodeDevice returns an arbitrary (node name, NIC) pair from a multi-queue
+// NIC map. Go randomizes map iteration order, so returning on the first entry is
+// an easy way to pick a random one without importing math/rand.
 func getRandomNodeDevice(multiQueueNICs map[string]map[nodes.NodeInterface]int) (string, nodes.NodeInterface) {
 	Expect(multiQueueNICs).ToNot(BeEmpty(), "getRandomNodeDevice: multiQueueNICs map is empty")
 	for node, nics := range multiQueueNICs {
