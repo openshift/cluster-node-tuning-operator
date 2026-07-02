@@ -9,6 +9,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/cpuset"
 	"k8s.io/utils/ptr"
@@ -34,8 +35,13 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 	var workerRTNodes []corev1.Node
 	var profile, initialProfile *performancev2.PerformanceProfile
 	var tunedConfPath, performanceProfileName string
+	var reservedCPUCount int
 
-	testutils.CustomBeforeAll(func() {
+	BeforeAll(func() {
+		if discovery.Enabled() && testutils.ProfileNotFound {
+			Skip("Discovery mode enabled, performance profile not found")
+		}
+
 		isSNO, err := cluster.IsSingleNode()
 		Expect(err).ToNot(HaveOccurred())
 		RunningOnSingleNode = isSNO
@@ -53,6 +59,10 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 
 		performanceProfileName = profile.Name
 
+		reservedCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
+		Expect(err).ToNot(HaveOccurred())
+		reservedCPUCount = reservedCPUs.Size()
+
 		tunedPaoProfile := fmt.Sprintf("openshift-node-performance-%s", performanceProfileName)
 		//Verify the tuned profile is created on the worker-cnf nodes:
 		// direct the error to /dev/null on purpose because tuneD always shows the following error:
@@ -68,47 +78,31 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 		}
 
 		tunedConfPath = filepath.Join(tunedprofilesDirectory, tunedPaoProfile, "tuned.conf")
-	})
 
-	BeforeEach(func() {
-		if discovery.Enabled() && testutils.ProfileNotFound {
-			Skip("Discovery mode enabled, performance profile not found")
-		}
-		profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-		Expect(err).ToNot(HaveOccurred())
-		if profile.Spec.Net == nil {
-			By("Enable UserLevelNetworking in Profile")
-			profile.Spec.Net = &performancev2.Net{
-				UserLevelNetworking: ptr.To(true),
-			}
-			By("Updating the performance profile")
+		By("Ensuring a baseline of UserLevelNetworking=true, no device filter")
+		desiredNet := &performancev2.Net{UserLevelNetworking: ptr.To(true)}
+		if !equality.Semantic.DeepEqual(profile.Spec.Net, desiredNet) {
+			testlog.Infof("profile.Spec.Net differs from baseline, updating: current=%+v", profile.Spec.Net)
+			profile.Spec.Net = desiredNet
 			profiles.UpdateWithRetry(profile)
 		}
 	})
 
-	AfterEach(func() {
-		By("Reverting the Profile")
-		profile.Spec = initialProfile.Spec
-		profiles.UpdateWithRetry(profile)
+	AfterAll(func() {
+		currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+		Expect(err).ToNot(HaveOccurred())
+		if !equality.Semantic.DeepEqual(currentProfile.Spec, initialProfile.Spec) {
+			By("Reverting to initial Profile")
+			currentProfile.Spec = initialProfile.Spec
+			profiles.UpdateWithRetry(currentProfile)
+		}
 	})
 
 	Context("Updating performance profile for netqueues", func() {
 		It("[test_id:40308][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Network device queues Should be set to the profile's reserved CPUs count", func() {
 			nodesDevices := make(map[string]map[string]int)
-			if profile.Spec.Net != nil {
-				if profile.Spec.Net.UserLevelNetworking != nil && *profile.Spec.Net.UserLevelNetworking && len(profile.Spec.Net.Devices) == 0 {
-					By("To all non virtual network devices when no devices are specified under profile.Spec.Net.Devices")
-					err := checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, *profile)
-					if err != nil {
-						Skip("Skipping Test: Unable to set Network queue size to reserved cpu count")
-					}
-				}
-			}
-		})
-
-		It("[test_id:40542] Verify the number of network queues of all supported network interfaces are equal to reserved cpus count", func() {
-			nodesDevices := make(map[string]map[string]int)
-			err := checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, *profile)
+			By("To all non virtual network devices when no devices are specified under profile.Spec.Net.Devices")
+			err := checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, reservedCPUCount)
 			if err != nil {
 				Skip("Skipping Test: Unable to set Network queue size to reserved cpu count")
 			}
@@ -124,19 +118,18 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 			nodeName, device := getRandomNodeDevice(nodesDevices)
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
-			if profile.Spec.Net.UserLevelNetworking != nil && *profile.Spec.Net.UserLevelNetworking && len(profile.Spec.Net.Devices) == 0 {
-				By("Enable UserLevelNetworking and add Devices in Profile")
-				profile.Spec.Net = &performancev2.Net{
-					UserLevelNetworking: ptr.To(true),
-					Devices: []performancev2.Device{
-						{
-							InterfaceName: &device,
-						},
+			By("Enable UserLevelNetworking and add Devices in Profile")
+			profile.Spec.Net = &performancev2.Net{
+				UserLevelNetworking: ptr.To(true),
+				Devices: []performancev2.Device{
+					{
+						InterfaceName: &device,
 					},
-				}
-				By("Updating the performance profile")
-				profiles.UpdateWithRetry(profile)
+				},
 			}
+			By("Updating the performance profile")
+			profiles.UpdateWithRetry(profile)
+
 			//Verify the tuned profile is created on the worker-cnf nodes:
 			tunedCmd := []string{"bash", "-c",
 				fmt.Sprintf("grep devices_udev_regex %s", tunedConfPath)}
@@ -154,7 +147,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "could not get a tuned profile set with devices_udev_regex")
 
 			nodesDevices = make(map[string]map[string]int)
-			err = checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, *profile)
+			err = checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, reservedCPUCount)
 			if err != nil {
 				Skip("Skipping Test: Unable to set Network queue size to reserved cpu count")
 			}
@@ -172,18 +165,17 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 			devicePattern = device[:len(device)-1] + "*"
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
-			if profile.Spec.Net.UserLevelNetworking != nil && *profile.Spec.Net.UserLevelNetworking && len(profile.Spec.Net.Devices) == 0 {
-				By("Enable UserLevelNetworking and add Devices in Profile")
-				profile.Spec.Net = &performancev2.Net{
-					UserLevelNetworking: ptr.To(true),
-					Devices: []performancev2.Device{
-						{
-							InterfaceName: &devicePattern,
-						},
+			By("Enable UserLevelNetworking and add Devices in Profile")
+			profile.Spec.Net = &performancev2.Net{
+				UserLevelNetworking: ptr.To(true),
+				Devices: []performancev2.Device{
+					{
+						InterfaceName: &devicePattern,
 					},
-				}
-				profiles.UpdateWithRetry(profile)
+				},
 			}
+			profiles.UpdateWithRetry(profile)
+
 			//Verify the tuned profile is created on the worker-cnf nodes:
 			tunedCmd := []string{"bash", "-c",
 				fmt.Sprintf("grep devices_udev_regex %s", tunedConfPath)}
@@ -201,7 +193,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "could not get a tuned profile set with devices_udev_regex")
 
 			nodesDevices = make(map[string]map[string]int)
-			err = checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, *profile)
+			err = checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, reservedCPUCount)
 			if err != nil {
 				Skip("Skipping Test: Unable to set Network queue size to reserved cpu count")
 			}
@@ -228,18 +220,17 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 			devicePattern = "!" + device
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
-			if profile.Spec.Net.UserLevelNetworking != nil && *profile.Spec.Net.UserLevelNetworking && len(profile.Spec.Net.Devices) == 0 {
-				By("Enable UserLevelNetworking and add Devices in Profile")
-				profile.Spec.Net = &performancev2.Net{
-					UserLevelNetworking: ptr.To(true),
-					Devices: []performancev2.Device{
-						{
-							InterfaceName: &devicePattern,
-						},
+			By("Enable UserLevelNetworking and add Devices in Profile")
+			profile.Spec.Net = &performancev2.Net{
+				UserLevelNetworking: ptr.To(true),
+				Devices: []performancev2.Device{
+					{
+						InterfaceName: &devicePattern,
 					},
-				}
-				profiles.UpdateWithRetry(profile)
+				},
 			}
+			profiles.UpdateWithRetry(profile)
+
 			//Verify the tuned profile is created on the worker-cnf nodes:
 			tunedCmd := []string{"bash", "-c",
 				fmt.Sprintf("grep devices_udev_regex %s", tunedConfPath)}
@@ -257,7 +248,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "could not get a tuned profile set with devices_udev_regex")
 
 			nodesDevices = make(map[string]map[string]int)
-			err = checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, *profile)
+			err = checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, reservedCPUCount)
 			if err != nil {
 				Skip("Skipping Test: Unable to set Network queue size to reserved cpu count")
 			}
@@ -266,7 +257,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 
 			Expect(nodesDevices).To(HaveKey(node.Name))
 			Expect(nodesDevices[node.Name]).To(HaveKey(device))
-			Expect(nodesDevices[node.Name][device]).ToNot(Equal(getReservedCPUSize(profile.Spec.CPU)))
+			Expect(nodesDevices[node.Name][device]).ToNot(Equal(reservedCPUCount))
 		})
 
 		It("[test_id:40668] Verify reserved cpu count is added to networking devices matched with vendor and Device id", func() {
@@ -283,22 +274,22 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 			did := getDeviceID(context.TODO(), *node, device)
 			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
-			if profile.Spec.Net.UserLevelNetworking != nil && *profile.Spec.Net.UserLevelNetworking && len(profile.Spec.Net.Devices) == 0 {
-				By("Enable UserLevelNetworking and add DeviceID, VendorID and Interface in Profile")
-				profile.Spec.Net = &performancev2.Net{
-					UserLevelNetworking: ptr.To(true),
-					Devices: []performancev2.Device{
-						{
-							InterfaceName: &device,
-						},
-						{
-							VendorID: &vid,
-							DeviceID: &did,
-						},
+
+			By("Enable UserLevelNetworking and add DeviceID, VendorID and Interface in Profile")
+			profile.Spec.Net = &performancev2.Net{
+				UserLevelNetworking: ptr.To(true),
+				Devices: []performancev2.Device{
+					{
+						InterfaceName: &device,
 					},
-				}
-				profiles.UpdateWithRetry(profile)
+					{
+						VendorID: &vid,
+						DeviceID: &did,
+					},
+				},
 			}
+			profiles.UpdateWithRetry(profile)
+
 			//Verify the tuned profile is created on the worker-cnf nodes:
 			tunedCmd := []string{"bash", "-c",
 				fmt.Sprintf("grep devices_udev_regex %s", tunedConfPath)}
@@ -315,7 +306,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 			}, cluster.ComputeTestTimeout(2*time.Minute, RunningOnSingleNode), 5*time.Second).Should(BeTrue(), "could not get a tuned profile set with devices_udev_regex")
 
 			nodesDevices = make(map[string]map[string]int)
-			err = checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, *profile)
+			err = checkDeviceSetWithReservedCPU(context.TODO(), workerRTNodes, nodesDevices, reservedCPUCount)
 			if err != nil {
 				Skip("Skipping Test: Unable to set Network queue size to reserved cpu count")
 			}
@@ -324,7 +315,7 @@ var _ = Describe("[ref_id: 40307][pao]Resizing Network Queues", Ordered, Label(s
 })
 
 // Check a device that supports multiple queues and set with with reserved CPU size exists
-func checkDeviceSetWithReservedCPU(ctx context.Context, workerRTNodes []corev1.Node, nodesDevices map[string]map[string]int, profile performancev2.PerformanceProfile) error {
+func checkDeviceSetWithReservedCPU(ctx context.Context, workerRTNodes []corev1.Node, nodesDevices map[string]map[string]int, reservedCPUCount int) error {
 	return wait.PollUntilContextTimeout(ctx, 5*time.Second, 90*time.Second, true, func(ctx context.Context) (bool, error) {
 		deviceSupport, err := checkDeviceSupport(ctx, workerRTNodes, nodesDevices)
 		Expect(err).ToNot(HaveOccurred())
@@ -333,7 +324,7 @@ func checkDeviceSetWithReservedCPU(ctx context.Context, workerRTNodes []corev1.N
 		}
 		for _, devices := range nodesDevices {
 			for _, size := range devices {
-				if size == getReservedCPUSize(profile.Spec.CPU) {
+				if size == reservedCPUCount {
 					return true, nil
 				}
 			}
@@ -388,12 +379,6 @@ func checkDeviceSupport(ctx context.Context, workernodes []corev1.Node, nodesDev
 		return false, err
 	}
 	return true, err
-}
-
-func getReservedCPUSize(CPU *performancev2.CPU) int {
-	reservedCPUs, err := cpuset.Parse(string(*CPU.Reserved))
-	Expect(err).ToNot(HaveOccurred())
-	return reservedCPUs.Size()
 }
 
 func getVendorID(ctx context.Context, node corev1.Node, device string) string {
