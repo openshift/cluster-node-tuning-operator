@@ -55,8 +55,7 @@ func main() {
 		Name:    "openshift/cluster-node-tuning-operator/disruptive",
 		Parents: []string{"openshift/disruptive-longrunning"},
 		Qualifiers: []string{
-			`(labels.exists(l, l=="ReleaseGate")) &&
-			name.contains("[Disruptive]")`,
+			`name.contains("[Disruptive]")`,
 		},
 	})
 
@@ -65,17 +64,14 @@ func main() {
 		Name:    "openshift/cluster-node-tuning-operator/optional/slow",
 		Parents: []string{"openshift/optional/slow"},
 		Qualifiers: []string{
-			`(labels.exists(l, l=="ReleaseGate")) &&
-			name.contains("[Slow]") && !name.contains("[Disruptive]")`,
+			`name.contains("[Slow]") && !name.contains("[Disruptive]")`,
 		},
 	})
 
 	// Suite: all (includes everything)
 	ext.AddSuite(e.Suite{
-		Name: "openshift/cluster-node-tuning-operator/all",
-		Qualifiers: []string{
-			`(labels.exists(l, l=="ReleaseGate"))`,
-		},
+		Name:       "openshift/cluster-node-tuning-operator/all",
+		Qualifiers: []string{},
 	})
 
 	specs, err := g.BuildExtensionTestSpecsFromOpenShiftGinkgoSuite()
@@ -97,7 +93,7 @@ func main() {
 
 	// Ignore obsolete tests
 	ext.IgnoreObsoleteTests(
-	// "[sig-node-tuning] <test name here>",
+	// "[sig-tuning-node] <test name here>",
 	)
 
 	// Initialize environment before running any tests

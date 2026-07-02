@@ -9,6 +9,7 @@ import (
 
 	extendedbindata "github.com/openshift/cluster-node-tuning-operator/test/extended/bindata"
 
+	g "github.com/onsi/ginkgo/v2"
 	o "github.com/onsi/gomega"
 )
 
@@ -77,6 +78,13 @@ func IsNTOPodInstalled(oc *CLI, namespace string) bool {
 	}
 	Logf("deployment %v found in namespace %s!", ntoDeployment, namespace)
 	return true
+}
+
+func SkipNoNTO(oc *CLI, namespace string) {
+	// test requires NTO to be installed
+	if !IsNTOPodInstalled(oc, namespace) {
+		g.Skip("NTO is not installed - skipping test ...")
+	}
 }
 
 func GetDefaultSMPAffinityBitMaskbyCPUCores(oc *CLI, workerNodeName string) string {
@@ -492,6 +500,17 @@ func IsSNOCluster(oc *CLI) bool {
 		return false
 	}
 	return len(strings.Split(strings.TrimSpace(nodeCount), "\n")) == 1
+}
+
+// IsRosaCluster determines whether the cluster is a Red Hat OpenShift Service on AWS (ROSA) cluster
+// Parameters:
+//   - oc: CLI client for interacting with the OpenShift cluster
+//
+// Returns:
+//   - bool: true if cluster is ROSA, false otherwise
+func IsRosaCluster(oc *CLI) bool {
+	product, _ := oc.WithoutNamespace().AsAdmin().Run("get").Args("clusterclaims/product.open-cluster-management.io", "-o=jsonpath={.spec.value}").Output()
+	return strings.Compare(product, "ROSA") == 0
 }
 
 func DebugNodeRetryWithOptionsAndChrootWithStdErr(oc *CLI, nodeName string, options []string, command ...string) (string, string, error) {
