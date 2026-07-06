@@ -1092,6 +1092,11 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				testpod := pods.GetTestPod()
 				testpod.Namespace = testutils.NamespaceTesting
 				testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNodes[0].Name}
+				targetNode := workerRTNodes[0]
+				if cpuRequest != nil && targetNode.Status.Allocatable.Cpu().Cmp(*cpuRequest) < 0 {
+					Skip(fmt.Sprintf("node %s does not have enough allocatable CPU for %s", targetNode.Name, testCase))
+				}
+				testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: targetNode.Name}
 				testpod.Spec.RuntimeClassName = runtimeClassName
 
 				// Configure main container
@@ -1107,9 +1112,11 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					}
 					if cpuRequest != nil {
 						testpod.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU] = *cpuRequest
+						testpod.Spec.Containers[0].Resources.Requests[corev1.ResourceMemory] = resource.MustParse("100Mi")
 					}
 					if cpuLimit != nil {
 						testpod.Spec.Containers[0].Resources.Limits[corev1.ResourceCPU] = *cpuLimit
+						testpod.Spec.Containers[0].Resources.Limits[corev1.ResourceMemory] = resource.MustParse("100Mi")
 					}
 				}
 
@@ -1135,7 +1142,8 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				// Use background context to avoid "context canceled" errors during cleanup
 				DeferCleanup(func() {
 					testlog.Infof("[%s] Cleaning up test pod: %s", testCase, testpod.Name)
-					cleanupCtx := context.Background()
+					cleanupCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+					defer cancel()
 					err := testclient.DataPlaneClient.Delete(cleanupCtx, testpod)
 					if err != nil {
 						testlog.Warningf("[%s] Failed to delete pod %s: %v", testCase, testpod.Name, err)
@@ -1197,15 +1205,15 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				false, nil,
 				"16", false,
 			),
-			Entry("Guaranteed - cpu:1 request + limit",
+			Entry("Guaranteed - cpu:2 request + limit",
 				"Guaranteed",
-				ptr.To(resource.MustParse("1")), ptr.To(resource.MustParse("1")),
+				ptr.To(resource.MustParse("2")), ptr.To(resource.MustParse("2")),
 				false, nil,
 				"", true,
 			),
-			Entry("Guaranteed with runtime class - cpu:1 request + limit",
+			Entry("Guaranteed with runtime class - cpu:2 request + limit",
 				"Guaranteed-RuntimeClass",
-				ptr.To(resource.MustParse("1")), ptr.To(resource.MustParse("1")),
+				ptr.To(resource.MustParse("2")), ptr.To(resource.MustParse("2")),
 				false, ptr.To("performance-performance"),
 				"", true,
 			),
