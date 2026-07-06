@@ -1088,7 +1088,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 		})
 
 		DescribeTable("Validate GOMAXPROCS Application to Go-based Containers",
-			func(ctx context.Context, testCase string, cpuRequest, cpuLimit *resource.Quantity, hasInitContainer bool, runtimeClassName *string, expectedGOMAXPROCS string, shouldBeAbsent bool) {
+			func(ctx context.Context, testCase string, cpuRequest, cpuLimit *resource.Quantity, hasInitContainer bool, runtimeClassName bool, expectedGOMAXPROCS string, shouldBeAbsent bool) {
 				testpod := pods.GetTestPod()
 				testpod.Namespace = testutils.NamespaceTesting
 				testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNodes[0].Name}
@@ -1097,12 +1097,19 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 					Skip(fmt.Sprintf("node %s does not have enough allocatable CPU for %s", targetNode.Name, testCase))
 				}
 				testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: targetNode.Name}
-				testpod.Spec.RuntimeClassName = runtimeClassName
 
 				// Configure main container
 				testpod.Spec.Containers[0].Name = "test-container"
 				testpod.Spec.Containers[0].Image = debugToolImage
 				testpod.Spec.Containers[0].ImagePullPolicy = corev1.PullAlways
+
+				// set Runtime class
+				if runtimeClassName {
+					profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+					Expect(err).ToNot(HaveOccurred(), "cannot get profile by node labels %v", testutils.NodeSelectorLabels)
+					runtimeClass := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+					testpod.Spec.RuntimeClassName = &runtimeClass
+				}
 
 				// Set resource requests/limits
 				if cpuRequest != nil || cpuLimit != nil {
@@ -1196,37 +1203,37 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			Entry("Burstable low - cpu:100m requests, no limits",
 				"Burstable-Low",
 				ptr.To(resource.MustParse("100m")), nil,
-				false, nil,
+				false, false,
 				"4", false,
 			),
 			Entry("Burstable high - cpu:8 requests, no limits (2x overcommit)",
 				"Burstable-High",
 				ptr.To(resource.MustParse("8")), nil,
-				false, nil,
+				false, false,
 				"16", false,
 			),
 			Entry("Guaranteed - cpu:2 request + limit",
 				"Guaranteed",
 				ptr.To(resource.MustParse("2")), ptr.To(resource.MustParse("2")),
-				false, nil,
+				false, false,
 				"", true,
 			),
 			Entry("Guaranteed with runtime class - cpu:2 request + limit",
 				"Guaranteed-RuntimeClass",
 				ptr.To(resource.MustParse("2")), ptr.To(resource.MustParse("2")),
-				false, ptr.To("performance-performance"),
+				false, true,
 				"", true,
 			),
 			Entry("Init + app container - cpu:100m on both, no limits",
 				"InitContainer",
 				ptr.To(resource.MustParse("100m")), nil,
-				true, nil,
+				true, false,
 				"4", false,
 			),
 			Entry("Burstable with limit - cpu:2 request, cpu:4 limit",
 				"Burstable-WithLimit",
 				ptr.To(resource.MustParse("2")), ptr.To(resource.MustParse("4")),
-				false, nil,
+				false, false,
 				"", true,
 			),
 		)
