@@ -122,7 +122,10 @@ const (
 	templateWorkload                 = "Workload"
 	templateCrioSharedCPUsAnnotation = "CrioSharedCPUsAnnotation"
 	templateExecCPUAffinity          = "ExecCPUAffinity"
+	templateMinInjectedGOMAXPROCS    = "MinInjectedGOMAXPROCS"
 )
+
+const crioMinGOMAXPROCS = 4
 
 // New returns new machine configuration object for performance sensitive workloads
 func New(profile *performancev2.PerformanceProfile, opts *components.MachineConfigOptions) (*machineconfigv1.MachineConfig, error) {
@@ -609,6 +612,8 @@ func renderCrioConfigSnippet(profile *performancev2.PerformanceProfile, src stri
 		templateArgs[templateSharedCpus] = string(*profile.Spec.CPU.Shared)
 		templateArgs[templateCrioSharedCPUsAnnotation] = "cpu-shared.crio.io"
 	}
+
+	templateArgs[templateMinInjectedGOMAXPROCS] = strconv.Itoa(crioMinGOMAXPROCS)
 
 	profileTemplate, err := template.ParseFS(assets.Configs, src)
 	if err != nil {
