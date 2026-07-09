@@ -127,6 +127,78 @@ var _ = Describe("Assets scripts", func() {
 			Expect(ok).To(BeTrue())
 			Expect(updatedBannedCPUs).To(Equal("0"))
 		})
+
+		DescribeTable("should clear ovs-dpdk cpus from default_smp_affinity",
+			func(smpContent, ovsDpdkCPUs, expectedSmp string) {
+				tmpdir, err := os.MkdirTemp("", "test-smp-affinity")
+				Expect(err).ToNot(HaveOccurred())
+				defer os.RemoveAll(tmpdir)
+
+				irqbalanceConf := filepath.Join(tmpdir, "irqbalance")
+				origBanned := filepath.Join(tmpdir, "orig_irq_banned_cpus")
+				smpAffinity := filepath.Join(tmpdir, "default_smp_affinity")
+
+				Expect(os.WriteFile(irqbalanceConf, []byte("IRQBALANCE_BANNED_CPUS=0\n"), 0644)).To(Succeed())
+				Expect(os.WriteFile(origBanned, []byte("0\n"), 0644)).To(Succeed())
+				Expect(os.WriteFile(smpAffinity, []byte(smpContent+"\n"), 0644)).To(Succeed())
+
+				cmdline := []string{
+					filepath.Join(scriptsPath, ClearIRQBalanceBannedCPUs),
+					irqbalanceConf,
+					origBanned,
+					smpAffinity,
+				}
+
+				cmd := exec.Command(cmdline[0], cmdline[1:]...)
+				cmd.Env = append(os.Environ(), "OVS_DPDK_CPUS="+ovsDpdkCPUs)
+				cmd.Stderr = GinkgoWriter
+
+				_, err = cmd.Output()
+				Expect(err).ToNot(HaveOccurred())
+
+				data, err := os.ReadFile(smpAffinity)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(strings.TrimSpace(string(data))).To(Equal(expectedSmp))
+			},
+			Entry("single group, ban cpus 2-3", "ffffffff", "0000000c", "fffffff3"),
+			Entry("multi-group, ban in low group", "ffffffff,ffffffff", "000000000000000c", "ffffffff,fffffff3"),
+			Entry("multi-group, ban in high group", "ffffffff,ffffffff", "0000000c00000000", "fffffff3,ffffffff"),
+			Entry("multi-group, ban across both groups", "ffffffff,ffffffff", "0000000c0000000c", "fffffff3,fffffff3"),
+			Entry("short banned mask needs padding", "ff,ffffffff", "0c", "000000ff,fffffff3"),
+			Entry("all cpus banned in group", "ffffffff", "ffffffff", "00000000"),
+			Entry("partial initial mask", "0000ffff", "000000ff", "0000ff00"),
+		)
+
+		It("should not modify default_smp_affinity when ovs-dpdk cpus is unset", func() {
+			tmpdir, err := os.MkdirTemp("", "test-smp-affinity")
+			Expect(err).ToNot(HaveOccurred())
+			defer os.RemoveAll(tmpdir)
+
+			irqbalanceConf := filepath.Join(tmpdir, "irqbalance")
+			origBanned := filepath.Join(tmpdir, "orig_irq_banned_cpus")
+			smpAffinity := filepath.Join(tmpdir, "default_smp_affinity")
+
+			Expect(os.WriteFile(irqbalanceConf, []byte("IRQBALANCE_BANNED_CPUS=0\n"), 0644)).To(Succeed())
+			Expect(os.WriteFile(origBanned, []byte("0\n"), 0644)).To(Succeed())
+			Expect(os.WriteFile(smpAffinity, []byte("ffffffff\n"), 0644)).To(Succeed())
+
+			cmdline := []string{
+				filepath.Join(scriptsPath, ClearIRQBalanceBannedCPUs),
+				irqbalanceConf,
+				origBanned,
+				smpAffinity,
+			}
+
+			cmd := exec.Command(cmdline[0], cmdline[1:]...)
+			cmd.Stderr = GinkgoWriter
+
+			_, err = cmd.Output()
+			Expect(err).ToNot(HaveOccurred())
+
+			data, err := os.ReadFile(smpAffinity)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(strings.TrimSpace(string(data))).To(Equal("ffffffff"))
+		})
 	})
 })
 

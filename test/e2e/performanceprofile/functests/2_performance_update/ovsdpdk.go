@@ -216,28 +216,64 @@ var _ = Describe("[performance] OVS-DPDK CPUs", Ordered, Label(string(label.OvsD
 				Expect(err).To(HaveOccurred(),
 					fmt.Sprintf("OVS dynamic pinning trigger file should not exist on node %s when disable-load-balancing-ovs-dpdk annotation is set", node.Name))
 
-				By(fmt.Sprintf("Verifying ovsdpdk.slice exists inside ovs.slice/ovs-vswitchd.service/ on node %s", node.Name))
-				_, err = nodes.ExecCommand(ctx, node, []string{
-					"cat", "/rootfs/sys/fs/cgroup/ovs.slice/ovs-vswitchd.service/ovsdpdk.slice",
-				})
-				Expect(err).ToNot(HaveOccurred(),
-					"ovsdpdk.slice should be present inside ovs.slice/ovs-vswitchd.service/ on the node")
-
 				By(fmt.Sprintf("Verifying ovs-dpdk-cpus-configure script exists on node %s", node.Name))
 				_, err = nodes.ExecCommand(ctx, node, []string{
-					"cat", "/rootfs/usr/local/bin/ovs-dpdk-cpus-configure.sh",
+					"test", "-f", "/rootfs/usr/local/bin/ovs-dpdk-cpus-configure.sh",
 				})
 				Expect(err).ToNot(HaveOccurred(),
 					"ovs-dpdk-cpus-configure.sh should be present on the node")
 
-				By(fmt.Sprintf("Verifying ovsdpdk.slice cpuset partition is isolated on node %s", node.Name))
+				cgroupBase := "/rootfs/sys/fs/cgroup/ovs.slice"
+
+				By(fmt.Sprintf("Verifying ovsdpdk.slice cgroup hierarchy exists on node %s", node.Name))
+				_, err = nodes.ExecCommand(ctx, node, []string{
+					"test", "-d", cgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice",
+				})
+				Expect(err).ToNot(HaveOccurred(),
+					"ovsdpdk.slice directory should exist inside ovs.slice/ovs-vswitchd.service/")
+
+				By(fmt.Sprintf("Verifying ovs.slice cgroup.subtree_control enables cpuset on node %s", node.Name))
+				subtreeCtl, err := nodes.ExecCommand(ctx, node, []string{
+					"cat", cgroupBase + "/cgroup.subtree_control",
+				})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(testutils.ToString(subtreeCtl)).To(ContainSubstring("cpuset"),
+					"ovs.slice cgroup.subtree_control should contain 'cpuset'")
+
+				By(fmt.Sprintf("Verifying ovs-vswitchd.service cgroup.subtree_control enables cpuset on node %s", node.Name))
+				subtreeCtl, err = nodes.ExecCommand(ctx, node, []string{
+					"cat", cgroupBase + "/ovs-vswitchd.service/cgroup.subtree_control",
+				})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(testutils.ToString(subtreeCtl)).To(ContainSubstring("cpuset"),
+					"ovs-vswitchd.service cgroup.subtree_control should contain 'cpuset'")
+
+				By(fmt.Sprintf("Verifying ovsdpdk.slice cgroup.type is threaded on node %s", node.Name))
+				cgroupType, err := nodes.ExecCommand(ctx, node, []string{
+					"cat", cgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice/cgroup.type",
+				})
+				Expect(err).ToNot(HaveOccurred())
+				Expect(strings.TrimSpace(testutils.ToString(cgroupType))).To(Equal("threaded"),
+					"ovsdpdk.slice cgroup.type should be 'threaded'")
+
+				By(fmt.Sprintf("Verifying ovsdpdk.slice cpuset.cpus matches configured OVS-DPDK CPUs on node %s", node.Name))
+				cgroupCpus, err := nodes.ExecCommand(ctx, node, []string{
+					"cat", cgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice/cpuset.cpus",
+				})
+				Expect(err).ToNot(HaveOccurred())
+				cgroupCpuSet, err := cpuset.Parse(strings.TrimSpace(testutils.ToString(cgroupCpus)))
+				Expect(err).ToNot(HaveOccurred())
+				Expect(cgroupCpuSet.Equals(ovsDpdkSet)).To(BeTrue(),
+					fmt.Sprintf("ovsdpdk.slice cpuset.cpus should be %s, got %s",
+						ovsDpdkSet.String(), cgroupCpuSet.String()))
+
+				By(fmt.Sprintf("Verifying ovsdpdk.slice cpuset.cpus.partition is isolated on node %s", node.Name))
 				cgroupPartition, err := nodes.ExecCommand(ctx, node, []string{
-					"cat", "/rootfs/sys/fs/cgroup/ovs.slice/ovs-vswitchd.service/ovsdpdk.slice/cpuset.cpus.partition",
+					"cat", cgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice/cpuset.cpus.partition",
 				})
 				Expect(err).ToNot(HaveOccurred(),
 					"failed to read ovsdpdk.slice cpuset.cpus.partition")
-				partitionStr := strings.TrimSpace(testutils.ToString(cgroupPartition))
-				Expect(partitionStr).To(Equal("isolated"),
+				Expect(strings.TrimSpace(testutils.ToString(cgroupPartition))).To(Equal("isolated"),
 					"ovsdpdk.slice cpuset.cpus.partition should be 'isolated'")
 			}
 		})
