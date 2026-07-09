@@ -163,13 +163,12 @@ func setKubeletConfigForCPUAndMemoryManagers(profile *performancev2.PerformanceP
 			return err
 		}
 
-		if profile.Spec.CPU.Dedicated != nil {
-			dedicatedCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.Dedicated))
+		if profile.Spec.CPU.OvsDpdk != nil {
+			ovsDpdkCPUs, err := cpuset.Parse(string(*profile.Spec.CPU.OvsDpdk))
 			if err != nil {
 				return err
 			}
-			// dedicated CPUs are added to the reserved CPUs set to ensure they are not used for any container workloads initiated by kubelet.
-			reservedCPUs = reservedCPUs.Union(dedicatedCPUs)
+			reservedCPUs = reservedCPUs.Union(ovsDpdkCPUs)
 		}
 
 		if opts.MixedCPUsEnabled {

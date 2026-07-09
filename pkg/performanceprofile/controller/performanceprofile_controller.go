@@ -613,10 +613,10 @@ func (r *PerformanceProfileReconciler) Reconcile(ctx context.Context, req ctrl.R
 			klog.V(2).Infof("PerformanceProfile %q: waiting for bootcmdline ready signal, will be triggered by operator controller", instance.GetName())
 			return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
 		}
-		if _, isDedicatedPrereq := err.(*status.DedicatedCPUsPrerequisiteError); isDedicatedPrereq {
-			klog.Errorf("performance profile %q failed dedicated CPUs prerequisite check: %v", instance.GetName(), err)
+		if _, isOvsDpdkPrereq := err.(*status.OvsDpdkCPUsPrerequisiteError); isOvsDpdkPrereq {
+			klog.Errorf("performance profile %q failed OVS-DPDK CPUs prerequisite check: %v", instance.GetName(), err)
 			r.Recorder.Eventf(instance, corev1.EventTypeWarning, "Validation failed", err.Error())
-			conditions := status.GetDegradedConditions(status.ConditionDedicatedCPUsPrerequisiteNotMet, err.Error())
+			conditions := status.GetDegradedConditions(status.ConditionOvsDpdkCPUsPrerequisiteNotMet, err.Error())
 			if statusErr := r.StatusWriter.Update(ctx, instance, conditions); statusErr != nil {
 				klog.Errorf("failed to update performance profile %q status: %v", instance.GetName(), statusErr)
 				return reconcile.Result{RequeueAfter: statusUpdateRequeueAfter}, nil

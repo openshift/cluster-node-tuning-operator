@@ -133,10 +133,10 @@ func IsDRAManaged(profile *performancev2.PerformanceProfile) bool {
 	return parsed
 }
 
-// ValidateDedicatedCPUsPrerequisites checks that if dedicated CPUs are set,
+// ValidateOvsDpdkCPUsPrerequisites checks that if OVS-DPDK CPUs are set,
 // either Workload Partitioning or strict-cpu-reservation is enabled.
-func ValidateDedicatedCPUsPrerequisites(profile *performancev2.PerformanceProfile, opts *components.Options, kc *mcov1.KubeletConfig) error {
-	if profile.Spec.CPU == nil || profile.Spec.CPU.Dedicated == nil {
+func ValidateOvsDpdkCPUsPrerequisites(profile *performancev2.PerformanceProfile, opts *components.Options, kc *mcov1.KubeletConfig) error {
+	if profile.Spec.CPU == nil || profile.Spec.CPU.OvsDpdk == nil {
 		return nil
 	}
 	if opts.MachineConfig.PinningMode != nil && *opts.MachineConfig.PinningMode == apiconfigv1.CPUPartitioningAllNodes {
@@ -145,7 +145,27 @@ func ValidateDedicatedCPUsPrerequisites(profile *performancev2.PerformanceProfil
 	if kubeletconfig.HasStrictCPUReservation(kc) {
 		return nil
 	}
-	return status.NewDedicatedCPUsPrerequisiteError()
+	return status.NewOvsDpdkCPUsPrerequisiteError()
+}
+
+// IsDisableLoadBalancingForOvsDpdk checks the annotation to determine
+// if cpuset.cpus.partition should be set to "isolated" for the ovsdpdk.slice.
+func IsDisableLoadBalancingForOvsDpdk(profile *performancev2.PerformanceProfile) bool {
+	if profile.Annotations == nil {
+		return false
+	}
+
+	v, ok := profile.Annotations[performancev2.PerformanceProfileDisableLoadBalancingForOvsDpdkAnnotation]
+	if !ok {
+		return false
+	}
+
+	parsed, err := strconv.ParseBool(v)
+	if err != nil {
+		klog.ErrorS(err, "failed to parse annotation as bool", "annotation", performancev2.PerformanceProfileDisableLoadBalancingForOvsDpdkAnnotation)
+		return false
+	}
+	return parsed
 }
 
 // SetMissingOptions populates derived Options fields from the profile spec.
@@ -153,11 +173,9 @@ func SetMissingOptions(profile *performancev2.PerformanceProfile, opts *componen
 	opts.MachineConfig.MixedCPUsEnabled = opts.MixedCPUsFeatureGateEnabled && IsMixedCPUsEnabled(profile)
 	opts.DRAResourceManagement = IsDRAManaged(profile)
 
-	if profile.Spec.Net != nil && profile.Spec.Net.DisableOvsDynamicPinning != nil {
-		opts.MachineConfig.DisableOVSDynamicPinning = *profile.Spec.Net.DisableOvsDynamicPinning
+	if profile.Spec.CPU != nil && profile.Spec.CPU.OvsDpdk != nil {
+		opts.MachineConfig.OvsDpdkCPUs = string(*profile.Spec.CPU.OvsDpdk)
 	}
 
-	if profile.Spec.CPU != nil && profile.Spec.CPU.Dedicated != nil {
-		opts.MachineConfig.DedicatedCPUs = string(*profile.Spec.CPU.Dedicated)
-	}
+	opts.MachineConfig.DisableLoadBalancingForOvsDpdk = IsDisableLoadBalancingForOvsDpdk(profile)
 }

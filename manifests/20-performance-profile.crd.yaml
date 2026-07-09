@@ -509,15 +509,12 @@ spec:
                         offloads the complexity of cpu load balancing to the application.
                         Defaults to "true"
                       type: boolean
-                    dedicated:
+                    ovsDpdk:
                       description: |-
-                        Dedicated defines a set of CPUs fully isolated from the operating system
-                        and Kubernetes scheduling, intended for exclusive use by user-space
-                        processes (for example, infrastructure networking workloads such as
-                        DPDK-based vSwitch or vRouter). These CPUs receive full kernel-level
-                        isolation (isolcpus=domain,managed_irq, nohz_full, rcu_nocbs), are
-                        excluded from Kubelet scheduling (all QoS classes), banned from
-                        irqbalance, and excluded from systemd CPU affinity.
+                        OvsDpdk defines a set of CPUs reserved for OVS-DPDK PMD (Poll Mode Driver)
+                        threads, fully isolated from the operating system and Kubernetes scheduling.
+                        WorkloadPartitioning or --strict-cpu-reservation kubelet CPUManager policy
+                        option are a prerequisite for this feature.
                       type: string
                     isolated:
                       description: |-
@@ -635,11 +632,6 @@ spec:
                           vendorID:
                             description: Network device vendor ID represnted as a 16 bit Hexmadecimal number.
                             type: string
-                    disableOvsDynamicPinning:
-                      description: |-
-                        DisableOvsDynamicPinning when set to true, prevents OVN-Kubernetes
-                        from dynamically adjusting OVS thread CPU affinity at runtime.
-                      type: boolean
                     userLevelNetworking:
                       description: UserLevelNetworking when enabled - sets either all or specified network devices queue size to the amount of reserved CPUs. Defaults to "false".
                       type: boolean

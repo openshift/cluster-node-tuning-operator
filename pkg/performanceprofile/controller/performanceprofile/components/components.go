@@ -42,10 +42,10 @@ type Options struct {
 }
 
 type MachineConfigOptions struct {
-	PinningMode              *apiconfigv1.CPUPartitioningMode
-	MixedCPUsEnabled         bool
-	DisableOVSDynamicPinning bool
-	DedicatedCPUs            string
+	PinningMode                    *apiconfigv1.CPUPartitioningMode
+	MixedCPUsEnabled               bool
+	OvsDpdkCPUs                    string
+	DisableLoadBalancingForOvsDpdk bool
 }
 
 type KubeletConfigOptions struct {

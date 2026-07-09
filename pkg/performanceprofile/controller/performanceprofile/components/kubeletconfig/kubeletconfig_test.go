@@ -208,11 +208,11 @@ var _ = Describe("Kubelet Config", func() {
 
 	})
 
-	Context("with dedicated CPUs", func() {
-		It("should include dedicated CPUs in reservedSystemCPUs", func() {
+	Context("with OVS-DPDK CPUs", func() {
+		It("should include OVS-DPDK CPUs in reservedSystemCPUs", func() {
 			profile := testutils.NewPerformanceProfile("test")
-			dedicatedCPUs := performancev2.CPUSet("10-11")
-			profile.Spec.CPU.Dedicated = &dedicatedCPUs
+			ovsDpdkCPUs := performancev2.CPUSet("10-11")
+			profile.Spec.CPU.OvsDpdk = &ovsDpdkCPUs
 			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
 			kc, err := New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{selectorKey: selectorValue}})
 			Expect(err).ToNot(HaveOccurred())
@@ -224,10 +224,10 @@ var _ = Describe("Kubelet Config", func() {
 			Expect(manifest).To(ContainSubstring("reservedSystemCPUs: 0-3,10-11"))
 		})
 
-		It("should include both dedicated and shared CPUs in reservedSystemCPUs when mixed CPUs is enabled", func() {
+		It("should include both OVS-DPDK and shared CPUs in reservedSystemCPUs when mixed CPUs is enabled", func() {
 			profile := testutils.NewPerformanceProfile("test")
-			dedicatedCPUs := performancev2.CPUSet("10-11")
-			profile.Spec.CPU.Dedicated = &dedicatedCPUs
+			ovsDpdkCPUs := performancev2.CPUSet("10-11")
+			profile.Spec.CPU.OvsDpdk = &ovsDpdkCPUs
 			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
 			kc, err := New(profile, &components.KubeletConfigOptions{
 				MachineConfigPoolSelector: map[string]string{selectorKey: selectorValue},
@@ -242,9 +242,9 @@ var _ = Describe("Kubelet Config", func() {
 			Expect(manifest).To(ContainSubstring("reservedSystemCPUs: 0-3,8-11"))
 		})
 
-		It("should not change reservedSystemCPUs when dedicated is nil", func() {
+		It("should not change reservedSystemCPUs when OVS-DPDK CPUs is nil", func() {
 			profile := testutils.NewPerformanceProfile("test")
-			profile.Spec.CPU.Dedicated = nil
+			profile.Spec.CPU.OvsDpdk = nil
 			selectorKey, selectorValue := components.GetFirstKeyAndValue(profile.Spec.MachineConfigPoolSelector)
 			kc, err := New(profile, &components.KubeletConfigOptions{MachineConfigPoolSelector: map[string]string{selectorKey: selectorValue}})
 			Expect(err).ToNot(HaveOccurred())

@@ -10,10 +10,10 @@ CRIO_ORIG_BANNED_CPUS="${2:-/etc/sysconfig/orig_irq_banned_cpus}"
 NONE=0
 
 # BANNED_CPUS: the final hex mask written to IRQBALANCE_BANNED_CPUS.
-#   1. If DEDICATED_CPUS is set (via systemd Environment), use it.
+#   1. If OVS_DPDK_CPUS is set (via systemd Environment), ban those CPUs.
 #   2. Otherwise, default to 0 (no CPUs banned, all participate in balancing).
-if [ -n "${DEDICATED_CPUS:-}" ]; then
-	BANNED_CPUS="${DEDICATED_CPUS}"
+if [ -n "${OVS_DPDK_CPUS:-}" ]; then
+	BANNED_CPUS="${OVS_DPDK_CPUS}"
 else
 	BANNED_CPUS="${NONE}"
 fi
@@ -35,8 +35,8 @@ fi
 
 # CRI-O reads /proc/irq/default_smp_affinity to derive the IRQ banned mask
 # when pods with irq-load-balancing.crio.io=disable are scheduled.
-# If we don't remove the dedicated CPUs from default_smp_affinity here,
-# CRI-O will overwrite IRQBALANCE_BANNED_CPUS while ignoring the dedicated CPUs.
+# If we don't remove the OVS-DPDK CPUs from default_smp_affinity here,
+# CRI-O will overwrite IRQBALANCE_BANNED_CPUS while ignoring the OVS-DPDK CPUs.
 SMP_AFFINITY="/proc/irq/default_smp_affinity"
 if [ "${BANNED_CPUS}" != "${NONE}" ] && [ -f "${SMP_AFFINITY}" ]; then
 	# default_smp_affinity is comma-separated 32-bit hex groups (e.g. "ff,ffffffff,ffffffff")
@@ -54,6 +54,6 @@ if [ "${BANNED_CPUS}" != "${NONE}" ] && [ -f "${SMP_AFFINITY}" ]; then
 		val=$(printf "%08x" $(( 0x${smp[$i]} & ~0x${ban} )))
 		result+="${result:+,}${val}"
 	done
-	echo "Setting default_smp_affinity to ${result} (removing dedicated CPUs ${BANNED_CPUS} from default_smp_affinity mask)"
+	echo "Setting default_smp_affinity to ${result} (removing OVS-DPDK CPUs ${BANNED_CPUS} from default_smp_affinity mask)"
 	echo "${result}" > "${SMP_AFFINITY}"
 fi

@@ -1,5 +1,0 @@
-[Unit]
-Description=Top level slice for dedicated CPUs used by services/applications that requires full isolation.
-
-[Slice]
-AllowedCPUs={{ .DedicatedCpus }}

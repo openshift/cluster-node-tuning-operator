@@ -51,7 +51,7 @@ func (h *handler) Apply(ctx context.Context, obj client.Object, recorder record.
 		return err
 	}
 
-	if err := profileutil.ValidateDedicatedCPUsPrerequisites(profile, opts, components.KubeletConfig); err != nil {
+	if err := profileutil.ValidateOvsDpdkCPUsPrerequisites(profile, opts, components.KubeletConfig); err != nil {
 		return err
 	}
 

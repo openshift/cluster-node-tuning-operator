@@ -215,7 +215,7 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 		})
 	})
 
-	Context("Dedicated CPUs prerequisites", Label(string(label.DedicatedCPUs), string(label.OpenShift), string(label.Tier2)), func() {
+	Context("OVS-DPDK CPUs prerequisites", Label(string(label.OvsDpdk), string(label.OpenShift), string(label.Tier2)), func() {
 		It("should report Degraded when workload partitioning is disabled", func() {
 			ctx := context.TODO()
 
@@ -233,18 +233,18 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 			isolatedList := isolatedSet.List()
 			Expect(len(isolatedList)).To(BeNumerically(">=", 2),
-				"need at least 2 isolated CPUs to designate as dedicated")
+				"need at least 2 isolated CPUs to designate as OVS-DPDK")
 
-			dedicatedSet := cpuset.New(isolatedList[0])
+			ovsDpdkSet := cpuset.New(isolatedList[0])
 			remainingIsolated := cpuset.New(isolatedList[1:]...)
-			dedicatedCPUs := performancev2.CPUSet(dedicatedSet.String())
+			ovsDpdkCPUs := performancev2.CPUSet(ovsDpdkSet.String())
 			newIsolated := performancev2.CPUSet(remainingIsolated.String())
 
-			By("Setting dedicated CPUs on the profile without workload partitioning")
+			By("Setting OVS-DPDK CPUs on the profile without workload partitioning")
 			currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
 			currentProfile.Spec.CPU.Isolated = &newIsolated
-			currentProfile.Spec.CPU.Dedicated = &dedicatedCPUs
+			currentProfile.Spec.CPU.OvsDpdk = &ovsDpdkCPUs
 			profiles.UpdateWithRetry(currentProfile)
 
 			defer func() {
@@ -252,7 +252,7 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 				currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 				Expect(err).ToNot(HaveOccurred())
 				currentProfile.Spec = initialSpec
-				currentProfile.Spec.CPU.Dedicated = nil
+				currentProfile.Spec.CPU.OvsDpdk = nil
 				profiles.UpdateWithRetry(currentProfile)
 				profiles.WaitForCondition(testutils.NodeSelectorLabels, v1.ConditionAvailable, corev1.ConditionTrue)
 			}()
@@ -263,7 +263,7 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 			By("Verifying the Degraded message contains the prerequisite error")
 			conditionMessage := profiles.GetConditionMessage(testutils.NodeSelectorLabels, v1.ConditionDegraded)
 			Expect(conditionMessage).To(ContainSubstring(
-				"dedicated CPUs require either Workload Partitioning (CPUPartitioningAllNodes) " +
+				"OVS-DPDK CPUs require either Workload Partitioning (CPUPartitioningAllNodes) " +
 					"or the strict-cpu-reservation Kubelet CPUManager policy option to be enabled"))
 		})
 	})

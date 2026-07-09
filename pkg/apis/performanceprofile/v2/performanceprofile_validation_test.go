@@ -169,7 +169,7 @@ func FuzzValidateCPUs(f *testing.F) {
 			"isolated":  func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Isolated = &input },
 			"shared":    func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Shared = &input },
 			"offline":   func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Offlined = &input },
-			"dedicated": func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Dedicated = &input },
+			"ovsDpdk": func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.OvsDpdk = &input },
 		}
 
 		for fieldName, setField := range cpuFields {
@@ -298,71 +298,71 @@ var _ = Describe("PerformanceProfile", func() {
 			Expect(errors[0].Error()).To(Or(ContainSubstring("isolated and shared cpus overlap"), ContainSubstring("shared and isolated cpus overlap")))
 		})
 
-		It("should allow valid dedicated CPUs that do not overlap with other sets", func() {
+		It("should allow valid OVS-DPDK CPUs that do not overlap with other sets", func() {
 			reservedCPUs := CPUSet("0-1")
 			isolatedCPUs := CPUSet("4-7")
-			dedicatedCPUs := CPUSet("2-3")
+			ovsDpdkCPUs := CPUSet("2-3")
 			profile.Spec.CPU.Reserved = &reservedCPUs
 			profile.Spec.CPU.Isolated = &isolatedCPUs
 			profile.Spec.CPU.Offlined = nil
-			profile.Spec.CPU.Dedicated = &dedicatedCPUs
+			profile.Spec.CPU.OvsDpdk = &ovsDpdkCPUs
 			errors := profile.validateCPUs()
-			Expect(errors).To(BeEmpty(), "should not have validation errors with non-overlapping dedicated CPUs")
+			Expect(errors).To(BeEmpty(), "should not have validation errors with non-overlapping OVS-DPDK CPUs")
 		})
 
-		It("should reject cpus allocation with overlapping sets between dedicated and reserved", func() {
+		It("should reject cpus allocation with overlapping sets between ovsDpdk and reserved", func() {
 			reservedCPUs := CPUSet("0-3")
 			isolatedCPUs := CPUSet("8-11")
-			dedicatedCPUs := CPUSet("2-5")
+			ovsDpdkCPUs := CPUSet("2-5")
 			profile.Spec.CPU.Reserved = &reservedCPUs
 			profile.Spec.CPU.Isolated = &isolatedCPUs
 			profile.Spec.CPU.Offlined = nil
-			profile.Spec.CPU.Dedicated = &dedicatedCPUs
+			profile.Spec.CPU.OvsDpdk = &ovsDpdkCPUs
 			errors := profile.validateCPUs()
-			Expect(errors).NotTo(BeEmpty(), "should have validation error when dedicated and reserved CPUs have overlap")
-			Expect(errors[0].Error()).To(Or(ContainSubstring("dedicated and reserved cpus overlap"), ContainSubstring("reserved and dedicated cpus overlap")))
+			Expect(errors).NotTo(BeEmpty(), "should have validation error when ovsDpdk and reserved CPUs have overlap")
+			Expect(errors[0].Error()).To(Or(ContainSubstring("ovsDpdk and reserved cpus overlap"), ContainSubstring("reserved and ovsDpdk cpus overlap")))
 		})
 
-		It("should reject cpus allocation with overlapping sets between dedicated and isolated", func() {
+		It("should reject cpus allocation with overlapping sets between ovsDpdk and isolated", func() {
 			reservedCPUs := CPUSet("0-1")
 			isolatedCPUs := CPUSet("4-7")
-			dedicatedCPUs := CPUSet("6-9")
+			ovsDpdkCPUs := CPUSet("6-9")
 			profile.Spec.CPU.Reserved = &reservedCPUs
 			profile.Spec.CPU.Isolated = &isolatedCPUs
 			profile.Spec.CPU.Offlined = nil
-			profile.Spec.CPU.Dedicated = &dedicatedCPUs
+			profile.Spec.CPU.OvsDpdk = &ovsDpdkCPUs
 			errors := profile.validateCPUs()
-			Expect(errors).NotTo(BeEmpty(), "should have validation error when dedicated and isolated CPUs have overlap")
-			Expect(errors[0].Error()).To(Or(ContainSubstring("dedicated and isolated cpus overlap"), ContainSubstring("isolated and dedicated cpus overlap")))
+			Expect(errors).NotTo(BeEmpty(), "should have validation error when ovsDpdk and isolated CPUs have overlap")
+			Expect(errors[0].Error()).To(Or(ContainSubstring("ovsDpdk and isolated cpus overlap"), ContainSubstring("isolated and ovsDpdk cpus overlap")))
 		})
 
-		It("should reject cpus allocation with overlapping sets between dedicated and offlined", func() {
+		It("should reject cpus allocation with overlapping sets between ovsDpdk and offlined", func() {
 			reservedCPUs := CPUSet("0-1")
 			isolatedCPUs := CPUSet("4-5")
 			offlinedCPUs := CPUSet("6-7")
-			dedicatedCPUs := CPUSet("2-3,7")
+			ovsDpdkCPUs := CPUSet("2-3,7")
 			profile.Spec.CPU.Reserved = &reservedCPUs
 			profile.Spec.CPU.Isolated = &isolatedCPUs
 			profile.Spec.CPU.Offlined = &offlinedCPUs
-			profile.Spec.CPU.Dedicated = &dedicatedCPUs
+			profile.Spec.CPU.OvsDpdk = &ovsDpdkCPUs
 			errors := profile.validateCPUs()
-			Expect(errors).NotTo(BeEmpty(), "should have validation error when dedicated and offlined CPUs have overlap")
-			Expect(errors[0].Error()).To(Or(ContainSubstring("dedicated and offlined cpus overlap"), ContainSubstring("offlined and dedicated cpus overlap")))
+			Expect(errors).NotTo(BeEmpty(), "should have validation error when ovsDpdk and offlined CPUs have overlap")
+			Expect(errors[0].Error()).To(Or(ContainSubstring("ovsDpdk and offlined cpus overlap"), ContainSubstring("offlined and ovsDpdk cpus overlap")))
 		})
 
-		It("should reject cpus allocation with overlapping sets between dedicated and shared", func() {
+		It("should reject cpus allocation with overlapping sets between ovsDpdk and shared", func() {
 			reservedCPUs := CPUSet("0-1")
 			isolatedCPUs := CPUSet("4-5")
 			sharedCPUs := CPUSet("6-7")
-			dedicatedCPUs := CPUSet("2-3,6")
+			ovsDpdkCPUs := CPUSet("2-3,6")
 			profile.Spec.CPU.Reserved = &reservedCPUs
 			profile.Spec.CPU.Isolated = &isolatedCPUs
 			profile.Spec.CPU.Offlined = nil
 			profile.Spec.CPU.Shared = &sharedCPUs
-			profile.Spec.CPU.Dedicated = &dedicatedCPUs
+			profile.Spec.CPU.OvsDpdk = &ovsDpdkCPUs
 			errors := profile.validateCPUs()
-			Expect(errors).NotTo(BeEmpty(), "should have validation error when dedicated and shared CPUs have overlap")
-			Expect(errors[0].Error()).To(Or(ContainSubstring("dedicated and shared cpus overlap"), ContainSubstring("shared and dedicated cpus overlap")))
+			Expect(errors).NotTo(BeEmpty(), "should have validation error when ovsDpdk and shared CPUs have overlap")
+			Expect(errors[0].Error()).To(Or(ContainSubstring("ovsDpdk and shared cpus overlap"), ContainSubstring("shared and ovsDpdk cpus overlap")))
 		})
 
 		DescribeTable("should reject invalid input that does not represent CPU sets",
@@ -377,7 +377,7 @@ var _ = Describe("PerformanceProfile", func() {
 			Entry("isolated CPUs", func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Isolated = &input }, "isolated CPUs"),
 			Entry("shared CPUs", func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Shared = &input }, "shared CPUs"),
 			Entry("offline CPUs", func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Offlined = &input }, "offline CPUs"),
-			Entry("dedicated CPUs", func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Dedicated = &input }, "dedicated CPUs"),
+			Entry("OVS-DPDK CPUs", func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.OvsDpdk = &input }, "OVS-DPDK CPUs"),
 		)
 	})
 

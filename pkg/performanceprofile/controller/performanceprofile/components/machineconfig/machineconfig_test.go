@@ -468,12 +468,34 @@ resources = { "cpushares" = 0, "cpuset" = "" }
 	})
 })
 
-var _ = Describe("Machine Config dedicated CPUs and OVS dynamic pinning", func() {
-	Context("OVS dynamic pinning trigger file", func() {
-		It("should be present when DisableOvsDynamicPinning is false", func() {
+var _ = Describe("Machine Config OVS-DPDK CPUs", func() {
+	Context("ovs-dpdk-cpus-configure service and script", func() {
+		It("should create ovs-dpdk-cpus-configure service when OVS-DPDK CPUs are specified", func() {
 			profile := testutils.NewPerformanceProfile("test")
 			mc, err := New(profile, &components.MachineConfigOptions{
-				DisableOVSDynamicPinning: false,
+				OvsDpdkCPUs: "4-7",
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
+			Expect(err).ToNot(HaveOccurred())
+
+			found := false
+			for _, u := range result.Systemd.Units {
+				if u.Name == "ovs-dpdk-cpus-configure.service" {
+					found = true
+					Expect(u.Enabled).ToNot(BeNil())
+					Expect(*u.Enabled).To(BeTrue())
+				}
+			}
+			Expect(found).To(BeTrue(), "ovs-dpdk-cpus-configure.service should be present")
+		})
+
+		It("should create ovs-dpdk-cpus-configure script when OVS-DPDK CPUs are specified", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			mc, err := New(profile, &components.MachineConfigOptions{
+				OvsDpdkCPUs: "4-7",
 			})
 			Expect(err).ToNot(HaveOccurred())
 
@@ -483,18 +505,35 @@ var _ = Describe("Machine Config dedicated CPUs and OVS dynamic pinning", func()
 
 			found := false
 			for _, f := range result.Storage.Files {
-				if f.Path == ovsDynamicPinningTriggerHostFile {
+				if f.Path == "/usr/local/bin/ovs-dpdk-cpus-configure.sh" {
 					found = true
 					break
 				}
 			}
-			Expect(found).To(BeTrue(), "OVS dynamic pinning trigger file should be present")
+			Expect(found).To(BeTrue(), "ovs-dpdk-cpus-configure.sh script should be present")
 		})
 
-		It("should be absent when DisableOvsDynamicPinning is true", func() {
+		It("should not create ovs-dpdk-cpus-configure service when OVS-DPDK CPUs are not specified", func() {
+			profile := testutils.NewPerformanceProfile("test")
+			mc, err := New(profile, &components.MachineConfigOptions{})
+			Expect(err).ToNot(HaveOccurred())
+
+			result := igntypes.Config{}
+			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
+			Expect(err).ToNot(HaveOccurred())
+
+			for _, u := range result.Systemd.Units {
+				Expect(u.Name).ToNot(Equal("ovs-dpdk-cpus-configure.service"),
+					"ovs-dpdk-cpus-configure.service should not be present when no OVS-DPDK CPUs")
+			}
+		})
+	})
+
+	Context("ovs-vswitchd drop-in with OVS-DPDK CPUs", func() {
+		It("should include OVS_DPDK_CPUS environment variable in ovs-vswitchd drop-in when OvsDpdkCPUs is set", func() {
 			profile := testutils.NewPerformanceProfile("test")
 			mc, err := New(profile, &components.MachineConfigOptions{
-				DisableOVSDynamicPinning: true,
+				OvsDpdkCPUs: "4-7",
 			})
 			Expect(err).ToNot(HaveOccurred())
 
@@ -502,16 +541,27 @@ var _ = Describe("Machine Config dedicated CPUs and OVS dynamic pinning", func()
 			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
 			Expect(err).ToNot(HaveOccurred())
 
+			found := false
 			for _, f := range result.Storage.Files {
-				Expect(f.Path).ToNot(Equal(ovsDynamicPinningTriggerHostFile),
-					"OVS dynamic pinning trigger file should not be present")
+				if strings.Contains(f.Path, "ovs-vswitchd.service.d") {
+					base64Data := strings.TrimPrefix(*f.Contents.Source, "data:text/plain;charset=utf-8;base64,")
+					decoded, err := base64.StdEncoding.DecodeString(base64Data)
+					Expect(err).ToNot(HaveOccurred())
+					if strings.Contains(string(decoded), "OVS_DPDK_CPUS=4-7") {
+						found = true
+					}
+				}
 			}
+			Expect(found).To(BeTrue(), "ovs-vswitchd drop-in should contain Environment=OVS_DPDK_CPUS=4-7")
 		})
+	})
 
-		It("should still create OVS slice when DisableOvsDynamicPinning is true", func() {
+	Context("DisableLoadBalancingForOvsDpdk option", func() {
+		It("should still create OVS slice regardless of DisableLoadBalancingForOvsDpdk", func() {
 			profile := testutils.NewPerformanceProfile("test")
 			mc, err := New(profile, &components.MachineConfigOptions{
-				DisableOVSDynamicPinning: true,
+				OvsDpdkCPUs:                    "4-7",
+				DisableLoadBalancingForOvsDpdk: true,
 			})
 			Expect(err).ToNot(HaveOccurred())
 
@@ -530,98 +580,13 @@ var _ = Describe("Machine Config dedicated CPUs and OVS dynamic pinning", func()
 		})
 	})
 
-	Context("dedicated CPUs slice and configure service", func() {
-		It("should create dedicatedcpus.slice when dedicated CPUs are specified", func() {
+	Context("IRQBALANCE_BANNED_CPUS for OVS-DPDK CPUs", func() {
+		It("should set IRQBALANCE_BANNED_CPUS when OVS-DPDK CPUs are specified", func() {
 			profile := testutils.NewPerformanceProfile("test")
+			ovsDpdkCPUs := performancev2.CPUSet("2-3")
+			profile.Spec.CPU.OvsDpdk = &ovsDpdkCPUs
 			mc, err := New(profile, &components.MachineConfigOptions{
-				DedicatedCPUs: "4-7",
-			})
-			Expect(err).ToNot(HaveOccurred())
-
-			result := igntypes.Config{}
-			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
-			Expect(err).ToNot(HaveOccurred())
-
-			found := false
-			for _, f := range result.Storage.Files {
-				if f.Path == "/etc/systemd/system/dedicatedcpus.slice" {
-					found = true
-					break
-				}
-			}
-			Expect(found).To(BeTrue(), "dedicatedcpus.slice should be present in ignition files")
-		})
-
-		It("should create dedicated-cpus-configure service when dedicated CPUs are specified", func() {
-			profile := testutils.NewPerformanceProfile("test")
-			mc, err := New(profile, &components.MachineConfigOptions{
-				DedicatedCPUs: "4-7",
-			})
-			Expect(err).ToNot(HaveOccurred())
-
-			result := igntypes.Config{}
-			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
-			Expect(err).ToNot(HaveOccurred())
-
-			found := false
-			for _, u := range result.Systemd.Units {
-				if u.Name == "dedicated-cpus-configure.service" {
-					found = true
-					Expect(u.Enabled).ToNot(BeNil())
-					Expect(*u.Enabled).To(BeTrue())
-				}
-			}
-			Expect(found).To(BeTrue(), "dedicated-cpus-configure.service should be present")
-		})
-
-		It("should create dedicated-cpus-configure script when dedicated CPUs are specified", func() {
-			profile := testutils.NewPerformanceProfile("test")
-			mc, err := New(profile, &components.MachineConfigOptions{
-				DedicatedCPUs: "4-7",
-			})
-			Expect(err).ToNot(HaveOccurred())
-
-			result := igntypes.Config{}
-			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
-			Expect(err).ToNot(HaveOccurred())
-
-			found := false
-			for _, f := range result.Storage.Files {
-				if f.Path == "/usr/local/bin/dedicated-cpus-configure.sh" {
-					found = true
-					break
-				}
-			}
-			Expect(found).To(BeTrue(), "dedicated-cpus-configure.sh script should be present")
-		})
-
-		It("should not create dedicatedcpus.slice when dedicated CPUs are not specified", func() {
-			profile := testutils.NewPerformanceProfile("test")
-			mc, err := New(profile, &components.MachineConfigOptions{})
-			Expect(err).ToNot(HaveOccurred())
-
-			result := igntypes.Config{}
-			err = json.Unmarshal(mc.Spec.Config.Raw, &result)
-			Expect(err).ToNot(HaveOccurred())
-
-			for _, f := range result.Storage.Files {
-				Expect(f.Path).ToNot(Equal("/etc/systemd/system/dedicatedcpus.slice"),
-					"dedicatedcpus.slice should not be present when no dedicated CPUs")
-			}
-			for _, u := range result.Systemd.Units {
-				Expect(u.Name).ToNot(Equal("dedicated-cpus-configure.service"),
-					"dedicated-cpus-configure.service should not be present when no dedicated CPUs")
-			}
-		})
-	})
-
-	Context("IRQBALANCE_BANNED_CPUS for dedicated CPUs", func() {
-		It("should set IRQBALANCE_BANNED_CPUS when dedicated CPUs are specified", func() {
-			profile := testutils.NewPerformanceProfile("test")
-			dedicatedCPUs := performancev2.CPUSet("2-3")
-			profile.Spec.CPU.Dedicated = &dedicatedCPUs
-			mc, err := New(profile, &components.MachineConfigOptions{
-				DedicatedCPUs: "2-3",
+				OvsDpdkCPUs: "2-3",
 			})
 			Expect(err).ToNot(HaveOccurred())
 
@@ -632,15 +597,15 @@ var _ = Describe("Machine Config dedicated CPUs and OVS dynamic pinning", func()
 			found := false
 			for _, u := range result.Systemd.Units {
 				if u.Name == "clear-irqbalance-banned-cpus.service" && u.Contents != nil {
-					if strings.Contains(*u.Contents, "DEDICATED_CPUS=c") {
+					if strings.Contains(*u.Contents, "OVS_DPDK_CPUS=c") {
 						found = true
 					}
 				}
 			}
-			Expect(found).To(BeTrue(), "DEDICATED_CPUS should be set to hex mask of dedicated CPUs 2-3 (0xc)")
+			Expect(found).To(BeTrue(), "OVS_DPDK_CPUS should be set to hex mask of OVS-DPDK CPUs 2-3 (0xc)")
 		})
 
-		It("should not set IRQBALANCE_BANNED_CPUS when dedicated CPUs are not specified", func() {
+		It("should not set IRQBALANCE_BANNED_CPUS when OVS-DPDK CPUs are not specified", func() {
 			profile := testutils.NewPerformanceProfile("test")
 			mc, err := New(profile, &components.MachineConfigOptions{})
 			Expect(err).ToNot(HaveOccurred())
@@ -652,7 +617,7 @@ var _ = Describe("Machine Config dedicated CPUs and OVS dynamic pinning", func()
 			for _, u := range result.Systemd.Units {
 				if u.Name == "clear-irqbalance-banned-cpus.service" && u.Contents != nil {
 					Expect(*u.Contents).ToNot(ContainSubstring("IRQBALANCE_BANNED_CPUS"),
-						"IRQBALANCE_BANNED_CPUS should not be set when no dedicated CPUs")
+						"IRQBALANCE_BANNED_CPUS should not be set when no OVS-DPDK CPUs")
 				}
 			}
 		})

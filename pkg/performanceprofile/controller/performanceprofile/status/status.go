@@ -32,7 +32,7 @@ const (
 	ConditionFailedGettingKubeletStatus      = "GettingKubeletStatusFailed"
 	ConditionReasonTunedDegraded             = "TunedProfileDegraded"
 	ConditionFailedGettingTunedProfileStatus = "GettingTunedStatusFailed"
-	ConditionDedicatedCPUsPrerequisiteNotMet = "DedicatedCPUsPrerequisiteNotMet"
+	ConditionOvsDpdkCPUsPrerequisiteNotMet = "OvsDpdkCPUsPrerequisiteNotMet"
 )
 
 type Writer interface {

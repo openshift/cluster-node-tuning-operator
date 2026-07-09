@@ -1031,18 +1031,18 @@ var _ = Describe("Controller", func() {
 			})
 		})
 
-		Context("with dedicated CPUs prerequisite validation", func() {
+		Context("with OVS-DPDK CPUs prerequisite validation", func() {
 			BeforeEach(skipForHypershift)
 
-			It("should degrade when dedicated CPUs set without workload partitioning or strict-cpu-reservation", func() {
-				dedicated := performancev2.CPUSet("10-11")
-				profile.Spec.CPU.Dedicated = &dedicated
+			It("should degrade when OVS-DPDK CPUs set without workload partitioning or strict-cpu-reservation", func() {
+				ovsDpdkCPUs := performancev2.CPUSet("10-11")
+				profile.Spec.CPU.OvsDpdk = &ovsDpdkCPUs
 				profile.SetFinalizers([]string{openshiftFinalizer})
 
 				r := newFakeReconciler(profile, profileMCP, infra, clusterOperator)
 				result, err := r.Reconcile(context.TODO(), request)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("dedicated CPUs require either Workload Partitioning"))
+				Expect(err.Error()).To(ContainSubstring("OVS-DPDK CPUs require either Workload Partitioning"))
 				Expect(result).To(Equal(reconcile.Result{}))
 
 				updatedProfile := &performancev2.PerformanceProfile{}
@@ -1054,12 +1054,12 @@ var _ = Describe("Controller", func() {
 				degradedCondition := conditionsv1.FindStatusCondition(updatedProfile.Status.Conditions, conditionsv1.ConditionDegraded)
 				Expect(degradedCondition).ToNot(BeNil())
 				Expect(degradedCondition.Status).To(Equal(corev1.ConditionTrue))
-				Expect(degradedCondition.Reason).To(Equal(status.ConditionDedicatedCPUsPrerequisiteNotMet))
+				Expect(degradedCondition.Reason).To(Equal(status.ConditionOvsDpdkCPUsPrerequisiteNotMet))
 			})
 
-			It("should not degrade when dedicated CPUs set with workload partitioning enabled", func() {
-				dedicated := performancev2.CPUSet("10-11")
-				profile.Spec.CPU.Dedicated = &dedicated
+			It("should not degrade when OVS-DPDK CPUs set with workload partitioning enabled", func() {
+				ovsDpdkCPUs := performancev2.CPUSet("10-11")
+				profile.Spec.CPU.OvsDpdk = &ovsDpdkCPUs
 				profile.SetFinalizers([]string{openshiftFinalizer})
 				infra = testutils.NewInfraResource(true)
 
@@ -1067,9 +1067,9 @@ var _ = Describe("Controller", func() {
 				Expect(reconcileWithBootcmdlineSync(r, request, profileMCP, false)).To(Equal(reconcile.Result{}))
 			})
 
-			It("should not degrade when dedicated CPUs set with strict-cpu-reservation annotation", func() {
-				dedicated := performancev2.CPUSet("10-11")
-				profile.Spec.CPU.Dedicated = &dedicated
+			It("should not degrade when OVS-DPDK CPUs set with strict-cpu-reservation annotation", func() {
+				ovsDpdkCPUs := performancev2.CPUSet("10-11")
+				profile.Spec.CPU.OvsDpdk = &ovsDpdkCPUs
 				profile.Annotations = map[string]string{
 					"kubeletconfig.experimental": `{"cpuManagerPolicyOptions": {"strict-cpu-reservation": "true"}}`,
 				}
@@ -1079,7 +1079,7 @@ var _ = Describe("Controller", func() {
 				Expect(reconcileWithBootcmdlineSync(r, request, profileMCP, false)).To(Equal(reconcile.Result{}))
 			})
 
-			It("should not degrade when dedicated CPUs are not set", func() {
+			It("should not degrade when OVS-DPDK CPUs are not set", func() {
 				profile.SetFinalizers([]string{openshiftFinalizer})
 
 				r := newFakeReconciler(profile, profileMCP, infra, clusterOperator)

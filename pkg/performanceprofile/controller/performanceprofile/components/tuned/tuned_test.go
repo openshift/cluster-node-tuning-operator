@@ -728,10 +728,10 @@ var _ = Describe("Tuned", func() {
 		})
 	})
 
-	Context("with dedicated CPUs", func() {
-		It("should include dedicated CPUs in isolated_cores", func() {
-			dedicatedCPUs := performancev2.CPUSet("10-11")
-			profile.Spec.CPU.Dedicated = &dedicatedCPUs
+	Context("with OVS-DPDK CPUs", func() {
+		It("should include OVS-DPDK CPUs in isolated_cores", func() {
+			ovsDpdkCPUs := performancev2.CPUSet("10-11")
+			profile.Spec.CPU.OvsDpdk = &ovsDpdkCPUs
 			tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 			variables, err := tunedData.GetSection("variables")
 			Expect(err).ToNot(HaveOccurred())
@@ -741,9 +741,9 @@ var _ = Describe("Tuned", func() {
 			Expect(set.List()).To(ContainElements(4, 5, 10, 11))
 		})
 
-		It("should include dedicated CPUs in nohz_full and rcu_nocbs via isolated_cores", func() {
-			dedicatedCPUs := performancev2.CPUSet("10-11")
-			profile.Spec.CPU.Dedicated = &dedicatedCPUs
+		It("should include OVS-DPDK CPUs in nohz_full and rcu_nocbs via isolated_cores", func() {
+			ovsDpdkCPUs := performancev2.CPUSet("10-11")
+			profile.Spec.CPU.OvsDpdk = &ovsDpdkCPUs
 			tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 			bootLoaderSection, err := tunedData.GetSection("bootloader")
 			Expect(err).ToNot(HaveOccurred())

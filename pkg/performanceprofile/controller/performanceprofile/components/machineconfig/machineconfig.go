@@ -75,9 +75,7 @@ const (
 	ovsDynamicPinningTriggerFile     = "ovs-enable-dynamic-cpu-affinity"
 	ovsDynamicPinningTriggerHostFile = "/var/lib/ovn-ic/etc/enable_dynamic_cpu_affinity"
 
-	dedicatedCPUsSliceName           = "dedicatedcpus.slice"
-	dedicatedCPUsSliceDefinitionFile = "dedicatedcpus.slice"
-	dedicatedCPUsConfigure           = "dedicated-cpus-configure"
+	ovsDpdkCPUsConfigure = "ovs-dpdk-cpus-configure"
 
 	cpusetConfigure = "cpuset-configure"
 
@@ -127,7 +125,8 @@ const (
 	templateCrioSharedCPUsAnnotation = "CrioSharedCPUsAnnotation"
 	templateExecCPUAffinity          = "ExecCPUAffinity"
 	templateMinInjectedGOMAXPROCS    = "MinInjectedGOMAXPROCS"
-	templateDedicatedCpus            = "DedicatedCpus"
+	templateOvsDpdkCpus  = "OvsDpdkCpus"
+	templatePartitionType = "PartitionType"
 )
 
 const crioMinGOMAXPROCS = 4
@@ -344,7 +343,7 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 		})
 	}
 
-	clearIRQBalanceBannedCPUsService, err := getSystemdContent(getIRQBalanceBannedCPUsOptions(opts.DedicatedCPUs))
+	clearIRQBalanceBannedCPUsService, err := getSystemdContent(getIRQBalanceBannedCPUsOptions(opts.OvsDpdkCPUs))
 	if err != nil {
 		return nil, err
 	}
@@ -388,47 +387,47 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 		}
 
 		addContent(ignitionConfig, serviceOvsSlice, "/etc/systemd/system/openvswitch.service.d/"+templateOvsSliceUsageFile, &ovsMode)
-		addContent(ignitionConfig, serviceOvsSlice, "/etc/systemd/system/ovs-vswitchd.service.d/"+templateOvsSliceUsageFile, &ovsMode)
 		addContent(ignitionConfig, serviceOvsSlice, "/etc/systemd/system/ovsdb-server.service.d/"+templateOvsSliceUsageFile, &ovsMode)
 
-		if !opts.DisableOVSDynamicPinning {
-			content, err := getTemplatedOvsFile(assets.Configs, filepath.Join("configs", ovsDynamicPinningTriggerFile), ovsSliceName)
-			if err != nil {
-				return nil, err
-			}
-			addContent(ignitionConfig, content, ovsDynamicPinningTriggerHostFile, &ovsMode)
+		if opts.OvsDpdkCPUs != "" {
+			vswitchdDropin := fmt.Sprintf("[Service]\nSlice=%s\nEnvironment=OVS_DPDK_CPUS=%s\n", ovsSliceName, opts.OvsDpdkCPUs)
+			addContent(ignitionConfig, []byte(vswitchdDropin), "/etc/systemd/system/ovs-vswitchd.service.d/"+templateOvsSliceUsageFile, &ovsMode)
+		} else {
+			addContent(ignitionConfig, serviceOvsSlice, "/etc/systemd/system/ovs-vswitchd.service.d/"+templateOvsSliceUsageFile, &ovsMode)
 		}
+
+		content, err := getTemplatedOvsFile(assets.Configs, filepath.Join("configs", ovsDynamicPinningTriggerFile), ovsSliceName)
+		if err != nil {
+			return nil, err
+		}
+		addContent(ignitionConfig, content, ovsDynamicPinningTriggerHostFile, &ovsMode)
 	}
 
-	if opts.DedicatedCPUs != "" {
-		sliceContent, err := renderTemplatedFile(assets.Configs, filepath.Join("configs", dedicatedCPUsSliceDefinitionFile), map[string]string{
-			templateDedicatedCpus: opts.DedicatedCPUs,
-		})
-		if err != nil {
-			return nil, err
+	if opts.OvsDpdkCPUs != "" {
+		partitionType := "member"
+		if opts.DisableLoadBalancingForOvsDpdk {
+			partitionType = "isolated"
 		}
-		dedicatedMode := 0644
-		addContent(ignitionConfig, sliceContent, "/etc/systemd/system/"+dedicatedCPUsSliceName, &dedicatedMode)
 
-		scriptContent, err := renderTemplatedFile(assets.Scripts, fmt.Sprintf("scripts/%s.sh", dedicatedCPUsConfigure), map[string]string{
-			templateDedicatedCpus: opts.DedicatedCPUs,
+		scriptContent, err := renderTemplatedFile(assets.Scripts, fmt.Sprintf("scripts/%s.sh", ovsDpdkCPUsConfigure), map[string]string{
+			templateOvsDpdkCpus:   opts.OvsDpdkCPUs,
+			templatePartitionType: partitionType,
 		})
 		if err != nil {
 			return nil, err
 		}
-		dst := getBashScriptPath(dedicatedCPUsConfigure)
+		dst := getBashScriptPath(ovsDpdkCPUsConfigure)
 		scriptFileMode := 0700
 		addContent(ignitionConfig, scriptContent, dst, &scriptFileMode)
 
-		dedicatedConfigureServiceContent, err := getSystemdContent(getDedicatedCpusConfigureOptions())
+		ovsDpdkConfigureServiceContent, err := getSystemdContent(getOvsDpdkCpusConfigureOptions())
 		if err != nil {
 			return nil, err
 		}
-		dedicatedConfigureService := dedicatedConfigureServiceContent
 		ignitionConfig.Systemd.Units = append(ignitionConfig.Systemd.Units, igntypes.Unit{
-			Contents: &dedicatedConfigureService,
+			Contents: &ovsDpdkConfigureServiceContent,
 			Enabled:  ptr.To(true),
-			Name:     getSystemdService(dedicatedCPUsConfigure),
+			Name:     getSystemdService(ovsDpdkCPUsConfigure),
 		})
 	}
 
@@ -541,57 +540,37 @@ func getCpusetConfigureServiceOptions() []*unit.UnitOption {
 	}
 }
 
-func getDedicatedCpusConfigureOptions() []*unit.UnitOption {
+func getOvsDpdkCpusConfigureOptions() []*unit.UnitOption {
 	return []*unit.UnitOption{
-		// [Unit]
-		// Description
-		unit.NewUnitOption(systemdSectionUnit, systemdDescription, "Configure cgroup v2 cpuset partition for dedicated CPUs"),
-		// Requires
-		unit.NewUnitOption(systemdSectionUnit, "Requires", dedicatedCPUsSliceName),
-		// Before
+		unit.NewUnitOption(systemdSectionUnit, systemdDescription, "Configure OVS-DPDK cpuset partition inside ovs-vswitchd.service cgroup"),
+		unit.NewUnitOption(systemdSectionUnit, "Requires", "ovs-vswitchd.service"),
 		unit.NewUnitOption(systemdSectionUnit, systemdBefore, systemdServiceKubelet),
-		// After
-		unit.NewUnitOption(systemdSectionUnit, systemdAfter, dedicatedCPUsSliceName),
-		// [Service]
-		// Type
+		unit.NewUnitOption(systemdSectionUnit, systemdAfter, "ovs-vswitchd.service"),
 		unit.NewUnitOption(systemdSectionService, systemdType, systemdServiceTypeOneshot),
-		// RemainAfterExit
 		unit.NewUnitOption(systemdSectionService, systemdRemainAfterExit, systemdTrue),
-		// ExecStart
-		unit.NewUnitOption(systemdSectionService, systemdExecStart, getBashScriptPath(dedicatedCPUsConfigure)),
-		// [Install]
-		// WantedBy
+		unit.NewUnitOption(systemdSectionService, systemdExecStart, getBashScriptPath(ovsDpdkCPUsConfigure)),
 		unit.NewUnitOption(systemdSectionInstall, systemdWantedBy, systemdTargetMultiUser),
 	}
 }
 
-func getIRQBalanceBannedCPUsOptions(dedicatedCPUs string) []*unit.UnitOption {
+func getIRQBalanceBannedCPUsOptions(ovsDpdkCPUs string) []*unit.UnitOption {
 	opts := []*unit.UnitOption{
-		// [Unit]
-		// Description
 		unit.NewUnitOption(systemdSectionUnit, systemdDescription, "Clear the IRQBalance Banned CPU mask early in the boot"),
-		// Before
 		unit.NewUnitOption(systemdSectionUnit, systemdBefore, systemdServiceKubelet),
 		unit.NewUnitOption(systemdSectionUnit, systemdBefore, systemdServiceIRQBalance),
-		// [Service]
-		// Type
 		unit.NewUnitOption(systemdSectionService, systemdType, systemdServiceTypeOneshot),
-		// RemainAfterExit
 		unit.NewUnitOption(systemdSectionService, systemdRemainAfterExit, systemdTrue),
-		// ExecStart
 		unit.NewUnitOption(systemdSectionService, systemdExecStart, getBashScriptPath(clearIRQBalanceBannedCPUs)),
-		// [Install]
-		// WantedBy
 		unit.NewUnitOption(systemdSectionInstall, systemdWantedBy, systemdTargetMultiUser),
 	}
-	if dedicatedCPUs != "" {
-		dedicatedMask, err := components.CPUListToHexMask(dedicatedCPUs)
+	if ovsDpdkCPUs != "" {
+		ovsDpdkMask, err := components.CPUListToHexMask(ovsDpdkCPUs)
 		if err != nil {
-			klog.Errorf("failed to convert dedicated CPUs %q to hex mask: %v", dedicatedCPUs, err)
+			klog.Errorf("failed to convert OVS-DPDK CPUs %q to hex mask: %v", ovsDpdkCPUs, err)
 			return opts
 		}
 		opts = append(opts,
-			unit.NewUnitOption(systemdSectionService, systemdEnvironment, getSystemdEnvironment("DEDICATED_CPUS", dedicatedMask)),
+			unit.NewUnitOption(systemdSectionService, systemdEnvironment, getSystemdEnvironment("OVS_DPDK_CPUS", ovsDpdkMask)),
 		)
 	}
 	return opts

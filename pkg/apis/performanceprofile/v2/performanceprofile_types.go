@@ -50,6 +50,11 @@ const (
 // that conflict with the DRA feature, and enforce the disablement as long as the annotation is present.
 const PerformanceProfileDRAResourceManagementAnnotation = "performance.openshift.io/dra-resource-management"
 
+// PerformanceProfileDisableLoadBalancingForOvsDpdkAnnotation controls whether the nested
+// ovsdpdk.slice cgroup inside ovs-vswitchd.service uses cpuset.cpus.partition=isolated
+// (truthy value via strconv.ParseBool) or cpuset.cpus.partition=member (absent/falsy).
+const PerformanceProfileDisableLoadBalancingForOvsDpdkAnnotation = "performance.openshift.io/disable-load-balancing-ovs-dpdk"
+
 // PerformanceProfileSpec defines the desired state of PerformanceProfile.
 type PerformanceProfileSpec struct {
 	// CPU defines a set of CPU related parameters.
@@ -138,13 +143,12 @@ type CPU struct {
 	// alongside the isolated, exclusive resources that are being used already by those workloads.
 	// +optional
 	Shared *CPUSet `json:"shared,omitempty"`
-	// Dedicated defines a set of CPUs fully isolated from the operating system
-	// and Kubernetes scheduling, intended for exclusive use by user-space
-	// processes (for example, infrastructure networking workloads such as
-	// DPDK-based vSwitch or vRouter). WorkloadPartitioning or --strict-cpu-reservation
-	// kubelet CPUManager policy option are a prerequisite for this feature.
+	// OvsDpdk defines a set of CPUs reserved for OVS-DPDK PMD (Poll Mode Driver)
+	// threads, fully isolated from the operating system and Kubernetes scheduling.
+	// WorkloadPartitioning or --strict-cpu-reservation kubelet CPUManager policy
+	// option are a prerequisite for this feature.
 	// +optional
-	Dedicated *CPUSet `json:"dedicated,omitempty"`
+	OvsDpdk *CPUSet `json:"ovsDpdk,omitempty"`
 }
 
 // CPUfrequency defines cpu frequencies for isolated and reserved cpus
@@ -210,10 +214,6 @@ type Net struct {
 	// set with a netqueue count equal to CPU.Reserved .
 	// If no devices are specified then the default is all devices.
 	Devices []Device `json:"devices,omitempty"`
-	// DisableOvsDynamicPinning when set to true, prevents OVN-Kubernetes
-	// from dynamically adjusting OVS thread CPU affinity at runtime.
-	// +optional
-	DisableOvsDynamicPinning *bool `json:"disableOvsDynamicPinning,omitempty"`
 }
 
 // Device defines a way to represent a network device in several options:
