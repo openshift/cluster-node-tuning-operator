@@ -749,5 +749,18 @@ var _ = Describe("Tuned", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(bootLoaderSection.Key("cmdline_cpu_part").String()).To(Equal(cmdlineCPUsPartitioning))
 		})
+
+		It("should exclude ovs-dpdk cpus from systemd.cpu_affinity via not_isolated_cores_expanded", func() {
+			ovsDpdkCPUs := performancev2.CPUSet("10-11")
+			profile.Spec.CPU.OvsDpdk = &ovsDpdkCPUs
+			tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
+			variables, err := tunedData.GetSection("variables")
+			Expect(err).ToNot(HaveOccurred())
+			isolatedCores := variables.Key("isolated_cores").String()
+			set, err := cpuset.Parse(isolatedCores)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(set.List()).To(ContainElements(10, 11))
+			Expect(set.List()).ToNot(ContainElements(0, 1, 2, 3))
+		})
 	})
 })
