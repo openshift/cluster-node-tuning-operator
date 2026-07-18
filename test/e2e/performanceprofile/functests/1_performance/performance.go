@@ -14,6 +14,7 @@ import (
 	"gopkg.in/ini.v1"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
@@ -1093,6 +1094,181 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred(), "Failed to read /proc/cmdline")
 			Expect(string(cmdline)).To(ContainSubstring("rcutree.kthread_prio=11"), "Boot Parameters should contain rctree.kthread_prio=11")
 		}
+	})
+
+	Context("GOMAXPROCS Configuration", func() {
+		const (
+			crioRuntimesConfigFile = "/etc/crio/crio.conf.d/99-runtimes.conf"
+			debugToolImage         = "quay.io/openshift-kni/debug-tools:latest"
+		)
+		It("Injection via performance profile", func(ctx context.Context) {
+			cmd := []string{
+				"chroot",
+				"/rootfs",
+				"/bin/bash",
+				"-c",
+				fmt.Sprintf("cat %s", crioRuntimesConfigFile)}
+			for _, node := range workerRTNodes {
+				crioConfig, err := nodes.ExecCommand(ctx, &node, cmd)
+				Expect(err).ToNot(HaveOccurred(), "Failed to read %s", crioRuntimesConfigFile)
+				cfg, err := ini.Load(crioConfig)
+				Expect(err).ToNot(HaveOccurred(), "Failed to load the crio config in INI Format")
+				gomaxprocsValue := cfg.Section("crio.runtime").Key("min_injected_gomaxprocs").String()
+				testlog.Infof("GOMAXPROCS value set on %s node is %s", node.Name, gomaxprocsValue)
+				Expect(gomaxprocsValue).To(Equal("4"))
+			}
+		})
+
+		DescribeTable("Validate GOMAXPROCS Application to Go-based Containers",
+			func(ctx context.Context, testCase string, cpuRequest, cpuLimit *resource.Quantity, hasInitContainer bool, runtimeClassName bool, expectedGOMAXPROCS string, shouldBeAbsent bool) {
+				testpod := pods.GetTestPod()
+				testpod.Namespace = testutils.NamespaceTesting
+				testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: workerRTNodes[0].Name}
+				targetNode := workerRTNodes[0]
+				if cpuRequest != nil && targetNode.Status.Allocatable.Cpu().Cmp(*cpuRequest) < 0 {
+					Skip(fmt.Sprintf("node %s does not have enough allocatable CPU for %s", targetNode.Name, testCase))
+				}
+				testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: targetNode.Name}
+
+				// Configure main container
+				testpod.Spec.Containers[0].Name = "test-container"
+				testpod.Spec.Containers[0].Image = debugToolImage
+				testpod.Spec.Containers[0].ImagePullPolicy = corev1.PullAlways
+
+				// set Runtime class
+				if runtimeClassName {
+					profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+					Expect(err).ToNot(HaveOccurred(), "cannot get profile by node labels %v", testutils.NodeSelectorLabels)
+					runtimeClass := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
+					testpod.Spec.RuntimeClassName = &runtimeClass
+				}
+
+				// Set resource requests/limits
+				if cpuRequest != nil || cpuLimit != nil {
+					testpod.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{},
+						Limits:   corev1.ResourceList{},
+					}
+					if cpuRequest != nil {
+						testpod.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU] = *cpuRequest
+						testpod.Spec.Containers[0].Resources.Requests[corev1.ResourceMemory] = resource.MustParse("100Mi")
+					}
+					if cpuLimit != nil {
+						testpod.Spec.Containers[0].Resources.Limits[corev1.ResourceCPU] = *cpuLimit
+						testpod.Spec.Containers[0].Resources.Limits[corev1.ResourceMemory] = resource.MustParse("100Mi")
+					}
+				}
+
+				// Add init container if needed
+				if hasInitContainer {
+					initContainer := corev1.Container{
+						Name:    "init-container",
+						Image:   debugToolImage,
+						Command: []string{"knit", "goprocs"},
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU: resource.MustParse("100m"),
+							},
+						},
+					}
+					testpod.Spec.InitContainers = []corev1.Container{initContainer}
+				}
+
+				err := testclient.DataPlaneClient.Create(ctx, testpod)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Ensure pod cleanup even if test fails
+				// Use background context to avoid "context canceled" errors during cleanup
+				DeferCleanup(func() {
+					testlog.Infof("[%s] Cleaning up test pod: %s", testCase, testpod.Name)
+					cleanupCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+					defer cancel()
+					err := testclient.DataPlaneClient.Delete(cleanupCtx, testpod)
+					if err != nil {
+						testlog.Warningf("[%s] Failed to delete pod %s: %v", testCase, testpod.Name, err)
+					}
+				})
+
+				testpod, err = pods.WaitForCondition(ctx, client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+				Expect(err).ToNot(HaveOccurred(), "failed to create pod for test case: %s", testCase)
+
+				if shouldBeAbsent {
+					// For Guaranteed pods, check that GOMAXPROCS env var is NOT injected
+					cmd := []string{"/bin/sh", "-c", "env | grep GOMAXPROCS || echo 'GOMAXPROCS_NOT_SET'"}
+					envOutput, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod, "test-container", cmd)
+					Expect(err).ToNot(HaveOccurred())
+					output := string(envOutput)
+					testlog.Infof("[%s] Environment check output: %s", testCase, output)
+					Expect(output).To(ContainSubstring("GOMAXPROCS_NOT_SET"), "Expected GOMAXPROCS env var to not be set, but got: %s", output)
+				} else {
+					// For Best Effort/Burstable pods, verify GOMAXPROCS is set correctly
+					cmd := []string{"knit", "goprocs"}
+					runtimeCtrls, err := pods.ExecCommandOnPod(testclient.K8sClient, testpod, "test-container", cmd)
+					Expect(err).ToNot(HaveOccurred())
+
+					output := strings.TrimSpace(string(runtimeCtrls))
+					testlog.Infof("[%s] Go runtime output (GOMAXPROCS:NumCPU): %s", testCase, output)
+
+					// Parse output format: "GOMAXPROCS:NumCPU" (e.g., "4:96")
+					parts := strings.Split(output, ":")
+					Expect(parts).To(HaveLen(2), "Expected output format 'GOMAXPROCS:NumCPU', got: %s", output)
+
+					gomaxprocs := parts[0]
+					numCPU := parts[1]
+					testlog.Infof("[%s] Parsed - GOMAXPROCS: %s, NumCPU: %s", testCase, gomaxprocs, numCPU)
+
+					// Verify GOMAXPROCS matches expected value
+					Expect(gomaxprocs).To(Equal(expectedGOMAXPROCS), "Expected GOMAXPROCS=%s, got: %s", expectedGOMAXPROCS, gomaxprocs)
+
+					// Verify NumCPU is a reasonable value (should be > 0)
+					numCPUInt, err := strconv.Atoi(numCPU)
+					Expect(err).ToNot(HaveOccurred(), "NumCPU should be a valid integer")
+					Expect(numCPUInt).To(BeNumerically(">", 0), "NumCPU should be greater than 0")
+				}
+			},
+			Entry("Best Effort - no requests/limits",
+				"BestEffort",
+				nil, nil,
+				false, nil,
+				"4", false,
+			),
+			Entry("Burstable low - cpu:100m requests, no limits",
+				"Burstable-Low",
+				ptr.To(resource.MustParse("100m")), nil,
+				false, false,
+				"4", false,
+			),
+			Entry("Burstable high - cpu:8 requests, no limits (2x overcommit)",
+				"Burstable-High",
+				ptr.To(resource.MustParse("8")), nil,
+				false, false,
+				"16", false,
+			),
+			Entry("Guaranteed - cpu:2 request + limit",
+				"Guaranteed",
+				ptr.To(resource.MustParse("2")), ptr.To(resource.MustParse("2")),
+				false, false,
+				"", true,
+			),
+			Entry("Guaranteed with runtime class - cpu:2 request + limit",
+				"Guaranteed-RuntimeClass",
+				ptr.To(resource.MustParse("2")), ptr.To(resource.MustParse("2")),
+				false, true,
+				"", true,
+			),
+			Entry("Init + app container - cpu:100m on both, no limits",
+				"InitContainer",
+				ptr.To(resource.MustParse("100m")), nil,
+				true, false,
+				"4", false,
+			),
+			Entry("Burstable with limit - cpu:2 request, cpu:4 limit",
+				"Burstable-WithLimit",
+				ptr.To(resource.MustParse("2")), ptr.To(resource.MustParse("4")),
+				false, false,
+				"", true,
+			),
+		)
 	})
 })
 
