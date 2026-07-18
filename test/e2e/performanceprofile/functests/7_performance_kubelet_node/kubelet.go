@@ -2,7 +2,6 @@ package __performance_kubelet_node_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -24,6 +23,7 @@ import (
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/infrastructure"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/poolname"
@@ -58,6 +58,11 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 
 	})
 	Context("Additional kubelet arguments", Label(string(label.Tier2)), func() {
+		BeforeEach(func() {
+			var err error
+			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+		})
 		It("[test_id:45488]Test performance profile annotation for changing multiple kubelet settings", func() {
 			sysctls := "{\"allowedUnsafeSysctls\":[\"net.core.somaxconn\",\"kernel.msg*\"],\"systemReserved\":{\"memory\":\"300Mi\"},\"kubeReserved\":{\"memory\":\"768Mi\"},\"imageMinimumGCAge\":\"3m\"}"
 			profile.Annotations = updateKubeletConfigOverrideAnnotations(profile.Annotations, sysctls)
@@ -164,6 +169,15 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			}
 		})
 		It("[test_id:45495] Test setting PAO managed parameters", func() {
+			cnfNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(len(cnfNodes)).To(BeNumerically(">", 0), "expected at least one node to match the selector")
+			isArm, err := infrastructure.IsARM(ctx, &cnfNodes[0])
+			Expect(err).ToNot(HaveOccurred())
+			if isArm {
+				Skip("Changing topologyManagerPolicy is not supported on ARM architecture")
+			}
+
 			var paoParameters string
 			if *profile.Spec.NUMA.TopologyPolicy == "single-numa-node" {
 				paoParameters = "{\"topologyManagerPolicy\":\"restricted\"}"
@@ -216,10 +230,8 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			By("Reverting the Profile")
 			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
-			currentSpec, _ := json.Marshal(profile.Spec)
-			spec, _ := json.Marshal(initialProfile.Spec)
 			// revert only if the profile changes.
-			if !equality.Semantic.DeepEqual(currentSpec, spec) {
+			if !equality.Semantic.DeepEqual(profile.Spec, initialProfile.Spec) || !equality.Semantic.DeepEqual(profile.Annotations, initialProfile.Annotations) {
 				profiles.UpdateWithRetry(initialProfile)
 
 				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
