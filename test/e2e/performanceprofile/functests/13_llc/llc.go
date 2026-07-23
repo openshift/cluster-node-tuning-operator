@@ -252,6 +252,22 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 
 		When("align-cpus-by-uncorecache cpumanager policy option is disabled", func() {
 			It("[test_id:77724] cpumanager Policy option in kubelet is configured appropriately", func(ctx context.Context) {
+				DeferCleanup(func(cleanupCtx context.Context) {
+					By("Restoring prefer-align-cpus-by-uncorecache to true")
+					profileAnnotations["kubeletconfig.experimental"] = llcPolicy
+					perfProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+					Expect(err).ToNot(HaveOccurred())
+					perfProfile.Annotations = profileAnnotations
+
+					profiles.UpdateWithRetry(perfProfile)
+
+					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
+					profilesupdate.WaitForTuningUpdating(cleanupCtx, perfProfile)
+
+					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+					profilesupdate.WaitForTuningUpdated(cleanupCtx, perfProfile)
+				})
+
 				llcDisablePolicy := `{"cpuManagerPolicyOptions":{"prefer-align-cpus-by-uncorecache":"false", "full-pcpus-only":"true"}}`
 				profileAnnotations["kubeletconfig.experimental"] = llcDisablePolicy
 				perfProfile.Annotations = profileAnnotations
