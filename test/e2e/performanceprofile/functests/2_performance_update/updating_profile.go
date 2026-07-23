@@ -708,7 +708,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(err).ToNot(HaveOccurred())
 				offlinedCPUSetProfile, err := cpuset.Parse(string(offlined))
 				Expect(err).ToNot(HaveOccurred())
-				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile))
+				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile)).To(BeTrue(), "offlined CPUs mismatch: expected %q, got %q", offlinedCPUSetProfile, offlinedCPUSet)
 			}
 		})
 
@@ -778,7 +778,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(err).ToNot(HaveOccurred())
 				offlinedCPUSetProfile, err := cpuset.Parse(string(offlinedSet))
 				Expect(err).ToNot(HaveOccurred())
-				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile))
+				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile)).To(BeTrue(), "offlined CPUs mismatch: expected %q, got %q", offlinedCPUSetProfile, offlinedCPUSet)
 			}
 		})
 
@@ -841,7 +841,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(err).ToNot(HaveOccurred())
 				offlinedCPUSetProfile, err := cpuset.Parse(string(offlinedSet))
 				Expect(err).ToNot(HaveOccurred())
-				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile))
+				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile)).To(BeTrue(), "offlined CPUs mismatch: expected %q, got %q", offlinedCPUSetProfile, offlinedCPUSet)
 			}
 		})
 
@@ -911,7 +911,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(err).ToNot(HaveOccurred())
 				offlinedCPUSetProfile, err := cpuset.Parse(string(offlinedSet))
 				Expect(err).ToNot(HaveOccurred())
-				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile))
+				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile)).To(BeTrue(), "offlined CPUs mismatch: expected %q, got %q", offlinedCPUSetProfile, offlinedCPUSet)
 			}
 		})
 
@@ -1037,7 +1037,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(err).ToNot(HaveOccurred())
 				offlinedCPUSetProfile, err := cpuset.Parse(string(offlinedSet))
 				Expect(err).ToNot(HaveOccurred())
-				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile))
+				Expect(offlinedCPUSet.Equals(offlinedCPUSetProfile)).To(BeTrue(), "offlined CPUs mismatch: expected %q, got %q", offlinedCPUSetProfile, offlinedCPUSet)
 			}
 		})
 
