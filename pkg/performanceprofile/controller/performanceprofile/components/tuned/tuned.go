@@ -37,6 +37,7 @@ const (
 	templateIsolatedCpuList                 = "IsolatedCpuList"
 	templateReservedCpuList                 = "ReservedCpuList"
 	templatePerformanceProfileName          = "PerformanceProfileName"
+	templateIrqAffinityCpus                 = "IrqAffinityCpus"
 )
 
 func new(name string, profiles []tunedv1.TunedProfile, recommends []tunedv1.TunedRecommend) *tunedv1.Tuned {
@@ -74,6 +75,23 @@ func NewNodePerformance(profile *performancev2.PerformanceProfile) (*tunedv1.Tun
 				return nil, fmt.Errorf("cannot parse ovsDpdk cpuset %q: %v", string(*profile.Spec.CPU.OvsDpdk), err)
 			}
 			isolatedSet = isolatedSet.Union(ovsDpdkSet)
+
+			allCpus := isolatedSet
+			if profile.Spec.CPU.Reserved != nil {
+				reservedSet, err := cpuset.Parse(string(*profile.Spec.CPU.Reserved))
+				if err != nil {
+					return nil, fmt.Errorf("cannot parse reserved cpuset: %v", err)
+				}
+				allCpus = allCpus.Union(reservedSet)
+			}
+			if profile.Spec.CPU.Shared != nil {
+				sharedSet, err := cpuset.Parse(string(*profile.Spec.CPU.Shared))
+				if err != nil {
+					return nil, fmt.Errorf("cannot parse shared cpuset: %v", err)
+				}
+				allCpus = allCpus.Union(sharedSet)
+			}
+			templateArgs[templateIrqAffinityCpus] = allCpus.Difference(ovsDpdkSet).String()
 		}
 
 		templateArgs[templateIsolatedCpus] = isolatedSet.String()

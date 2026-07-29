@@ -32,28 +32,3 @@ echo "IRQBALANCE_BANNED_CPUS=${BANNED_CPUS}" >> "${IRQBALANCE_CONF}"
 if [ -n "${CRIO_ORIG_BANNED_CPUS}" ] && [ -f "${CRIO_ORIG_BANNED_CPUS}" ]; then
 	echo "${BANNED_CPUS}" > "${CRIO_ORIG_BANNED_CPUS}"
 fi
-
-# CRI-O reads /proc/irq/default_smp_affinity to derive the IRQ banned mask
-# when pods with irq-load-balancing.crio.io=disable are scheduled.
-# If we don't remove the OVS-DPDK CPUs from default_smp_affinity here,
-# CRI-O will overwrite IRQBALANCE_BANNED_CPUS while ignoring the OVS-DPDK CPUs.
-SMP_AFFINITY="${3:-/proc/irq/default_smp_affinity}"
-if [ "${BANNED_CPUS}" != "${NONE}" ] && [ -f "${SMP_AFFINITY}" ]; then
-	# default_smp_affinity is comma-separated 32-bit hex groups (e.g. "ff,ffffffff,ffffffff")
-	IFS=',' read -ra smp < "${SMP_AFFINITY}"
-	n=${#smp[@]}
-	# pad BANNED_CPUS with leading zeros to match the same number of hex chars
-	padded="${BANNED_CPUS}"
-	while [ ${#padded} -lt $(( n * 8 )) ]; do
-		padded="0${padded}"
-	done
-	# clear banned bits from each 32-bit group: result = smp & ~banned
-	result=""
-	for (( i=0; i<n; i++ )); do
-		ban="${padded:$(( i * 8 )):8}"
-		val=$(printf "%08x" $(( 0x${smp[$i]} & ~0x${ban} )))
-		result+="${result:+,}${val}"
-	done
-	echo "Setting default_smp_affinity to ${result} (removing OVS-DPDK CPUs ${BANNED_CPUS} from default_smp_affinity mask)"
-	echo "${result}" > "${SMP_AFFINITY}"
-fi
