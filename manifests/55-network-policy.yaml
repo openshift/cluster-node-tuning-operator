@@ -10,7 +10,14 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  annotations:
+    capability.openshift.io/name: NodeTuning
+    include.release.openshift.io/hypershift: "true"
+    include.release.openshift.io/ibm-cloud-managed: "true"
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
   name: default-deny-all
+  namespace: openshift-cluster-node-tuning-operator
 spec:
   podSelector: {}
   policyTypes:
@@ -22,6 +29,12 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  annotations:
+    capability.openshift.io/name: NodeTuning
+    include.release.openshift.io/hypershift: "true"
+    include.release.openshift.io/ibm-cloud-managed: "true"
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
   name: allow-egress-to-api-server
   namespace: openshift-cluster-node-tuning-operator
 spec:
@@ -40,6 +53,12 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  annotations:
+    capability.openshift.io/name: NodeTuning
+    include.release.openshift.io/hypershift: "true"
+    include.release.openshift.io/ibm-cloud-managed: "true"
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
   name: allow-metrics-traffic
   namespace: openshift-cluster-node-tuning-operator
 spec:
@@ -64,6 +83,12 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  annotations:
+    capability.openshift.io/name: NodeTuning
+    include.release.openshift.io/hypershift: "true"
+    include.release.openshift.io/ibm-cloud-managed: "true"
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
   name: allow-webhook-traffic
   namespace: openshift-cluster-node-tuning-operator
 spec:
