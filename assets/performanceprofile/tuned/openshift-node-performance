@@ -148,6 +148,8 @@ initrd_add_dir=
 
 # overrides cpu-partitioning cmdline
 cmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores} tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded}
+cmdline_cpu_part_nohzfull=+nohz_full=${isolated_cores}
+cmdline_cpu_tuning=+skew_tick=1
 
 # No default value but will be composed conditionally based on platform
 cmdline_iommu=
@@ -159,9 +161,8 @@ cmdline_isolation=+isolcpus=managed_irq,${isolated_cores}
 {{end}}
 
 {{if .RealTimeHint}}
-cmdline_realtime_nohzfull=+nohz_full=${isolated_cores}
 cmdline_realtime_nosoftlookup=+nosoftlockup
-cmdline_realtime_common=+skew_tick=1 rcutree.kthread_prio=11
+cmdline_realtime_common=+rcutree.kthread_prio=11
 {{end}}
 
 {{if .HighPowerConsumption}}

@@ -35,9 +35,9 @@ var (
 	cmdlineIntelPstateAutomatic      = "intel_pstate=${f:intel_recommended_pstate}"
 	cmdlineIntelPstatePassive        = "intel_pstate=passive"
 	cmdlineMultipleHugePages         = "+ default_hugepagesz=1G   hugepagesz=1G hugepages=4 hugepagesz=2M hugepages=128"
-	cmdlineRealtimeNoHZFull          = "+nohz_full=${isolated_cores}"
+	cmdlineCPUPartNohzfull           = "+nohz_full=${isolated_cores}"
 	cmdlineRealtimeNosoftlookup      = "+nosoftlockup"
-	cmdlineRealtimeCommon            = "+skew_tick=1 rcutree.kthread_prio=11"
+	cmdlineRealtimeCommon            = "+rcutree.kthread_prio=11"
 	cmdlineWithoutStaticIsolation    = "+isolcpus=managed_irq,${isolated_cores}"
 	cmdlineWithStaticIsolation       = "+isolcpus=domain,managed_irq,${isolated_cores}"
 )
@@ -122,7 +122,7 @@ var _ = Describe("Tuned", func() {
 			Expect(bootLoaderSection.Key("cmdline_isolation").String()).To(Equal(cmdlineWithoutStaticIsolation))
 			Expect(bootLoaderSection.Key("cmdline_hugepages").String()).To(Equal(cmdlineHugepages))
 			Expect(bootLoaderSection.Key("cmdline_additionalArg").String()).To(Equal(cmdlineAdditionalArgs))
-			Expect(bootLoaderSection.Key("cmdline_realtime_nohzfull").String()).To(Equal(cmdlineRealtimeNoHZFull))
+			Expect(bootLoaderSection.Key("cmdline_cpu_part_nohzfull").String()).To(Equal(cmdlineCPUPartNohzfull))
 			Expect(bootLoaderSection.Key("cmdline_realtime_nosoftlookup").String()).To(Equal(cmdlineRealtimeNosoftlookup))
 			Expect(bootLoaderSection.Key("cmdline_realtime_common").String()).To(Equal(cmdlineRealtimeCommon))
 		})
@@ -154,17 +154,16 @@ var _ = Describe("Tuned", func() {
 			})
 
 			It("should have mandatory bootloader keys in tuned", func() {
-				tunedData := getTunedStructuredData(profile, components.ProfileNameIntelX86)
+				tunedData := getTunedStructuredData(profile, components.ProfileNamePerformance)
 				bootloader, err := tunedData.GetSection("bootloader")
 				Expect(err).ToNot(HaveOccurred())
 				Expect(bootloader.HasKey("cmdline_cpu_part")).To(BeTrue())
+				Expect(bootloader.HasKey("cmdline_cpu_part_nohzfull")).To(BeTrue())
+				Expect(bootloader.HasKey("cmdline_cpu_tuning")).To(BeTrue())
 				Expect(bootloader.HasKey("cmdline_isolation")).To(BeTrue())
-				Expect(bootloader.HasKey("cmdline_realtime_nohzfull")).To(BeTrue())
 				Expect(bootloader.HasKey("cmdline_realtime_nosoftlookup")).To(BeTrue())
 				Expect(bootloader.HasKey("cmdline_realtime_common")).To(BeTrue())
-				Expect(bootloader.HasKey("cmdline_idle_poll")).To(BeTrue())
 				Expect(bootloader.HasKey("cmdline_hugepages")).To(BeTrue())
-				Expect(bootloader.HasKey("cmdline_pstate")).To(BeTrue())
 			})
 		})
 
@@ -187,7 +186,7 @@ var _ = Describe("Tuned", func() {
 
 				bootLoaderSection, err := tunedData.GetSection("bootloader")
 				Expect(err).ToNot(HaveOccurred())
-				Expect(bootLoaderSection.Key("cmdline_realtime_nohzfull").String()).ToNot(Equal(cmdlineRealtimeNoHZFull))
+				Expect(bootLoaderSection.Key("cmdline_cpu_part_nohzfull").String()).To(Equal(cmdlineCPUPartNohzfull))
 				Expect(bootLoaderSection.Key("cmdline_realtime_nosoftlookup").String()).ToNot(Equal(cmdlineRealtimeNosoftlookup))
 				Expect(bootLoaderSection.Key("cmdline_realtime_common").String()).ToNot(Equal(cmdlineRealtimeCommon))
 			})
@@ -206,7 +205,7 @@ var _ = Describe("Tuned", func() {
 				Expect(sysctl.Key("kernel.sched_rt_runtime_us").String()).To(Equal("-1"))
 				bootLoader, err := tunedData.GetSection("bootloader")
 				Expect(err).ToNot(HaveOccurred())
-				Expect(bootLoader.Key("cmdline_realtime_nohzfull").String()).To(Equal(cmdlineRealtimeNoHZFull))
+				Expect(bootLoader.Key("cmdline_cpu_part_nohzfull").String()).To(Equal(cmdlineCPUPartNohzfull))
 				Expect(bootLoader.Key("cmdline_realtime_nosoftlookup").String()).To(Equal(cmdlineRealtimeNosoftlookup))
 				Expect(bootLoader.Key("cmdline_realtime_common").String()).To(Equal(cmdlineRealtimeCommon))
 			})
