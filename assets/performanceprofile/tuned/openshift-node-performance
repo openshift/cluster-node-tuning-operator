@@ -178,6 +178,10 @@ cmdline_idle_poll=
 {{if .DefaultHugepagesSize}}
 cmdline_hugepages=+ default_hugepagesz={{.DefaultHugepagesSize}} {{end}} {{if .Hugepages}} {{.Hugepages}} {{end}}
 
+{{if .IrqAffinityCpus}}
+cmdline_irqaffinity=+irqaffinity={{.IrqAffinityCpus}}
+{{end}}
+
 {{if .AdditionalArgs}}
 cmdline_additionalArg=+{{.AdditionalArgs}}
 {{end}}
