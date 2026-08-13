@@ -124,7 +124,7 @@ func NewController() (*Controller, error) {
 	controller.mcLabelsAcrossMCP = map[string]bool{}
 
 	// Initial event to bootstrap CR if it doesn't exist.
-	controller.workqueue.AddRateLimited(wqKey{kind: wqKindTuned, name: tunedv1.TunedDefaultResourceName})
+	controller.workqueue.Add(wqKey{kind: wqKindTuned, name: tunedv1.TunedDefaultResourceName})
 
 	controller.clients.Kube, err = kubeset.NewForConfig(controller.kubeconfig)
 	if err != nil {
@@ -279,7 +279,7 @@ func (c *Controller) sync(key wqKey) error {
 		if change {
 			klog.V(2).Infof("sync(): Pod %s/%s label(s) change is Node %s wide", key.namespace, key.name, nodeName)
 			// Trigger a Profile update
-			c.workqueue.AddRateLimited(wqKey{kind: wqKindProfile, namespace: ntoconfig.WatchNamespace(), name: nodeName})
+			c.workqueue.Add(wqKey{kind: wqKindProfile, namespace: ntoconfig.WatchNamespace(), name: nodeName})
 		}
 		return nil
 
@@ -290,7 +290,7 @@ func (c *Controller) sync(key wqKey) error {
 		if err != nil {
 			if errors.IsNotFound(err) {
 				// Trigger Profile update/deletion for this node; syncProfile() will handle the deletion and also update internal data structures
-				c.workqueue.AddRateLimited(wqKey{kind: wqKindProfile, namespace: ntoconfig.WatchNamespace(), name: key.name})
+				c.workqueue.Add(wqKey{kind: wqKindProfile, namespace: ntoconfig.WatchNamespace(), name: key.name})
 				return nil
 			}
 			return fmt.Errorf("failed to process Node %s change: %v", key.name, err)
@@ -299,7 +299,7 @@ func (c *Controller) sync(key wqKey) error {
 			// We need to update Profile associated with the Node
 			klog.V(2).Infof("sync(): Node %s label(s) changed", key.name)
 			// Trigger a Profile update
-			c.workqueue.AddRateLimited(wqKey{kind: wqKindProfile, namespace: ntoconfig.WatchNamespace(), name: key.name})
+			c.workqueue.Add(wqKey{kind: wqKindProfile, namespace: ntoconfig.WatchNamespace(), name: key.name})
 		}
 		return nil
 
@@ -471,7 +471,7 @@ func (c *Controller) enqueueProfileUpdates() error {
 	}
 	for _, profile := range profileList {
 		// Enqueue Profile updates into the operator's workqueue
-		c.workqueue.AddRateLimited(wqKey{kind: wqKindProfile, namespace: ntoconfig.WatchNamespace(), name: profile.Name})
+		c.workqueue.Add(wqKey{kind: wqKindProfile, namespace: ntoconfig.WatchNamespace(), name: profile.Name})
 	}
 	return nil
 }
