@@ -3,6 +3,7 @@ package operator
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -60,12 +61,20 @@ func (c *Controller) validateTunedCRs() error {
 			}
 		}
 
+		oldStatus := tuned.Status
+
 		tuned = tuned.DeepCopy() // Make sure we do not modify objects in cache
 
 		if len(tuned.Status.Conditions) == 0 {
 			tuned.Status.Conditions = initializeTunedStatusConditions()
 		}
 		tuned.Status.Conditions = computeStatusConditions(tunedValid, message, tuned.Status.Conditions)
+
+		// Update the status subresource only if there is a semantic change in it.
+		if reflect.DeepEqual(oldStatus, tuned.Status) {
+			klog.V(2).Infof("validateTunedCRs(): no need to update status of Tuned %s", tuned.Name)
+			continue
+		}
 
 		_, err = c.clients.Tuned.TunedV1().Tuneds(ntoconfig.WatchNamespace()).UpdateStatus(context.TODO(), tuned, metav1.UpdateOptions{})
 		if err != nil {
