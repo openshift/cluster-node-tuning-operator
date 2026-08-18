@@ -90,26 +90,11 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 		}
 		currentProfile.Annotations[performancev2.PerformanceProfileCPULoadBalancingOvsDpdkAnnotation] = "disable"
 
-		policyOptions := map[string]string{}
-		for _, node := range workerRTNodes {
-			numOfCores, _ := node.Status.Capacity.Cpu().AsInt64()
-			if numOfCores <= numberOfCoresThatRequiredCancelingSMTAlignment {
-				testlog.Infof("canceling SMT alignment: node %s has %d CPUs", node.Name, numOfCores)
-				policyOptions["full-pcpus-only"] = "false"
-				smtAlignmentDisabled = true
-				break
-			}
+		// we're working under the assumption that all worker RT nodes have the same number of CPUs
+		if numOfCores, _ := workerRTNodes[0].Status.Capacity.Cpu().AsInt64(); numOfCores <= numberOfCoresThatRequiredCancelingSMTAlignment {
+			smtAlignmentDisabled = true
 		}
-		if !isWPEnabled {
-			testlog.Infof("Workload partitioning not enabled, adding strict-cpu-reservation via experimental annotation")
-			policyOptions["strict-cpu-reservation"] = "true"
-		}
-		if len(policyOptions) > 0 {
-			optJSON, err := json.Marshal(map[string]interface{}{"cpuManagerPolicyOptions": policyOptions})
-			Expect(err).ToNot(HaveOccurred())
-			currentProfile.Annotations["kubeletconfig.experimental"] = string(optJSON)
-		}
-
+		setPolicyOptions(currentProfile, isWPEnabled, smtAlignmentDisabled)
 		profiles.UpdateWithRetry(currentProfile)
 
 		updatedProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
@@ -339,26 +324,11 @@ var _ = Describe("[performance] ovsDpdk CPUs default partition", Ordered, Label(
 			currentProfile.Annotations = make(map[string]string)
 		}
 
-		policyOptions := map[string]string{}
-		for _, node := range workerRTNodes {
-			numOfCores, _ := node.Status.Capacity.Cpu().AsInt64()
-			if numOfCores <= numberOfCoresThatRequiredCancelingSMTAlignment {
-				testlog.Infof("canceling SMT alignment: node %s has %d CPUs", node.Name, numOfCores)
-				policyOptions["full-pcpus-only"] = "false"
-				smtAlignmentDisabled = true
-				break
-			}
+		// we're working under the assumption that all worker RT nodes have the same number of CPUs
+		if numOfCores, _ := workerRTNodes[0].Status.Capacity.Cpu().AsInt64(); numOfCores <= numberOfCoresThatRequiredCancelingSMTAlignment {
+			smtAlignmentDisabled = true
 		}
-		if !isWPEnabled {
-			testlog.Infof("Workload partitioning not enabled, adding strict-cpu-reservation via experimental annotation")
-			policyOptions["strict-cpu-reservation"] = "true"
-		}
-		if len(policyOptions) > 0 {
-			optJSON, err := json.Marshal(map[string]interface{}{"cpuManagerPolicyOptions": policyOptions})
-			Expect(err).ToNot(HaveOccurred())
-			currentProfile.Annotations["kubeletconfig.experimental"] = string(optJSON)
-		}
-
+		setPolicyOptions(currentProfile, isWPEnabled, smtAlignmentDisabled)
 		profiles.UpdateWithRetry(currentProfile)
 
 		updatedProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
@@ -587,4 +557,24 @@ func getIRQBannedCPUSet(irqbalanceContent string) cpuset.CPUSet {
 		return banned
 	}
 	return cpuset.New()
+}
+
+func setPolicyOptions(profile *performancev2.PerformanceProfile, isWPEnabled bool, smtAlignmentDisabled bool) {
+	GinkgoHelper()
+	policyOptions := map[string]string{}
+	if smtAlignmentDisabled {
+		testlog.Infof("canceling SMT alignment, adding full-pcpus-only=false via experimental annotation")
+		policyOptions["full-pcpus-only"] = "false"
+	}
+
+	if !isWPEnabled {
+		testlog.Infof("Workload partitioning not enabled, adding strict-cpu-reservation via experimental annotation")
+		policyOptions["strict-cpu-reservation"] = "true"
+	}
+
+	if len(policyOptions) > 0 {
+		optJSON, err := json.Marshal(map[string]interface{}{"cpuManagerPolicyOptions": policyOptions})
+		Expect(err).ToNot(HaveOccurred())
+		profile.Annotations["kubeletconfig.experimental"] = string(optJSON)
+	}
 }
