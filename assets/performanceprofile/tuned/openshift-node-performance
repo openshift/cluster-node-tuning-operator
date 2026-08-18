@@ -44,11 +44,13 @@ energy_perf_bias=performance
 min_perf_pct=100
 {{end}}
 
-{{if .RealTimeHint}}
 [service]
+# Unconditionally stop and disable the fwupd firmware refresh timer. It triggers
+# the fwupd service which can cause SMIs (and latency spikes) on isolated CPUs.
+service.fwupd-refresh.timer=stop,disable
+{{if .RealTimeHint}}
 service.stalld=start,enable
 {{else}}
-[service]
 service.stalld=stop,disable
 {{end}}
 
