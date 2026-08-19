@@ -28,15 +28,18 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 )
 
+const numberOfCoresThatRequiredCancelingSMTAlignment = 4
+
 var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDpdk), string(label.Slow), string(label.Tier2)), func() {
 	var (
 		workerRTNodes  []corev1.Node
 		profile        *performancev2.PerformanceProfile
 		initialProfile *performancev2.PerformanceProfile
 
-		reservedSet    cpuset.CPUSet
-		ovsDpdkSet     cpuset.CPUSet
-		newIsolatedSet cpuset.CPUSet
+		reservedSet          cpuset.CPUSet
+		ovsDpdkSet           cpuset.CPUSet
+		newIsolatedSet       cpuset.CPUSet
+		smtAlignmentDisabled bool
 	)
 
 	BeforeAll(func() {
@@ -87,15 +90,11 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 		}
 		currentProfile.Annotations[performancev2.PerformanceProfileCPULoadBalancingOvsDpdkAnnotation] = "disable"
 
-		policyOptions := map[string]string{}
-		if !isWPEnabled {
-			testlog.Infof("Workload partitioning not enabled, adding strict-cpu-reservation via experimental annotation")
-			policyOptions["strict-cpu-reservation"] = "true"
-			optJSON, err := json.Marshal(map[string]interface{}{"cpuManagerPolicyOptions": policyOptions})
-			Expect(err).ToNot(HaveOccurred())
-			currentProfile.Annotations["kubeletconfig.experimental"] = string(optJSON)
+		// we're working under the assumption that all worker RT nodes have the same number of CPUs
+		if numOfCores, _ := workerRTNodes[0].Status.Capacity.Cpu().AsInt64(); numOfCores <= numberOfCoresThatRequiredCancelingSMTAlignment {
+			smtAlignmentDisabled = true
 		}
-
+		setPolicyOptions(currentProfile, isWPEnabled, smtAlignmentDisabled)
 		profiles.UpdateWithRetry(currentProfile)
 
 		updatedProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
@@ -266,7 +265,7 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 		})
 
 		It("should preserve ovsDpdk CPU IRQ banning across GU pod lifecycle", func() {
-			verifyOvsDpdkIRQBanningAcrossGUPodLifecycle(context.TODO(), &workerRTNodes[0], profile, ovsDpdkSet)
+			verifyOvsDpdkIRQBanningAcrossGUPodLifecycle(context.TODO(), &workerRTNodes[0], profile, ovsDpdkSet, smtAlignmentDisabled)
 		})
 	})
 })
@@ -277,7 +276,8 @@ var _ = Describe("[performance] ovsDpdk CPUs default partition", Ordered, Label(
 		profile        *performancev2.PerformanceProfile
 		initialProfile *performancev2.PerformanceProfile
 
-		ovsDpdkSet cpuset.CPUSet
+		ovsDpdkSet           cpuset.CPUSet
+		smtAlignmentDisabled bool
 	)
 
 	BeforeAll(func() {
@@ -324,15 +324,11 @@ var _ = Describe("[performance] ovsDpdk CPUs default partition", Ordered, Label(
 			currentProfile.Annotations = make(map[string]string)
 		}
 
-		if !isWPEnabled {
-			testlog.Infof("Workload partitioning not enabled, adding strict-cpu-reservation via experimental annotation")
-			optJSON, err := json.Marshal(map[string]interface{}{
-				"cpuManagerPolicyOptions": map[string]string{"strict-cpu-reservation": "true"},
-			})
-			Expect(err).ToNot(HaveOccurred())
-			currentProfile.Annotations["kubeletconfig.experimental"] = string(optJSON)
+		// we're working under the assumption that all worker RT nodes have the same number of CPUs
+		if numOfCores, _ := workerRTNodes[0].Status.Capacity.Cpu().AsInt64(); numOfCores <= numberOfCoresThatRequiredCancelingSMTAlignment {
+			smtAlignmentDisabled = true
 		}
-
+		setPolicyOptions(currentProfile, isWPEnabled, smtAlignmentDisabled)
 		profiles.UpdateWithRetry(currentProfile)
 
 		updatedProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
@@ -416,12 +412,13 @@ var _ = Describe("[performance] ovsDpdk CPUs default partition", Ordered, Label(
 		})
 
 		It("should preserve ovsDpdk CPU IRQ banning across GU pod lifecycle", func() {
-			verifyOvsDpdkIRQBanningAcrossGUPodLifecycle(context.TODO(), &workerRTNodes[0], profile, ovsDpdkSet)
+			verifyOvsDpdkIRQBanningAcrossGUPodLifecycle(context.TODO(), &workerRTNodes[0], profile, ovsDpdkSet, smtAlignmentDisabled)
 		})
 	})
 })
 
-func verifyOvsDpdkIRQBanningAcrossGUPodLifecycle(ctx context.Context, node *corev1.Node, profile *performancev2.PerformanceProfile, ovsDpdkSet cpuset.CPUSet) {
+func verifyOvsDpdkIRQBanningAcrossGUPodLifecycle(ctx context.Context, node *corev1.Node, profile *performancev2.PerformanceProfile, ovsDpdkSet cpuset.CPUSet, smtAlignmentDisabled bool) {
+	GinkgoHelper()
 	testlog.Infof("Testing CRI-O IRQ interaction on node %s", node.Name)
 
 	By("Verifying default_smp_affinity has ovsDpdk CPU bits cleared before pod creation")
@@ -446,9 +443,17 @@ func verifyOvsDpdkIRQBanningAcrossGUPodLifecycle(ctx context.Context, node *core
 	testpod.Annotations = map[string]string{
 		"irq-load-balancing.crio.io": "disable",
 	}
+	var resourceCPULimit resource.Quantity
+
+	if smtAlignmentDisabled {
+		resourceCPULimit = resource.MustParse("1")
+	} else {
+		resourceCPULimit = resource.MustParse("2")
+	}
+
 	testpod.Spec.Containers[0].Resources = corev1.ResourceRequirements{
 		Limits: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("2"),
+			corev1.ResourceCPU:    resourceCPULimit,
 			corev1.ResourceMemory: resource.MustParse("100Mi"),
 		},
 	}
@@ -552,4 +557,24 @@ func getIRQBannedCPUSet(irqbalanceContent string) cpuset.CPUSet {
 		return banned
 	}
 	return cpuset.New()
+}
+
+func setPolicyOptions(profile *performancev2.PerformanceProfile, isWPEnabled bool, smtAlignmentDisabled bool) {
+	GinkgoHelper()
+	policyOptions := map[string]string{}
+	if smtAlignmentDisabled {
+		testlog.Infof("canceling SMT alignment, adding full-pcpus-only=false via experimental annotation")
+		policyOptions["full-pcpus-only"] = "false"
+	}
+
+	if !isWPEnabled {
+		testlog.Infof("Workload partitioning not enabled, adding strict-cpu-reservation via experimental annotation")
+		policyOptions["strict-cpu-reservation"] = "true"
+	}
+
+	if len(policyOptions) > 0 {
+		optJSON, err := json.Marshal(map[string]interface{}{"cpuManagerPolicyOptions": policyOptions})
+		Expect(err).ToNot(HaveOccurred())
+		profile.Annotations["kubeletconfig.experimental"] = string(optJSON)
+	}
 }
