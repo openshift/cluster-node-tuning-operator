@@ -117,6 +117,7 @@ You can run the container with different ENV variables, but the bare minimum is 
 
 - `LATENCY_TEST_DELAY` indicates an (optional) delay in seconds to be used between the container is created and the tests actually start. Default is zero (start immediately).
 - `LATENCY_TEST_RUNTIME` the amount of time in seconds that the latency test should run.
+- `LATENCY_TEST_TIMEOUT_BUFFER` overhead seconds (not per-tool runtime) for in-pod CPU setup/init and for the pod to reach Succeeded after the tool finishes.
 - `LATENCY_TEST_IMAGE` the image that used under the latency test.
 - `LATECNY_TEST_CPUS` the amount of CPUs the pod which run the latency test should request
 - `OSLAT_MAXIMUM_LATENCY` the expected maximum latency for all buckets in us in the oslat test.

@@ -42,12 +42,12 @@ const (
 	hwlatdetectTestName = "hwlatdetect"
 
 	//default values
-	defaultTestDelay   = 0
-	defaultTestRuntime = "300"
-	defaultMaxLatency  = -1
-	defaultTestCpus    = -1
-	defaultTestMemory  = "1Gi"
-
+	defaultTestDelay         = 0
+	defaultTestRuntime       = "300"
+	defaultMaxLatency        = -1
+	defaultTestCpus          = -1
+	defaultTestMemory        = "1Gi"
+	defaultTestTimeoutBuffer = 150
 	//dynamic memory mode values
 	// 32Mi per requested CPU should be reasonable for the test
 	perCpuMemoryFactor = 32
@@ -57,15 +57,17 @@ const (
 )
 
 var (
-	latencyTestDelay   = defaultTestDelay
-	latencyTestRuntime = defaultTestRuntime
-	maximumLatency     = defaultMaxLatency
-	latencyTestCpus    = defaultTestCpus
-	latencyTestMemory  = defaultTestMemory
+	latencyTestDelay         = defaultTestDelay
+	latencyTestRuntime       = defaultTestRuntime
+	latencyTestTimeoutBuffer = defaultTestTimeoutBuffer
+	maximumLatency           = defaultMaxLatency
+	latencyTestCpus          = defaultTestCpus
+	latencyTestMemory        = defaultTestMemory
 )
 
 // LATENCY_TEST_DELAY delay the run of the binary, can be useful to give time to the CPU manager reconcile loop
 // to update the default CPU pool
+// LATENCY_TEST_TIMEOUT_BUFFER: extra seconds for pod CPU setup and Succeeded wait (not per-tool runtime)
 // LATENCY_TEST_RUNTIME: the amount of time in seconds that the latency test should run
 // LATENCY_TEST_CPUS: the amount of CPUs the pod which run the latency test should request
 // LATENCY_TEST_MEMORY: the amount of memory the pod which run the latency test should request
@@ -77,6 +79,9 @@ var _ = Describe("[performance] Latency Test", Ordered, func() {
 
 	BeforeEach(func() {
 		latencyTestDelay, err = getLatencyTestDelay()
+		Expect(err).ToNot(HaveOccurred())
+
+		latencyTestTimeoutBuffer, err = getLatencyTestTimeoutBuffer()
 		Expect(err).ToNot(HaveOccurred())
 
 		latencyTestCpus, err = getLatencyTestCpus()
@@ -273,6 +278,23 @@ func getLatencyTestDelay() (int, error) {
 		return val, nil
 	}
 	return defaultTestDelay, nil
+}
+
+func getLatencyTestTimeoutBuffer() (int, error) {
+	if latencyTestTimeoutBufferEnv, ok := os.LookupEnv("LATENCY_TEST_TIMEOUT_BUFFER"); ok {
+		val, err := strconv.Atoi(latencyTestTimeoutBufferEnv)
+		if err != nil {
+			return val, fmt.Errorf("the environment variable LATENCY_TEST_TIMEOUT_BUFFER has incorrect value %q, it must be a non-negative integer with maximum value of %d: %w", latencyTestTimeoutBufferEnv, math.MaxInt32, err)
+		}
+		if val < 0 || val > math.MaxInt32 {
+			return val, fmt.Errorf("the environment variable LATENCY_TEST_TIMEOUT_BUFFER has an invalid number %q, it must be a non-negative integer with maximum value of %d", latencyTestTimeoutBufferEnv, math.MaxInt32)
+		}
+		if val < defaultTestTimeoutBuffer {
+			testlog.Warningf("LATENCY_TEST_TIMEOUT_BUFFER=%d is below %d; for safe execution set it to %d or higher, as a lower value may cause timeouts", val, defaultTestTimeoutBuffer, defaultTestTimeoutBuffer)
+		}
+		return val, nil
+	}
+	return defaultTestTimeoutBuffer, nil
 }
 
 func getLatencyTestCpus() (int, error) {
@@ -489,13 +511,14 @@ func createLatencyTestPod(testPod *corev1.Pod) {
 		Expect(isEqual(RequestsCpusQuantity, latencyTestCpus)).To(BeTrue(), fmt.Sprintf("actual requests of cpus number used for the latency pod is not as set in LATENCY_TEST_CPUS, actual number is: %s", RequestsCpusQuantity))
 	}
 
-	By("Waiting another two minutes to give enough time for the cluster to move the pod to Succeeded phase")
-	podTimeout := time.Duration(timeout + latencyTestDelay + 120)
+	podTimeout := time.Duration(timeout + latencyTestDelay + latencyTestTimeoutBuffer)
+	By(fmt.Sprintf("Waiting up to %d seconds (runtime=%d, delay=%d, timeoutBuffer=%d) for the pod to reach Succeeded phase", int(podTimeout), timeout, latencyTestDelay, latencyTestTimeoutBuffer))
+
 	testPod, err = pods.WaitForPhase(context.TODO(), client.ObjectKeyFromObject(testPod), corev1.PodSucceeded, podTimeout*time.Second)
 	if err != nil {
 		logEventsForPod(testPod)
 	}
-	Expect(err).ToNot(HaveOccurred(), "pod %q did not reach %q phase; error: %v", podKey, corev1.PodSucceeded, err)
+	Expect(err).ToNot(HaveOccurred(), "pod %q did not reach %q phase; error: %v. Please Increase LATENCY_TEST_TIMEOUT_BUFFER to allow the cluster to move the pod to Succeeded phase and run again.", podKey, corev1.PodSucceeded, err)
 }
 
 func extractLatencyValues(exp string, pod *corev1.Pod) []int {
