@@ -32,9 +32,9 @@ const numberOfCoresThatRequiredCancelingSMTAlignment = 4
 
 var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDpdk), string(label.Slow), string(label.Tier2)), func() {
 	var (
-		workerRTNodes  []corev1.Node
-		profile        *performancev2.PerformanceProfile
-		initialProfile *performancev2.PerformanceProfile
+		workerRTNodes   []corev1.Node
+		baselineProfile *performancev2.PerformanceProfile
+		initialProfile  *performancev2.PerformanceProfile
 
 		reservedSet          cpuset.CPUSet
 		ovsDpdkSet           cpuset.CPUSet
@@ -54,13 +54,12 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 		Expect(err).ToNot(HaveOccurred())
 		Expect(workerRTNodes).ToNot(BeEmpty())
 
-		profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+		initialProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
-		initialProfile = profile.DeepCopy()
 
-		reservedSet, err = cpuset.Parse(string(*profile.Spec.CPU.Reserved))
+		reservedSet, err = cpuset.Parse(string(*initialProfile.Spec.CPU.Reserved))
 		Expect(err).ToNot(HaveOccurred())
-		isolatedSet, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+		isolatedSet, err := cpuset.Parse(string(*initialProfile.Spec.CPU.Isolated))
 		Expect(err).ToNot(HaveOccurred())
 
 		isolatedList := isolatedSet.List()
@@ -80,39 +79,20 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 		isWPEnabled, err := cluster.IsWorkloadPartitioningEnabled(ctx, testclient.Client)
 		Expect(err).ToNot(HaveOccurred())
 
-		By("Updating the profile with ovsDpdk CPUs")
-		currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-		Expect(err).ToNot(HaveOccurred())
-		currentProfile.Spec.CPU.Isolated = &newIsolated
-		currentProfile.Spec.CPU.OvsDpdk = &ovsDpdkCPUs
-		if currentProfile.Annotations == nil {
-			currentProfile.Annotations = make(map[string]string)
+		By("Preparing the baseline profile with ovsDpdk CPUs")
+		baselineProfile = initialProfile.DeepCopy()
+		baselineProfile.Spec.CPU.Isolated = &newIsolated
+		baselineProfile.Spec.CPU.OvsDpdk = &ovsDpdkCPUs
+		if baselineProfile.Annotations == nil {
+			baselineProfile.Annotations = make(map[string]string)
 		}
-		currentProfile.Annotations[performancev2.PerformanceProfileCPULoadBalancingOvsDpdkAnnotation] = "disable"
 
 		// we're working under the assumption that all worker RT nodes have the same number of CPUs
 		if numOfCores, _ := workerRTNodes[0].Status.Capacity.Cpu().AsInt64(); numOfCores <= numberOfCoresThatRequiredCancelingSMTAlignment {
 			smtAlignmentDisabled = true
 		}
-		setPolicyOptions(currentProfile, isWPEnabled, smtAlignmentDisabled)
-		profiles.UpdateWithRetry(currentProfile)
+		setPolicyOptions(baselineProfile, isWPEnabled, smtAlignmentDisabled)
 
-		updatedProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-		Expect(err).ToNot(HaveOccurred())
-		testlog.Infof("Updated profile: reserved=%s isolated=%s ovsDpdk=%s annotations=%v",
-			*updatedProfile.Spec.CPU.Reserved, *updatedProfile.Spec.CPU.Isolated,
-			*updatedProfile.Spec.CPU.OvsDpdk, updatedProfile.Annotations)
-
-		By("Waiting for the tuning to be applied")
-		profilesupdate.WaitForTuningUpdating(ctx, currentProfile)
-		profilesupdate.WaitForTuningUpdated(ctx, currentProfile)
-
-		By("Refreshing the node list after the update")
-		workerRTNodes, err = nodes.GetByLabels(testutils.NodeSelectorLabels)
-		Expect(err).ToNot(HaveOccurred())
-		workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(workerRTNodes).ToNot(BeEmpty())
 	})
 
 	AfterAll(func() {
@@ -120,22 +100,31 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 			return
 		}
 		By("Reverting the profile to its initial state")
-		ctx := context.TODO()
-		currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-		Expect(err).ToNot(HaveOccurred())
-
-		currentProfile.Spec = *initialProfile.Spec.DeepCopy()
-		currentProfile.Spec.CPU.OvsDpdk = nil
-		delete(currentProfile.Annotations, performancev2.PerformanceProfileCPULoadBalancingOvsDpdkAnnotation)
-		delete(currentProfile.Annotations, "kubeletconfig.experimental")
-		profiles.UpdateWithRetry(currentProfile)
-
-		profilesupdate.WaitForTuningUpdating(ctx, currentProfile)
-		profilesupdate.WaitForTuningUpdated(ctx, currentProfile)
+		profilesupdate.ApplyProfileAndWait(context.TODO(), initialProfile)
 	})
 
-	Context("when ovsDpdk CPUs and cpu-load-balancing-ovs-dpdk annotation are set", func() {
-		It("should apply ovsDpdk CPU node configuration", func() {
+	Context("with cpu-load-balancing-ovs-dpdk=disable", func() {
+		BeforeAll(func() {
+			By("Applying the profile with cpu-load-balancing-ovs-dpdk=disable")
+			baselineWithAnnotation := baselineProfile.DeepCopy()
+			baselineWithAnnotation.Annotations[performancev2.PerformanceProfileCPULoadBalancingOvsDpdkAnnotation] = "disable"
+			profilesupdate.ApplyProfileAndWait(context.TODO(), baselineWithAnnotation)
+
+			updatedProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+			testlog.Infof("Updated profile: reserved=%s isolated=%s ovsDpdk=%s annotations=%v",
+				*updatedProfile.Spec.CPU.Reserved, *updatedProfile.Spec.CPU.Isolated,
+				*updatedProfile.Spec.CPU.OvsDpdk, updatedProfile.Annotations)
+
+			By("Refreshing the node list after the update")
+			workerRTNodes, err = nodes.GetByLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+			workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(workerRTNodes).ToNot(BeEmpty())
+		})
+
+		It("[test_id:89987] should apply ovsDpdk CPU node configuration", func() {
 			ctx := context.TODO()
 			expectedIsolatedPlusOvsDpdk := newIsolatedSet.Union(ovsDpdkSet)
 			expectedReservedSystem := reservedSet.Union(ovsDpdkSet)
@@ -264,111 +253,31 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 				"ovsdpdk.slice cpuset.cpus.partition should be 'isolated'")
 		})
 
-		It("should preserve ovsDpdk CPU IRQ banning across GU pod lifecycle", func() {
-			verifyOvsDpdkIRQBanningAcrossGUPodLifecycle(context.TODO(), &workerRTNodes[0], profile, ovsDpdkSet, smtAlignmentDisabled)
+		It("[test_id:89989] should preserve ovsDpdk CPU IRQ banning across GU pod lifecycle", func() {
+			verifyOvsDpdkIRQBanningAcrossGUPodLifecycle(context.TODO(), &workerRTNodes[0], baselineProfile, ovsDpdkSet, smtAlignmentDisabled)
 		})
 	})
-})
 
-var _ = Describe("[performance] ovsDpdk CPUs default partition", Ordered, Label(string(label.OvsDpdk), string(label.Slow), string(label.Tier2)), func() {
-	var (
-		workerRTNodes  []corev1.Node
-		profile        *performancev2.PerformanceProfile
-		initialProfile *performancev2.PerformanceProfile
+	Context("without cpu-load-balancing-ovs-dpdk annotation", func() {
+		BeforeAll(func() {
+			By("Applying the baseline profile without cpu-load-balancing-ovs-dpdk")
+			profilesupdate.ApplyProfileAndWait(context.TODO(), baselineProfile)
 
-		ovsDpdkSet           cpuset.CPUSet
-		smtAlignmentDisabled bool
-	)
+			updatedProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+			testlog.Infof("Updated profile: reserved=%s isolated=%s ovsDpdk=%s annotations=%v",
+				*updatedProfile.Spec.CPU.Reserved, *updatedProfile.Spec.CPU.Isolated,
+				*updatedProfile.Spec.CPU.OvsDpdk, updatedProfile.Annotations)
 
-	BeforeAll(func() {
-		if discovery.Enabled() && testutils.ProfileNotFound {
-			Skip("Discovery mode enabled, performance profile not found")
-		}
+			By("Refreshing the node list after the update")
+			workerRTNodes, err = nodes.GetByLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+			workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(workerRTNodes).ToNot(BeEmpty())
+		})
 
-		var err error
-		workerRTNodes, err = nodes.GetByLabels(testutils.NodeSelectorLabels)
-		Expect(err).ToNot(HaveOccurred())
-		workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(workerRTNodes).ToNot(BeEmpty())
-
-		profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-		Expect(err).ToNot(HaveOccurred())
-		initialProfile = profile.DeepCopy()
-
-		isolatedSet, err := cpuset.Parse(string(*profile.Spec.CPU.Isolated))
-		Expect(err).ToNot(HaveOccurred())
-
-		isolatedList := isolatedSet.List()
-		Expect(len(isolatedList)).To(BeNumerically(">=", 2),
-			"need at least 2 isolated CPUs to split into isolated + ovsDpdk")
-
-		ovsDpdkSet = cpuset.New(isolatedList[0])
-		newIsolatedSet := cpuset.New(isolatedList[1:]...)
-
-		ovsDpdkCPUs := performancev2.CPUSet(ovsDpdkSet.String())
-		newIsolated := performancev2.CPUSet(newIsolatedSet.String())
-
-		testlog.Infof("Isolated: %s, OvsDpdk: %s", newIsolatedSet.String(), ovsDpdkSet.String())
-
-		ctx := context.TODO()
-		isWPEnabled, err := cluster.IsWorkloadPartitioningEnabled(ctx, testclient.Client)
-		Expect(err).ToNot(HaveOccurred())
-
-		By("Updating the profile with ovsDpdk CPUs (no cpu-load-balancing annotation)")
-		currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-		Expect(err).ToNot(HaveOccurred())
-		currentProfile.Spec.CPU.Isolated = &newIsolated
-		currentProfile.Spec.CPU.OvsDpdk = &ovsDpdkCPUs
-		if currentProfile.Annotations == nil {
-			currentProfile.Annotations = make(map[string]string)
-		}
-
-		// we're working under the assumption that all worker RT nodes have the same number of CPUs
-		if numOfCores, _ := workerRTNodes[0].Status.Capacity.Cpu().AsInt64(); numOfCores <= numberOfCoresThatRequiredCancelingSMTAlignment {
-			smtAlignmentDisabled = true
-		}
-		setPolicyOptions(currentProfile, isWPEnabled, smtAlignmentDisabled)
-		profiles.UpdateWithRetry(currentProfile)
-
-		updatedProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-		Expect(err).ToNot(HaveOccurred())
-		testlog.Infof("Updated profile: reserved=%s isolated=%s ovsDpdk=%s annotations=%v",
-			*updatedProfile.Spec.CPU.Reserved, *updatedProfile.Spec.CPU.Isolated,
-			*updatedProfile.Spec.CPU.OvsDpdk, updatedProfile.Annotations)
-
-		By("Waiting for the tuning to be applied")
-		profilesupdate.WaitForTuningUpdating(ctx, currentProfile)
-		profilesupdate.WaitForTuningUpdated(ctx, currentProfile)
-
-		By("Refreshing the node list after the update")
-		workerRTNodes, err = nodes.GetByLabels(testutils.NodeSelectorLabels)
-		Expect(err).ToNot(HaveOccurred())
-		workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(workerRTNodes).ToNot(BeEmpty())
-	})
-
-	AfterAll(func() {
-		if initialProfile == nil {
-			return
-		}
-		By("Reverting the profile to its initial state")
-		ctx := context.TODO()
-		currentProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-		Expect(err).ToNot(HaveOccurred())
-
-		currentProfile.Spec = *initialProfile.Spec.DeepCopy()
-		currentProfile.Spec.CPU.OvsDpdk = nil
-		delete(currentProfile.Annotations, "kubeletconfig.experimental")
-		profiles.UpdateWithRetry(currentProfile)
-
-		profilesupdate.WaitForTuningUpdating(ctx, currentProfile)
-		profilesupdate.WaitForTuningUpdated(ctx, currentProfile)
-	})
-
-	Context("when ovsDpdk CPUs are set without cpu-load-balancing-ovs-dpdk annotation", func() {
-		It("should configure ovsdpdk.slice with partition=member", func() {
+		It("[test_id:89988] should configure ovsdpdk.slice with partition=member", func() {
 			ctx := context.TODO()
 			node := &workerRTNodes[0]
 			testlog.Infof("Verifying node %s", node.Name)
@@ -411,8 +320,8 @@ var _ = Describe("[performance] ovsDpdk CPUs default partition", Ordered, Label(
 				"ovsdpdk.slice cpuset.cpus.partition should be 'member'")
 		})
 
-		It("should preserve ovsDpdk CPU IRQ banning across GU pod lifecycle", func() {
-			verifyOvsDpdkIRQBanningAcrossGUPodLifecycle(context.TODO(), &workerRTNodes[0], profile, ovsDpdkSet, smtAlignmentDisabled)
+		It("[test_id:89990] should preserve ovsDpdk CPU IRQ banning across GU pod lifecycle", func() {
+			verifyOvsDpdkIRQBanningAcrossGUPodLifecycle(context.TODO(), &workerRTNodes[0], baselineProfile, ovsDpdkSet, smtAlignmentDisabled)
 		})
 	})
 })
