@@ -33,8 +33,7 @@ func main() {
 		Name:    "openshift/cluster-node-tuning-operator/conformance/parallel",
 		Parents: []string{"openshift/conformance/parallel"},
 		Qualifiers: []string{
-			`(labels.exists(l, l=="ReleaseGate")) &&
-			!(name.contains("[Serial]") || name.contains("[Slow]") || name.contains("[Disruptive]"))`,
+			`!(name.contains("[Serial]") || name.contains("[Slow]") || name.contains("[Disruptive]"))`,
 		},
 	})
 
@@ -43,8 +42,7 @@ func main() {
 		Name:    "openshift/cluster-node-tuning-operator/conformance/serial",
 		Parents: []string{"openshift/conformance/serial"},
 		Qualifiers: []string{
-			`(labels.exists(l, l=="ReleaseGate")) &&
-			name.contains("[Serial]") && !name.contains("[Disruptive]")`,
+			`name.contains("[Serial]") && !name.contains("[Disruptive]")`,
 			// refer to https://github.com/openshift/origin/blob/main/pkg/testsuites/standard_suites.go
 		},
 	})
@@ -55,8 +53,7 @@ func main() {
 		Name:    "openshift/cluster-node-tuning-operator/disruptive",
 		Parents: []string{"openshift/disruptive-longrunning"},
 		Qualifiers: []string{
-			`(labels.exists(l, l=="ReleaseGate")) &&
-			name.contains("[Disruptive]")`,
+			`name.contains("[Disruptive]")`,
 		},
 	})
 
@@ -65,23 +62,31 @@ func main() {
 		Name:    "openshift/cluster-node-tuning-operator/optional/slow",
 		Parents: []string{"openshift/optional/slow"},
 		Qualifiers: []string{
-			`(labels.exists(l, l=="ReleaseGate")) &&
-			name.contains("[Slow]") && !name.contains("[Disruptive]")`,
+			`name.contains("[Slow]") && !name.contains("[Disruptive]")`,
 		},
 	})
 
 	// Suite: all (includes everything)
 	ext.AddSuite(e.Suite{
-		Name: "openshift/cluster-node-tuning-operator/all",
-		Qualifiers: []string{
-			`(labels.exists(l, l=="ReleaseGate"))`,
-		},
+		Name:       "openshift/cluster-node-tuning-operator/all",
+		Qualifiers: []string{},
 	})
 
 	specs, err := g.BuildExtensionTestSpecsFromOpenShiftGinkgoSuite()
 	if err != nil {
 		panic(fmt.Sprintf("couldn't build extension test specs from ginkgo: %+v", err.Error()))
 	}
+
+	// Ensure [Disruptive] tests are also [Serial]
+	specs = specs.Walk(func(spec *et.ExtensionTestSpec) {
+		if strings.Contains(spec.Name, "[Disruptive]") && !strings.Contains(spec.Name, "[Serial]") {
+			spec.Name = strings.ReplaceAll(
+				spec.Name,
+				"[Disruptive]",
+				"[Serial][Disruptive]",
+			)
+		}
+	})
 
 	// Preserve original-name labels for renamed tests
 	specs = specs.Walk(func(spec *et.ExtensionTestSpec) {
@@ -93,16 +98,6 @@ func main() {
 				}
 			}
 		}
-	})
-
-	// Ignore obsolete tests
-	ext.IgnoreObsoleteTests(
-	// "[sig-node-tuning] <test name here>",
-	)
-
-	// Initialize environment before running any tests
-	specs.AddBeforeAll(func() {
-		// do stuff
 	})
 
 	ext.AddSpecs(specs)
