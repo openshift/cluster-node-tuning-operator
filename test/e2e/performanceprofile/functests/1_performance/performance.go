@@ -394,24 +394,71 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 	})
 
 	Context("Tuned kernel parameters", Label(string(label.Tier0)), func() {
+		// When a higher-priority Tuned wraps the performance profile via include=<pp-profile>
+		// (e.g. ran-du-performance), network-latency's kernel.timer_migration=0 can win over
+		// the NTO-generated override to 1. Reused the include-chain helpers from test 37127
+		// to read each node's active profile and adjust the expectation when a wrapper is active.
 		It("[test_id:28466][crit:high][vendor:cnf-qe@redhat.com][level:acceptance] Should contain configuration injected through openshift-node-performance profile", func() {
+			ctx, cancel := context.WithTimeout(context.Background(), cluster.ComputeTestTimeout(testTimeout*time.Second, RunningOnSingleNode))
+			defer cancel()
+
+			performanceProfileName := components.GetComponentName(testutils.PerformanceProfileName, components.ProfileNamePerformance)
 			sysctlMap := map[string]string{
 				"kernel.hung_task_timeout_secs": "600",
 				"kernel.nmi_watchdog":           "0",
 				"kernel.sched_rt_runtime_us":    "-1",
 				"vm.stat_interval":              "10",
-				"kernel.timer_migration":        "1",
 			}
 
+			tunedList := &tunedv1.TunedList{}
+			Expect(testclient.DataPlaneClient.List(ctx, tunedList)).To(Succeed(),
+				"failed to list Tuned profiles")
+
 			key := types.NamespacedName{
-				Name:      components.GetComponentName(testutils.PerformanceProfileName, components.ProfileNamePerformance),
+				Name:      performanceProfileName,
 				Namespace: components.NamespaceNodeTuningOperator,
 			}
 			tuned := &tunedv1.Tuned{}
-			err := testclient.ControlPlaneClient.Get(context.TODO(), key, tuned)
+			err := testclient.ControlPlaneClient.Get(ctx, key, tuned)
 			Expect(err).ToNot(HaveOccurred(), "cannot find the Cluster Node Tuning Operator object "+key.String())
-			validateTunedActiveProfile(context.TODO(), workerRTNodes)
-			execSysctlOnWorkers(context.TODO(), workerRTNodes, sysctlMap)
+			validateTunedActiveProfile(ctx, workerRTNodes)
+			execSysctlOnWorkers(ctx, workerRTNodes, sysctlMap)
+
+			for _, node := range workerRTNodes {
+				By(fmt.Sprintf("checking kernel.timer_migration on node %s", node.Name))
+				profileKey := types.NamespacedName{
+					Name:      node.Name,
+					Namespace: components.NamespaceNodeTuningOperator,
+				}
+
+				Eventually(func(g Gomega) {
+					tunedProfile := &tunedv1.Profile{}
+					g.Expect(testclient.DataPlaneClient.Get(ctx, profileKey, tunedProfile)).To(Succeed(),
+						"failed to get Tuned profile for node %s", node.Name)
+
+					activeProfile := tunedProfile.Status.TunedProfile
+					testlog.Infof("Node %s has active tuned profile: %q", node.Name, activeProfile)
+
+					expectedTimerMigration := "1"
+					if activeProfile != performanceProfileName {
+						tracesToPerformanceProfile, err := profileIncludesTarget(activeProfile, performanceProfileName, tunedList)
+						g.Expect(err).ToNot(HaveOccurred(),
+							"failed to trace profile chain for node %s: %v", node.Name, err)
+						if tracesToPerformanceProfile {
+							testlog.Warningf("node %s active profile %q wraps %q; expecting kernel.timer_migration=0",
+								node.Name, activeProfile, performanceProfileName)
+							expectedTimerMigration = "0"
+						}
+					}
+
+					out, err := nodes.ExecCommand(ctx, &node, []string{"sysctl", "-n", "kernel.timer_migration"})
+					g.Expect(err).ToNot(HaveOccurred())
+					g.Expect(strings.TrimSpace(string(out))).To(Equal(expectedTimerMigration),
+						"kernel.timer_migration on node %s", node.Name)
+				}).WithTimeout(cluster.ComputeTestTimeout(120*time.Second, RunningOnSingleNode)).
+					WithPolling(testPollInterval * time.Second).
+					To(Succeed())
+			}
 		})
 	})
 
