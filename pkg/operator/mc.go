@@ -127,12 +127,25 @@ func (pc *ProfileCalculator) getPoolsForMachineConfigLabels(mcLabels map[string]
 	return pools, nil
 }
 
-// getPoolsForMachineConfigLabelsSorted is the same as getPoolsForMachineConfigLabels, but
-// returns the MCPs alphabetically sorted by their names.
-func (pc *ProfileCalculator) getPoolsForMachineConfigLabelsSorted(mcLabels map[string]string) ([]*mcfgv1.MachineConfigPool, error) {
+// getPoolsForMachineConfigNaming calls getPoolsForMachineConfigLabels and sorts
+// the MCPs alphabetically sorted by their names.  Sorting has no special intent
+// other than logging the pools always in the same order.  If the special "worker"
+// pool is found, it is returned instead of the alphabetically sorted MCP slice.
+func (pc *ProfileCalculator) getPoolsForMachineConfigNaming(mcLabels map[string]string) ([]*mcfgv1.MachineConfigPool, error) {
 	pools, err := pc.getPoolsForMachineConfigLabels(mcLabels)
 	if err != nil {
 		return nil, err
+	}
+
+	// Check whether were matching "machineconfiguration.openshift.io/role": "worker"
+	// If so, we'll have the "worker" pool and return it.
+	for _, pool := range pools {
+		if pool == nil {
+			continue
+		}
+		if pool.Name == "worker" {
+			return []*mcfgv1.MachineConfigPool{pool}, nil
+		}
 	}
 
 	sort.Slice(pools, func(i, j int) bool {
