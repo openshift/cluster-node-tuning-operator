@@ -25,9 +25,11 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/systemd"
 )
 
 const numberOfCoresThatRequiredCancelingSMTAlignment = 4
+const ovsSliceCgroupBase = "/rootfs/sys/fs/cgroup/ovs.slice"
 
 var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDpdk), string(label.Slow), string(label.Tier2)), func() {
 	var (
@@ -197,18 +199,34 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 			Expect(err).ToNot(HaveOccurred(),
 				"ovs-dpdk-cpus-configure.sh should be present on the node")
 
-			cgroupBase := "/rootfs/sys/fs/cgroup/ovs.slice"
+			expectedOvsDpdkEnv := "OVS_DPDK_CPUS=" + ovsDpdkSet.String()
+
+			By("Verifying ovs-vswitchd drop-in OVS_DPDK_CPUS on node")
+			dropin, err := nodes.ExecCommand(ctx, node, []string{
+				"grep", "-r", "OVS_DPDK_CPUS=", "/rootfs/etc/systemd/system/ovs-vswitchd.service.d/",
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(testutils.ToString(dropin)).To(ContainSubstring(expectedOvsDpdkEnv),
+				"ovs-vswitchd drop-in should contain %s, got %s",
+				expectedOvsDpdkEnv, testutils.ToString(dropin))
+
+			By("Verifying ovs-vswitchd.service OVS_DPDK_CPUS on node")
+			envBlob, err := systemd.ShowPropertyValue(ctx, "ovs-vswitchd.service", "Environment", node)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(envBlob).To(ContainSubstring(expectedOvsDpdkEnv),
+				"ovs-vswitchd.service Environment should contain %s, got %s",
+				expectedOvsDpdkEnv, envBlob)
 
 			By("Verifying ovsdpdk.slice cgroup hierarchy exists")
 			_, err = nodes.ExecCommand(ctx, node, []string{
-				"stat", cgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice",
+				"stat", ovsSliceCgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice",
 			})
 			Expect(err).ToNot(HaveOccurred(),
 				"ovsdpdk.slice directory should exist inside ovs.slice/ovs-vswitchd.service/")
 
 			By("Verifying ovs.slice cgroup.subtree_control enables cpuset")
 			subtreeCtl, err := nodes.ExecCommand(ctx, node, []string{
-				"cat", cgroupBase + "/cgroup.subtree_control",
+				"cat", ovsSliceCgroupBase + "/cgroup.subtree_control",
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(testutils.ToString(subtreeCtl)).To(ContainSubstring("cpuset"),
@@ -216,7 +234,7 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 
 			By("Verifying ovs-vswitchd.service cgroup.subtree_control enables cpuset")
 			subtreeCtl, err = nodes.ExecCommand(ctx, node, []string{
-				"cat", cgroupBase + "/ovs-vswitchd.service/cgroup.subtree_control",
+				"cat", ovsSliceCgroupBase + "/ovs-vswitchd.service/cgroup.subtree_control",
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(testutils.ToString(subtreeCtl)).To(ContainSubstring("cpuset"),
@@ -224,31 +242,23 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 
 			By("Verifying ovsdpdk.slice cgroup.type is threaded")
 			cgroupType, err := nodes.ExecCommand(ctx, node, []string{
-				"cat", cgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice/cgroup.type",
+				"cat", ovsSliceCgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice/cgroup.type",
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(strings.TrimSpace(testutils.ToString(cgroupType))).To(Equal("threaded"),
 				"ovsdpdk.slice cgroup.type should be 'threaded'")
 
 			By("Verifying ovsdpdk.slice cpuset.cpus.exclusive matches configured ovsDpdk CPUs")
-			cgroupCpus, err := nodes.ExecCommand(ctx, node, []string{
-				"cat", cgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice/cpuset.cpus.exclusive",
-			})
-			Expect(err).ToNot(HaveOccurred())
-			cgroupCpuSet, err := cpuset.Parse(strings.TrimSpace(testutils.ToString(cgroupCpus)))
+			cgroupCpuSet, err := getOvsDpdkSliceExclusiveCPUs(ctx, node)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(cgroupCpuSet.Equals(ovsDpdkSet)).To(BeTrue(),
 				"ovsdpdk.slice cpuset.cpus.exclusive should be %s, got %s",
 				ovsDpdkSet.String(), cgroupCpuSet.String())
 
 			By("Verifying ovsdpdk.slice cpuset.cpus.partition is isolated")
-			cgroupPartition, err := nodes.ExecCommand(ctx, node, []string{
-				"cat", cgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice/cpuset.cpus.partition",
-			})
-			Expect(err).ToNot(HaveOccurred(),
-				"failed to read ovsdpdk.slice cpuset.cpus.partition")
-			Expect(strings.TrimSpace(testutils.ToString(cgroupPartition))).To(Equal("isolated"),
-				"ovsdpdk.slice cpuset.cpus.partition should be 'isolated'")
+			cgroupPartition, err := getOvsDpdkSlicePartition(ctx, node)
+			Expect(err).ToNot(HaveOccurred(), "failed to read ovsdpdk.slice cpuset.cpus.partition")
+			Expect(cgroupPartition).To(Equal("isolated"), "ovsdpdk.slice cpuset.cpus.partition should be 'isolated'")
 		})
 
 		It("[test_id:89989] should preserve ovsDpdk CPU IRQ banning across GU pod lifecycle", func() {
@@ -280,47 +290,70 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 			node := &workerRTNodes[0]
 			testlog.Infof("Verifying node %s", node.Name)
 
-			cgroupBase := "/rootfs/sys/fs/cgroup/ovs.slice"
-
 			By("Verifying ovsdpdk.slice cgroup hierarchy exists")
 			_, err := nodes.ExecCommand(ctx, node, []string{
-				"stat", cgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice",
+				"stat", ovsSliceCgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice",
 			})
 			Expect(err).ToNot(HaveOccurred(),
 				"ovsdpdk.slice directory should exist inside ovs.slice/ovs-vswitchd.service/")
 
 			By("Verifying ovsdpdk.slice cgroup.type is threaded")
 			cgroupType, err := nodes.ExecCommand(ctx, node, []string{
-				"cat", cgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice/cgroup.type",
+				"cat", ovsSliceCgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice/cgroup.type",
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(strings.TrimSpace(testutils.ToString(cgroupType))).To(Equal("threaded"),
 				"ovsdpdk.slice cgroup.type should be 'threaded'")
 
 			By("Verifying ovsdpdk.slice cpuset.cpus.exclusive matches configured ovsDpdk CPUs")
-			cgroupCpus, err := nodes.ExecCommand(ctx, node, []string{
-				"cat", cgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice/cpuset.cpus.exclusive",
-			})
-			Expect(err).ToNot(HaveOccurred())
-			cgroupCpuSet, err := cpuset.Parse(strings.TrimSpace(testutils.ToString(cgroupCpus)))
+			cgroupCpuSet, err := getOvsDpdkSliceExclusiveCPUs(ctx, node)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(cgroupCpuSet.Equals(ovsDpdkSet)).To(BeTrue(),
 				"ovsdpdk.slice cpuset.cpus.exclusive should be %s, got %s",
 				ovsDpdkSet.String(), cgroupCpuSet.String())
 
 			By("Verifying ovsdpdk.slice cpuset.cpus.partition is member")
-			cgroupPartition, err := nodes.ExecCommand(ctx, node, []string{
-				"cat", cgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice/cpuset.cpus.partition",
-			})
-			Expect(err).ToNot(HaveOccurred(),
-				"failed to read ovsdpdk.slice cpuset.cpus.partition")
-			Expect(strings.TrimSpace(testutils.ToString(cgroupPartition))).To(Equal("member"),
-				"ovsdpdk.slice cpuset.cpus.partition should be 'member'")
+			cgroupPartition, err := getOvsDpdkSlicePartition(ctx, node)
+			Expect(err).ToNot(HaveOccurred(), "failed to read ovsdpdk.slice cpuset.cpus.partition")
+			Expect(cgroupPartition).To(Equal("member"), "ovsdpdk.slice cpuset.cpus.partition should be 'member'")
 		})
 
 		It("[test_id:89990] should preserve ovsDpdk CPU IRQ banning across GU pod lifecycle", func() {
 			verifyOvsDpdkIRQBanningAcrossGUPodLifecycle(context.TODO(), &workerRTNodes[0], baselineProfile, ovsDpdkSet, smtAlignmentDisabled)
 		})
+
+		It("[test_id:89996] should ensure ovsdpdk.slice survives ovs-vswitchd service restart", func() {
+			ctx := context.TODO()
+			node := &workerRTNodes[0]
+			testlog.Infof("Verifying node %s", node.Name)
+
+			By("Restarting ovs-vswitchd.service")
+			// systemctl restart produces no output; ExecCommand waits for non-empty stdout and may time out.
+			_, _ = nodes.ExecCommand(ctx, node, []string{
+				"chroot", "/rootfs", "/bin/bash", "-c",
+				"systemctl restart ovs-vswitchd.service",
+			})
+
+			By("Waiting for ovs-vswitchd.service to become active")
+			Eventually(func() (string, error) {
+				state, err := systemd.ShowPropertyValue(ctx, "ovs-vswitchd.service", "ActiveState", node)
+				return strings.TrimSpace(state), err
+			}).WithTimeout(2 * time.Minute).WithPolling(5 * time.Second).Should(
+				Equal("active"),
+			)
+
+			By("Verifying ovsdpdk.slice cpuset.cpus.exclusive and cpuset.cpus.partition after ovs-vswitchd restart")
+			cgroupCpuSet, err := getOvsDpdkSliceExclusiveCPUs(ctx, node)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(cgroupCpuSet.Equals(ovsDpdkSet)).To(BeTrue(),
+				"ovsdpdk.slice exclusive: want %s, got %s", ovsDpdkSet, cgroupCpuSet)
+
+			cgroupPartition, err := getOvsDpdkSlicePartition(ctx, node)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(cgroupPartition).To(Equal("member"),
+				"ovsdpdk.slice partition: want member, got %s", cgroupPartition)
+		})
+
 	})
 })
 
@@ -484,4 +517,24 @@ func setPolicyOptions(profile *performancev2.PerformanceProfile, isWPEnabled boo
 		Expect(err).ToNot(HaveOccurred())
 		profile.Annotations["kubeletconfig.experimental"] = string(optJSON)
 	}
+}
+
+func getOvsDpdkSlicePartition(ctx context.Context, node *corev1.Node) (string, error) {
+	cgroupPartition, err := nodes.ExecCommand(ctx, node, []string{
+		"cat", ovsSliceCgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice/cpuset.cpus.partition",
+	})
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(testutils.ToString(cgroupPartition)), nil
+}
+
+func getOvsDpdkSliceExclusiveCPUs(ctx context.Context, node *corev1.Node) (cpuset.CPUSet, error) {
+	cgroupCpus, err := nodes.ExecCommand(ctx, node, []string{
+		"cat", ovsSliceCgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice/cpuset.cpus.exclusive",
+	})
+	if err != nil {
+		return cpuset.New(), err
+	}
+	return cpuset.Parse(strings.TrimSpace(testutils.ToString(cgroupCpus)))
 }
