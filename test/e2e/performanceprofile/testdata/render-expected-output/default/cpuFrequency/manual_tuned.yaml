@@ -47,16 +47,21 @@ spec:
       move them to swap cache\n#> latency-performance\nvm.swappiness=10\n\n# also
       configured via a sysctl.d file\n# placed here for documentation purposes and
       commented out due\n# to a tuned logging bug complaining about duplicate sysctl:\n#
-      \  https://issues.redhat.com/browse/RHEL-18972\n#> rps configuration\n# net.core.rps_default_mask=${not_isolated_cpumask}\n\n#
-      cpu-partitioning for RHEL disables it (= 0)\n# OCP is too dynamic when partitioning
-      and needs to evacuate\n# scheduled timers when starting a guaranteed workload
-      (= 1)\n# This has an unfortunate side-effect that HRTIMERs break\n# and cyclictest
+      \  https://issues.redhat.com/browse/RHEL-18972\n#> rps configuration\n# net.core.rps_default_mask=${not_isolated_cpumask}\n\n[sysctl.timer-migration]\ntype=sysctl\n#
+      Match uname with kernel versions containing\n# .el9.x86_64 or .el9_<number>,
+      but not .el91\nuname_regex=\\.el9[ _.]\n# cpu-partitioning for RHEL disables
+      timer.migration (= 0),\n# but OCP is too dynamic when partitioning and needs
+      to evacuate\n# scheduled timers when starting a guaranteed workload (= 1)\n#
+      \n# This has an unfortunate side-effect that HRTIMERs break\n# and cyclictest
       results will be affected, but there is no\n# way around that. Not enabling this
       breaks cpu pinned\n# workload isolation for example when any TCP timeout\n#
-      and keep alive timers are present.\nkernel.timer_migration=1\n\n[selinux]\n#>
-      Custom (atomic host)\navc_cache_threshold=8192\n\n\n\n[bootloader]\n# !! The
-      names are important for Intel and are referenced in openshift-node-performance-intel-x86\n\n#
-      set empty values to disable RHEL initrd setting in cpu-partitioning\ninitrd_remove_dir=\ninitrd_dst_img=\ninitrd_add_dir=\n\n#
+      and keep alive timers are present.\n#\n# This is only needed for RHEL 9 based
+      platforms.\n# RHEL 10 kernels reworked the timer management and are\n# no longer
+      affected by this issue.\n#\n# This whole block can be removed when the RHEL
+      9\n# support is dropped.\nkernel.timer_migration=1\n\n[selinux]\n#> Custom (atomic
+      host)\navc_cache_threshold=8192\n\n\n\n[bootloader]\n# !! The names are important
+      for Intel and are referenced in openshift-node-performance-intel-x86\n\n# set
+      empty values to disable RHEL initrd setting in cpu-partitioning\ninitrd_remove_dir=\ninitrd_dst_img=\ninitrd_add_dir=\n\n#
       overrides cpu-partitioning cmdline\ncmdline_cpu_part=+nohz=on rcu_nocbs=${isolated_cores}
       tuned.non_isolcpus=${not_isolated_cpumask} systemd.cpu_affinity=${not_isolated_cores_expanded}\ncmdline_cpu_part_nohzfull=+nohz_full=${isolated_cores}\ncmdline_cpu_tuning=+skew_tick=1\n\n#
       No default value but will be composed conditionally based on platform\ncmdline_iommu=\n\n\ncmdline_isolation=+isolcpus=managed_irq,${isolated_cores}\n\n\n\ncmdline_realtime_nosoftlookup=+nosoftlockup\ncmdline_realtime_common=+rcutree.kthread_prio=11\n\n\n\n\n\n\n\ncmdline_hugepages=+
