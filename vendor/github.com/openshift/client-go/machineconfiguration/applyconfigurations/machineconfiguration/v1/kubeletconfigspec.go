@@ -10,12 +10,34 @@ import (
 
 // KubeletConfigSpecApplyConfiguration represents a declarative configuration of the KubeletConfigSpec type for use
 // with apply.
+//
+// KubeletConfigSpec configures the kubelet running on cluster nodes.
 type KubeletConfigSpecApplyConfiguration struct {
-	AutoSizingReserved        *bool                                   `json:"autoSizingReserved,omitempty"`
-	LogLevel                  *int32                                  `json:"logLevel,omitempty"`
+	// autoSizingReserved controls whether system-reserved CPU and memory are automatically
+	// calculated based on each node's installed capacity. When set to true, this prevents node failure
+	// from resource starvation of system components (kubelet, CRI-O) without manual configuration.
+	// When omitted, this means the user has no opinion and the platform is left to choose a reasonable default,
+	// which is subject to change over time. The current default is true for worker nodes and false for control plane nodes.
+	// When set to false, automatic resource reservation is disabled and manual settings must be configured.
+	AutoSizingReserved *bool `json:"autoSizingReserved,omitempty"`
+	// logLevel sets the kubelet log verbosity, controlling the amount of detail in kubelet logs.
+	// Valid values range from 0 (minimal logging) to 10 (maximum verbosity with trace-level detail).
+	// Higher log levels may impact node performance. When omitted, the platform chooses a reasonable default,
+	// which is subject to change over time. The current default is 2 (standard informational logging).
+	LogLevel *int32 `json:"logLevel,omitempty"`
+	// machineConfigPoolSelector selects which pools the KubeletConfig should apply to.
+	// When omitted or set to an empty selector {}, no pools are selected, which is equivalent
+	// to not matching any MachineConfigPool.
 	MachineConfigPoolSelector *metav1.LabelSelectorApplyConfiguration `json:"machineConfigPoolSelector,omitempty"`
-	KubeletConfig             *runtime.RawExtension                   `json:"kubeletConfig,omitempty"`
-	TLSSecurityProfile        *configv1.TLSSecurityProfile            `json:"tlsSecurityProfile,omitempty"`
+	// kubeletConfig contains upstream Kubernetes kubelet configuration fields.
+	// Values are validated by the kubelet itself. Invalid values may render nodes unusable.
+	// Refer to OpenShift documentation for the Kubernetes version corresponding to your
+	// OpenShift release to find valid kubelet configuration options.
+	KubeletConfig *runtime.RawExtension `json:"kubeletConfig,omitempty"`
+	// tlsSecurityProfile configures TLS settings for the kubelet.
+	// When omitted, the TLS configuration defaults to the value from apiservers.config.openshift.io/cluster.
+	// When specified, the type field can be set to either "Old", "Intermediate", "Modern", "Custom" or omitted for backward compatibility.
+	TLSSecurityProfile *configv1.TLSSecurityProfile `json:"tlsSecurityProfile,omitempty"`
 }
 
 // KubeletConfigSpecApplyConfiguration constructs a declarative configuration of the KubeletConfigSpec type for use with

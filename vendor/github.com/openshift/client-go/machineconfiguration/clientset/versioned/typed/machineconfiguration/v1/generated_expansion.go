@@ -6,6 +6,8 @@ type ContainerRuntimeConfigExpansion interface{}
 
 type ControllerConfigExpansion interface{}
 
+type InternalReleaseImageExpansion interface{}
+
 type KubeletConfigExpansion interface{}
 
 type MachineConfigExpansion interface{}
@@ -17,5 +19,7 @@ type MachineConfigPoolExpansion interface{}
 type MachineOSBuildExpansion interface{}
 
 type MachineOSConfigExpansion interface{}
+
+type OSImageStreamExpansion interface{}
 
 type PinnedImageSetExpansion interface{}

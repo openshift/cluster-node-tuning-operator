@@ -19,6 +19,43 @@ awsendpointservices.hypershift.openshift.io:
   TopLevelFeatureGates: []
   Version: v1beta1
 
+azureprivatelinkservices.hypershift.openshift.io:
+  Annotations: {}
+  ApprovedPRNumber: ""
+  CRDName: azureprivatelinkservices.hypershift.openshift.io
+  Capability: ""
+  Category: ""
+  FeatureGates: []
+  FilenameOperatorName: ""
+  FilenameOperatorOrdering: ""
+  FilenameRunLevel: ""
+  GroupName: hypershift.openshift.io
+  HasStatus: true
+  KindName: AzurePrivateLinkService
+  Labels: {}
+  PluralName: azureprivatelinkservices
+  PrinterColumns:
+  - description: Globally unique PLS alias
+    jsonPath: .status.privateLinkServiceAlias
+    name: PLS Alias
+    type: string
+  - description: IP address of the Private Endpoint
+    jsonPath: .status.privateEndpointIP
+    name: Endpoint IP
+    type: string
+  - description: PLS availability status
+    jsonPath: .status.conditions[?(@.type=="AzurePrivateLinkServiceAvailable")].status
+    name: Available
+    type: string
+  - jsonPath: .metadata.creationTimestamp
+    name: Age
+    type: date
+  Scope: Namespaced
+  ShortNames:
+  - azpls
+  TopLevelFeatureGates: []
+  Version: v1beta1
+
 certificatesigningrequestapprovals.hypershift.openshift.io:
   Annotations: {}
   ApprovedPRNumber: ""
@@ -66,17 +103,17 @@ controlplanecomponents.hypershift.openshift.io:
     jsonPath: .status.conditions[?(@.type=="Available")].status
     name: Available
     type: string
-  - description: Progressing
-    jsonPath: .status.conditions[?(@.type=="Progressing")].status
-    name: Progressing
+  - description: RolloutComplete
+    jsonPath: .status.conditions[?(@.type=="RolloutComplete")].status
+    name: RolloutComplete
     type: string
   - description: Message
     jsonPath: .status.conditions[?(@.type=="Available")].message
     name: Message
     type: string
-  - description: ProgressingMessage
-    jsonPath: .status.conditions[?(@.type=="Progressing")].message
-    name: ProgressingMessage
+  - description: RolloutCompleteMessage
+    jsonPath: .status.conditions[?(@.type=="RolloutComplete")].message
+    name: RolloutCompleteMessage
     priority: 1
     type: string
   Scope: Namespaced
@@ -125,6 +162,41 @@ gcpprivateserviceconnects.hypershift.openshift.io:
   - GCPPlatform
   Version: v1beta1
 
+hcpetcdbackups.hypershift.openshift.io:
+  Annotations: {}
+  ApprovedPRNumber: ""
+  CRDName: hcpetcdbackups.hypershift.openshift.io
+  Capability: ""
+  Category: ""
+  FeatureGates:
+  - HCPEtcdBackup
+  FilenameOperatorName: ""
+  FilenameOperatorOrdering: ""
+  FilenameRunLevel: ""
+  GroupName: hypershift.openshift.io
+  HasStatus: true
+  KindName: HCPEtcdBackup
+  Labels: {}
+  PluralName: hcpetcdbackups
+  PrinterColumns:
+  - description: Backup completion status
+    jsonPath: .status.conditions[?(@.type=="BackupCompleted")].status
+    name: Completed
+    type: string
+  - description: Snapshot URL
+    jsonPath: .status.snapshotURL
+    name: URL
+    type: string
+  - jsonPath: .metadata.creationTimestamp
+    name: Age
+    type: date
+  Scope: Namespaced
+  ShortNames:
+  - hcpetcdbk
+  TopLevelFeatureGates:
+  - HCPEtcdBackup
+  Version: v1beta1
+
 hostedclusters.hypershift.openshift.io:
   Annotations: {}
   ApprovedPRNumber: ""
@@ -132,18 +204,23 @@ hostedclusters.hypershift.openshift.io:
   Capability: ""
   Category: ""
   FeatureGates:
-  - AutoNodeKarpenter
   - ClusterUpdateAcceptRisks
   - ClusterVersionOperatorConfiguration
+  - EtcdSharding
   - ExternalOIDC
+  - ExternalOIDCExternalClaimsSourcing
   - ExternalOIDCWithUIDAndExtraClaimMappings
   - ExternalOIDCWithUpstreamParity
   - GCPPlatform
+  - HCPEtcdBackup
   - HyperShiftOnlyDynamicResourceAllocation
   - ImageStreamImportMode
-  - KMSEncryptionProvider
-  - NetworkDiagnosticsConfig
+  - IngressComponentRouteLabels
+  - KMSEncryption
+  - NetworkObservabilityInstall
   - OpenStack
+  - TLSAdherence
+  - TLSGroupPreferences
   FilenameOperatorName: ""
   FilenameOperatorOrdering: ""
   FilenameRunLevel: ""
@@ -156,6 +233,10 @@ hostedclusters.hypershift.openshift.io:
   - description: Version
     jsonPath: .status.version.history[?(@.state=="Completed")].version
     name: Version
+    type: string
+  - description: Control Plane Version
+    jsonPath: .status.controlPlaneVersion.history[?(@.state=="Completed")].version
+    name: CP Version
     type: string
   - description: KubeConfig Secret
     jsonPath: .status.kubeconfig.name
@@ -177,6 +258,16 @@ hostedclusters.hypershift.openshift.io:
     jsonPath: .status.conditions[?(@.type=="Available")].message
     name: Message
     type: string
+  - description: Control Plane Progress
+    jsonPath: .status.controlPlaneVersion.history[0].state
+    name: CP Progress
+    priority: 1
+    type: string
+  - description: Data Plane Progress
+    jsonPath: .status.version.history[0].state
+    name: DP Progress
+    priority: 1
+    type: string
   Scope: Namespaced
   ShortNames:
   - hc
@@ -191,18 +282,23 @@ hostedcontrolplanes.hypershift.openshift.io:
   Capability: ""
   Category: cluster-api
   FeatureGates:
-  - AutoNodeKarpenter
   - ClusterUpdateAcceptRisks
   - ClusterVersionOperatorConfiguration
+  - EtcdSharding
   - ExternalOIDC
+  - ExternalOIDCExternalClaimsSourcing
   - ExternalOIDCWithUIDAndExtraClaimMappings
   - ExternalOIDCWithUpstreamParity
   - GCPPlatform
+  - HCPEtcdBackup
   - HyperShiftOnlyDynamicResourceAllocation
   - ImageStreamImportMode
-  - KMSEncryptionProvider
-  - NetworkDiagnosticsConfig
+  - IngressComponentRouteLabels
+  - KMSEncryption
+  - NetworkObservabilityInstall
   - OpenStack
+  - TLSAdherence
+  - TLSGroupPreferences
   FilenameOperatorName: ""
   FilenameOperatorOrdering: ""
   FilenameRunLevel: ""
@@ -227,6 +323,7 @@ nodepools.hypershift.openshift.io:
   Category: ""
   FeatureGates:
   - GCPPlatform
+  - OSStreams
   - OpenStack
   FilenameOperatorName: ""
   FilenameOperatorOrdering: ""

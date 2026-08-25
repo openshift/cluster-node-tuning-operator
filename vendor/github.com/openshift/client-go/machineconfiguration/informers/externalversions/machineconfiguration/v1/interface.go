@@ -12,6 +12,8 @@ type Interface interface {
 	ContainerRuntimeConfigs() ContainerRuntimeConfigInformer
 	// ControllerConfigs returns a ControllerConfigInformer.
 	ControllerConfigs() ControllerConfigInformer
+	// InternalReleaseImages returns a InternalReleaseImageInformer.
+	InternalReleaseImages() InternalReleaseImageInformer
 	// KubeletConfigs returns a KubeletConfigInformer.
 	KubeletConfigs() KubeletConfigInformer
 	// MachineConfigs returns a MachineConfigInformer.
@@ -24,6 +26,8 @@ type Interface interface {
 	MachineOSBuilds() MachineOSBuildInformer
 	// MachineOSConfigs returns a MachineOSConfigInformer.
 	MachineOSConfigs() MachineOSConfigInformer
+	// OSImageStreams returns a OSImageStreamInformer.
+	OSImageStreams() OSImageStreamInformer
 	// PinnedImageSets returns a PinnedImageSetInformer.
 	PinnedImageSets() PinnedImageSetInformer
 }
@@ -47,6 +51,11 @@ func (v *version) ContainerRuntimeConfigs() ContainerRuntimeConfigInformer {
 // ControllerConfigs returns a ControllerConfigInformer.
 func (v *version) ControllerConfigs() ControllerConfigInformer {
 	return &controllerConfigInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// InternalReleaseImages returns a InternalReleaseImageInformer.
+func (v *version) InternalReleaseImages() InternalReleaseImageInformer {
+	return &internalReleaseImageInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // KubeletConfigs returns a KubeletConfigInformer.
@@ -77,6 +86,11 @@ func (v *version) MachineOSBuilds() MachineOSBuildInformer {
 // MachineOSConfigs returns a MachineOSConfigInformer.
 func (v *version) MachineOSConfigs() MachineOSConfigInformer {
 	return &machineOSConfigInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// OSImageStreams returns a OSImageStreamInformer.
+func (v *version) OSImageStreams() OSImageStreamInformer {
+	return &oSImageStreamInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // PinnedImageSets returns a PinnedImageSetInformer.

@@ -41,6 +41,7 @@ type HostedControlPlane struct {
 // HostedControlPlaneSpec defines the desired state of HostedControlPlane
 // +kubebuilder:validation:XValidation:rule="self.platform.type == 'IBMCloud' ? size(self.services) >= 3 : size(self.services) >= 4",message="spec.services in body should have at least 4 items or 3 for IBMCloud"
 // +kubebuilder:validation:XValidation:rule="!has(self.operatorConfiguration) || !has(self.operatorConfiguration.clusterNetworkOperator) || !has(self.operatorConfiguration.clusterNetworkOperator.disableMultiNetwork) || !self.operatorConfiguration.clusterNetworkOperator.disableMultiNetwork || self.networking.networkType == 'Other'",message="disableMultiNetwork can only be set to true when networkType is 'Other'"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.secretEncryption) || has(self.secretEncryption)",message="secretEncryption cannot be removed once configured"
 type HostedControlPlaneSpec struct {
 	// releaseImage is the release image applied to the hosted control plane.
 	// +required
@@ -187,6 +188,13 @@ type HostedControlPlaneSpec struct {
 	// +optional
 	OperatorConfiguration *OperatorConfiguration `json:"operatorConfiguration,omitempty"`
 
+	// monitoring configures monitoring for the hosted cluster, including
+	// forwarding of control plane metrics to the hosted cluster's monitoring stack.
+	// When omitted, metrics forwarding is not configured and will be inactive.
+	//
+	// +optional
+	Monitoring MonitoringSpec `json:"monitoring,omitzero"`
+
 	// imageContentSources lists sources/repositories for the release-image content.
 	// +optional
 	// +kubebuilder:validation:MaxItems=255
@@ -225,10 +233,13 @@ type HostedControlPlaneSpec struct {
 	// +optional
 	Autoscaling ClusterAutoscaling `json:"autoscaling,omitempty"`
 
-	// autoNode specifies the configuration for the autoNode feature.
-	// +openshift:enable:FeatureGate=AutoNodeKarpenter
+	// autoNode specifies the configuration for automatic node provisioning
+	// and lifecycle management. When set, nodes are automatically provisioned
+	// using the specified provisioner (e.g. Karpenter) instead of requiring
+	// manual NodePool management.
+	//
 	// +optional
-	AutoNode *AutoNode `json:"autoNode,omitempty"`
+	AutoNode AutoNode `json:"autoNode,omitzero"`
 
 	// nodeSelector when specified, must be true for the pods managed by the HostedCluster to be scheduled.
 	//
@@ -349,6 +360,12 @@ type HostedControlPlaneStatus struct {
 	// +kubebuilder:validation:MaxLength=255
 	OAuthCallbackURLTemplate string `json:"oauthCallbackURLTemplate,omitempty"`
 
+	// controlPlaneVersion tracks the rollout status of the control plane
+	// components running on the management cluster, independently from
+	// the data-plane version reported in the version field.
+	// +optional
+	ControlPlaneVersion ControlPlaneVersionStatus `json:"controlPlaneVersion,omitzero"`
+
 	// versionStatus is the status of the release version applied by the
 	// hosted control plane operator.
 	// +optional
@@ -403,9 +420,17 @@ type HostedControlPlaneStatus struct {
 	// +optional
 	NodeCount *int `json:"nodeCount,omitempty"`
 
+	// autoNode contains the observed state of the autoNode (Karpenter) provisioner.
+	// +optional
+	AutoNode AutoNodeStatus `json:"autoNode,omitzero"`
+
 	// configuration contains the cluster configuration status of the HostedCluster
 	// +optional
 	Configuration *ConfigurationStatus `json:"configuration,omitempty"`
+
+	// secretEncryption tracks the state of secret encryption key rotation and re-encryption.
+	// +optional
+	SecretEncryption SecretEncryptionStatus `json:"secretEncryption,omitzero"`
 }
 
 // APIEndpoint represents a reachable Kubernetes API endpoint.

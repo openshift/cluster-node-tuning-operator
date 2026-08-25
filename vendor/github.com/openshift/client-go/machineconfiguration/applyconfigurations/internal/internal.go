@@ -43,6 +43,16 @@ var schemaYAML = typed.YAMLObject(`types:
     elementType:
       namedType: __untyped_deduced_
     elementRelationship: separable
+- name: com.github.openshift.api.machineconfiguration.v1.InternalReleaseImage
+  scalar: untyped
+  list:
+    elementType:
+      namedType: __untyped_atomic_
+    elementRelationship: atomic
+  map:
+    elementType:
+      namedType: __untyped_deduced_
+    elementRelationship: separable
 - name: com.github.openshift.api.machineconfiguration.v1.KubeletConfig
   scalar: untyped
   list:
@@ -94,6 +104,16 @@ var schemaYAML = typed.YAMLObject(`types:
       namedType: __untyped_deduced_
     elementRelationship: separable
 - name: com.github.openshift.api.machineconfiguration.v1.MachineOSConfig
+  scalar: untyped
+  list:
+    elementType:
+      namedType: __untyped_atomic_
+    elementRelationship: atomic
+  map:
+    elementType:
+      namedType: __untyped_deduced_
+    elementRelationship: separable
+- name: com.github.openshift.api.machineconfiguration.v1.OSImageStream
   scalar: untyped
   list:
     elementType:
@@ -187,112 +207,6 @@ var schemaYAML = typed.YAMLObject(`types:
           elementRelationship: associative
           keys:
           - name
-- name: com.github.openshift.api.machineconfiguration.v1alpha1.MCOObjectReference
-  map:
-    fields:
-    - name: name
-      type:
-        scalar: string
-      default: ""
-- name: com.github.openshift.api.machineconfiguration.v1alpha1.MachineConfigNode
-  map:
-    fields:
-    - name: apiVersion
-      type:
-        scalar: string
-    - name: kind
-      type:
-        scalar: string
-    - name: metadata
-      type:
-        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
-      default: {}
-    - name: spec
-      type:
-        namedType: com.github.openshift.api.machineconfiguration.v1alpha1.MachineConfigNodeSpec
-      default: {}
-    - name: status
-      type:
-        namedType: com.github.openshift.api.machineconfiguration.v1alpha1.MachineConfigNodeStatus
-      default: {}
-- name: com.github.openshift.api.machineconfiguration.v1alpha1.MachineConfigNodeSpec
-  map:
-    fields:
-    - name: configVersion
-      type:
-        namedType: com.github.openshift.api.machineconfiguration.v1alpha1.MachineConfigNodeSpecMachineConfigVersion
-      default: {}
-    - name: node
-      type:
-        namedType: com.github.openshift.api.machineconfiguration.v1alpha1.MCOObjectReference
-      default: {}
-    - name: pool
-      type:
-        namedType: com.github.openshift.api.machineconfiguration.v1alpha1.MCOObjectReference
-      default: {}
-- name: com.github.openshift.api.machineconfiguration.v1alpha1.MachineConfigNodeSpecMachineConfigVersion
-  map:
-    fields:
-    - name: desired
-      type:
-        scalar: string
-      default: ""
-- name: com.github.openshift.api.machineconfiguration.v1alpha1.MachineConfigNodeStatus
-  map:
-    fields:
-    - name: conditions
-      type:
-        list:
-          elementType:
-            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
-          elementRelationship: associative
-          keys:
-          - type
-    - name: configVersion
-      type:
-        namedType: com.github.openshift.api.machineconfiguration.v1alpha1.MachineConfigNodeStatusMachineConfigVersion
-      default: {}
-    - name: observedGeneration
-      type:
-        scalar: numeric
-    - name: pinnedImageSets
-      type:
-        list:
-          elementType:
-            namedType: com.github.openshift.api.machineconfiguration.v1alpha1.MachineConfigNodeStatusPinnedImageSet
-          elementRelationship: associative
-          keys:
-          - name
-- name: com.github.openshift.api.machineconfiguration.v1alpha1.MachineConfigNodeStatusMachineConfigVersion
-  map:
-    fields:
-    - name: current
-      type:
-        scalar: string
-      default: ""
-    - name: desired
-      type:
-        scalar: string
-      default: ""
-- name: com.github.openshift.api.machineconfiguration.v1alpha1.MachineConfigNodeStatusPinnedImageSet
-  map:
-    fields:
-    - name: currentGeneration
-      type:
-        scalar: numeric
-    - name: desiredGeneration
-      type:
-        scalar: numeric
-    - name: lastFailedGeneration
-      type:
-        scalar: numeric
-    - name: lastFailedGenerationError
-      type:
-        scalar: string
-    - name: name
-      type:
-        scalar: string
-      default: ""
 - name: com.github.openshift.api.machineconfiguration.v1alpha1.OSImageStream
   map:
     fields:
@@ -327,16 +241,10 @@ var schemaYAML = typed.YAMLObject(`types:
         scalar: string
 - name: com.github.openshift.api.machineconfiguration.v1alpha1.OSImageStreamSpec
   map:
-    elementType:
-      scalar: untyped
-      list:
-        elementType:
-          namedType: __untyped_atomic_
-        elementRelationship: atomic
-      map:
-        elementType:
-          namedType: __untyped_deduced_
-        elementRelationship: separable
+    fields:
+    - name: defaultStream
+      type:
+        scalar: string
 - name: com.github.openshift.api.machineconfiguration.v1alpha1.OSImageStreamStatus
   map:
     fields:
@@ -351,55 +259,6 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: defaultStream
       type:
         scalar: string
-- name: com.github.openshift.api.machineconfiguration.v1alpha1.PinnedImageRef
-  map:
-    fields:
-    - name: name
-      type:
-        scalar: string
-- name: com.github.openshift.api.machineconfiguration.v1alpha1.PinnedImageSet
-  map:
-    fields:
-    - name: apiVersion
-      type:
-        scalar: string
-    - name: kind
-      type:
-        scalar: string
-    - name: metadata
-      type:
-        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
-      default: {}
-    - name: spec
-      type:
-        namedType: com.github.openshift.api.machineconfiguration.v1alpha1.PinnedImageSetSpec
-      default: {}
-    - name: status
-      type:
-        namedType: com.github.openshift.api.machineconfiguration.v1alpha1.PinnedImageSetStatus
-      default: {}
-- name: com.github.openshift.api.machineconfiguration.v1alpha1.PinnedImageSetSpec
-  map:
-    fields:
-    - name: pinnedImages
-      type:
-        list:
-          elementType:
-            namedType: com.github.openshift.api.machineconfiguration.v1alpha1.PinnedImageRef
-          elementRelationship: associative
-          keys:
-          - name
-- name: com.github.openshift.api.machineconfiguration.v1alpha1.PinnedImageSetStatus
-  map:
-    fields:
-    - name: conditions
-      type:
-        list:
-          elementType:
-            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
-          elementRelationship: associative
-          keys:
-          - type
 - name: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
   map:
     fields:
