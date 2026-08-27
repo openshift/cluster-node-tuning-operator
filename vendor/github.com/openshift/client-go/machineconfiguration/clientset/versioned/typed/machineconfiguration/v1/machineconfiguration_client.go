@@ -14,12 +14,14 @@ type MachineconfigurationV1Interface interface {
 	RESTClient() rest.Interface
 	ContainerRuntimeConfigsGetter
 	ControllerConfigsGetter
+	InternalReleaseImagesGetter
 	KubeletConfigsGetter
 	MachineConfigsGetter
 	MachineConfigNodesGetter
 	MachineConfigPoolsGetter
 	MachineOSBuildsGetter
 	MachineOSConfigsGetter
+	OSImageStreamsGetter
 	PinnedImageSetsGetter
 }
 
@@ -34,6 +36,10 @@ func (c *MachineconfigurationV1Client) ContainerRuntimeConfigs() ContainerRuntim
 
 func (c *MachineconfigurationV1Client) ControllerConfigs() ControllerConfigInterface {
 	return newControllerConfigs(c)
+}
+
+func (c *MachineconfigurationV1Client) InternalReleaseImages() InternalReleaseImageInterface {
+	return newInternalReleaseImages(c)
 }
 
 func (c *MachineconfigurationV1Client) KubeletConfigs() KubeletConfigInterface {
@@ -58,6 +64,10 @@ func (c *MachineconfigurationV1Client) MachineOSBuilds() MachineOSBuildInterface
 
 func (c *MachineconfigurationV1Client) MachineOSConfigs() MachineOSConfigInterface {
 	return newMachineOSConfigs(c)
+}
+
+func (c *MachineconfigurationV1Client) OSImageStreams() OSImageStreamInterface {
+	return newOSImageStreams(c)
 }
 
 func (c *MachineconfigurationV1Client) PinnedImageSets() PinnedImageSetInterface {

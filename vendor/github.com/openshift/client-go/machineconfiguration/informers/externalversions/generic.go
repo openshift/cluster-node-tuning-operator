@@ -42,6 +42,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Machineconfiguration().V1().ContainerRuntimeConfigs().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("controllerconfigs"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Machineconfiguration().V1().ControllerConfigs().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("internalreleaseimages"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Machineconfiguration().V1().InternalReleaseImages().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("kubeletconfigs"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Machineconfiguration().V1().KubeletConfigs().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("machineconfigs"):
@@ -54,18 +56,16 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Machineconfiguration().V1().MachineOSBuilds().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("machineosconfigs"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Machineconfiguration().V1().MachineOSConfigs().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("osimagestreams"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Machineconfiguration().V1().OSImageStreams().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("pinnedimagesets"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Machineconfiguration().V1().PinnedImageSets().Informer()}, nil
 
 		// Group=machineconfiguration.openshift.io, Version=v1alpha1
 	case v1alpha1.SchemeGroupVersion.WithResource("internalreleaseimages"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Machineconfiguration().V1alpha1().InternalReleaseImages().Informer()}, nil
-	case v1alpha1.SchemeGroupVersion.WithResource("machineconfignodes"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Machineconfiguration().V1alpha1().MachineConfigNodes().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("osimagestreams"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Machineconfiguration().V1alpha1().OSImageStreams().Informer()}, nil
-	case v1alpha1.SchemeGroupVersion.WithResource("pinnedimagesets"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Machineconfiguration().V1alpha1().PinnedImageSets().Informer()}, nil
 
 	}
 

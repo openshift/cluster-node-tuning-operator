@@ -48,12 +48,19 @@ type AWSNodePoolPlatform struct {
 	// +optional
 	RootVolume *Volume `json:"rootVolume,omitempty"`
 
-	// resourceTags is an optional list of additional tags to apply to AWS node
-	// instances. Changes to this field will be propagated in-place to AWS EC2 instances and their initial EBS volumes.
-	// Volumes created by the storage operator and attached to instances after they are created do not get these tags applied.
-	//
-	// These will be merged with HostedCluster scoped tags, which take precedence in case of conflicts.
-	// These take precedence over tags defined out of band (i.e., tags added manually or by other tools outside of HyperShift) in AWS in case of conflicts.
+	// resourceTags is a list of additional tags to apply to AWS resources created
+	// for the NodePool. Changes to this field will be propagated in-place to AWS
+	// EC2 instances and their initial EBS volumes. Volumes created by the storage
+	// operator and attached to instances after they are created do not get these
+	// tags applied.
+	// These are merged with HostedCluster-level tags. By default, HostedCluster
+	// tags take precedence when both specify the same key. To allow a NodePool
+	// tag to override a specific HostedCluster tag, set overridePolicy to "Allow"
+	// on the HostedCluster tag.
+	// Tags that only exist at the NodePool level (no conflict) are always applied.
+	// These take precedence over tags defined out of band (i.e., tags added
+	// manually or by other tools outside of HyperShift) in AWS in case of
+	// conflicts.
 	//
 	// See https://docs.aws.amazon.com/general/latest/gr/aws_tagging.html for
 	// information on tagging AWS resources. AWS supports a maximum of 50 tags per
@@ -62,7 +69,7 @@ type AWSNodePoolPlatform struct {
 	//
 	// +kubebuilder:validation:MaxItems=25
 	// +optional
-	ResourceTags []AWSResourceTag `json:"resourceTags,omitempty"`
+	ResourceTags []AWSNodePoolResourceTag `json:"resourceTags,omitempty"`
 
 	// placement specifies the placement options for the EC2 instances.
 	//
@@ -71,7 +78,17 @@ type AWSNodePoolPlatform struct {
 }
 
 // PlacementOptions specifies the placement options for the EC2 instances.
+//
+// The instance market type is determined by the marketType field:
+// - "OnDemand" (default): Standard on-demand instances
+// - "Spot": Spot instances using spare EC2 capacity at reduced prices
+// - "CapacityBlocks": Scheduled pre-purchased compute capacity for ML workloads
+//
 // +kubebuilder:validation:XValidation:rule="has(self.tenancy) && self.tenancy == 'host' ? !has(self.capacityReservation) : true", message="AWS Capacity Reservations cannot be used with Dedicated Hosts (tenancy 'host')"
+// +kubebuilder:validation:XValidation:rule="!has(self.marketType) || self.marketType != 'Spot' || !has(self.capacityReservation)", message="Spot instances cannot be combined with Capacity Reservations"
+// +kubebuilder:validation:XValidation:rule="!has(self.marketType) || self.marketType != 'Spot' || !has(self.tenancy) || self.tenancy == 'default'", message="Spot instances require default tenancy or unset"
+// +kubebuilder:validation:XValidation:rule="!has(self.marketType) || self.marketType != 'CapacityBlocks' || has(self.capacityReservation)", message="CapacityBlocks market type requires capacityReservation to be specified"
+// +kubebuilder:validation:XValidation:rule="!has(self.spot) || (has(self.marketType) && self.marketType == 'Spot')", message="spot options can only be specified when marketType is 'Spot'"
 type PlacementOptions struct {
 	// tenancy indicates if instance should run on shared or single-tenant hardware.
 	//
@@ -87,24 +104,91 @@ type PlacementOptions struct {
 	// +kubebuilder:validation:Enum:=default;dedicated;host
 	Tenancy string `json:"tenancy,omitempty"`
 
+	// marketType specifies the EC2 instance purchasing model.
+	// Supported values are "OnDemand" for standard on-demand instances,
+	// "Spot" for spot instances that use spare EC2 capacity at reduced prices
+	// but may be interrupted (optionally accepts spot options and requires
+	// terminationHandlerQueueURL on the HostedCluster), and "CapacityBlocks" for scheduled pre-purchased
+	// compute capacity recommended for GPU/ML workloads (requires
+	// capacityReservation with a specific reservation ID).
+	// When omitted, the default is "OnDemand".
+	// +optional
+	// +kubebuilder:validation:Enum:="";OnDemand;Spot;CapacityBlocks
+	MarketType MarketType `json:"marketType,omitempty"`
+
+	// spot configures optional Spot instance overrides.
+	// When omitted, Spot instances use AWS defaults.
+	//
+	// Spot instances use spare EC2 capacity at reduced prices but may be interrupted
+	// with a 2-minute warning. Requires terminationHandlerQueueURL to be set on the
+	// HostedCluster's AWS platform spec for graceful handling of interruptions.
+	//
+	// +optional
+	Spot SpotOptions `json:"spot,omitzero"`
+
 	// capacityReservation specifies Capacity Reservation options for the NodePool instances.
 	//
 	// Cannot be specified when tenancy is set to "host" as Dedicated Hosts
 	// do not support Capacity Reservations. Compatible with "default" and "dedicated" tenancy.
 	//
+	// Required when marketType is "CapacityBlocks".
+	//
 	// +optional
 	CapacityReservation *CapacityReservationOptions `json:"capacityReservation,omitempty"`
 }
 
-// MarketType describes the market type of the CapacityReservation for an Instance.
+// SpotOptions configures options for Spot instances.
+//
+// Spot instances use spare EC2 capacity at reduced prices but may be interrupted
+// with a 2-minute warning when EC2 needs the capacity back.
+type SpotOptions struct {
+	// maxPrice defines the maximum price the user is willing to pay for Spot instances.
+	// If not specified, the on-demand price is used as the maximum (you pay the actual spot price).
+	// The value should be a decimal number representing the price per hour in USD.
+	// For example, "0.50" means 50 cents per hour.
+	//
+	// Note: AWS recommends NOT setting maxPrice to reduce interruption frequency.
+	// When omitted, you pay the current Spot price (capped at On-Demand price).
+	// AWS minimum allowed value is $0.001.
+	//
+	// +optional
+	// +kubebuilder:validation:Pattern=`^[0-9]+(\.[0-9]+)?$`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=20
+	MaxPrice string `json:"maxPrice,omitempty"`
+}
+
+// AWSResourceTagOverridePolicy specifies whether a HostedCluster-level AWS resource tag
+// can be overridden by a NodePool-level tag with the same key.
+// This field is only meaningful on HostedCluster-level tags (AWSClusterResourceTag).
+//
+// +kubebuilder:validation:Enum=Allow;Deny
+type AWSResourceTagOverridePolicy string
+
+const (
+	// AWSResourceTagOverridePolicyAllow permits a NodePool tag to override this
+	// HostedCluster tag when both share the same key.
+	AWSResourceTagOverridePolicyAllow AWSResourceTagOverridePolicy = "Allow"
+
+	// AWSResourceTagOverridePolicyDeny prevents a NodePool tag from overriding
+	// this HostedCluster tag when both share the same key. The HostedCluster
+	// value is preserved. This is the default behavior when the field is unset.
+	AWSResourceTagOverridePolicyDeny AWSResourceTagOverridePolicy = "Deny"
+)
+
+// MarketType describes the market type for EC2 instances.
 type MarketType string
 
 const (
-	// MarketTypeOnDemand is a MarketType enum value
+	// MarketTypeOnDemand is a MarketType enum value for standard on-demand instances.
 	MarketTypeOnDemand MarketType = "OnDemand"
 
-	// MarketTypeCapacityBlock is a MarketType enum value
+	// MarketTypeCapacityBlock is a MarketType enum value for Capacity Blocks.
 	MarketTypeCapacityBlock MarketType = "CapacityBlocks"
+
+	// MarketTypeSpot is a MarketType enum value for Spot instances.
+	// Spot instances use spare EC2 capacity at reduced prices but may be interrupted.
+	MarketTypeSpot MarketType = "Spot"
 )
 
 // CapacityReservationOptions specifies Capacity Reservation options for the NodePool instances.
@@ -124,11 +208,14 @@ type CapacityReservationOptions struct {
 	// +optional
 	ID *string `json:"id,omitempty"`
 
-	// marketType specifies the market type of the CapacityReservation for the EC2 instances. Valid values are OnDemand, CapacityBlocks and omitted:
+	// marketType specifies the market type of the CapacityReservation for the EC2 instances.
+	//
+	// Deprecated: Use placement.marketType instead. This field is maintained for backward compatibility.
+	// When both placement.marketType and capacityReservation.marketType are set, placement.marketType takes precedence.
+	//
+	// Valid values are OnDemand, CapacityBlocks and omitted:
 	// - "OnDemand": EC2 instances run as standard On-Demand instances.
-	// - "CapacityBlocks": scheduled pre-purchased compute capacity. Capacity Blocks is recommended when GPUs are needed to support ML workloads.
-	// When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time.
-	// The current default value is CapacityBlocks.
+	// - "CapacityBlocks": scheduled pre-purchased compute capacity. Recommended for GPU/ML workloads.
 	//
 	// When set to 'CapacityBlocks', a specific Capacity Reservation ID must be provided.
 	//
@@ -311,11 +398,15 @@ type AWSPlatformSpec struct {
 	// Changes to this field will be propagated in-place to AWS resources (VPC Endpoints, EC2 instances, initial EBS volumes and default/endpoint security groups).
 	// These tags will be propagated to the infrastructure CR in the guest cluster, where other OCP operators might choose to honor this input to reconcile AWS resources created by them.
 	// Please consult the official documentation for a list of all AWS resources that support in-place tag updates.
+	// For NodePool-created resources (EC2 instances and their initial EBS volumes), these will be merged with NodePool-scoped tags.
+	// By default, HostedCluster tags take precedence over NodePool tags when both specify the same key.
+	// To allow a NodePool tag to override a specific HostedCluster tag, set overridePolicy to "Allow" on that tag.
+	// Cluster-scoped resources (VPC endpoints, security groups) only receive HostedCluster tags.
 	// These take precedence over tags defined out of band (i.e., tags added manually or by other tools outside of HyperShift) in AWS in case of conflicts.
 	//
 	// +kubebuilder:validation:MaxItems=25
 	// +optional
-	ResourceTags []AWSResourceTag `json:"resourceTags,omitempty"`
+	ResourceTags []AWSClusterResourceTag `json:"resourceTags,omitempty"`
 
 	// endpointAccess specifies the publishing scope of cluster endpoints. The
 	// default is Public.
@@ -352,6 +443,22 @@ type AWSPlatformSpec struct {
 	//
 	// +optional
 	SharedVPC *AWSSharedVPC `json:"sharedVPC,omitempty"`
+
+	// terminationHandlerQueueURL specifies the SQS queue URL for EC2 spot interruption events.
+	// This is required when using spot instances (marketType: Spot) in NodePools to enable
+	// graceful handling of spot instance terminations.
+	//
+	// The queue should be configured to receive EC2 Spot Instance Interruption Warnings
+	// and EC2 Instance Rebalance Recommendations via EventBridge rules.
+	// The AWS Node Termination Handler will poll this queue and cordon/drain nodes
+	// before they are terminated, providing a best effort for graceful shutdown.
+	//
+	// Supports both standard and FIFO queues (FIFO queues end with .fifo suffix).
+	//
+	// +optional
+	// +kubebuilder:validation:MaxLength=512
+	// +kubebuilder:validation:Pattern=`^https://sqs\.[a-z0-9-]+\.amazonaws\.com/[0-9]{12}/[a-zA-Z0-9_-]+(\.fifo)?$`
+	TerminationHandlerQueueURL string `json:"terminationHandlerQueueURL,omitempty"`
 }
 
 // AWSSharedVPC contains fields needed to create a HostedCluster using a VPC that has been
@@ -388,15 +495,25 @@ type AWSRoleCredentials struct {
 }
 
 // AWSResourceTag is a tag to apply to AWS resources created for the cluster.
+//
+// Deprecated: Use AWSClusterResourceTag, AWSNodePoolResourceTag, or
+// AWSEndpointServiceResourceTag instead. AWSClusterResourceTag preserves the
+// existing tag precedence (HostedCluster wins by default) and adds an optional
+// overridePolicy field. Set overridePolicy to "Allow" on a HostedCluster tag
+// to permit NodePool tags to override it.
 type AWSResourceTag struct {
 	// key is the key of the tag.
+	// Must be between 1 and 128 characters and may only contain letters, digits,
+	// and the characters _ . : / = + - @
 	//
 	// +required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=128
-	// +kubebuilder:validation:Pattern=`^[0-9A-Za-z_.:/=+-@]+$`
+	// +kubebuilder:validation:XValidation:rule=`self.matches('^[0-9A-Za-z_.:/=+@-]+$')`,message="key must only contain letters, digits, and the characters _ . : / = + - @"
 	Key string `json:"key"`
 	// value is the value of the tag.
+	// Must be between 1 and 256 characters and may only contain letters, digits,
+	// and the characters _ . : / = + - @
 	//
 	// Some AWS service do not support empty values. Since tags are added to
 	// resources in many services, the length of the tag value must meet the
@@ -405,8 +522,76 @@ type AWSResourceTag struct {
 	// +required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=256
-	// +kubebuilder:validation:Pattern=`^[0-9A-Za-z_.:/=+-@]+$`
+	// +kubebuilder:validation:XValidation:rule=`self.matches('^[0-9A-Za-z_.:/=+@-]+$')`,message="value must only contain letters, digits, and the characters _ . : / = + - @"
 	Value string `json:"value"`
+}
+
+// AWSClusterResourceTag is a tag to apply to AWS resources created for a
+// HostedCluster. It extends the base tag with an overridePolicy field that
+// controls whether NodePool-level tags can override this tag.
+type AWSClusterResourceTag struct {
+	// key is the key of the tag.
+	// Must be between 1 and 128 characters and may only contain letters, digits,
+	// and the characters _ . : / = + - @
+	//
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=128
+	// +kubebuilder:validation:XValidation:rule=`self.matches('^[0-9A-Za-z_.:/=+@-]+$')`,message="key must only contain letters, digits, and the characters _ . : / = + - @"
+	Key string `json:"key,omitempty"`
+	// value is the value of the tag.
+	// Must be between 1 and 256 characters and may only contain letters, digits,
+	// and the characters _ . : / = + - @
+	//
+	// Some AWS service do not support empty values. Since tags are added to
+	// resources in many services, the length of the tag value must meet the
+	// requirements of all services.
+	//
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	// +kubebuilder:validation:XValidation:rule=`self.matches('^[0-9A-Za-z_.:/=+@-]+$')`,message="value must only contain letters, digits, and the characters _ . : / = + - @"
+	Value string `json:"value,omitempty"`
+	// overridePolicy controls whether a NodePool-level tag with the same key can
+	// override this HostedCluster-level tag.
+	//
+	// When set to "Allow", a NodePool tag with the same key will take precedence
+	// over this HostedCluster tag. When set to "Deny" or omitted, the
+	// HostedCluster value is preserved and the NodePool tag is ignored for that
+	// key.
+	//
+	// +optional
+	OverridePolicy AWSResourceTagOverridePolicy `json:"overridePolicy,omitempty"`
+}
+
+// AWSNodePoolResourceTag is a tag to apply to AWS resources created for a
+// NodePool. These tags are merged with HostedCluster-level tags. By default,
+// HostedCluster tags take precedence when both specify the same key. To allow
+// a NodePool tag to override a specific HostedCluster tag, set overridePolicy
+// to "Allow" on the HostedCluster tag.
+type AWSNodePoolResourceTag struct {
+	// key is the key of the tag.
+	// Must be between 1 and 128 characters and may only contain letters, digits,
+	// and the characters _ . : / = + - @
+	//
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=128
+	// +kubebuilder:validation:XValidation:rule=`self.matches('^[0-9A-Za-z_.:/=+@-]+$')`,message="key must only contain letters, digits, and the characters _ . : / = + - @"
+	Key string `json:"key,omitempty"`
+	// value is the value of the tag.
+	// Must be between 1 and 256 characters and may only contain letters, digits,
+	// and the characters _ . : / = + - @
+	//
+	// Some AWS service do not support empty values. Since tags are added to
+	// resources in many services, the length of the tag value must meet the
+	// requirements of all services.
+	//
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	// +kubebuilder:validation:XValidation:rule=`self.matches('^[0-9A-Za-z_.:/=+@-]+$')`,message="value must only contain letters, digits, and the characters _ . : / = + - @"
+	Value string `json:"value,omitempty"`
 }
 
 // AWSRolesRef contains references to various AWS IAM roles required for operators to make calls against the AWS API.
@@ -940,6 +1125,9 @@ type AWSKMSSpec struct {
 	ActiveKey AWSKMSKeyEntry `json:"activeKey"`
 	// backupKey defines the old key during the rotation process so previously created
 	// secrets can continue to be decrypted until they are all re-encrypted with the active key.
+	//
+	// Deprecated: This field will be ignored when status.secretEncryption.activeKey is set.
+	// The system automatically manages the previous key via the status field.
 	// +optional
 	BackupKey *AWSKMSKeyEntry `json:"backupKey,omitempty"`
 	// auth defines metadata about the management of credentials used to interact with AWS KMS
@@ -999,9 +1187,10 @@ type AWSKMSAuthSpec struct {
 type AWSKMSKeyEntry struct {
 	// arn is the Amazon Resource Name for the encryption key
 	// +required
-	// +kubebuilder:validation:Pattern=`^arn:`
+	// +kubebuilder:validation:XValidation:rule="self.startsWith('arn:')",message="arn must start with 'arn:'"
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=2048
-	ARN string `json:"arn"`
+	ARN string `json:"arn,omitempty"`
 }
 
 // AWSPlatformStatus contains status specific to the AWS platform

@@ -122,6 +122,15 @@ const (
 	// performance degradation due to fragmentation of the double encapsulation in ovn-kubernetes
 	ValidKubeVirtInfraNetworkMTU ConditionType = "ValidKubeVirtInfraNetworkMTU"
 
+	// ValidKubeVirtInfraNetworkPolicyRBAC indicates whether the external infra
+	// kubeconfig has sufficient permissions to create/update the virt-launcher network policy
+	// on the infrastructure cluster. This covers both reading the
+	// cluster network configuration (networks.config.openshift.io) for CIDR-
+	// based egress blocking and creating/updating NetworkPolicy resources in
+	// the infra namespace. When false, tenant isolation may be weaker: the
+	// NetworkPolicy may be missing or lack CIDR-based egress restrictions.
+	ValidKubeVirtInfraNetworkPolicyRBAC ConditionType = "ValidKubeVirtInfraNetworkPolicyRBAC"
+
 	// KubeVirtNodesLiveMigratable indicates if all nodes (VirtualMachines) of the kubevirt
 	// hosted cluster can be live migrated without experiencing a node restart
 	KubeVirtNodesLiveMigratable ConditionType = "KubeVirtNodesLiveMigratable"
@@ -191,9 +200,22 @@ const (
 	// A failure here often means a software bug or a non-stable cluster.
 	ReconciliationSucceeded ConditionType = "ReconciliationSucceeded"
 
+	// ConfigOperatorReconciliationSucceeded indicates if the HostedCluster Config
+	// Operator (HCCO) reconciliation succeeded. The HCCO is responsible for
+	// reconciling resources inside the hosted cluster (e.g. global configuration,
+	// CRDs, RBAC, and connectivity checks).
+	// A failure here often means a software bug, a non-stable cluster, or
+	// connectivity issues between the control plane and the hosted cluster.
+	ConfigOperatorReconciliationSucceeded ConditionType = "ConfigOperatorReconciliationSucceeded"
+
 	// EtcdRecoveryActive indicates that the Etcd cluster is failing and the
 	// recovery job was triggered.
 	EtcdRecoveryActive ConditionType = "EtcdRecoveryActive"
+
+	// EtcdBackupSucceeded bubbles up from HCP. It indicates the result of the
+	// most recent etcd backup. True means the last backup completed successfully;
+	// False means a backup is in progress or the last backup failed.
+	EtcdBackupSucceeded ConditionType = "EtcdBackupSucceeded"
 
 	// ClusterSizeComputed indicates that a t-shirt size was computed for this HostedCluster.
 	// The last transition time for this condition is used to manage how quickly transitions occur.
@@ -218,7 +240,45 @@ const (
 	// A failure here suggests potential issues such as: network policy restrictions,
 	// firewall rules, missing data plane nodes, or problems with infrastructure
 	// components like the konnectivity-agent workload.
+	// **Unknown** means the status cannot be determined (e.g., no worker nodes available or unable to inspect).
 	DataPlaneConnectionAvailable ConditionType = "DataPlaneConnectionAvailable"
+
+	// ControlPlaneConnectionAvailable indicates whether data plane workloads have a successful
+	// network connection to the control plane components. This condition is computed using
+	// a 3-replica Deployment that tests the full data path (DNS resolution of kubernetes.default.svc
+	// -> advertise address on lo -> apiserver proxy -> KAS on HCP) and reports results to a shared
+	// ConfigMap. The HCCO evaluates the staleness of the lastSucceeded timestamp in the ConfigMap.
+	// **True** means the data plane can successfully reach the control plane (a recent successful check was recorded).
+	// **False** means there are connectivity failures preventing the data plane from reaching the control plane,
+	// or the last successful check is stale (older than 5 minutes).
+	// **Unknown** means the status cannot be determined due to true inability to inspect (e.g., no worker nodes exist or inspection cannot be performed),
+	// not due to missing required components.
+	ControlPlaneConnectionAvailable ConditionType = "ControlPlaneConnectionAvailable"
+
+	// AutoNodeEnabled indicates whether AutoNode is configured and operational for this HostedCluster.
+	// **True** means AutoNode is configured in the HostedCluster spec and the Karpenter components are fully rolled out and ready.
+	// **False / AutoNodeProgressing** means AutoNode is being enabled or disabled — the operation is in progress.
+	// **False / AutoNodeNotConfigured** means AutoNode is not configured in the spec and all Karpenter components have been removed.
+	AutoNodeEnabled ConditionType = "AutoNodeEnabled"
+
+	// PublicEndpointExposed indicates whether public API server endpoints are
+	// currently configured and exposed for this cluster via the management
+	// cluster's shared ingress. Status reflects observed state: True means
+	// public endpoints are reachable, False means they are not.
+	PublicEndpointExposed ConditionType = "PublicEndpointExposed"
+)
+
+// Reasons for PublicEndpointExposed condition.
+const (
+	PublicEndpointSharedIngressConfiguredReason = "SharedIngressConfigured"
+	PublicEndpointTopologyPrivateReason         = "TopologyPrivate"
+	PublicEndpointConvergenceInProgressReason   = "ConvergenceInProgress"
+	// EtcdDataEncryptionUpToDate indicates whether all etcd data is encrypted with the
+	// currently active encryption key.
+	// True: all data confirmed encrypted with the active key.
+	// False: re-encryption is in progress or has failed.
+	// Absent: encryption is not configured.
+	EtcdDataEncryptionUpToDate ConditionType = "EtcdDataEncryptionUpToDate"
 )
 
 // Reasons.
@@ -255,6 +315,9 @@ const (
 	InvalidIdentityProvider               = "InvalidIdentityProvider"
 	PayloadArchNotFoundReason             = "PayloadArchNotFound"
 
+	InfraClusterNetworkReadFailedReason         = "InfraClusterNetworkReadFailed"
+	InfraClusterNetworkPolicyCreateFailedReason = "InfraClusterNetworkPolicyCreateFailed"
+
 	InvalidIAMRoleReason = "InvalidIAMRole"
 
 	InvalidAzureCredentialsReason = "InvalidAzureCredentials"
@@ -279,13 +342,34 @@ const (
 
 	CloudResourcesCleanupSkippedReason = "CloudResourcesCleanupSkipped"
 
+	CloudResourcesDeletionTimedOutReason = "CloudResourcesDeletionTimedOut"
+
 	DataPlaneConnectionNoKonnectivityAgentPodsNotFoundReason = "KonnectivityAgentPodsNotFound"
 
 	DataPlaneConnectionLogsAccessFailedReason = "LogsAccessFailed"
 
 	DataPlaneConnectionNoWorkerNodesAvailableReason = "NoWorkerNodesAvailable"
 
+	ControlPlaneConnectionKASAccessFailedReason = "KASAccessFailed"
+
+	ControlPlaneConnectionCheckStaleReason = "ConnectionCheckStale"
+
+	ControlPlaneConnectionConfigMapNotFoundReason = "ConfigMapNotFound"
+
+	ControlPlaneConnectionNoWorkerNodesAvailableReason = "NoWorkerNodesAvailable"
+
 	ControlPlaneComponentsNotAvailable = "ComponentsNotAvailable"
+
+	AutoNodeNotConfiguredReason    = "AutoNodeNotConfigured"
+	AutoNodeProgressingReason      = "AutoNodeProgressing"
+	AutoNodeEvaluationFailedReason = "AutoNodeEvaluationFailed"
+
+	ReadOnlyRolloutInProgressReason = "ReadOnlyRolloutInProgress"
+	WritePromotionInProgressReason  = "WritePromotionInProgress"
+	ReEncryptionInProgressReason    = "ReEncryptionInProgress"
+	ReEncryptionCompletedReason     = "ReEncryptionCompleted"
+	ReEncryptionFailedReason        = "ReEncryptionFailed"
+	ReEncryptionWaitingForKASReason = "ReEncryptionWaitingForKASConvergence"
 )
 
 // Messages.

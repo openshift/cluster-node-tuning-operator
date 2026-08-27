@@ -159,7 +159,3 @@ type PerformanceProfileList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []PerformanceProfile `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&PerformanceProfile{}, &PerformanceProfileList{})
-}

@@ -21,7 +21,7 @@ import (
 	"k8s.io/utils/cpuset"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	ign2types "github.com/coreos/ignition/config/v2_2/types"
+	ign2types "github.com/coreos/ignition/v2/config/v3_2/types"
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/tuned/v1"

@@ -13,7 +13,7 @@ import (
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
 
-	igntypes "github.com/coreos/ignition/config/v2_2/types"
+	igntypes "github.com/coreos/ignition/v2/config/v3_2/types"
 	apiconfigv1 "github.com/openshift/api/config/v1"
 	apifeatures "github.com/openshift/api/features"
 	mcov1 "github.com/openshift/api/machineconfiguration/v1"
@@ -622,12 +622,12 @@ var _ = Describe("Controller", func() {
 						Expect(err).ToNot(HaveOccurred())
 
 						Expect(config.Systemd.Units).To(ContainElement(MatchFields(IgnoreMissing|IgnoreExtras, Fields{
-							"Contents": And(
+							"Contents": HaveValue(And(
 								ContainSubstring("Description=Hugepages"),
 								ContainSubstring("Environment=HUGEPAGES_COUNT=8"),
 								ContainSubstring(fmt.Sprintf("Environment=HUGEPAGES_SIZE=%s", hugepageSizeKiloBytes)),
 								ContainSubstring("Environment=NUMA_NODE=0"),
-							),
+							)),
 						})))
 					},
 
@@ -1000,13 +1000,12 @@ var _ = Describe("Controller", func() {
 					{
 						Node: igntypes.Node{
 							Path:  "/etc/kubernetes/openshift-workload-pinning",
-							Group: &igntypes.NodeGroup{},
-							User:  &igntypes.NodeUser{},
+							Group: igntypes.NodeGroup{},
+							User:  igntypes.NodeUser{},
 						},
 						FileEmbedded1: igntypes.FileEmbedded1{
-							Contents: igntypes.FileContents{
-								Verification: igntypes.Verification{},
-								Source:       "data:text/plain;charset=utf-8;base64,CnsKICAibWFuYWdlbWVudCI6IHsKICAgICJjcHVzZXQiOiAiMC0zIgogIH0KfQo=",
+							Contents: igntypes.Resource{
+								Source: ptr.To("data:text/plain;charset=utf-8;base64,CnsKICAibWFuYWdlbWVudCI6IHsKICAgICJjcHVzZXQiOiAiMC0zIgogIH0KfQo="),
 							},
 							Mode: &mode,
 						},
@@ -1014,13 +1013,12 @@ var _ = Describe("Controller", func() {
 					{
 						Node: igntypes.Node{
 							Path:  "/etc/crio/crio.conf.d/99-workload-pinning.conf",
-							Group: &igntypes.NodeGroup{},
-							User:  &igntypes.NodeUser{},
+							Group: igntypes.NodeGroup{},
+							User:  igntypes.NodeUser{},
 						},
 						FileEmbedded1: igntypes.FileEmbedded1{
-							Contents: igntypes.FileContents{
-								Verification: igntypes.Verification{},
-								Source:       "data:text/plain;charset=utf-8;base64,CltjcmlvLnJ1bnRpbWUud29ya2xvYWRzLm1hbmFnZW1lbnRdCmFjdGl2YXRpb25fYW5ub3RhdGlvbiA9ICJ0YXJnZXQud29ya2xvYWQub3BlbnNoaWZ0LmlvL21hbmFnZW1lbnQiCmFubm90YXRpb25fcHJlZml4ID0gInJlc291cmNlcy53b3JrbG9hZC5vcGVuc2hpZnQuaW8iCnJlc291cmNlcyA9IHsgImNwdXNoYXJlcyIgPSAwLCAiY3B1c2V0IiA9ICIwLTMiIH0K",
+							Contents: igntypes.Resource{
+								Source: ptr.To("data:text/plain;charset=utf-8;base64,CltjcmlvLnJ1bnRpbWUud29ya2xvYWRzLm1hbmFnZW1lbnRdCmFjdGl2YXRpb25fYW5ub3RhdGlvbiA9ICJ0YXJnZXQud29ya2xvYWQub3BlbnNoaWZ0LmlvL21hbmFnZW1lbnQiCmFubm90YXRpb25fcHJlZml4ID0gInJlc291cmNlcy53b3JrbG9hZC5vcGVuc2hpZnQuaW8iCnJlc291cmNlcyA9IHsgImNwdXNoYXJlcyIgPSAwLCAiY3B1c2V0IiA9ICIwLTMiIH0K"),
 							},
 							Mode: &mode,
 						},
@@ -1173,13 +1171,12 @@ var _ = Describe("Controller", func() {
 					{
 						Node: igntypes.Node{
 							Path:  "/etc/kubernetes/openshift-workload-mixed-cpus",
-							Group: &igntypes.NodeGroup{},
-							User:  &igntypes.NodeUser{},
+							Group: igntypes.NodeGroup{},
+							User:  igntypes.NodeUser{},
 						},
 						FileEmbedded1: igntypes.FileEmbedded1{
-							Contents: igntypes.FileContents{
-								Verification: igntypes.Verification{},
-								Source:       "data:text/plain;charset=utf-8;base64,CnsKICAic2hhcmVkX2NwdXMiOiB7CiAgICAgImNvbnRhaW5lcnNfbGltaXQiOiAyNTYKICB9Cn0=",
+							Contents: igntypes.Resource{
+								Source: ptr.To("data:text/plain;charset=utf-8;base64,CnsKICAic2hhcmVkX2NwdXMiOiB7CiAgICAgImNvbnRhaW5lcnNfbGltaXQiOiAyNTYKICB9Cn0="),
 							},
 							Mode: ptr.To(int(0644)),
 						},

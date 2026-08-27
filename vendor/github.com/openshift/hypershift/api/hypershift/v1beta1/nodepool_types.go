@@ -25,6 +25,10 @@ const (
 	// IgnitionServerTokenExpirationTimestampAnnotation holds the time that a ignition token expires and should be
 	// removed from the cluster.
 	IgnitionServerTokenExpirationTimestampAnnotation = "hypershift.openshift.io/ignition-token-expiration-timestamp"
+
+	// NodePoolReleaseVersionAnnotation is set on userdata Secrets (Replace strategy) and on Machines (InPlace strategy)
+	// to track the OCP release version associated with each machine.
+	NodePoolReleaseVersionAnnotation = "hypershift.openshift.io/release-version"
 )
 
 // ImageType specifies the type of image to use for node instances.
@@ -97,12 +101,13 @@ type NodePool struct {
 }
 
 // NodePoolSpec is the desired behavior of a NodePool.
+// +openshift:validation:FeatureGateAwareXValidation:featureGate=OSStreams,rule="!has(oldSelf.osImageStream) || has(self.osImageStream)",message="osImageStream cannot be removed once set; create a new NodePool instead"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.arch) || has(self.arch)", message="Arch is required once set"
 // +kubebuilder:validation:XValidation:rule="self.arch != 'arm64' || has(self.platform.aws) || has(self.platform.azure) || has(self.platform.agent) || self.platform.type == 'GCP' || self.platform.type == 'None'", message="Setting Arch to arm64 is only supported for AWS, Azure, Agent, GCP and None"
 // +kubebuilder:validation:XValidation:rule="!has(self.replicas) || !has(self.autoScaling)", message="Both replicas or autoScaling should not be set"
 // +kubebuilder:validation:XValidation:rule="self.arch != 's390x' || has(self.platform.kubevirt)", message="s390x is only supported on KubeVirt platform"
 // +kubebuilder:validation:XValidation:rule="!has(self.platform.aws) || !has(self.platform.aws.imageType) || self.platform.aws.imageType != 'Windows' || self.arch == 'amd64'", message="ImageType 'Windows' requires arch 'amd64' (AWS only)"
-// +kubebuilder:validation:XValidation:rule="!has(self.autoScaling) || self.autoScaling.min > 0 || self.platform.type == 'AWS'", message="Scale-from-zero (autoScaling.min=0) is currently only supported for AWS platform"
+// +kubebuilder:validation:XValidation:rule="!has(self.autoScaling) || self.autoScaling.min > 0 || self.platform.type == 'AWS' || self.platform.type == 'Azure'", message="Scale-from-zero (autoScaling.min=0) is currently only supported for AWS and Azure platforms"
 type NodePoolSpec struct {
 	// clusterName is the name of the HostedCluster this NodePool belongs to.
 	// If a HostedCluster with this name doesn't exist, the controller will no-op until it exists.
@@ -234,6 +239,45 @@ type NodePoolSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf", message="Arch is immutable"
 	// +optional
 	Arch string `json:"arch,omitempty"`
+
+	// osImageStream specifies an OS stream to be used for nodes in this pool.
+	//
+	// This field can be optionally set to a known OSImageStream name to change
+	// the OS and Extension images with a well-known, tested, release-provided
+	// set of images. This enables a streamlined way of switching the pool's
+	// node OS to a different version than the cluster default, such as
+	// transitioning to a major RHEL version.
+	//
+	// When set, the referenced stream overrides the default OS images for the
+	// pool. When omitted, the pool uses the release version's default stream
+	// (rhel-9 for OCP < 5.0, rhel-10 for OCP >= 5.0).
+	// Changing this field triggers a rollout. Forward transitions
+	// (rhel-9 -> rhel-10) are allowed; backward transitions
+	// (rhel-10 -> rhel-9) are rejected by CEL validation because
+	// in-place OS downgrades are not supported.
+	//
+	// +openshift:enable:FeatureGate=OSStreams
+	// +kubebuilder:validation:XValidation:rule="!has(oldSelf.name) || oldSelf.name != 'rhel-10' || (has(self.name) && self.name != 'rhel-9')",message="OS stream downgrade from rhel-10 to rhel-9 is not allowed; create a new NodePool instead"
+	// +optional
+	OSImageStream OSImageStreamReference `json:"osImageStream,omitzero"`
+}
+
+const (
+	// OSImageStreamRHEL9 is the OS image stream name for RHEL 9.
+	// This value must match support/releaseinfo.StreamRHEL9.
+	OSImageStreamRHEL9 = "rhel-9"
+	// OSImageStreamRHEL10 is the OS image stream name for RHEL 10.
+	// This value must match support/releaseinfo.StreamRHEL10.
+	OSImageStreamRHEL10 = "rhel-10"
+)
+
+// OSImageStreamReference references an OSImageStream by name.
+type OSImageStreamReference struct {
+	// name is a required reference to an OSImageStream to be used for the pool.
+	//
+	// +required
+	// +kubebuilder:validation:Enum=rhel-9;rhel-10
+	Name string `json:"name,omitempty"`
 }
 
 // NodePoolStatus is the latest observed status of a NodePool.
@@ -250,15 +294,71 @@ type NodePoolStatus struct {
 	// +kubebuilder:validation:MaxLength=64
 	Version string `json:"version,omitempty"`
 
+	// nodesInfo contains aggregated information observed from nodes belonging
+	// to this NodePool.
+	// +optional
+	NodesInfo NodePoolNodesInfo `json:"nodesInfo,omitzero"`
+
 	// platform holds the specific statuses
 	// +optional
 	Platform *NodePoolPlatformStatus `json:"platform,omitempty"`
+
+	// osImageStream reports the OS stream observed on the nodes in this pool.
+	//
+	// When omitted, the pool is using the release version's default OS images.
+	// +openshift:enable:FeatureGate=OSStreams
+	// +optional
+	OSImageStream OSImageStreamReference `json:"osImageStream,omitzero"`
 
 	// conditions represents the latest available observations of the node pool's
 	// current state.
 	// +kubebuilder:validation:MaxItems=100
 	// +optional
 	Conditions []NodePoolCondition `json:"conditions,omitempty"`
+}
+
+// NodePoolNodesInfo aggregates observed information about nodes belonging to this NodePool.
+type NodePoolNodesInfo struct {
+	// nodeVersions summarizes the versions and health of nodes belonging
+	// to this NodePool. Each entry represents a distinct version combination
+	// and the number of ready/unready nodes running it.
+	// +kubebuilder:validation:MaxItems=100
+	// +kubebuilder:validation:MinItems=1
+	// +listType=atomic
+	// +required
+	NodeVersions []NodeVersion `json:"nodeVersions,omitempty"`
+}
+
+// NodeVersion represents a version combination and the count of ready and unready nodes running it.
+type NodeVersion struct {
+	// ocpVersion is the OpenShift release version this node was provisioned
+	// or upgraded with.
+	// +kubebuilder:validation:XValidation:rule=`self.matches('^\\d+\\.\\d+\\.\\d+.*$')`,message="ocpVersion must start with semantic version prefix x.y.z"
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:MinLength=1
+	// +required
+	OCPVersion string `json:"ocpVersion,omitempty"`
+
+	// kubeletVersion is the kubelet version reported by the node, as observed
+	// from Machine.Status.NodeInfo.KubeletVersion.
+	// +kubebuilder:validation:XValidation:rule=`self.matches('^v?\\d+\\.\\d+\\.\\d+.*$')`,message="kubeletVersion must start with semantic version prefix x.y.z (optional leading 'v')"
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:MinLength=1
+	// +required
+	KubeletVersion string `json:"kubeletVersion,omitempty"`
+
+	// readyNodeCount is the number of nodes running this version where the
+	// CAPI NodeHealthy condition is True.
+	// +kubebuilder:validation:Minimum=0
+	// +required
+	ReadyNodeCount *int32 `json:"readyNodeCount,omitempty"`
+
+	// unreadyNodeCount is the number of nodes running this version where the
+	// CAPI NodeHealthy condition is not True. Useful for tracking upgrade
+	// progress and detecting stuck nodes.
+	// +kubebuilder:validation:Minimum=0
+	// +required
+	UnreadyNodeCount *int32 `json:"unreadyNodeCount,omitempty"`
 }
 
 // NodePoolList contains a list of NodePools.
@@ -448,12 +548,12 @@ type NodePoolManagement struct {
 // +kubebuilder:validation:XValidation:rule="self.max >= self.min", message="max must be equal or greater than min"
 type NodePoolAutoScaling struct {
 	// min is the minimum number of nodes to maintain in the pool.
-	// Can be set to 0 for scale-from-zero for AWS platform.
+	// Can be set to 0 for scale-from-zero for AWS and Azure platforms.
 	// Must be >= 0 and <= .Max.
 	//
 	// +kubebuilder:validation:Minimum=0
 	// +required
-	Min *int32 `json:"min"`
+	Min *int32 `json:"min,omitempty"`
 
 	// max is the maximum number of nodes allowed in the pool. Must be >= 1 and >= Min.
 	//

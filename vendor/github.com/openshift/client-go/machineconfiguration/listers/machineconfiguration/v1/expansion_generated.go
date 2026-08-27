@@ -10,6 +10,10 @@ type ContainerRuntimeConfigListerExpansion interface{}
 // ControllerConfigLister.
 type ControllerConfigListerExpansion interface{}
 
+// InternalReleaseImageListerExpansion allows custom methods to be added to
+// InternalReleaseImageLister.
+type InternalReleaseImageListerExpansion interface{}
+
 // KubeletConfigListerExpansion allows custom methods to be added to
 // KubeletConfigLister.
 type KubeletConfigListerExpansion interface{}
@@ -33,6 +37,10 @@ type MachineOSBuildListerExpansion interface{}
 // MachineOSConfigListerExpansion allows custom methods to be added to
 // MachineOSConfigLister.
 type MachineOSConfigListerExpansion interface{}
+
+// OSImageStreamListerExpansion allows custom methods to be added to
+// OSImageStreamLister.
+type OSImageStreamListerExpansion interface{}
 
 // PinnedImageSetListerExpansion allows custom methods to be added to
 // PinnedImageSetLister.
