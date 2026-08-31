@@ -122,14 +122,27 @@ vm.swappiness=10
 #> rps configuration
 # net.core.rps_default_mask=${not_isolated_cpumask}
 
-# cpu-partitioning for RHEL disables it (= 0)
-# OCP is too dynamic when partitioning and needs to evacuate
+[sysctl.timer-migration]
+type=sysctl
+# Match uname with kernel versions containing
+# .el9.x86_64 or .el9_<number>, but not .el91
+uname_regex=\.el9[ _.]
+# cpu-partitioning for RHEL disables timer.migration (= 0),
+# but OCP is too dynamic when partitioning and needs to evacuate
 # scheduled timers when starting a guaranteed workload (= 1)
+# 
 # This has an unfortunate side-effect that HRTIMERs break
 # and cyclictest results will be affected, but there is no
 # way around that. Not enabling this breaks cpu pinned
 # workload isolation for example when any TCP timeout
 # and keep alive timers are present.
+#
+# This is only needed for RHEL 9 based platforms.
+# RHEL 10 kernels reworked the timer management and are
+# no longer affected by this issue.
+#
+# This whole block can be removed when the RHEL 9
+# support is dropped.
 kernel.timer_migration=1
 
 [selinux]
