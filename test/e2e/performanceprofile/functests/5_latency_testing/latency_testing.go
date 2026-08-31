@@ -23,13 +23,14 @@ const (
 	cyclictest  = "cyclictest"
 	hwlatdetect = "hwlatdetect"
 	//Environment variables names
-	latencyTestDelay     = "LATENCY_TEST_DELAY"
-	latencyTestRuntime   = "LATENCY_TEST_RUNTIME"
-	maximumLatency       = "MAXIMUM_LATENCY"
-	oslatMaxLatency      = "OSLAT_MAXIMUM_LATENCY"
-	hwlatdetecMaxLatency = "HWLATDETECT_MAXIMUM_LATENCY"
-	cyclictestMaxLatency = "CYCLICTEST_MAXIMUM_LATENCY"
-	latencyTestCpus      = "LATENCY_TEST_CPUS"
+	latencyTestDelay         = "LATENCY_TEST_DELAY"
+	latencyTestRuntime       = "LATENCY_TEST_RUNTIME"
+	latencyTestTimeoutBuffer = "LATENCY_TEST_TIMEOUT_BUFFER"
+	maximumLatency           = "MAXIMUM_LATENCY"
+	oslatMaxLatency          = "OSLAT_MAXIMUM_LATENCY"
+	hwlatdetecMaxLatency     = "HWLATDETECT_MAXIMUM_LATENCY"
+	cyclictestMaxLatency     = "CYCLICTEST_MAXIMUM_LATENCY"
+	latencyTestCpus          = "LATENCY_TEST_CPUS"
 	//invalid values error messages
 	unexpectedError = "Unexpected error"
 	//incorrect values error messages
@@ -44,6 +45,8 @@ const (
 	invalidCpuNumber                   = incorrectMsgPart1 + latencyTestCpus + invalidNumber + mustBePositiveInt
 	incorrectDelay                     = incorrectMsgPart1 + latencyTestDelay + incorrectMsgPart2 + mustBeNonNegativeInt
 	invalidNumberDelay                 = incorrectMsgPart1 + latencyTestDelay + invalidNumber + mustBeNonNegativeInt
+	incorrectTimeoutBuffer             = incorrectMsgPart1 + latencyTestTimeoutBuffer + incorrectMsgPart2 + mustBeNonNegativeInt
+	invalidNumberTimeoutBuffer         = incorrectMsgPart1 + latencyTestTimeoutBuffer + invalidNumber + mustBeNonNegativeInt
 	incorrectMaxLatency                = incorrectMsgPart1 + maximumLatency + incorrectMsgPart2 + mustBeNonNegativeInt
 	invalidNumberMaxLatency            = incorrectMsgPart1 + maximumLatency + invalidNumber + mustBeNonNegativeInt
 	incorrectOslatMaxLatency           = incorrectMsgPart1 + "\"" + oslatMaxLatency + "\"" + incorrectMsgPart2 + mustBeNonNegativeInt
@@ -82,6 +85,7 @@ const (
 type latencyTest struct {
 	testDelay             string
 	testRuntime           string
+	testTimeoutBuffer     string
 	testMaxLatency        string
 	oslatMaxLatency       string
 	cyclictestMaxLatency  string
@@ -178,6 +182,9 @@ func setEnvAndGetDescription(tst latencyTest) string {
 	if tst.testDelay != "" {
 		setEnvWriteDescription(latencyTestDelay, tst.testDelay, sb, &nonDefaultValues)
 	}
+	if tst.testTimeoutBuffer != "" {
+		setEnvWriteDescription(latencyTestTimeoutBuffer, tst.testTimeoutBuffer, sb, &nonDefaultValues)
+	}
 	if tst.testRuntime != "" {
 		setEnvWriteDescription(latencyTestRuntime, tst.testRuntime, sb, &nonDefaultValues)
 	}
@@ -211,6 +218,7 @@ func setEnvWriteDescription(envVar string, val string, sb *bytes.Buffer, flag *b
 
 func clearEnv() {
 	os.Unsetenv(latencyTestDelay)
+	os.Unsetenv(latencyTestTimeoutBuffer)
 	os.Unsetenv(latencyTestRuntime)
 	os.Unsetenv(maximumLatency)
 	os.Unsetenv(oslatMaxLatency)
@@ -237,6 +245,7 @@ func getValidValuesTests(toolToTest string) []latencyTest {
 	testSet = append(testSet, latencyTest{testDelay: "1", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
 	testSet = append(testSet, latencyTest{testDelay: "60", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
 	testSet = append(testSet, latencyTest{testRuntime: "2", testCpus: "5", testMaxLatency: untunedLatencyThreshold, outputMsgs: []string{skip, skipOddCpuNumber}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
+	testSet = append(testSet, latencyTest{testTimeoutBuffer: "155", testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, testCpus: "4", outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
 
 	if toolToTest != hwlatdetect {
 		testSet = append(testSet, latencyTest{testRuntime: "1", outputMsgs: []string{skip, skipMaxLatency}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
@@ -278,6 +287,11 @@ func getNegativeTests(toolToTest string) []latencyTest {
 	testSet = append(testSet, latencyTest{testRuntime: "2", testMaxLatency: "1", testCpus: fmt.Sprint(math.MaxInt32 + 1), outputMsgs: []string{invalidCpuNumber, fail}, toolToTest: toolToTest})
 	testSet = append(testSet, latencyTest{testRuntime: "2", testCpus: "-1", outputMsgs: []string{invalidCpuNumber, fail}, toolToTest: toolToTest})
 	testSet = append(testSet, latencyTest{testRuntime: "2", testCpus: "0", outputMsgs: []string{invalidCpuNumber, fail}, toolToTest: toolToTest})
+
+	// LATENCY_TEST_TIMEOUT_BUFFER must be a valid integer, reject non-numeric, and negative values.
+	testSet = append(testSet, latencyTest{testTimeoutBuffer: "J", outputMsgs: []string{incorrectTimeoutBuffer, fail}, toolToTest: toolToTest})
+	testSet = append(testSet, latencyTest{testTimeoutBuffer: fmt.Sprint(math.MaxInt32 + 1), outputMsgs: []string{invalidNumberTimeoutBuffer, fail}, toolToTest: toolToTest})
+	testSet = append(testSet, latencyTest{testTimeoutBuffer: "-5", outputMsgs: []string{invalidNumberTimeoutBuffer, fail}, toolToTest: toolToTest})
 
 	if toolToTest == oslat {
 		testSet = append(testSet, latencyTest{testRuntime: "2", oslatMaxLatency: "&", outputMsgs: []string{incorrectOslatMaxLatency, fail}, toolToTest: toolToTest})
