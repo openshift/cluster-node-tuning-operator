@@ -3,6 +3,7 @@ package __performance_update
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -13,8 +14,10 @@ import (
 	"k8s.io/utils/cpuset"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	configv1 "github.com/openshift/api/config/v1"
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/utils/schedstat"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/cluster"
@@ -30,6 +33,7 @@ import (
 
 const numberOfCoresThatRequiredCancelingSMTAlignment = 4
 const ovsSliceCgroupBase = "/rootfs/sys/fs/cgroup/ovs.slice"
+const crioRuntimesConfigFile = "/rootfs/etc/crio/crio.conf.d/99-runtimes.conf"
 
 var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDpdk), string(label.Slow), string(label.Tier2)), func() {
 	var (
@@ -112,6 +116,7 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 
 			updatedProfile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(updatedProfile.Annotations[performancev2.PerformanceProfileCPULoadBalancingOvsDpdkAnnotation]).To(Equal("disable"))
 			testlog.Infof("Updated profile: reserved=%s isolated=%s ovsDpdk=%s annotations=%v",
 				*updatedProfile.Spec.CPU.Reserved, *updatedProfile.Spec.CPU.Isolated,
 				*updatedProfile.Spec.CPU.OvsDpdk, updatedProfile.Annotations)
@@ -126,71 +131,21 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 
 		It("[test_id:89987] should apply ovsDpdk CPU node configuration", func() {
 			ctx := context.TODO()
-			expectedIsolatedPlusOvsDpdk := newIsolatedSet.Union(ovsDpdkSet)
 			expectedReservedSystem := reservedSet.Union(ovsDpdkSet)
 
 			node := &workerRTNodes[0]
 			testlog.Infof("Verifying node %s", node.Name)
 
-			By("Verifying kernel cmdline")
-			cmdline, err := nodes.ExecCommand(ctx, node, []string{"cat", "/proc/cmdline"})
-			Expect(err).ToNot(HaveOccurred())
-			cmdlineStr := testutils.ToString(cmdline)
-
-			By("Verifying isolcpus includes ovsDpdk CPUs")
-			isolcpusSet := parseCPUSetFromKernelParam(cmdlineStr, "isolcpus")
-			Expect(isolcpusSet.IsEmpty()).To(BeFalse(), "isolcpus param not found in cmdline")
-			Expect(expectedIsolatedPlusOvsDpdk.IsSubsetOf(isolcpusSet)).To(BeTrue(),
-				"isolcpus=%s should include all isolated + ovsDpdk CPUs %s",
-				isolcpusSet.String(), expectedIsolatedPlusOvsDpdk.String())
-
-			By("Verifying nohz_full includes ovsDpdk CPUs")
-			nohzSet := parseCPUSetFromKernelParam(cmdlineStr, "nohz_full")
-			Expect(nohzSet.IsEmpty()).To(BeFalse(), "nohz_full param not found in cmdline")
-			Expect(ovsDpdkSet.IsSubsetOf(nohzSet)).To(BeTrue(),
-				"nohz_full=%s should include ovsDpdk CPUs %s",
-				nohzSet.String(), ovsDpdkSet.String())
-
-			By("Verifying rcu_nocbs includes ovsDpdk CPUs")
-			rcuSet := parseCPUSetFromKernelParam(cmdlineStr, "rcu_nocbs")
-			Expect(rcuSet.IsEmpty()).To(BeFalse(), "rcu_nocbs param not found in cmdline")
-			Expect(ovsDpdkSet.IsSubsetOf(rcuSet)).To(BeTrue(),
-				"rcu_nocbs=%s should include ovsDpdk CPUs %s",
-				rcuSet.String(), ovsDpdkSet.String())
-
-			By("Verifying systemd.cpu_affinity excludes ovsDpdk CPUs")
-			affinitySet := parseCPUSetFromKernelParam(cmdlineStr, "systemd.cpu_affinity")
-			Expect(affinitySet.IsEmpty()).To(BeFalse(), "systemd.cpu_affinity param not found in cmdline")
-			Expect(affinitySet.Intersection(ovsDpdkSet).IsEmpty()).To(BeTrue(),
-				"systemd.cpu_affinity=%s should not contain ovsDpdk CPUs %s",
-				affinitySet.String(), ovsDpdkSet.String())
+			verifyOvsDpdkKernelCmdline(ctx, node, newIsolatedSet, ovsDpdkSet)
 
 			By("Verifying kubelet reservedSystemCPUs is union of reserved + ovsDpdk")
-			kubeletConfig, err := nodes.GetKubeletConfig(ctx, node)
-			Expect(err).ToNot(HaveOccurred())
-			reservedSystemCPUs, err := cpuset.Parse(kubeletConfig.ReservedSystemCPUs)
+			reservedSystemCPUs, err := getReservedSystemCPUs(ctx, node)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reservedSystemCPUs.Equals(expectedReservedSystem)).To(BeTrue(),
 				"ReservedSystemCPUs should be %s (reserved + ovsDpdk), got %s",
 				expectedReservedSystem.String(), reservedSystemCPUs.String())
 
-			By("Verifying IRQBALANCE_BANNED_CPUS")
-			irqConf, err := nodes.ExecCommand(ctx, node, []string{"cat", "/rootfs/etc/sysconfig/irqbalance"})
-			Expect(err).ToNot(HaveOccurred())
-			irqConfStr := testutils.ToString(irqConf)
-
-			bannedSet := getIRQBannedCPUSet(irqConfStr)
-			Expect(ovsDpdkSet.IsSubsetOf(bannedSet)).To(BeTrue(),
-				"IRQBALANCE_BANNED_CPUS should include ovsDpdk CPUs %s, got %s",
-				ovsDpdkSet.String(), bannedSet.String())
-
-			By("Verifying default_smp_affinity excludes ovsDpdk CPUs")
-			smpCPUSet, err := nodes.GetDefaultSmpAffinitySet(ctx, node)
-			Expect(err).ToNot(HaveOccurred())
-			testlog.Infof("default_smp_affinity on %s: %s", node.Name, smpCPUSet.String())
-			Expect(smpCPUSet.Intersection(ovsDpdkSet).IsEmpty()).To(BeTrue(),
-				"default_smp_affinity should not have ovsDpdk CPU bits set, got CPUs %s",
-				smpCPUSet.Intersection(ovsDpdkSet).String())
+			verifyOvsDpdkIRQIsolation(ctx, node, ovsDpdkSet)
 
 			By("Verifying ovs-dpdk-cpus-configure script exists")
 			_, err = nodes.ExecCommand(ctx, node, []string{
@@ -199,23 +154,7 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 			Expect(err).ToNot(HaveOccurred(),
 				"ovs-dpdk-cpus-configure.sh should be present on the node")
 
-			expectedOvsDpdkEnv := "OVS_DPDK_CPUS=" + ovsDpdkSet.String()
-
-			By("Verifying ovs-vswitchd drop-in OVS_DPDK_CPUS on node")
-			dropin, err := nodes.ExecCommand(ctx, node, []string{
-				"grep", "-r", "OVS_DPDK_CPUS=", "/rootfs/etc/systemd/system/ovs-vswitchd.service.d/",
-			})
-			Expect(err).ToNot(HaveOccurred())
-			Expect(testutils.ToString(dropin)).To(ContainSubstring(expectedOvsDpdkEnv),
-				"ovs-vswitchd drop-in should contain %s, got %s",
-				expectedOvsDpdkEnv, testutils.ToString(dropin))
-
-			By("Verifying ovs-vswitchd.service OVS_DPDK_CPUS on node")
-			envBlob, err := systemd.ShowPropertyValue(ctx, "ovs-vswitchd.service", "Environment", node)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(envBlob).To(ContainSubstring(expectedOvsDpdkEnv),
-				"ovs-vswitchd.service Environment should contain %s, got %s",
-				expectedOvsDpdkEnv, envBlob)
+			verifyOvsDpdkServiceEnv(ctx, node, ovsDpdkSet)
 
 			By("Verifying ovsdpdk.slice cgroup hierarchy exists")
 			_, err = nodes.ExecCommand(ctx, node, []string{
@@ -248,22 +187,181 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 			Expect(strings.TrimSpace(testutils.ToString(cgroupType))).To(Equal("threaded"),
 				"ovsdpdk.slice cgroup.type should be 'threaded'")
 
-			By("Verifying ovsdpdk.slice cpuset.cpus.exclusive matches configured ovsDpdk CPUs")
-			cgroupCpuSet, err := getOvsDpdkSliceExclusiveCPUs(ctx, node)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(cgroupCpuSet.Equals(ovsDpdkSet)).To(BeTrue(),
-				"ovsdpdk.slice cpuset.cpus.exclusive should be %s, got %s",
-				ovsDpdkSet.String(), cgroupCpuSet.String())
-
-			By("Verifying ovsdpdk.slice cpuset.cpus.partition is isolated")
-			cgroupPartition, err := getOvsDpdkSlicePartition(ctx, node)
-			Expect(err).ToNot(HaveOccurred(), "failed to read ovsdpdk.slice cpuset.cpus.partition")
-			Expect(cgroupPartition).To(Equal("isolated"), "ovsdpdk.slice cpuset.cpus.partition should be 'isolated'")
+			verifyOvsDpdkSlice(ctx, node, ovsDpdkSet, "isolated")
 		})
 
 		It("[test_id:89989] should preserve ovsDpdk CPU IRQ banning across GU pod lifecycle", func() {
 			verifyOvsDpdkIRQBanningAcrossGUPodLifecycle(context.TODO(), &workerRTNodes[0], baselineProfile, ovsDpdkSet, smtAlignmentDisabled)
 		})
+
+		It("[test_id:89992] should keep ovsDpdk CPUs outside kernel scheduling domains", func() {
+			ctx := context.TODO()
+			node := &workerRTNodes[0]
+			testlog.Infof("Verifying node %s", node.Name)
+
+			By("Verifying ovsDpdk CPUs are outside kernel scheduling domains before pod creation")
+			out, err := nodes.ExecCommand(ctx, node, []string{"/bin/bash", "-c", "cat /proc/schedstat"})
+			Expect(err).ToNot(HaveOccurred())
+			info, err := schedstat.ParseData(strings.NewReader(testutils.ToString(out)))
+			Expect(err).ToNot(HaveOccurred())
+			for _, cpuID := range ovsDpdkSet.List() {
+				doms, ok := info.GetDomainsByID(cpuID)
+				Expect(ok).To(BeTrue(), "cpu%d should appear in /proc/schedstat", cpuID)
+				Expect(doms).To(BeEmpty(), "cpu%d should have 0 scheduling domains, got %v", cpuID, doms)
+			}
+
+			By("Creating a Guaranteed pod without irq-load-balancing annotation")
+			testpod := pods.GetTestPod()
+			testpod.Namespace = testutils.NamespaceTesting
+			var resourceCPULimit resource.Quantity
+			if smtAlignmentDisabled {
+				resourceCPULimit = resource.MustParse("1")
+			} else {
+				resourceCPULimit = resource.MustParse("2")
+			}
+			testpod.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resourceCPULimit,
+					corev1.ResourceMemory: resource.MustParse("100Mi"),
+				},
+			}
+			runtimeClassName := components.GetComponentName(baselineProfile.Name, components.ComponentNamePrefix)
+			testpod.Spec.RuntimeClassName = &runtimeClassName
+			testpod.Spec.NodeSelector = map[string]string{testutils.LabelHostname: node.Name}
+
+			err = testclient.DataPlaneClient.Create(ctx, testpod)
+			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(func() {
+				cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				defer cancel()
+				if err := pods.DeleteAndSync(cleanupCtx, testclient.DataPlaneClient, testpod); err != nil {
+					testlog.Infof("failed to cleanup pod %s: %v", testpod.Name, err)
+				}
+			})
+
+			podKey := client.ObjectKeyFromObject(testpod)
+			testpod, err = pods.WaitForCondition(ctx, podKey, corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
+			pods.DumpStateOnFailure(ctx, testclient.K8sClient, testpod, err)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(testpod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed))
+			testlog.Infof("GU pod %s is running on node %s", testpod.Name, node.Name)
+
+			By("Deleting the GU pod")
+			Expect(pods.DeleteAndSync(ctx, testclient.DataPlaneClient, testpod)).To(Succeed())
+
+			By("Verifying ovsDpdk CPUs are still outside kernel scheduling domains after pod deletion")
+			out, err = nodes.ExecCommand(ctx, node, []string{"/bin/bash", "-c", "cat /proc/schedstat"})
+			Expect(err).ToNot(HaveOccurred())
+			info, err = schedstat.ParseData(strings.NewReader(testutils.ToString(out)))
+			Expect(err).ToNot(HaveOccurred())
+			for _, cpuID := range ovsDpdkSet.List() {
+				doms, ok := info.GetDomainsByID(cpuID)
+				Expect(ok).To(BeTrue(), "cpu%d should appear in /proc/schedstat", cpuID)
+				Expect(doms).To(BeEmpty(), "cpu%d should have 0 scheduling domains, got %v", cpuID, doms)
+			}
+		})
+
+		It("[test_id:89993] should keep ovsDpdk IRQ ban after node reboot", func() {
+			ctx := context.TODO()
+			node := &workerRTNodes[0]
+			testlog.Infof("Verifying node %s", node.Name)
+
+			By("Rebooting the node")
+			_, _ = nodes.ExecCommand(ctx, node, []string{"sh", "-c", "chroot /rootfs systemctl reboot"})
+			nodes.WaitForNotReadyOrFail("Reboot", node.Name, 10*time.Minute, 30*time.Second)
+			nodes.WaitForReadyOrFail("Reboot", node.Name, 10*time.Minute, 30*time.Second)
+
+			verifyOvsDpdkIRQIsolation(ctx, node, ovsDpdkSet)
+		})
+
+		// Keep this It last in the Context: it removes ovsDpdk and does not restore it.
+		It("[test_id:89997] should clean up all ovsDpdk artifacts when ovsDpdk is removed", func() {
+			ctx := context.TODO()
+			node := &workerRTNodes[0]
+			testlog.Infof("Verifying node %s", node.Name)
+
+			By("Removing ovsDpdk and restoring former D CPUs to isolated")
+			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+			restoredIsolatedSet := newIsolatedSet.Union(ovsDpdkSet)
+			restoredIsolated := performancev2.CPUSet(restoredIsolatedSet.String())
+			profile.Spec.CPU.OvsDpdk = nil
+			profile.Spec.CPU.Isolated = &restoredIsolated
+			profilesupdate.ApplyProfileAndWait(ctx, profile)
+
+			By("Verifying kernel cmdline reflects restored isolated CPUs")
+			cmdline, err := nodes.ExecCommand(ctx, node, []string{"cat", "/proc/cmdline"})
+			Expect(err).ToNot(HaveOccurred())
+			cmdlineStr := testutils.ToString(cmdline)
+
+			By("Verifying isolcpus includes restored isolated CPUs")
+			isolcpusSet := parseCPUSetFromKernelParam(cmdlineStr, "isolcpus")
+			Expect(isolcpusSet.IsEmpty()).To(BeFalse(), "isolcpus param not found in cmdline")
+			Expect(restoredIsolatedSet.IsSubsetOf(isolcpusSet)).To(BeTrue(),
+				"isolcpus=%s should include restored isolated CPUs %s",
+				isolcpusSet.String(), restoredIsolatedSet.String())
+
+			By("Verifying nohz_full includes restored isolated CPUs")
+			nohzSet := parseCPUSetFromKernelParam(cmdlineStr, "nohz_full")
+			Expect(nohzSet.IsEmpty()).To(BeFalse(), "nohz_full param not found in cmdline")
+			Expect(restoredIsolatedSet.IsSubsetOf(nohzSet)).To(BeTrue(),
+				"nohz_full=%s should include restored isolated CPUs %s",
+				nohzSet.String(), restoredIsolatedSet.String())
+
+			By("Verifying rcu_nocbs includes restored isolated CPUs")
+			rcuSet := parseCPUSetFromKernelParam(cmdlineStr, "rcu_nocbs")
+			Expect(rcuSet.IsEmpty()).To(BeFalse(), "rcu_nocbs param not found in cmdline")
+			Expect(restoredIsolatedSet.IsSubsetOf(rcuSet)).To(BeTrue(),
+				"rcu_nocbs=%s should include restored isolated CPUs %s",
+				rcuSet.String(), restoredIsolatedSet.String())
+
+			By("Verifying systemd.cpu_affinity excludes restored isolated CPUs")
+			affinitySet := parseCPUSetFromKernelParam(cmdlineStr, "systemd.cpu_affinity")
+			Expect(affinitySet.IsEmpty()).To(BeFalse(), "systemd.cpu_affinity param not found in cmdline")
+			Expect(affinitySet.Intersection(restoredIsolatedSet).IsEmpty()).To(BeTrue(),
+				"systemd.cpu_affinity=%s should not contain restored isolated CPUs %s",
+				affinitySet.String(), restoredIsolatedSet.String())
+
+			By("Verifying ovsdpdk.slice is gone")
+			cmd := []string{"stat", ovsSliceCgroupBase + "/ovs-vswitchd.service/ovsdpdk.slice"}
+			_, err = nodes.ExecCommand(ctx, node, cmd)
+			Expect(err).To(HaveOccurred(), "ovsdpdk.slice should be removed under ovs.slice/ovs-vswitchd.service/")
+			Expect(err.Error()).To(ContainSubstring("No such file or directory"))
+
+			By("Verifying kubelet reservedSystemCPUs is reserved only (no ovsDpdk)")
+			reservedSystemCPUs, err := getReservedSystemCPUs(ctx, node)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(reservedSystemCPUs.Equals(reservedSet)).To(BeTrue(),
+				"ReservedSystemCPUs should be %s (reserved only), got %s",
+				reservedSet.String(), reservedSystemCPUs.String())
+
+			By("Verifying IRQBALANCE_BANNED_CPUS no longer includes former ovsDpdk CPUs")
+			bannedSet, err := getNodeIRQBannedCPUSet(ctx, node)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(bannedSet.Intersection(ovsDpdkSet).IsEmpty()).To(BeTrue(),
+				"IRQBALANCE_BANNED_CPUS should not include former ovsDpdk CPUs %s, got %s",
+				ovsDpdkSet.String(), bannedSet.String())
+
+			By("Verifying default_smp_affinity includes former ovsDpdk CPUs again")
+			smpCPUSet, err := nodes.GetDefaultSmpAffinitySet(ctx, node)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(ovsDpdkSet.IsSubsetOf(smpCPUSet)).To(BeTrue(),
+				"default_smp_affinity should include former ovsDpdk CPUs %s, got %s",
+				ovsDpdkSet.String(), smpCPUSet.String())
+
+			By("Verifying ovs-dpdk-cpus-configure script is gone")
+			cmd = []string{"stat", "/rootfs/usr/local/bin/ovs-dpdk-cpus-configure.sh"}
+			_, err = nodes.ExecCommand(ctx, node, cmd)
+			Expect(err).To(HaveOccurred(), "ovs-dpdk-cpus-configure.sh should be removed from the node")
+			Expect(err.Error()).To(ContainSubstring("No such file or directory"))
+
+			By("Verifying ovs-vswitchd.service has no OVS_DPDK_CPUS in Environment")
+			envBlob, err := systemd.ShowPropertyValue(ctx, "ovs-vswitchd.service", "Environment", node)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(envBlob).NotTo(ContainSubstring("OVS_DPDK_CPUS"),
+				"ovs-vswitchd.service Environment should not contain OVS_DPDK_CPUS, got %s", envBlob)
+		})
+
 	})
 
 	Context("without cpu-load-balancing-ovs-dpdk annotation", func() {
@@ -305,17 +403,7 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 			Expect(strings.TrimSpace(testutils.ToString(cgroupType))).To(Equal("threaded"),
 				"ovsdpdk.slice cgroup.type should be 'threaded'")
 
-			By("Verifying ovsdpdk.slice cpuset.cpus.exclusive matches configured ovsDpdk CPUs")
-			cgroupCpuSet, err := getOvsDpdkSliceExclusiveCPUs(ctx, node)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(cgroupCpuSet.Equals(ovsDpdkSet)).To(BeTrue(),
-				"ovsdpdk.slice cpuset.cpus.exclusive should be %s, got %s",
-				ovsDpdkSet.String(), cgroupCpuSet.String())
-
-			By("Verifying ovsdpdk.slice cpuset.cpus.partition is member")
-			cgroupPartition, err := getOvsDpdkSlicePartition(ctx, node)
-			Expect(err).ToNot(HaveOccurred(), "failed to read ovsdpdk.slice cpuset.cpus.partition")
-			Expect(cgroupPartition).To(Equal("member"), "ovsdpdk.slice cpuset.cpus.partition should be 'member'")
+			verifyOvsDpdkSlice(ctx, node, ovsDpdkSet, "member")
 		})
 
 		It("[test_id:89990] should preserve ovsDpdk CPU IRQ banning across GU pod lifecycle", func() {
@@ -342,16 +430,130 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 				Equal("active"),
 			)
 
-			By("Verifying ovsdpdk.slice cpuset.cpus.exclusive and cpuset.cpus.partition after ovs-vswitchd restart")
-			cgroupCpuSet, err := getOvsDpdkSliceExclusiveCPUs(ctx, node)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(cgroupCpuSet.Equals(ovsDpdkSet)).To(BeTrue(),
-				"ovsdpdk.slice exclusive: want %s, got %s", ovsDpdkSet, cgroupCpuSet)
+			verifyOvsDpdkSlice(ctx, node, ovsDpdkSet, "member")
+		})
 
-			cgroupPartition, err := getOvsDpdkSlicePartition(ctx, node)
+		It("[test_id:89994] should update isolation when ovsDpdk CPUs are expanded", func() {
+			ctx := context.TODO()
+			node := &workerRTNodes[0]
+			testlog.Infof("Verifying node %s", node.Name)
+
+			if newIsolatedSet.Size() < 2 {
+				Skip("not enough isolated CPUs to expand ovsDpdk")
+			}
+
+			By("Expanding ovsDpdk CPUs (carve from isolated) and waiting for MCP")
+			isolatedList := newIsolatedSet.List()
+			expandedOvsDpdkSet := ovsDpdkSet.Union(cpuset.New(isolatedList[0]))
+			shrunkIsolatedSet := cpuset.New(isolatedList[1:]...)
+			expandedOvsDpdk := performancev2.CPUSet(expandedOvsDpdkSet.String())
+			shrunkIsolated := performancev2.CPUSet(shrunkIsolatedSet.String())
+
+			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(cgroupPartition).To(Equal("member"),
-				"ovsdpdk.slice partition: want member, got %s", cgroupPartition)
+			profile.Spec.CPU.OvsDpdk = &expandedOvsDpdk
+			profile.Spec.CPU.Isolated = &shrunkIsolated
+			profilesupdate.ApplyProfileAndWait(ctx, profile)
+
+			// No restore: 89995 (next) only needs ovsDpdk present, not a specific size; AfterAll reverts the profile.
+			ovsDpdkSet = expandedOvsDpdkSet
+			newIsolatedSet = shrunkIsolatedSet
+
+			expectedReservedSystem := reservedSet.Union(ovsDpdkSet)
+
+			verifyOvsDpdkKernelCmdline(ctx, node, newIsolatedSet, ovsDpdkSet)
+
+			By("Verifying kubelet reservedSystemCPUs is reserved + expanded ovsDpdk")
+			reservedSystemCPUs, err := getReservedSystemCPUs(ctx, node)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(reservedSystemCPUs.Equals(expectedReservedSystem)).To(BeTrue(),
+				"ReservedSystemCPUs should be %s (reserved + ovsDpdk), got %s",
+				expectedReservedSystem.String(), reservedSystemCPUs.String())
+
+			verifyOvsDpdkIRQIsolation(ctx, node, ovsDpdkSet)
+			verifyOvsDpdkSlice(ctx, node, ovsDpdkSet, "member")
+			verifyOvsDpdkServiceEnv(ctx, node, ovsDpdkSet)
+		})
+
+		// Keep this It last in the Describe: relies on AfterAll to revert mixedCpus/shared (and prior expand); done so to save a reboot.
+		It("[test_id:89995] should coexist with mixed CPUs", Label(string(label.MixedCPUs)), func() {
+			ctx := context.TODO()
+			node := &workerRTNodes[0]
+			testlog.Infof("Verifying node %s", node.Name)
+
+			By("Checking MixedCPUsAllocation feature gate")
+			fg := &configv1.FeatureGate{}
+			Expect(testclient.ControlPlaneClient.Get(ctx, client.ObjectKey{Name: "cluster"}, fg)).To(Succeed())
+			Expect(fg.Status.FeatureGates).ToNot(BeEmpty())
+
+			mixedCPUsFG := false
+			for _, enabled := range fg.Status.FeatureGates[0].Enabled {
+				if enabled.Name == "MixedCPUsAllocation" {
+					mixedCPUsFG = true
+					break
+				}
+			}
+			if !mixedCPUsFG {
+				Skip("MixedCPUsAllocation feature gate is disabled")
+			}
+
+			By("Carving shared from isolated")
+			if newIsolatedSet.Size() < 2 {
+				Skip("need at least 2 isolated CPUs to carve shared while keeping isolated")
+			}
+			isolatedList := newIsolatedSet.List()
+			sharedSet := cpuset.New(isolatedList[0])
+			shrunkIsolatedSet := cpuset.New(isolatedList[1:]...)
+			testlog.Infof("Shared: %s, Isolated after carve: %s", sharedSet.String(), shrunkIsolatedSet.String())
+
+			By("Setting workloadHints.mixedCpus to true")
+			sharedCPUs := performancev2.CPUSet(sharedSet.String())
+			shrunkIsolated := performancev2.CPUSet(shrunkIsolatedSet.String())
+			mixedCpusEnabled := true
+
+			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+			profile.Spec.CPU.Shared = &sharedCPUs
+			profile.Spec.CPU.Isolated = &shrunkIsolated
+			if profile.Spec.WorkloadHints == nil {
+				profile.Spec.WorkloadHints = &performancev2.WorkloadHints{}
+			}
+			profile.Spec.WorkloadHints.MixedCpus = &mixedCpusEnabled
+
+			By("Applying profile and waiting for MCP")
+			profilesupdate.ApplyProfileAndWait(ctx, profile)
+
+			By("Verifying kubelet reservedSystemCPUs is reserved + shared + ovsDpdk")
+			expectedReservedSystem := reservedSet.Union(sharedSet).Union(ovsDpdkSet)
+			reservedSystemCPUs, err := getReservedSystemCPUs(ctx, node)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(reservedSystemCPUs.Equals(expectedReservedSystem)).To(BeTrue(),
+				"ReservedSystemCPUs should be %s (reserved + shared + ovsDpdk), got %s",
+				expectedReservedSystem.String(), reservedSystemCPUs.String())
+
+			By("Verifying CRI-O shared_cpuset is shared only")
+			crioSharedOut, err := nodes.ExecCommand(ctx, node, []string{
+				"bash", "-c",
+				fmt.Sprintf(`awk -F '"' '/shared_cpuset.*/ { print $2 }' %s`, crioRuntimesConfigFile),
+			})
+			Expect(err).ToNot(HaveOccurred())
+			crioSharedSet, err := cpuset.Parse(strings.TrimSpace(testutils.ToString(crioSharedOut)))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(crioSharedSet.Equals(sharedSet)).To(BeTrue(),
+				"CRI-O shared_cpuset should be %s, got %s", sharedSet.String(), crioSharedSet.String())
+			Expect(crioSharedSet.Intersection(ovsDpdkSet).IsEmpty()).To(BeTrue(),
+				"CRI-O shared_cpuset must not contain ovsDpdk CPUs %s", ovsDpdkSet.String())
+
+			By("Verifying CRI-O infra_ctr_cpuset is reserved")
+			crioInfraOut, err := nodes.ExecCommand(ctx, node, []string{
+				"bash", "-c",
+				fmt.Sprintf(`awk -F '"' '/infra_ctr_cpuset.*/ { print $2 }' %s`, crioRuntimesConfigFile),
+			})
+			Expect(err).ToNot(HaveOccurred())
+			crioInfraSet, err := cpuset.Parse(strings.TrimSpace(testutils.ToString(crioInfraOut)))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(crioInfraSet.Equals(reservedSet)).To(BeTrue(),
+				"CRI-O infra_ctr_cpuset should be %s, got %s", reservedSet.String(), crioInfraSet.String())
 		})
 
 	})
@@ -370,9 +572,8 @@ func verifyOvsDpdkIRQBanningAcrossGUPodLifecycle(ctx context.Context, node *core
 		smpBeforeSet.Intersection(ovsDpdkSet).String())
 
 	By("Verifying IRQBALANCE_BANNED_CPUS is set to ovsDpdk hex mask before pod creation")
-	irqConf, err := nodes.ExecCommand(ctx, node, []string{"cat", "/rootfs/etc/sysconfig/irqbalance"})
+	bannedBeforePod, err := getNodeIRQBannedCPUSet(ctx, node)
 	Expect(err).ToNot(HaveOccurred())
-	bannedBeforePod := getIRQBannedCPUSet(testutils.ToString(irqConf))
 	Expect(ovsDpdkSet.IsSubsetOf(bannedBeforePod)).To(BeTrue(),
 		"IRQBALANCE_BANNED_CPUS should include ovsDpdk CPUs %s before pod, got %s",
 		ovsDpdkSet.String(), bannedBeforePod.String())
@@ -406,7 +607,7 @@ func verifyOvsDpdkIRQBanningAcrossGUPodLifecycle(ctx context.Context, node *core
 	DeferCleanup(func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		if err := client.IgnoreNotFound(testclient.DataPlaneClient.Delete(cleanupCtx, testpod)); err != nil {
+		if err := pods.DeleteAndSync(cleanupCtx, testclient.DataPlaneClient, testpod); err != nil {
 			testlog.Infof("failed to cleanup pod %s: %v", testpod.Name, err)
 		}
 	})
@@ -419,26 +620,21 @@ func verifyOvsDpdkIRQBanningAcrossGUPodLifecycle(ctx context.Context, node *core
 	testlog.Infof("GU pod %s is running on node %s", testpod.Name, node.Name)
 
 	By("Verifying IRQBALANCE_BANNED_CPUS still includes ovsDpdk CPUs with pod running")
-	irqConf, err = nodes.ExecCommand(ctx, node, []string{"cat", "/rootfs/etc/sysconfig/irqbalance"})
+	bannedWithPod, err := getNodeIRQBannedCPUSet(ctx, node)
 	Expect(err).ToNot(HaveOccurred())
-	bannedWithPod := getIRQBannedCPUSet(testutils.ToString(irqConf))
 	Expect(ovsDpdkSet.IsSubsetOf(bannedWithPod)).To(BeTrue(),
 		"IRQBALANCE_BANNED_CPUS should include ovsDpdk CPUs %s with pod running, got %s",
 		ovsDpdkSet.String(), bannedWithPod.String())
 
 	By("Deleting the GU pod")
-	err = testclient.DataPlaneClient.Delete(ctx, testpod)
-	Expect(err).ToNot(HaveOccurred())
-	err = pods.WaitForDeletion(ctx, testclient.DataPlaneClient, testpod, 5*time.Minute)
-	Expect(err).ToNot(HaveOccurred())
+	Expect(pods.DeleteAndSync(ctx, testclient.DataPlaneClient, testpod)).To(Succeed())
 
 	By("Verifying IRQBALANCE_BANNED_CPUS still includes ovsDpdk CPUs after pod deletion")
 	Eventually(func() bool {
-		irqConf, err := nodes.ExecCommand(ctx, node, []string{"cat", "/rootfs/etc/sysconfig/irqbalance"})
+		bannedAfterPod, err := getNodeIRQBannedCPUSet(ctx, node)
 		if err != nil {
 			return false
 		}
-		bannedAfterPod := getIRQBannedCPUSet(testutils.ToString(irqConf))
 		return ovsDpdkSet.IsSubsetOf(bannedAfterPod)
 	}, 2*time.Minute, 10*time.Second).Should(BeTrue(),
 		"IRQBALANCE_BANNED_CPUS should still include ovsDpdk CPUs after pod deletion")
@@ -537,4 +733,115 @@ func getOvsDpdkSliceExclusiveCPUs(ctx context.Context, node *corev1.Node) (cpuse
 		return cpuset.New(), err
 	}
 	return cpuset.Parse(strings.TrimSpace(testutils.ToString(cgroupCpus)))
+}
+
+func getReservedSystemCPUs(ctx context.Context, node *corev1.Node) (cpuset.CPUSet, error) {
+	kubeletConfig, err := nodes.GetKubeletConfig(ctx, node)
+	if err != nil {
+		return cpuset.New(), err
+	}
+	return cpuset.Parse(kubeletConfig.ReservedSystemCPUs)
+}
+
+func getNodeIRQBannedCPUSet(ctx context.Context, node *corev1.Node) (cpuset.CPUSet, error) {
+	irqConf, err := nodes.ExecCommand(ctx, node, []string{"cat", "/rootfs/etc/sysconfig/irqbalance"})
+	if err != nil {
+		return cpuset.New(), err
+	}
+	return getIRQBannedCPUSet(testutils.ToString(irqConf)), nil
+}
+
+func verifyOvsDpdkKernelCmdline(ctx context.Context, node *corev1.Node, isolated, ovsDpdk cpuset.CPUSet) {
+	GinkgoHelper()
+	expectedIsolatedPlusOvsDpdk := isolated.Union(ovsDpdk)
+
+	By("Reading kernel cmdline")
+	cmdline, err := nodes.ExecCommand(ctx, node, []string{"cat", "/proc/cmdline"})
+	Expect(err).ToNot(HaveOccurred())
+	cmdlineStr := testutils.ToString(cmdline)
+
+	By("Verifying isolcpus includes ovsDpdk CPUs")
+	isolcpusSet := parseCPUSetFromKernelParam(cmdlineStr, "isolcpus")
+	Expect(isolcpusSet.IsEmpty()).To(BeFalse(), "isolcpus param not found in cmdline")
+	Expect(expectedIsolatedPlusOvsDpdk.IsSubsetOf(isolcpusSet)).To(BeTrue(),
+		"isolcpus=%s should include all isolated + ovsDpdk CPUs %s",
+		isolcpusSet.String(), expectedIsolatedPlusOvsDpdk.String())
+
+	By("Verifying nohz_full includes ovsDpdk CPUs")
+	nohzSet := parseCPUSetFromKernelParam(cmdlineStr, "nohz_full")
+	Expect(nohzSet.IsEmpty()).To(BeFalse(), "nohz_full param not found in cmdline")
+	Expect(ovsDpdk.IsSubsetOf(nohzSet)).To(BeTrue(),
+		"nohz_full=%s should include ovsDpdk CPUs %s",
+		nohzSet.String(), ovsDpdk.String())
+
+	By("Verifying rcu_nocbs includes ovsDpdk CPUs")
+	rcuSet := parseCPUSetFromKernelParam(cmdlineStr, "rcu_nocbs")
+	Expect(rcuSet.IsEmpty()).To(BeFalse(), "rcu_nocbs param not found in cmdline")
+	Expect(ovsDpdk.IsSubsetOf(rcuSet)).To(BeTrue(),
+		"rcu_nocbs=%s should include ovsDpdk CPUs %s",
+		rcuSet.String(), ovsDpdk.String())
+
+	By("Verifying systemd.cpu_affinity excludes ovsDpdk CPUs")
+	affinitySet := parseCPUSetFromKernelParam(cmdlineStr, "systemd.cpu_affinity")
+	Expect(affinitySet.IsEmpty()).To(BeFalse(), "systemd.cpu_affinity param not found in cmdline")
+	Expect(affinitySet.Intersection(ovsDpdk).IsEmpty()).To(BeTrue(),
+		"systemd.cpu_affinity=%s should not contain ovsDpdk CPUs %s",
+		affinitySet.String(), ovsDpdk.String())
+}
+
+func verifyOvsDpdkIRQIsolation(ctx context.Context, node *corev1.Node, ovsDpdk cpuset.CPUSet) {
+	GinkgoHelper()
+
+	By("Verifying IRQBALANCE_BANNED_CPUS includes ovsDpdk CPUs")
+	bannedSet, err := getNodeIRQBannedCPUSet(ctx, node)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(ovsDpdk.IsSubsetOf(bannedSet)).To(BeTrue(),
+		"IRQBALANCE_BANNED_CPUS should include ovsDpdk CPUs %s, got %s",
+		ovsDpdk.String(), bannedSet.String())
+
+	By("Verifying default_smp_affinity excludes ovsDpdk CPUs")
+	smpCPUSet, err := nodes.GetDefaultSmpAffinitySet(ctx, node)
+	Expect(err).ToNot(HaveOccurred())
+	testlog.Infof("default_smp_affinity on %s: %s", node.Name, smpCPUSet.String())
+	Expect(smpCPUSet.Intersection(ovsDpdk).IsEmpty()).To(BeTrue(),
+		"default_smp_affinity should not have ovsDpdk CPU bits set, got CPUs %s",
+		smpCPUSet.Intersection(ovsDpdk).String())
+}
+
+func verifyOvsDpdkSlice(ctx context.Context, node *corev1.Node, ovsDpdk cpuset.CPUSet, partition string) {
+	GinkgoHelper()
+
+	By("Verifying ovsdpdk.slice cpuset.cpus.exclusive matches configured ovsDpdk CPUs")
+	cgroupCpuSet, err := getOvsDpdkSliceExclusiveCPUs(ctx, node)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(cgroupCpuSet.Equals(ovsDpdk)).To(BeTrue(),
+		"ovsdpdk.slice cpuset.cpus.exclusive should be %s, got %s",
+		ovsDpdk.String(), cgroupCpuSet.String())
+
+	By("Verifying ovsdpdk.slice cpuset.cpus.partition")
+	cgroupPartition, err := getOvsDpdkSlicePartition(ctx, node)
+	Expect(err).ToNot(HaveOccurred(), "failed to read ovsdpdk.slice cpuset.cpus.partition")
+	Expect(cgroupPartition).To(Equal(partition),
+		"ovsdpdk.slice cpuset.cpus.partition should be %q, got %q", partition, cgroupPartition)
+}
+
+func verifyOvsDpdkServiceEnv(ctx context.Context, node *corev1.Node, ovsDpdk cpuset.CPUSet) {
+	GinkgoHelper()
+	expectedOvsDpdkEnv := "OVS_DPDK_CPUS=" + ovsDpdk.String()
+
+	By("Verifying ovs-vswitchd drop-in OVS_DPDK_CPUS on node")
+	dropin, err := nodes.ExecCommand(ctx, node, []string{
+		"grep", "-r", "OVS_DPDK_CPUS=", "/rootfs/etc/systemd/system/ovs-vswitchd.service.d/",
+	})
+	Expect(err).ToNot(HaveOccurred())
+	Expect(testutils.ToString(dropin)).To(ContainSubstring(expectedOvsDpdkEnv),
+		"ovs-vswitchd drop-in should contain %s, got %s",
+		expectedOvsDpdkEnv, testutils.ToString(dropin))
+
+	By("Verifying ovs-vswitchd.service OVS_DPDK_CPUS on node")
+	envBlob, err := systemd.ShowPropertyValue(ctx, "ovs-vswitchd.service", "Environment", node)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(envBlob).To(ContainSubstring(expectedOvsDpdkEnv),
+		"ovs-vswitchd.service Environment should contain %s, got %s",
+		expectedOvsDpdkEnv, envBlob)
 }
