@@ -400,7 +400,14 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				"kernel.nmi_watchdog":           "0",
 				"kernel.sched_rt_runtime_us":    "-1",
 				"vm.stat_interval":              "10",
-				"kernel.timer_migration":        "1",
+			}
+			// On RHEL 9 the profile forces timer_migration=1 for workload isolation.
+			// On RHEL 10 the kernel handles this correctly on its own, so the override
+			// is skipped and the default (0, from the network-latency parent) is expected.
+			if len(workerRTNodes) > 0 && strings.Contains(workerRTNodes[0].Status.NodeInfo.KernelVersion, ".el9") {
+				sysctlMap["kernel.timer_migration"] = "1"
+			} else {
+				sysctlMap["kernel.timer_migration"] = "0"
 			}
 
 			key := types.NamespacedName{
