@@ -10,11 +10,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const (
-	infoModeJSON = "json"
-	infoModeLog  = "log"
-)
-
 type infoOptions struct {
 	jsonOutput bool
 	textOutput bool
@@ -26,13 +21,13 @@ func NewInfoCommand(pcArgs *ProfileCreatorArgs) *cobra.Command {
 	opts := infoOptions{}
 	info := &cobra.Command{
 		Use:   "info",
-		Short: fmt.Sprintf("requires --must-gather-dir-path, ignores other arguments. [Valid values: %s,%s]", infoModeLog, infoModeJSON),
+		Short: "display cluster info from must-gather, requires --must-gather-dir-path.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return executeInfoMode(pcArgs.MustGatherDirPath, pcArgs.createForHypershift, &opts)
 		},
 	}
 	info.Flags().BoolVar(&opts.jsonOutput, "json", false, "output as JSON")
-	info.Flags().BoolVar(&opts.textOutput, "text", false, "output as plain text")
+	info.Flags().BoolVar(&opts.textOutput, "text", true, "output as plain text (default when no flag is specified)")
 	return info
 }
 
