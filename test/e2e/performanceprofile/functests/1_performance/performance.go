@@ -577,9 +577,25 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 	Context("Create second performance profiles on a cluster", Label(string(label.Tier0), string(label.OpenShift)), func() {
 		var secondMCP *machineconfigv1.MachineConfigPool
 		var secondProfile *performancev2.PerformanceProfile
+		var primaryMCP string
 		var newRole = "worker-new"
 
 		BeforeEach(func() {
+			// Resolve the primary pool from the deployed profile, not ROLE_WORKER_CNF.
+			// Skip when that pool is the built-in worker MCP: this test watches it for
+			// Updating=False, but MCO requires every custom MCP to inherit worker
+			// MachineConfigs (OCPBUGS-34847). second-mcp was updated in #1175 to use
+			// machineConfigSelector In [worker, worker-new], so its setup targets the
+			// same pool identity the rule forces it to include and reconciliation can
+			// flip worker Updating=True. Custom pools (e.g. worker-cnf) also inherit
+			// worker MCs but are separate MCPs from second-mcp (worker-new).
+			var err error
+			primaryMCP, err = mcps.GetByProfile(profile)
+			Expect(err).NotTo(HaveOccurred(), "cannot resolve MCP for primary profile %q", profile.Name)
+			if primaryMCP == testutils.RoleWorker {
+				Skip("primary profile uses built-in worker MCP; isolation check invalid when second-mcp must inherit worker (OCPBUGS-34847, #1175)")
+			}
+
 			newLabel := fmt.Sprintf("%s/%s", testutils.LabelRole, newRole)
 
 			reserved := performancev2.CPUSet("0")
@@ -672,9 +688,9 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			// parameters.  Do not check for them, because we want this test to proceed with only one worker node, which is already a
 			// a member of the first MCP.
 
-			By("Checking that the initial MCP does not start updating")
+			By(fmt.Sprintf("Checking that the initial MCP %q does not start updating", primaryMCP))
 			Consistently(func() corev1.ConditionStatus {
-				return mcps.GetConditionStatus(testutils.RoleWorkerCNF, machineconfigv1.MachineConfigPoolUpdating)
+				return mcps.GetConditionStatus(primaryMCP, machineconfigv1.MachineConfigPoolUpdating)
 			}, 30, 5).Should(Equal(corev1.ConditionFalse))
 
 			By("Remove the second PerformanceProfile and verify that the second Tuned profile was removed")
@@ -687,7 +703,7 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 			Expect(profiles.WaitForDeletion(profileKey, 60*time.Second)).ToNot(HaveOccurred())
 
 			Consistently(func() corev1.ConditionStatus {
-				return mcps.GetConditionStatus(testutils.RoleWorkerCNF, machineconfigv1.MachineConfigPoolUpdating)
+				return mcps.GetConditionStatus(primaryMCP, machineconfigv1.MachineConfigPoolUpdating)
 			}, 30, 5).Should(Equal(corev1.ConditionFalse))
 
 			Expect(testclient.ControlPlaneClient.Get(context.TODO(), tunedKey, tunedProfile)).To(HaveOccurred(), fmt.Sprintf("Tuned profile object %s should be removed", tunedKey.Name))
