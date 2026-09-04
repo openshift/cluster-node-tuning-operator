@@ -43,6 +43,7 @@ const (
 	cpuSetShared    = "shared"
 	cpuSetOfflined  = "offlined"
 	cpuSetGUPod     = "guPod"
+	cpuSetOvsDpdk   = "ovsDpdk"
 )
 
 var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(label.OVSPinning)), func() {
@@ -53,6 +54,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 	var (
 		reservedCPUSet                cpuset.CPUSet
 		isolatedCPUSet                cpuset.CPUSet
+		ovsDpdkCPUSet                 cpuset.CPUSet
 		workerRTNode                  *corev1.Node
 		workerRTNodes                 []corev1.Node
 		profile                       *performancev2.PerformanceProfile
@@ -97,8 +99,12 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 		profileCPUSets := parseProfileCPUSets(profile)
 		reservedCPUSet = profileCPUSets[cpuSetReserved]
 		isolatedCPUSet = profileCPUSets[cpuSetIsolated]
+		ovsDpdkCPUSet = profileCPUSets[cpuSetOvsDpdk]
 		testlog.Infof("Reserved CPUSet: %s", reservedCPUSet)
 		testlog.Infof("Isolated CPUSet: %s", isolatedCPUSet)
+		if ovsDpdkCPUSet.Size() > 0 {
+			testlog.Infof("OvsDpdk CPUSet: %s", ovsDpdkCPUSet)
+		}
 	})
 
 	Describe("[rfe_id: 64006][Dynamic OVS Pinning]", Ordered, Label(string(label.Tier0)), func() {
@@ -234,7 +240,11 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 			Expect(err).ToNot(HaveOccurred())
 			onlineCPUSet, err := nodes.GetOnlineCPUsSet(context.TODO(), workerRTNode)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(ovsCPUSet).To(Equal(onlineCPUSet))
+			expectedCPUSet := onlineCPUSet
+			if ovsDpdkCPUSet.Size() > 0 {
+				expectedCPUSet = onlineCPUSet.Difference(ovsDpdkCPUSet)
+			}
+			Expect(ovsCPUSet).To(Equal(expectedCPUSet))
 
 			if isCgroupV2 {
 				Skip("CPU load balance can be checked only functionally on cgroupv2")
@@ -450,6 +460,10 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 						parts := strings.Split(line, ":")
 						threadsCpuset, err := cpuset.Parse(strings.TrimSpace(parts[1]))
 						Expect(err).ToNot(HaveOccurred())
+						if isOvsDpdkPMDThread(threadsCpuset, ovsDpdkCPUSet) {
+							testlog.Infof("skipping ovs-vswitchd DPDK PMD thread with affinity %s", threadsCpuset)
+							continue
+						}
 						Expect(threadsCpuset.Equals(baselineCpus)).To(BeTrue(),
 							"actual cpuset %s not equals to expected cpuset %s", threadsCpuset, baselineCpus)
 					}
@@ -493,6 +507,10 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 							parts := strings.Split(line, ":")
 							threadsCpuset, err := cpuset.Parse(strings.TrimSpace(parts[1]))
 							Expect(err).ToNot(HaveOccurred())
+							if isOvsDpdkPMDThread(threadsCpuset, ovsDpdkCPUSet) {
+								testlog.Infof("skipping ovs-vswitchd DPDK PMD thread with affinity %s", threadsCpuset)
+								continue
+							}
 							testlog.Infof("ovs-vswitchd thread affinity: %s, pod %s affinity: %s", threadsCpuset, podList.Items[i].Name, podcpus)
 							Expect(podcpus.IsSubsetOf(threadsCpuset)).To(BeFalse())
 						}
@@ -514,6 +532,10 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 							parts := strings.Split(line, ":")
 							threadsCpuset, err := cpuset.Parse(strings.TrimSpace(parts[1]))
 							Expect(err).ToNot(HaveOccurred())
+							if isOvsDpdkPMDThread(threadsCpuset, ovsDpdkCPUSet) {
+								testlog.Infof("skipping ovs-vswitchd DPDK PMD thread with affinity %s", threadsCpuset)
+								continue
+							}
 							testlog.Infof("ovs-vswitchd thread affinity: %s, pod %s affinity: %s", threadsCpuset, podList.Items[i].Name, podcpus)
 							Expect(podcpus.IsSubsetOf(threadsCpuset)).To(BeFalse())
 						}
@@ -885,6 +907,13 @@ func ovsSwitchdThreadAffinity(ctx context.Context, workerRTNode *corev1.Node) ([
 	return threadAffinity, nil
 }
 
+// isOvsDpdkPMDThread returns true when the thread's CPU affinity falls entirely
+// within the ovsDpdk CPU set, indicating it is a DPDK PMD thread managed by
+// the ovsdpdk.slice cgroup rather than a regular OVS service thread.
+func isOvsDpdkPMDThread(threadCPUs, ovsDpdkCPUs cpuset.CPUSet) bool {
+	return ovsDpdkCPUs.Size() > 0 && threadCPUs.IsSubsetOf(ovsDpdkCPUs)
+}
+
 // expectedOvsAffinity computes the expected OVN/OVS CPU affinity set.
 // Formula: (reserved + isolated) - GU_Pinned
 // reserved+isolated is the profile-derived baseline for OVS. Subtracting
@@ -963,6 +992,7 @@ func parseProfileCPUSets(profile *performancev2.PerformanceProfile) map[string]c
 		cpuSetIsolated: cpuset.New(),
 		cpuSetShared:   cpuset.New(),
 		cpuSetOfflined: cpuset.New(),
+		cpuSetOvsDpdk:  cpuset.New(),
 	}
 
 	parseCPUSet := func(name string, raw *performancev2.CPUSet) {
@@ -978,6 +1008,7 @@ func parseProfileCPUSets(profile *performancev2.PerformanceProfile) map[string]c
 	parseCPUSet(cpuSetIsolated, profile.Spec.CPU.Isolated)
 	parseCPUSet(cpuSetShared, profile.Spec.CPU.Shared)
 	parseCPUSet(cpuSetOfflined, profile.Spec.CPU.Offlined)
+	parseCPUSet(cpuSetOvsDpdk, profile.Spec.CPU.OvsDpdk)
 
 	return cpuSets
 }
