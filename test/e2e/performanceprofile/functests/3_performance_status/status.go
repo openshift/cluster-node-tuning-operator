@@ -216,7 +216,7 @@ var _ = Describe("Status testing of performance profile", Ordered, func() {
 	})
 
 	Context("ovsDpdk CPUs prerequisites", Label(string(label.OvsDpdk), string(label.OpenShift), string(label.Tier2)), func() {
-		It("should report Degraded when workload partitioning is disabled", func() {
+		It("[test_id:89991] should report Degraded when workload partitioning is disabled", func() {
 			ctx := context.TODO()
 
 			isWPEnabled, err := cluster.IsWorkloadPartitioningEnabled(ctx, testclient.Client)
