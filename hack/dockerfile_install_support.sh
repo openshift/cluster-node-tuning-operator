@@ -29,7 +29,6 @@ if [[ "${ID}" == "centos" ]]; then
   dnf build-dep tuned.spec -y
   make rpm PYTHON=/usr/bin/python3
   rm -rf /root/rpmbuild/RPMS/noarch/{tuned-gtk*,tuned-utils*,tuned-profiles-compat*}
-  dnf --setopt=protected_packages= history -y undo 0  # Remove builddep
 
   cp -r /root/rpmbuild/RPMS/noarch /root/rpms
   dnf install --setopt=tsflags=nodocs -y ${INSTALL_PKGS}
