@@ -26,10 +26,17 @@ if [[ "${ID}" == "centos" ]]; then
     echo "No tuned patches found."
   fi
 
+  # Snapshot the installed package list so we can remove the build deps afterwards
+  rpm -qa --qf '%{NAME}\n' | sort -u > /root/rpms-before-builddep
   dnf build-dep tuned.spec -y
   make rpm PYTHON=/usr/bin/python3
   rm -rf /root/rpmbuild/RPMS/noarch/{tuned-gtk*,tuned-utils*,tuned-profiles-compat*}
-  dnf --setopt=protected_packages= history -y undo 0  # Remove builddep
+  # Remove builddep: uninstall everything `dnf build-dep` added
+  BUILD_DEPS="$(comm -13 /root/rpms-before-builddep <(rpm -qa --qf '%{NAME}\n' | sort -u))"
+  if [[ -n "${BUILD_DEPS}" ]]; then
+    dnf --setopt=protected_packages= -y remove ${BUILD_DEPS}
+  fi
+  rm -f /root/rpms-before-builddep
 
   cp -r /root/rpmbuild/RPMS/noarch /root/rpms
   dnf install --setopt=tsflags=nodocs -y ${INSTALL_PKGS}
