@@ -109,3 +109,87 @@ func TestGetTwoSiblingsFromCPUSet(t *testing.T) {
 		})
 	}
 }
+
+func TestFindCmdlineParam(t *testing.T) {
+	tests := []struct {
+		name    string
+		cmdline string
+		key     string
+		want    string
+	}{
+		{
+			name:    "parameter found",
+			cmdline: "BOOT_IMAGE=/boot/vmlinuz ro isolcpus=managed_irq,2-63 nohz=on",
+			key:     "isolcpus",
+			want:    "managed_irq,2-63",
+		},
+		{
+			name:    "parameter not found",
+			cmdline: "BOOT_IMAGE=/boot/vmlinuz ro nohz=on",
+			key:     "isolcpus",
+			want:    "",
+		},
+		{
+			name:    "parameter at start",
+			cmdline: "isolcpus=domain,managed_irq,1-2 nohz=on",
+			key:     "isolcpus",
+			want:    "domain,managed_irq,1-2",
+		},
+		{
+			name:    "parameter at end",
+			cmdline: "nohz=on systemd.cpu_affinity=0,1",
+			key:     "systemd.cpu_affinity",
+			want:    "0,1",
+		},
+		{
+			name:    "similar prefix does not match",
+			cmdline: "tuned.non_isolcpus_extra=foo tuned.non_isolcpus=00000003",
+			key:     "tuned.non_isolcpus",
+			want:    "00000003",
+		},
+		{
+			name:    "empty cmdline",
+			cmdline: "",
+			key:     "isolcpus",
+			want:    "",
+		},
+		{
+			name:    "key with no value",
+			cmdline: "ro nosoftlockup nohz=on",
+			key:     "nosoftlockup",
+			want:    "",
+		},
+		{
+			name:    "hex mask value",
+			cmdline: "nohz=on tuned.non_isolcpus=00000003 rcu_nocbs=2-63",
+			key:     "tuned.non_isolcpus",
+			want:    "00000003",
+		},
+		{
+			name:    "real cmdline isolcpus",
+			cmdline: "BOOT_IMAGE=(hd0,gpt3)/boot/ostree/rhcos-b5f894dad39b93d3aceb46fd2e8cc92e9391125c539028ee90827c2c9dde949c/vmlinuz-6.12.0-211.39.1.el10_2.x86_64 rw ostree=/ostree/boot.0/rhcos/b5f894dad39b93d3aceb46fd2e8cc92e9391125c539028ee90827c2c9dde949c/0 ignition.platform.id=openstack console=ttyS0,115200n8 console=tty0 root=UUID=b11263d2-70a4-42e5-b560-6b9a858c609e rw rootflags=prjquota boot=UUID=e4674eb0-4b1d-47b6-ab36-c80cec65838d systemd.unified_cgroup_hierarchy=1 cgroup_no_v1=all skew_tick=1 tsc=reliable rcupdate.rcu_normal_after_boot=1 rcutree.nohz_full_patience_delay=1000 nohz=on rcu_nocbs=4-37,40-77 tuned.non_isolcpus=0000c000,00000000,0000000f systemd.cpu_affinity=0,1,2,3,78,79 intel_iommu=on iommu=pt isolcpus=managed_irq,4-37,40-77 nohz_full=4-37,40-77 tsc=reliable nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11 processor.max_cstate=1 intel_idle.max_cstate=0 idle=poll default_hugepagesz=1G hugepagesz=2M hugepages=20 intel_pstate=disable",
+			key:     "isolcpus",
+			want:    "managed_irq,4-37,40-77",
+		},
+		{
+			name:    "real cmdline tuned.non_isolcpus",
+			cmdline: "BOOT_IMAGE=(hd0,gpt3)/boot/ostree/rhcos-b5f894dad39b93d3aceb46fd2e8cc92e9391125c539028ee90827c2c9dde949c/vmlinuz-6.12.0-211.39.1.el10_2.x86_64 rw ostree=/ostree/boot.0/rhcos/b5f894dad39b93d3aceb46fd2e8cc92e9391125c539028ee90827c2c9dde949c/0 ignition.platform.id=openstack console=ttyS0,115200n8 console=tty0 root=UUID=b11263d2-70a4-42e5-b560-6b9a858c609e rw rootflags=prjquota boot=UUID=e4674eb0-4b1d-47b6-ab36-c80cec65838d systemd.unified_cgroup_hierarchy=1 cgroup_no_v1=all skew_tick=1 tsc=reliable rcupdate.rcu_normal_after_boot=1 rcutree.nohz_full_patience_delay=1000 nohz=on rcu_nocbs=4-37,40-77 tuned.non_isolcpus=0000c000,00000000,0000000f systemd.cpu_affinity=0,1,2,3,78,79 intel_iommu=on iommu=pt isolcpus=managed_irq,4-37,40-77 nohz_full=4-37,40-77 tsc=reliable nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11 processor.max_cstate=1 intel_idle.max_cstate=0 idle=poll default_hugepagesz=1G hugepagesz=2M hugepages=20 intel_pstate=disable",
+			key:     "tuned.non_isolcpus",
+			want:    "0000c000,00000000,0000000f",
+		},
+		{
+			name:    "real cmdline systemd.cpu_affinity",
+			cmdline: "BOOT_IMAGE=(hd0,gpt3)/boot/ostree/rhcos-b5f894dad39b93d3aceb46fd2e8cc92e9391125c539028ee90827c2c9dde949c/vmlinuz-6.12.0-211.39.1.el10_2.x86_64 rw ostree=/ostree/boot.0/rhcos/b5f894dad39b93d3aceb46fd2e8cc92e9391125c539028ee90827c2c9dde949c/0 ignition.platform.id=openstack console=ttyS0,115200n8 console=tty0 root=UUID=b11263d2-70a4-42e5-b560-6b9a858c609e rw rootflags=prjquota boot=UUID=e4674eb0-4b1d-47b6-ab36-c80cec65838d systemd.unified_cgroup_hierarchy=1 cgroup_no_v1=all skew_tick=1 tsc=reliable rcupdate.rcu_normal_after_boot=1 rcutree.nohz_full_patience_delay=1000 nohz=on rcu_nocbs=4-37,40-77 tuned.non_isolcpus=0000c000,00000000,0000000f systemd.cpu_affinity=0,1,2,3,78,79 intel_iommu=on iommu=pt isolcpus=managed_irq,4-37,40-77 nohz_full=4-37,40-77 tsc=reliable nosoftlockup nmi_watchdog=0 mce=off skew_tick=1 rcutree.kthread_prio=11 processor.max_cstate=1 intel_idle.max_cstate=0 idle=poll default_hugepagesz=1G hugepagesz=2M hugepages=20 intel_pstate=disable",
+			key:     "systemd.cpu_affinity",
+			want:    "0,1,2,3,78,79",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FindCmdlineParam(tt.cmdline, tt.key)
+			if got != tt.want {
+				t.Errorf("FindCmdlineParam(%q, %q) = %q, want %q", tt.cmdline, tt.key, got, tt.want)
+			}
+		})
+	}
+}
