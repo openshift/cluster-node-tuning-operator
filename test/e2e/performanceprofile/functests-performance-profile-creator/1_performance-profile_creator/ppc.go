@@ -78,6 +78,9 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 			if args.OfflinedCPUCount > 0 {
 				cmdArgs = append(cmdArgs, fmt.Sprintf("--offlined-cpu-count=%d", args.OfflinedCPUCount))
 			}
+			if args.OvsDpdkCPUCount > 0 {
+				cmdArgs = append(cmdArgs, fmt.Sprintf("--ovs-dpdk-cpu-count=%d", args.OvsDpdkCPUCount))
+			}
 
 			out, err := testutils.ExecAndLogCommand(ppcPath, cmdArgs...)
 			Expect(err).To(BeNil(), "failed to run ppc for '%s': %v", expectedProfilePath, err)
@@ -209,7 +212,7 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 		cmdArgs := append(defaultArgs, ppcArgs...)
 		_, errData, _ := testutils.ExecAndLogCommandWithStderr(ppcPath, cmdArgs...)
 		ppcErrorString := errorStringParser(errData)
-		Expect(ppcErrorString).To(ContainSubstring("failed to compute the reserved and isolated CPUs: please ensure that reserved-cpu-count plus offlined-cpu-count should be in the range"))
+		Expect(ppcErrorString).To(ContainSubstring("failed to compute the reserved and isolated CPUs: please ensure that reserved-cpu-count, offlined-cpu-count and ovs-dpdk-cpu-count are in range"))
 	})
 
 	Context("Systems with Hyperthreading disabled", func() {

@@ -599,7 +599,8 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			disableHT := false
 			highPowerConsumptionMode := false
 
-			reserved, isolated, offlined, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSets, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reserved, isolated, offlined := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			klog.Infof("Input:")
@@ -617,7 +618,8 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
 			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
 
-			reservedNode1, isolatedNode1, offlinedNode1, err := CalculateCPUSets(&sysInfoNode1, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSetsNode1, err := CalculateCPUSets(&sysInfoNode1, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reservedNode1, isolatedNode1, offlinedNode1 := cpuSetsNode1.Reserved, cpuSetsNode1.Isolated, cpuSetsNode1.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			By("ensure that PPC calculated same sets on another nodes but different core IDs")
@@ -645,7 +647,8 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			disableHT := false
 			highPowerConsumptionMode := false
 
-			reserved, isolated, offlined, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSets, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reserved, isolated, offlined := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			klog.Infof("Input:")
@@ -663,7 +666,8 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
 			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
 
-			reservedNode1, isolatedNode1, offlinedNode1, err := CalculateCPUSets(&sysInfoNode1, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSetsNode1, err := CalculateCPUSets(&sysInfoNode1, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reservedNode1, isolatedNode1, offlinedNode1 := cpuSetsNode1.Reserved, cpuSetsNode1.Isolated, cpuSetsNode1.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			By("ensure that PPC calculated same sets on another nodes but different core IDs")
@@ -686,7 +690,8 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			disableHT := false
 			highPowerConsumptionMode := true
 
-			reserved, isolated, offlined, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSets, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reserved, isolated, offlined := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			klog.Infof("Input:")
@@ -704,7 +709,8 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
 			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
 
-			reservedNode1, isolatedNode1, offlinedNode1, err := CalculateCPUSets(&sysInfoNode1, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSetsNode1, err := CalculateCPUSets(&sysInfoNode1, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reservedNode1, isolatedNode1, offlinedNode1 := cpuSetsNode1.Reserved, cpuSetsNode1.Isolated, cpuSetsNode1.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			By("ensure that PPC calculated same sets on another nodes but different core IDs")
@@ -727,7 +733,8 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			disableHT := false
 			highPowerConsumptionMode := false
 
-			reserved, isolated, offlined, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSets, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reserved, isolated, offlined := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			klog.Infof("Input:")
@@ -745,7 +752,8 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
 			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
 
-			reservedNode1, isolatedNode1, offlinedNode1, err := CalculateCPUSets(&sysInfoNode1, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSetsNode1, err := CalculateCPUSets(&sysInfoNode1, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reservedNode1, isolatedNode1, offlinedNode1 := cpuSetsNode1.Reserved, cpuSetsNode1.Isolated, cpuSetsNode1.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			By("ensure that PPC calculated same sets on another nodes but different core IDs")
@@ -768,7 +776,8 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			disableHT := false
 			highPowerConsumptionMode := false
 
-			reserved, isolated, offlined, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSets, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reserved, isolated, offlined := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			klog.Infof("Input:")
@@ -786,7 +795,8 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
 			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
 
-			reservedNode1, isolatedNode1, offlinedNode1, err := CalculateCPUSets(&sysInfoNode1, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSetsNode1, err := CalculateCPUSets(&sysInfoNode1, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reservedNode1, isolatedNode1, offlinedNode1 := cpuSetsNode1.Reserved, cpuSetsNode1.Isolated, cpuSetsNode1.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			By("ensure that PPC calculated same sets on another nodes but different core IDs")
@@ -809,7 +819,8 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			disableHT := true
 			highPowerConsumptionMode := false
 
-			reserved, isolated, offlined, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSets, err := CalculateCPUSets(&sysInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reserved, isolated, offlined := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			klog.Infof("Input:")
@@ -827,7 +838,8 @@ var _ = Describe("Performance profile creator: test with a simple cpu architectu
 			Expect(offlined.Intersection(isolated).IsEmpty()).To(BeTrue())
 			Expect(offlined.Size()).To(Equal(offlinedCPUCount))
 
-			reservedNode1, isolatedNode1, offlinedNode1, err := CalculateCPUSets(&sysInfoNode1, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSetsNode1, err := CalculateCPUSets(&sysInfoNode1, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reservedNode1, isolatedNode1, offlinedNode1 := cpuSetsNode1.Reserved, cpuSetsNode1.Isolated, cpuSetsNode1.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			By("ensure that PPC calculated same sets on another nodes but different core IDs")
@@ -875,7 +887,8 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			reservedCPUSet, isolatedCPUSet, offlinedCPUSet, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSets, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reservedCPUSet, isolatedCPUSet, offlinedCPUSet := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6,8,10,12,14,16,18,40,42,44,46,48,50,52,54,56,58"))
 			Expect(isolatedCPUSet.String()).To(Equal("1,3,5,7,9,11,13,15,17,19-39,41,43,45,47,49,51,53,55,57,59-79"))
@@ -898,7 +911,8 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			reservedCPUSet, isolatedCPUSet, offlinedCPUSet, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, false)
+			cpuSets, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, false)
+			reservedCPUSet, isolatedCPUSet, offlinedCPUSet := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reservedCPUSet.String()).To(Equal("0-9,40-49"))
 			Expect(isolatedCPUSet.String()).To(Equal("10-39,50-79"))
@@ -921,7 +935,7 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, false)
+			_, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, false)
 			Expect(err).To(HaveOccurred())
 		})
 		It("Errors out in case specified reservedCPUCount is greater than the total CPUs present in the system and disableHT is disabled", func() {
@@ -935,7 +949,7 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, false)
+			_, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, false)
 			Expect(err).To(HaveOccurred())
 		})
 		It("Errors out in case hyperthreading is enabled, splitReservedCPUsAcrossNUMA is enabled, disableHT is disabled and number of reserved CPUs per number of NUMA nodes are odd", func() {
@@ -949,7 +963,7 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, false)
+			_, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, false)
 			Expect(err).To(HaveOccurred())
 		})
 		It("Errors out in case hyperthreading is enabled, splitReservedCPUsAcrossNUMA is disabled,, disableHT is disabled and number of reserved CPUs are odd", func() {
@@ -963,7 +977,7 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, false)
+			_, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, false)
 			Expect(err).To(HaveOccurred())
 		})
 		It("Ensure reserved CPUs populated are correctly when splitReservedCPUsAcrossNUMA is disabled, disableHT is enabled", func() {
@@ -977,7 +991,8 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			reservedCPUSet, isolatedCPUSet, offlinedCPUSet, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, false)
+			cpuSets, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, false)
+			reservedCPUSet, isolatedCPUSet, offlinedCPUSet := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38"))
 			Expect(isolatedCPUSet.String()).To(Equal("1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39"))
@@ -994,7 +1009,8 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			reservedCPUSet, isolatedCPUSet, offlinedCPUSet, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, false)
+			cpuSets, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, false)
+			reservedCPUSet, isolatedCPUSet, offlinedCPUSet := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined
 			Expect(err).ToNot(HaveOccurred())
 			Expect(reservedCPUSet.String()).To(Equal("0-19"))
 			Expect(isolatedCPUSet.String()).To(Equal("20-39"))
@@ -1011,7 +1027,7 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, false)
+			_, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, false)
 			Expect(err).ToNot(HaveOccurred())
 		})
 		It("Do not error out in case hyperthreading is currently enabled, splitReservedCPUsAcrossNUMA is enabled, disableHT is enabled and number of reserved CPUs allocated from a NUMA node are odd", func() {
@@ -1025,7 +1041,7 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, false)
+			_, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, false)
 			Expect(err).ToNot(HaveOccurred())
 		})
 		It("Do not error out in case of a system where hyperthreading is not enabled initially, splitReservedCPUsAcrossNUMA is disabled, disableHT is enabled and number of reserved CPUs allocated are odd", func() {
@@ -1040,7 +1056,7 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, false)
+			_, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, false)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -1058,7 +1074,7 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			_, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("please specify the offlined CPU count in the range"))
 		})
@@ -1075,7 +1091,7 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			_, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("please specify the offlined CPU count in the range"))
 		})
@@ -1093,9 +1109,9 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			_, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("please ensure that reserved-cpu-count plus offlined-cpu-count should be in the range"))
+			Expect(err.Error()).To(ContainSubstring("please ensure that reserved-cpu-count, offlined-cpu-count and ovs-dpdk-cpu-count are in range"))
 		})
 		It("with disable-ht true siblings does NOT count: Errors out in case offlinedCPUCount plus reservedCPUCount specified is greater than the number of CPUs", func() {
 			reservedCPUCount = 20
@@ -1108,9 +1124,9 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, false)
+			_, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, false)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("please ensure that reserved-cpu-count plus offlined-cpu-count should be in the range"))
+			Expect(err.Error()).To(ContainSubstring("please ensure that reserved-cpu-count, offlined-cpu-count and ovs-dpdk-cpu-count are in range"))
 		})
 		It("with disable-ht true siblings does NOT count: Errors out in case offlinedCPUCount specified is greater than the number of CPUs in system", func() {
 			reservedCPUCount = 10
@@ -1124,7 +1140,7 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			_, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("please specify the offlined CPU count in the range"))
 		})
@@ -1142,7 +1158,7 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			_, _, _, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			_, err = CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
 			Expect(err).NotTo(HaveOccurred())
 		})
 		It("when splitReservedCPUsAcrossNUMA is disabled, disableHT is disabled and offlined-cpu-count is greater than number of cpus per socket then offline a complete socket", func() {
@@ -1158,7 +1174,8 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			reservedCPUSet, isolatedCPUSet, offlinedCPUSet, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSets, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reservedCPUSet, isolatedCPUSet, offlinedCPUSet := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(offlinedCPUSet.Intersection(reservedCPUSet).IsEmpty()).To(BeTrue())
@@ -1198,7 +1215,8 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			reservedCPUSet, isolatedCPUSet, offlinedCPUSet, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSets, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reservedCPUSet, isolatedCPUSet, offlinedCPUSet := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(offlinedCPUSet.Intersection(reservedCPUSet).IsEmpty()).To(BeTrue())
@@ -1234,7 +1252,8 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			reservedCPUSet, isolatedCPUSet, offlinedCPUSet, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSets, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reservedCPUSet, isolatedCPUSet, offlinedCPUSet := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(offlinedCPUSet.Intersection(reservedCPUSet).IsEmpty()).To(BeTrue())
@@ -1270,7 +1289,8 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			reservedCPUSet, isolatedCPUSet, offlinedCPUSet, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSets, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reservedCPUSet, isolatedCPUSet, offlinedCPUSet := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(offlinedCPUSet.Intersection(reservedCPUSet).IsEmpty()).To(BeTrue())
@@ -1306,7 +1326,8 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			reservedCPUSet, isolatedCPUSet, offlinedCPUSet, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSets, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reservedCPUSet, isolatedCPUSet, offlinedCPUSet := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(offlinedCPUSet.Intersection(reservedCPUSet).IsEmpty()).To(BeTrue())
@@ -1341,7 +1362,8 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			reservedCPUSet, isolatedCPUSet, offlinedCPUSet, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			cpuSets, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, highPowerConsumptionMode)
+			reservedCPUSet, isolatedCPUSet, offlinedCPUSet := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(offlinedCPUSet.Intersection(reservedCPUSet).IsEmpty()).To(BeTrue())
@@ -1371,7 +1393,8 @@ var _ = Describe("PerformanceProfileCreator: Populating Reserved and Isolated CP
 			Expect(err).ToNot(HaveOccurred())
 			systemInfo, err := handle.GatherSystemInfo()
 			Expect(err).ToNot(HaveOccurred())
-			reservedCPUSet, isolatedCPUSet, offlinedCPUSet, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, splitReservedCPUsAcrossNUMA, disableHT, false)
+			cpuSets, err := CalculateCPUSets(systemInfo, reservedCPUCount, offlinedCPUCount, 0, splitReservedCPUsAcrossNUMA, disableHT, false)
+			reservedCPUSet, isolatedCPUSet, offlinedCPUSet := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(offlinedCPUSet.Intersection(reservedCPUSet).IsEmpty()).To(BeTrue())
@@ -2007,6 +2030,120 @@ func GetTotalCPUSetFromGHW(handler *GHWHandler, disableHT bool) (cpuset.CPUSet, 
 	}
 	return totalCPUSet, nil
 }
+
+var _ = Describe("PerformanceProfileCreator: OVS-DPDK CPU allocation", func() {
+	var sysInfo *systemInfo
+
+	BeforeEach(func() {
+		core0 := &cpu.ProcessorCore{ID: 0, NumThreads: 2, LogicalProcessors: []int{0, 8}}
+		core1 := &cpu.ProcessorCore{ID: 1, NumThreads: 2, LogicalProcessors: []int{1, 9}}
+		core2 := &cpu.ProcessorCore{ID: 2, NumThreads: 2, LogicalProcessors: []int{2, 10}}
+		core3 := &cpu.ProcessorCore{ID: 3, NumThreads: 2, LogicalProcessors: []int{3, 11}}
+		processor := &cpu.Processor{
+			ID:         0,
+			NumCores:   4,
+			NumThreads: 8,
+			Cores:      []*cpu.ProcessorCore{core0, core1, core2, core3},
+		}
+		cpuInfo := &cpu.Info{
+			TotalCores:   4,
+			TotalThreads: 8,
+			Processors:   []*cpu.Processor{processor},
+		}
+		sysInfo = &systemInfo{
+			HtEnabled: true,
+			CpuInfo: &extendedCPUInfo{
+				CpuInfo:                  cpuInfo,
+				NumLogicalProcessorsUsed: make(map[int]int),
+				LogicalProcessorsUsed:    make(map[int]struct{}),
+			},
+			TopologyInfo: &topology.Info{
+				Nodes: []*topology.Node{{
+					ID:    0,
+					Cores: []*cpu.ProcessorCore{core0, core1, core2, core3},
+				}},
+			},
+		}
+	})
+
+	It("allocates whole hyperthread sibling pairs for an even ovs-dpdk-cpu-count", func() {
+		cpuSets, err := CalculateCPUSets(sysInfo, 2, 0, 2, false, false, false)
+		reserved, isolated, offlined, ovsDpdk := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined, cpuSets.OvsDpdk
+		Expect(err).ToNot(HaveOccurred())
+		Expect(ovsDpdk.Size()).To(Equal(2))
+		Expect(getSiblingsListForCPUSet(*sysInfo, ovsDpdk)).To(Equal(ovsDpdk))
+		Expect(ovsDpdk.Intersection(reserved).IsEmpty()).To(BeTrue())
+		Expect(ovsDpdk.Intersection(offlined).IsEmpty()).To(BeTrue())
+		Expect(ovsDpdk.Intersection(isolated).IsEmpty()).To(BeTrue())
+		Expect(reserved.Union(isolated).Union(offlined).Union(ovsDpdk).Size()).To(Equal(8))
+	})
+
+	It("rejects an odd ovs-dpdk-cpu-count when hyperthreading is enabled", func() {
+		_, err := CalculateCPUSets(sysInfo, 2, 0, 1, false, false, false)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("can't allocate odd number of CPUs when hyperthreading is enabled"))
+	})
+
+	It("allocates single cores (odd count allowed) when disable-ht is set", func() {
+		cpuSets, err := CalculateCPUSets(sysInfo, 2, 0, 1, false, true, false)
+		reserved, isolated, offlined, ovsDpdk := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined, cpuSets.OvsDpdk
+		Expect(err).ToNot(HaveOccurred())
+		Expect(ovsDpdk.Size()).To(Equal(1))
+		Expect(ovsDpdk.Intersection(reserved).IsEmpty()).To(BeTrue())
+		Expect(ovsDpdk.Intersection(offlined).IsEmpty()).To(BeTrue())
+		Expect(ovsDpdk.Intersection(isolated).IsEmpty()).To(BeTrue())
+	})
+
+	It("allows odd and even ovs-dpdk-cpu-count when hyperthreading is already disabled", func() {
+		sysInfo.HtEnabled = false
+		for _, core := range sysInfo.TopologyInfo.Nodes[0].Cores {
+			core.NumThreads = 1
+			core.LogicalProcessors = core.LogicalProcessors[:1]
+		}
+		sysInfo.CpuInfo.CpuInfo.TotalThreads = 4
+		sysInfo.CpuInfo.CpuInfo.Processors[0].NumThreads = 4
+		for _, core := range sysInfo.CpuInfo.CpuInfo.Processors[0].Cores {
+			core.NumThreads = 1
+			core.LogicalProcessors = core.LogicalProcessors[:1]
+		}
+
+		cpuSetsOdd, err := CalculateCPUSets(sysInfo, 1, 0, 1, false, false, false)
+		ovsOdd := cpuSetsOdd.OvsDpdk
+		Expect(err).ToNot(HaveOccurred())
+		Expect(ovsOdd.Size()).To(Equal(1))
+
+		cpuSetsEven, err := CalculateCPUSets(sysInfo, 1, 0, 2, false, false, false)
+		ovsEven := cpuSetsEven.OvsDpdk
+		Expect(err).ToNot(HaveOccurred())
+		Expect(ovsEven.Size()).To(Equal(2))
+	})
+
+	It("returns an empty ovs-dpdk set when ovs-dpdk-cpu-count is zero", func() {
+		cpuSets, err := CalculateCPUSets(sysInfo, 2, 0, 0, false, false, false)
+		reserved, isolated, offlined, ovsDpdk := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined, cpuSets.OvsDpdk
+		Expect(err).ToNot(HaveOccurred())
+		Expect(ovsDpdk.IsEmpty()).To(BeTrue())
+		Expect(reserved.Union(isolated).Union(offlined).Size()).To(Equal(8))
+	})
+
+	It("rejects a negative ovs-dpdk-cpu-count", func() {
+		_, err := CalculateCPUSets(sysInfo, 2, 0, -1, false, false, false)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("please specify the ovs-dpdk CPU count in the range [0,7]"))
+	})
+
+	It("rejects an ovs-dpdk-cpu-count that is not smaller than the total number of CPUs", func() {
+		_, err := CalculateCPUSets(sysInfo, 2, 0, 8, false, false, false)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("please specify the ovs-dpdk CPU count in the range [0,7]"))
+	})
+
+	It("rejects reserved plus offlined plus ovs-dpdk that leaves no isolated CPUs", func() {
+		_, err := CalculateCPUSets(sysInfo, 4, 2, 2, false, false, false)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("reserved-cpu-count, offlined-cpu-count and ovs-dpdk-cpu-count"))
+	})
+})
 
 func getSiblingsListForCPUSet(sysinfo systemInfo, cpus cpuset.CPUSet) cpuset.CPUSet {
 	cpuInfo := sysinfo.CpuInfo.CpuInfo

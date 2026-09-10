@@ -105,8 +105,17 @@ type systemInfo struct {
 	HtEnabled    bool
 }
 
-// Calculates the resevered, isolated and offlined cpuSets.
-func CalculateCPUSets(systemInfo *systemInfo, reservedCPUCount int, offlinedCPUCount int, splitReservedCPUsAcrossNUMA bool, disableHTFlag bool, highPowerConsumptionMode bool) (cpuset.CPUSet, cpuset.CPUSet, cpuset.CPUSet, error) {
+// PerformanceProfileCPUSets holds the reserved, isolated, offlined and ovs-dpdk
+// cpuSets computed for a performance profile.
+type PerformanceProfileCPUSets struct {
+	Reserved cpuset.CPUSet
+	Isolated cpuset.CPUSet
+	Offlined cpuset.CPUSet
+	OvsDpdk  cpuset.CPUSet
+}
+
+// Calculates the reserved, isolated, offlined and ovs-dpdk cpuSets.
+func CalculateCPUSets(systemInfo *systemInfo, reservedCPUCount int, offlinedCPUCount int, ovsDpdkCPUCount int, splitReservedCPUsAcrossNUMA bool, disableHTFlag bool, highPowerConsumptionMode bool) (PerformanceProfileCPUSets, error) {
 	topologyInfo := systemInfo.TopologyInfo
 	htEnabled := systemInfo.HtEnabled
 
@@ -114,54 +123,127 @@ func CalculateCPUSets(systemInfo *systemInfo, reservedCPUCount int, offlinedCPUC
 	// if user want to "disable" them in the kernel
 	updatedTopologyInfo, err := updateTopologyInfo(topologyInfo, disableHTFlag, systemInfo.HtEnabled)
 	if err != nil {
-		return cpuset.CPUSet{}, cpuset.CPUSet{}, cpuset.CPUSet{}, err
+		return PerformanceProfileCPUSets{}, err
 	}
 
 	updatedExtCPUInfo, err := updateExtendedCPUInfo(systemInfo.CpuInfo, cpuset.CPUSet{}, disableHTFlag, htEnabled)
 	if err != nil {
-		return cpuset.CPUSet{}, cpuset.CPUSet{}, cpuset.CPUSet{}, err
+		return PerformanceProfileCPUSets{}, err
 	}
 
 	cpuInfo := updatedExtCPUInfo.CpuInfo
 	// Check limits are in range
 	if reservedCPUCount <= 0 || reservedCPUCount >= int(cpuInfo.TotalThreads) {
-		return cpuset.CPUSet{}, cpuset.CPUSet{}, cpuset.CPUSet{}, fmt.Errorf("please specify the reserved CPU count in the range [1,%d]", cpuInfo.TotalThreads-1)
+		return PerformanceProfileCPUSets{}, fmt.Errorf("please specify the reserved CPU count in the range [1,%d]", cpuInfo.TotalThreads-1)
 	}
 
 	if offlinedCPUCount < 0 || offlinedCPUCount >= int(cpuInfo.TotalThreads) {
-		return cpuset.CPUSet{}, cpuset.CPUSet{}, cpuset.CPUSet{}, fmt.Errorf("please specify the offlined CPU count in the range [0,%d]", cpuInfo.TotalThreads-1)
+		return PerformanceProfileCPUSets{}, fmt.Errorf("please specify the offlined CPU count in the range [0,%d]", cpuInfo.TotalThreads-1)
 	}
 
-	if reservedCPUCount+offlinedCPUCount >= int(cpuInfo.TotalThreads) {
-		return cpuset.CPUSet{}, cpuset.CPUSet{}, cpuset.CPUSet{}, fmt.Errorf("please ensure that reserved-cpu-count plus offlined-cpu-count should be in the range [0,%d]", cpuInfo.TotalThreads-1)
+	if ovsDpdkCPUCount < 0 || ovsDpdkCPUCount >= int(cpuInfo.TotalThreads) {
+		return PerformanceProfileCPUSets{}, fmt.Errorf("please specify the ovs-dpdk CPU count in the range [0,%d]", cpuInfo.TotalThreads-1)
+	}
+
+	if reservedCPUCount+offlinedCPUCount+ovsDpdkCPUCount >= int(cpuInfo.TotalThreads) {
+		return PerformanceProfileCPUSets{}, fmt.Errorf("please ensure that reserved-cpu-count, offlined-cpu-count and ovs-dpdk-cpu-count are in range [0,%d]", cpuInfo.TotalThreads-1)
 	}
 
 	// Calculate reserved cpus.
 	reserved, err := getReservedCPUs(updatedTopologyInfo, reservedCPUCount, splitReservedCPUsAcrossNUMA, disableHTFlag, htEnabled)
 	if err != nil {
-		return cpuset.CPUSet{}, cpuset.CPUSet{}, cpuset.CPUSet{}, err
+		return PerformanceProfileCPUSets{}, err
 	}
 
 	updatedExtCPUInfo, err = updateExtendedCPUInfo(updatedExtCPUInfo, reserved, disableHTFlag, htEnabled)
 	if err != nil {
-		return cpuset.CPUSet{}, cpuset.CPUSet{}, cpuset.CPUSet{}, err
+		return PerformanceProfileCPUSets{}, err
 	}
 	//Calculate offlined cpus
 	// note this takes into account the reserved cpus from the step above
 	offlined, err := getOfflinedCPUs(updatedExtCPUInfo, offlinedCPUCount, disableHTFlag, htEnabled, highPowerConsumptionMode)
 	if err != nil {
-		return cpuset.CPUSet{}, cpuset.CPUSet{}, cpuset.CPUSet{}, err
+		return PerformanceProfileCPUSets{}, err
+	}
+
+	updatedExtCPUInfo, err = updateExtendedCPUInfo(updatedExtCPUInfo, offlined, disableHTFlag, htEnabled)
+	if err != nil {
+		return PerformanceProfileCPUSets{}, err
+	}
+
+	// Calculate OVS-DPDK cpus.
+	// note this takes into account the reserved and offlined cpus from the steps above
+	ovsDpdk, err := getOvsDpdkCPUs(updatedExtCPUInfo, ovsDpdkCPUCount, disableHTFlag, htEnabled)
+	if err != nil {
+		return PerformanceProfileCPUSets{}, err
 	}
 
 	// Calculate isolated cpus.
 	// Note that topology info could have been modified by "GetReservedCPUS" so
 	// to properly calculate isolated CPUS we need to use the updated topology information.
-	isolated, err := getIsolatedCPUs(updatedTopologyInfo.Nodes, reserved, offlined)
+	isolated, err := getIsolatedCPUs(updatedTopologyInfo.Nodes, reserved.Union(ovsDpdk), offlined)
 	if err != nil {
-		return cpuset.CPUSet{}, cpuset.CPUSet{}, cpuset.CPUSet{}, err
+		return PerformanceProfileCPUSets{}, err
 	}
 
-	return reserved, isolated, offlined, nil
+	return PerformanceProfileCPUSets{
+		Reserved: reserved,
+		Isolated: isolated,
+		Offlined: offlined,
+		OvsDpdk:  ovsDpdk,
+	}, nil
+}
+
+// getOvsDpdkCPUs selects logical processors for OVS-DPDK PMD threads from cores not already
+// claimed by reserved/offlined CPUs, mirroring getReservedCPUs HT rules:
+// HT on → even count, whole sibling groups; HT off / disable-ht → any count, one LP per core.
+func getOvsDpdkCPUs(extCpuInfo *extendedCPUInfo, ovsDpdkCPUCount int, disableHTFlag bool, htEnabled bool) (cpuset.CPUSet, error) {
+	if ovsDpdkCPUCount == 0 {
+		return cpuset.CPUSet{}, nil
+	}
+
+	if htEnabled && disableHTFlag {
+		Alert("currently hyperthreading is enabled and the performance profile will disable it")
+		htEnabled = false
+	}
+
+	if htEnabled && ovsDpdkCPUCount%2 != 0 {
+		return cpuset.CPUSet{}, fmt.Errorf("can't allocate odd number of CPUs when hyperthreading is enabled")
+	}
+
+	// coreFree reports whether a core can be claimed for OVS-DPDK: it must have at least one
+	// logical processor, none of them already used, and — with HT enabled — a whole sibling
+	// group so we never split a core (same rule as getReservedCPUs).
+	coreFree := func(core *cpu.ProcessorCore) bool {
+		if len(core.LogicalProcessors) == 0 || (htEnabled && len(core.LogicalProcessors) < 2) {
+			return false
+		}
+		for _, lp := range core.LogicalProcessors {
+			if IsLogicalProcessorUsed(extCpuInfo, lp) {
+				return false
+			}
+		}
+		return true
+	}
+
+	ovsDpdk := newCPUAccumulator()
+	for _, processor := range extCpuInfo.CpuInfo.Processors {
+		free := make([]*cpu.ProcessorCore, 0, len(processor.Cores))
+		for _, core := range processor.Cores {
+			if coreFree(core) {
+				free = append(free, core)
+			}
+		}
+		if _, err := ovsDpdk.AddCores(ovsDpdkCPUCount, free); err != nil {
+			return cpuset.CPUSet{}, err
+		}
+	}
+
+	result := ovsDpdk.Result()
+	if result.Size() < ovsDpdkCPUCount {
+		return cpuset.CPUSet{}, fmt.Errorf("could not allocate %d ovs-dpdk CPUs from unused cores (allocated %d)", ovsDpdkCPUCount, result.Size())
+	}
+	return result, nil
 }
 
 // Calculates Isolated cpuSet as the difference between all the cpus in the topology and those already chosen as reserved or offlined.
@@ -247,7 +329,7 @@ func updateTopologyInfo(topoInfo *topology.Info, disableHTFlag bool, htEnabled b
 	//currently HT is enabled on the system and the user wants to disable HT
 
 	if htEnabled && disableHTFlag {
-		Alert("Updating Topology info because currently hyperthreading is enabled and the performance profile will disable it")
+		Alert("updating Topology info because currently hyperthreading is enabled and the performance profile will disable it")
 		return topologyHTDisabled(topoInfo), nil
 	}
 	return topoInfo, nil
@@ -255,7 +337,7 @@ func updateTopologyInfo(topoInfo *topology.Info, disableHTFlag bool, htEnabled b
 
 func getReservedCPUs(topologyInfo *topology.Info, reservedCPUCount int, splitReservedCPUsAcrossNUMA bool, disableHTFlag bool, htEnabled bool) (cpuset.CPUSet, error) {
 	if htEnabled && disableHTFlag {
-		Alert("Currently hyperthreading is enabled and the performance profile will disable it")
+		Alert("currently hyperthreading is enabled and the performance profile will disable it")
 		htEnabled = false
 	}
 	Alert("NUMA cell(s): %d", len(topologyInfo.Nodes))

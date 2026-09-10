@@ -86,6 +86,7 @@ type ProfileData struct {
 	isolatedCPUs              string
 	reservedCPUs              string
 	offlinedCPUs              string
+	ovsDpdkCPUs               string
 	nodeSelector              *metav1.LabelSelector
 	mcpSelector               map[string]string
 	performanceProfileName    string
@@ -315,17 +316,22 @@ func makeProfileDataFrom(nodeHandler *profilecreator.GHWHandler, args *ProfileCr
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute get system information: %v", err)
 	}
-	reservedCPUs, isolatedCPUs, offlinedCPUs, err := profilecreator.CalculateCPUSets(systemInfo, args.ReservedCPUCount, args.OfflinedCPUCount, args.SplitReservedCPUsAcrossNUMA, args.DisableHT, args.PowerConsumptionMode == ultraLowLatency)
+	cpuSets, err := profilecreator.CalculateCPUSets(systemInfo, args.ReservedCPUCount, args.OfflinedCPUCount, args.OvsDpdkCPUCount, args.SplitReservedCPUsAcrossNUMA, args.DisableHT, args.PowerConsumptionMode == ultraLowLatency)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute the reserved and isolated CPUs: %v", err)
 	}
+	reservedCPUs, isolatedCPUs, offlinedCPUs, ovsDpdkCPUs := cpuSets.Reserved, cpuSets.Isolated, cpuSets.Offlined, cpuSets.OvsDpdk
 	Alert("%d reserved CPUs allocated: %v ", reservedCPUs.Size(), reservedCPUs.String())
 	Alert("%d isolated CPUs allocated: %v", isolatedCPUs.Size(), isolatedCPUs.String())
+	if ovsDpdkCPUs.Size() > 0 {
+		Alert("%d ovs-dpdk CPUs allocated: %v", ovsDpdkCPUs.Size(), ovsDpdkCPUs.String())
+	}
 	kernelArgs := profilecreator.GetAdditionalKernelArgs(args.DisableHT)
 	profileData := &ProfileData{
 		reservedCPUs:              reservedCPUs.String(),
 		offlinedCPUs:              offlinedCPUs.String(),
 		isolatedCPUs:              isolatedCPUs.String(),
+		ovsDpdkCPUs:               ovsDpdkCPUs.String(),
 		performanceProfileName:    args.ProfileName,
 		topologyPolicy:            args.TMPolicy,
 		rtKernel:                  args.RTKernel,
@@ -409,6 +415,7 @@ type ProfileCreatorArgs struct {
 	ProfileName                 string `json:"profile-name"`
 	ReservedCPUCount            int    `json:"reserved-cpu-count"`
 	OfflinedCPUCount            int    `json:"offlined-cpu-count"`
+	OvsDpdkCPUCount             int    `json:"ovs-dpdk-cpu-count"`
 	SplitReservedCPUsAcrossNUMA bool   `json:"split-reserved-cpus-across-numa"`
 	DisableHT                   bool   `json:"disable-ht"`
 	RTKernel                    bool   `json:"rt-kernel"`
@@ -426,6 +433,7 @@ type ProfileCreatorArgs struct {
 func (pca *ProfileCreatorArgs) AddFlags(flags *pflag.FlagSet) {
 	flags.IntVar(&pca.ReservedCPUCount, "reserved-cpu-count", 0, "Number of reserved CPUs (required)")
 	flags.IntVar(&pca.OfflinedCPUCount, "offlined-cpu-count", 0, "Number of offlined CPUs")
+	flags.IntVar(&pca.OvsDpdkCPUCount, "ovs-dpdk-cpu-count", 0, "Number of OVS-DPDK CPUs")
 	flags.BoolVar(&pca.SplitReservedCPUsAcrossNUMA, "split-reserved-cpus-across-numa", false, "Split the Reserved CPUs across NUMA nodes")
 	flags.StringVar(&pca.MCPName, "mcp-name", "", "MCP name corresponding to the target machines (required)")
 	flags.BoolVar(&pca.DisableHT, "disable-ht", false, "Disable Hyperthreading")
@@ -472,6 +480,11 @@ func makePerformanceProfileFrom(profileData ProfileData) (runtime.Object, error)
 	if len(profileData.offlinedCPUs) > 0 {
 		offlined := performancev2.CPUSet(profileData.offlinedCPUs)
 		profile.Spec.CPU.Offlined = &offlined
+	}
+
+	if len(profileData.ovsDpdkCPUs) > 0 {
+		ovsDpdk := performancev2.CPUSet(profileData.ovsDpdkCPUs)
+		profile.Spec.CPU.OvsDpdk = &ovsDpdk
 	}
 
 	if len(profileData.additionalKernelArgs) > 0 {
