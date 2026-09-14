@@ -7,6 +7,8 @@ import (
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 
 	testutils "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/utils/testing"
+
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -145,6 +147,30 @@ var _ = Describe("PerformanceProfile", func() {
 				}
 				result := IsDRAManaged(profile)
 				Expect(result).To(BeFalse())
+			})
+		})
+	})
+
+	Describe("Real Time Kernel", func() {
+		Context("IsRealTimeKernelEnabled", func() {
+			It("should return false when RealTimeKernel section is nil", func() {
+				profile.Spec.RealTimeKernel = nil
+				Expect(IsRealTimeKernelEnabled(profile)).To(BeFalse())
+			})
+
+			It("should return false when Enabled flag is nil", func() {
+				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{}
+				Expect(IsRealTimeKernelEnabled(profile)).To(BeFalse())
+			})
+
+			It("should return false when Enabled is false", func() {
+				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{Enabled: ptr.To(false)}
+				Expect(IsRealTimeKernelEnabled(profile)).To(BeFalse())
+			})
+
+			It("should return true when Enabled is true", func() {
+				profile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{Enabled: ptr.To(true)}
+				Expect(IsRealTimeKernelEnabled(profile)).To(BeTrue())
 			})
 		})
 	})

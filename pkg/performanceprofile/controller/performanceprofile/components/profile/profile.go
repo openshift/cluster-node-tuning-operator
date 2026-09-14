@@ -102,6 +102,14 @@ func IsMixedCPUsEnabled(profile *performancev2.PerformanceProfile) bool {
 	return *profile.Spec.WorkloadHints.MixedCpus
 }
 
+// IsRealTimeKernelEnabled reports whether the profile enables the real-time (PREEMPT_RT) kernel.
+func IsRealTimeKernelEnabled(profile *performancev2.PerformanceProfile) bool {
+	if profile.Spec.RealTimeKernel == nil || profile.Spec.RealTimeKernel.Enabled == nil {
+		return false
+	}
+	return *profile.Spec.RealTimeKernel.Enabled
+}
+
 // IsExecCPUAffinityEnabled checks if exec-cpu-affinity feature should be enabled
 func IsExecCPUAffinityEnabled(profile *performancev2.PerformanceProfile) bool {
 	if profile.Annotations != nil {

@@ -17,6 +17,7 @@ import (
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
+	profileutil "github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components/profile"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
@@ -180,6 +181,12 @@ var _ = Describe("[performance] Latency Test", Ordered, func() {
 		testName := cyclictestTestName
 
 		BeforeEach(func() {
+			// cyclictest's pass/fail is only meaningful on a PREEMPT_RT kernel; on a
+			// non-RT kernel the worst-case latency is unbounded, so the check is skipped.
+			if !profileutil.IsRealTimeKernelEnabled(profile) {
+				Skip(fmt.Sprintf("Skip the cyclictest test, profile %q does not enable the real-time (PREEMPT_RT) kernel", profile.Name))
+			}
+
 			maximumLatency, err = getMaximumLatency(testName)
 			Expect(err).ToNot(HaveOccurred())
 
