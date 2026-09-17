@@ -1,0 +1,6 @@
+# Managed by the Node Tuning Operator. Do not edit.
+#
+# This file shadows the default read-only rule /usr/lib/udev/rules.d/40-redhat-hotplug.rules,
+# which re-onlines CPUs on udev "add" events and races NTO's set-cpus-offline
+# service, re-onlining CPUs the profile offlined. This empty file overrides that
+# rule and keeps the offlined CPUs offline. Written only when spec.cpu.offlined is set.

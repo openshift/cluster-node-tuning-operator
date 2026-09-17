@@ -65,6 +65,7 @@ const (
 
 	udevRulesDir         = "/etc/udev/rules.d"
 	udevPhysicalRpsRules = "99-netdev-physical-rps.rules"
+	udevHotplugRules     = "40-redhat-hotplug.rules"
 	// scripts
 	hugepagesAllocation       = "hugepages-allocation"
 	setCPUsOffline            = "set-cpus-offline"
@@ -341,6 +342,16 @@ func getIgnitionConfig(profile *performancev2.PerformanceProfile, opts *componen
 			Enabled:  ptr.To(true),
 			Name:     getSystemdService(setCPUsOffline),
 		})
+
+		// Shadow the vendor hotplug udev rule with a same-named file in /etc/udev/rules.d
+		// so udev ignores /usr/lib/udev/rules.d/ and does not re-online CPUs offlined by the profile.
+		// The file carries only a comment explaining the shadowing (see the asset for details).
+		udevHotplugRuleMode := 0644
+		udevHotplugRuleContent, err := assets.Configs.ReadFile(filepath.Join("configs", udevHotplugRules))
+		if err != nil {
+			return nil, err
+		}
+		addContent(ignitionConfig, udevHotplugRuleContent, filepath.Join(udevRulesDir, udevHotplugRules), &udevHotplugRuleMode)
 	}
 
 	irqBalanceOpts, err := getIRQBalanceBannedCPUsOptions(opts.OvsDpdkCPUs)
