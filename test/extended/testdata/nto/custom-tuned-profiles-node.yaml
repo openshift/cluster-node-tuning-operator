@@ -1,0 +1,29 @@
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  name: nto-tuned-node-template
+objects:
+  - apiVersion: tuned.openshift.io/v1
+    kind: Tuned
+    metadata:
+      name: ${TUNED_NAME}
+      namespace: openshift-cluster-node-tuning-operator
+    spec:
+      profile:
+        - data: |
+            [main]
+            summary=Test if user can apply custom tuning: sysctl ${SYSCTLPARM}
+            include=openshift-node
+
+            [sysctl]
+            ${SYSCTLPARM}=${SYSCTLVALUE}
+          name: ${TUNED_NAME}
+      recommend:
+        - match:
+            - label: tuned.openshift.io/elasticsearch
+          priority: 15
+          profile: ${TUNED_NAME}
+parameters:
+  - name: TUNED_NAME
+  - name: SYSCTLPARM
+  - name: SYSCTLVALUE

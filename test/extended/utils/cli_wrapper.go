@@ -1,7 +1,14 @@
+// cli_wrapper.go wraps the oc command-line tool to provide a simple interface
+// for test operations. It defines the CLI and Command structs with builder-pattern
+// methods for constructing and executing oc commands.
+
 package utils
 
 import (
+	"bufio"
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -24,8 +31,11 @@ type CLI struct {
 	verbose          bool
 }
 
+// defaultCommandTimeout is the maximum duration an oc command is allowed to run.
+const defaultCommandTimeout = 5 * time.Minute
+
 // NewCLIWithoutNamespace creates a new CLI instance without a default namespace
-func NewCLIWithoutNamespace(name string) *CLI {
+func NewCLIWithoutNamespace() *CLI {
 	kubeconfig := os.Getenv("KUBECONFIG")
 	if kubeconfig == "" {
 		kubeconfig = os.Getenv("HOME") + "/.kube/config"
@@ -162,7 +172,7 @@ func (c *CLI) SetupProject() error {
 	// Create the namespace
 	err := c.AsAdmin().WithoutNamespace().Run("create").Args("namespace", c.namespace).Execute()
 	if err != nil {
-		return fmt.Errorf("failed to create namespace %s: %v", c.namespace, err)
+		return fmt.Errorf("failed to create namespace %s: %w", c.namespace, err)
 	}
 
 	return nil
@@ -199,6 +209,8 @@ type Command struct {
 	verb     string
 	args     []string
 	inputStr string
+	timeout  time.Duration
+	ctx      context.Context
 }
 
 // Run starts building a command
@@ -220,6 +232,32 @@ func (cmd *Command) Args(args ...string) *Command {
 func (cmd *Command) InputString(input string) *Command {
 	cmd.inputStr = input
 	return cmd
+}
+
+// WithTimeout overrides defaultCommandTimeout for this command invocation. Use it for
+// commands that are expected to legitimately run longer than the default (e.g. a long
+// `oc wait`/`oc debug` call), so they aren't killed with a generic "context deadline
+// exceeded" indistinguishable from a genuine hang.
+func (cmd *Command) WithTimeout(timeout time.Duration) *Command {
+	cmd.timeout = timeout
+	return cmd
+}
+
+// WithCtx sets the context for the command. This allows callers to cancel in-flight
+// oc commands when the provided context is cancelled (e.g. test context or cleanup
+// context). If not set, context.Background() is used.
+func (cmd *Command) WithCtx(ctx context.Context) *Command {
+	cmd.ctx = ctx
+	return cmd
+}
+
+// timeoutOrDefault returns the per-call timeout if one was set via WithTimeout,
+// otherwise defaultCommandTimeout.
+func (cmd *Command) timeoutOrDefault() time.Duration {
+	if cmd.timeout > 0 {
+		return cmd.timeout
+	}
+	return defaultCommandTimeout
 }
 
 // Execute runs the command and returns an error if it fails
@@ -244,7 +282,8 @@ func (cmd *Command) buildCmdArgs() []string {
 	// Add verb
 	cmdArgs = append(cmdArgs, cmd.verb)
 
-	// Add namespace if set and not explicitly disabled
+	// Add namespace if set and not explicitly disabled. The `debug` verb does not
+	// accept `-n` in this position, so skip it to avoid command failures.
 	if !cmd.cli.withoutNamespace && cmd.cli.namespace != "" && cmd.verb != "debug" {
 		cmdArgs = append(cmdArgs, "-n", cmd.cli.namespace)
 	}
@@ -255,15 +294,28 @@ func (cmd *Command) buildCmdArgs() []string {
 	return cmdArgs
 }
 
-// Output runs the command and returns its output
-func (cmd *Command) Output() (string, error) {
-	cmdArgs := cmd.buildCmdArgs()
+// run builds and executes the underlying oc command, applying the shared logging,
+// timeout, and stdin/stdout/stderr plumbing used by both Output and Outputs. It
+// returns the trimmed stdout/stderr and the raw error from ocCmd.Run() (nil on
+// success), along with the resolved command-line args for callers that need them
+// (e.g. to build an ExitError). It does not itself log or wrap the error on
+// failure — callers are responsible for that, since Output and Outputs differ in
+// how they want to report failures.
+func (cmd *Command) run() (stdout, stderr string, cmdArgs []string, err error) {
+	cmdArgs = cmd.buildCmdArgs()
 
 	if cmd.cli.verbose {
-		fmt.Printf("DEBUG: %s %s\n", cmd.cli.execPath, strings.Join(cmdArgs, " "))
+		fmt.Fprintf(os.Stderr, "DEBUG: %s %s\n", cmd.cli.execPath, strings.Join(cmdArgs, " "))
 	}
 
-	ocCmd := exec.Command(cmd.cli.execPath, cmdArgs...)
+	parentCtx := cmd.ctx
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parentCtx, cmd.timeoutOrDefault())
+	defer cancel()
+
+	ocCmd := exec.CommandContext(ctx, cmd.cli.execPath, cmdArgs...)
 
 	// Set up stdin if input string is provided
 	if cmd.inputStr != "" {
@@ -274,20 +326,29 @@ func (cmd *Command) Output() (string, error) {
 		Logf("running '%s %s'", cmd.cli.execPath, strings.Join(cmdArgs, " "))
 	}
 
-	var stdout, stderr bytes.Buffer
-	ocCmd.Stdout = &stdout
-	ocCmd.Stderr = &stderr
+	var stdoutBuf, stderrBuf bytes.Buffer
+	ocCmd.Stdout = &stdoutBuf
+	ocCmd.Stderr = &stderrBuf
 
-	err := ocCmd.Run()
-	trimmed := strings.TrimSpace(stdout.String())
+	err = ocCmd.Run()
+	stdout = strings.TrimSpace(stdoutBuf.String())
+	stderr = strings.TrimSpace(stderrBuf.String())
 
 	if err != nil {
-		stderrStr := strings.TrimSpace(stderr.String())
-		Logf("error running command: %v\nstdout: %s\nstderr: %s", err, trimmed, stderrStr)
-		return trimmed, fmt.Errorf("command failed: %v, stderr: %s", err, stderrStr)
+		Logf("error running command: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
 	}
 
-	return trimmed, nil
+	return stdout, stderr, cmdArgs, err
+}
+
+// Output runs the command and returns its output
+func (cmd *Command) Output() (string, error) {
+	stdout, stderr, _, err := cmd.run()
+	if err != nil {
+		return stdout, fmt.Errorf("command failed: %w, stderr: %s", err, stderr)
+	}
+
+	return stdout, nil
 }
 
 // ExitError represents an error from command execution
@@ -299,56 +360,104 @@ type ExitError struct {
 
 // Outputs runs the command and returns both stdout and stderr separately
 func (cmd *Command) Outputs() (string, string, error) {
+	stdout, stderr, cmdArgs, err := cmd.run()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return stdout, stderr, &ExitError{
+				ExitError: exitErr,
+				Cmd:       cmd.cli.execPath + " " + strings.Join(cmdArgs, " "),
+				StdErr:    stderr,
+			}
+		}
+		return stdout, stderr, fmt.Errorf("command failed: %w", err)
+	}
+
+	return stdout, stderr, nil
+}
+
+// FollowUntilContains runs a streaming command (e.g. "oc logs -f") and returns true as soon
+// as a line of its output contains keyword. It returns false if the command exits or ctx is
+// done before the keyword appears. The underlying process is always stopped before returning,
+// even if it would otherwise keep streaming forever.
+func (cmd *Command) FollowUntilContains(ctx context.Context, keyword string) bool {
+	// maxFollowedLineSize is the largest single line bufio.Scanner will accept while reading
+	// streamed command output. The default 64 KiB limit is too small for occasionally long
+	// container log lines.
+	const maxFollowedLineSize = 1024 * 1024
+
 	cmdArgs := cmd.buildCmdArgs()
-
-	if cmd.cli.verbose {
-		fmt.Printf("DEBUG: %s %s\n", cmd.cli.execPath, strings.Join(cmdArgs, " "))
-	}
-
-	ocCmd := exec.Command(cmd.cli.execPath, cmdArgs...)
-
-	// Set up stdin if input string is provided
-	if cmd.inputStr != "" {
-		ocCmd.Stdin = strings.NewReader(cmd.inputStr)
-	}
-
 	if cmd.cli.showInfo {
 		Logf("running '%s %s'", cmd.cli.execPath, strings.Join(cmdArgs, " "))
 	}
 
-	var stdout, stderr bytes.Buffer
-	ocCmd.Stdout = &stdout
-	ocCmd.Stderr = &stderr
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	err := ocCmd.Run()
-	stdoutStr := strings.TrimSpace(stdout.String())
-	stderrStr := strings.TrimSpace(stderr.String())
+	ocCmd := exec.CommandContext(ctx, cmd.cli.execPath, cmdArgs...)
+	// If WaitDelay is non-zero, the command's I/O pipes will be closed after
+	// WaitDelay has elapsed after either the command's process has exited or
+	// (if Context is non-nil) Context is done, whichever occurs first.
+	ocCmd.WaitDelay = 2 * time.Second
+	var stderrBuf bytes.Buffer
+	ocCmd.Stderr = &stderrBuf
 
+	stdout, err := ocCmd.StdoutPipe()
 	if err != nil {
-		Logf("error running command: %v\nstdout: %s\nstderr: %s", err, stdoutStr, stderrStr)
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return stdoutStr, stderrStr, &ExitError{
-				ExitError: exitErr,
-				Cmd:       cmd.cli.execPath + " " + strings.Join(cmdArgs, " "),
-				StdErr:    stderrStr,
+		Logf("FollowUntilContains: failed to create stdout pipe: %v", err)
+		return false
+	}
+	if err := ocCmd.Start(); err != nil {
+		Logf("FollowUntilContains: failed to start command: %v", err)
+		return false
+	}
+
+	// Scan the output on a separate goroutine so that we can stop waiting as soon as either
+	// the keyword shows up or ctx is done, without waiting for the command to exit on its own.
+	foundCh := make(chan bool, 1)
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		scanner.Buffer(make([]byte, 64*1024), maxFollowedLineSize)
+
+		found := false
+		for scanner.Scan() {
+			if strings.Contains(scanner.Text(), keyword) {
+				found = true
+				break
 			}
 		}
-		return stdoutStr, stderrStr, fmt.Errorf("command failed: %v", err)
+		if err := scanner.Err(); err != nil && !errors.Is(err, os.ErrClosed) {
+			Logf("FollowUntilContains: error reading command output: %v", err)
+		}
+		foundCh <- found
+	}()
+
+	var found bool
+	select {
+	case found = <-foundCh:
+	case <-ctx.Done():
+		// The child may not release its stdout write end promptly (e.g. a subprocess
+		// that inherited the descriptor outlives it, or the process is slow to die),
+		// so the pipe would never EOF on its own. Close our read end to guarantee the
+		// scanner goroutine unblocks and cannot leak; the caller must still wait for it
+		// so that Wait() below is not called while stdout is still being read.
+		if err := stdout.Close(); err != nil && cmd.cli.verbose {
+			Logf("FollowUntilContains: failed to close stdout pipe: %v", err)
+		}
+		found = <-foundCh // block until the scanner goroutine stops reading stdout
 	}
 
-	return stdoutStr, stderrStr, nil
-}
-
-// OutputToFile executes the command and stores output to a file
-func (cmd *Command) OutputToFile(filename string) (string, error) {
-	_, err := cmd.Output()
-	if err != nil {
-		return "", err
+	// Cancel unconditionally: a match may have been found while the command is still
+	// streaming, in which case it would otherwise never exit on its own.
+	// Wait must only be called once stdout has stopped being read, which is guaranteed
+	// here since the scanner goroutine has already returned by this point.
+	cancel()
+	if err := ocCmd.Wait(); err != nil && cmd.cli.verbose {
+		Logf("FollowUntilContains: command exited: %v", err)
 	}
-	return filename, nil // Simplified version, full implementation would write to file
-}
 
-// FatalErr exits the test in case a fatal error has occurred
-func FatalErr(msg interface{}) {
-	panic(fmt.Sprintf("%v", msg))
+	if !found && stderrBuf.Len() > 0 {
+		Logf("FollowUntilContains: keyword %q not found; stderr:\n%s", keyword, strings.TrimSpace(stderrBuf.String()))
+	}
+
+	return found
 }
