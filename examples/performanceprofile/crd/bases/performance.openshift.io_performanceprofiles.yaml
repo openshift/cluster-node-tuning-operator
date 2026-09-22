@@ -154,7 +154,7 @@ spec:
                         path and MAC address'
                       properties:
                         deviceID:
-                          description: Network device ID (model) represnted as a 16
+                          description: Network device ID (model) represented as a 16
                             bit hexmadecimal number.
                           type: string
                         interfaceName:
@@ -163,7 +163,7 @@ spec:
                             or negative.
                           type: string
                         vendorID:
-                          description: Network device vendor ID represnted as a 16
+                          description: Network device vendor ID represented as a 16
                             bit Hexmadecimal number.
                           type: string
                       type: object
@@ -589,7 +589,7 @@ spec:
                         path and MAC address'
                       properties:
                         deviceID:
-                          description: Network device ID (model) represnted as a 16
+                          description: Network device ID (model) represented as a 16
                             bit hexmadecimal number.
                           type: string
                         interfaceName:
@@ -598,7 +598,7 @@ spec:
                             or negative.
                           type: string
                         vendorID:
-                          description: Network device vendor ID represnted as a 16
+                          description: Network device vendor ID represented as a 16
                             bit Hexmadecimal number.
                           type: string
                       type: object
