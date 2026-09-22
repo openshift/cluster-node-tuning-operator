@@ -222,10 +222,10 @@ type Device struct {
 	// Network device name to be matched. It uses a syntax of shell-style wildcards which are either positive or negative.
 	// +optional
 	InterfaceName *string `json:"interfaceName,omitempty"`
-	// Network device vendor ID represnted as a 16 bit Hexmadecimal number.
+	// Network device vendor ID represnted as a 16 bit hexadecimal number.
 	// +optional
 	VendorID *string `json:"vendorID,omitempty"`
-	// Network device ID (model) represnted as a 16 bit hexmadecimal number.
+	// Network device ID (model) represnted as a 16 bit hexadecimal number.
 	// +optional
 	DeviceID *string `json:"deviceID,omitempty"`
 }
