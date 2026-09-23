@@ -19,7 +19,6 @@ import (
 	corev1informers "k8s.io/client-go/informers/core/v1"
 	kubeset "k8s.io/client-go/kubernetes"
 	appsset "k8s.io/client-go/kubernetes/typed/apps/v1"
-	coreset "k8s.io/client-go/kubernetes/typed/core/v1"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
@@ -146,12 +145,6 @@ func NewController() (*Controller, error) {
 
 	// MachineConfig
 	controller.clients.MC, err = mcfgclientset.NewForConfig(controller.kubeconfig)
-	if err != nil {
-		return nil, err
-	}
-
-	// ConfigMap and Pods (only for leader-election)
-	controller.clients.Core, err = coreset.NewForConfig(controller.kubeconfig)
 	if err != nil {
 		return nil, err
 	}
