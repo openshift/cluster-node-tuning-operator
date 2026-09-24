@@ -1,6 +1,7 @@
 package nodes
 
 import (
+	"fmt"
 	"testing"
 
 	"k8s.io/utils/cpuset"
@@ -191,5 +192,110 @@ func TestFindCmdlineParam(t *testing.T) {
 				t.Errorf("FindCmdlineParam(%q, %q) = %q, want %q", tt.cmdline, tt.key, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestGetCPUSiblings(t *testing.T) {
+	// Sample topology: 2 NUMA nodes, SMT-2 (hyperthreading)
+	coreSiblings := map[int]map[int][]int{
+		0: { // NUMA node 0
+			0: {0, 24},
+			1: {1, 25},
+			2: {2, 26},
+		},
+		1: { // NUMA node 1
+			0: {12, 36},
+			1: {13, 37},
+		},
+	}
+
+	tests := []struct {
+		name        string
+		cpuID       int
+		want        cpuset.CPUSet
+		expectError bool
+	}{
+		{
+			name:        "CPU 0 returns its HT sibling pair",
+			cpuID:       0,
+			want:        cpuset.New(0, 24),
+			expectError: false,
+		},
+		{
+			name:        "CPU 24 returns same pair as CPU 0",
+			cpuID:       24,
+			want:        cpuset.New(0, 24),
+			expectError: false,
+		},
+		{
+			name:        "CPU 13 from NUMA 1",
+			cpuID:       13,
+			want:        cpuset.New(13, 37),
+			expectError: false,
+		},
+		{
+			name:        "Non-existent CPU returns error",
+			cpuID:       99,
+			want:        cpuset.New(),
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := GetCPUSiblings(coreSiblings, tt.cpuID)
+			if (err != nil) != tt.expectError {
+				t.Errorf("GetCPUSiblings(%d) error = %v, expectError %v", tt.cpuID, err, tt.expectError)
+				return
+			}
+			if !got.Equals(tt.want) {
+				t.Errorf("GetCPUSiblings(%d) = %v, want %v", tt.cpuID, got.String(), tt.want.String())
+			}
+		})
+	}
+}
+
+func TestBuildCPUToSiblingsMap(t *testing.T) {
+	coreSiblings := map[int]map[int][]int{
+		0: {
+			0: {0, 24},
+			1: {1, 25},
+		},
+		1: {
+			0: {12, 36},
+		},
+	}
+
+	cpuToSiblings := BuildCPUToSiblingsMap(coreSiblings)
+
+	tests := []struct {
+		cpuID int
+		want  cpuset.CPUSet
+	}{
+		{cpuID: 0, want: cpuset.New(0, 24)},
+		{cpuID: 24, want: cpuset.New(0, 24)},
+		{cpuID: 1, want: cpuset.New(1, 25)},
+		{cpuID: 25, want: cpuset.New(1, 25)},
+		{cpuID: 12, want: cpuset.New(12, 36)},
+		{cpuID: 36, want: cpuset.New(12, 36)},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("CPU %d", tt.cpuID), func(t *testing.T) {
+			got, found := cpuToSiblings[tt.cpuID]
+			if !found {
+				t.Errorf("CPU %d not found in map", tt.cpuID)
+				return
+			}
+			if !got.Equals(tt.want) {
+				t.Errorf("cpuToSiblings[%d] = %v, want %v", tt.cpuID, got.String(), tt.want.String())
+			}
+		})
+	}
+
+	// Verify all expected CPUs are in the map
+	expectedCount := 6 // 0,24,1,25,12,36
+	if len(cpuToSiblings) != expectedCount {
+		t.Errorf("Expected %d entries in map, got %d", expectedCount, len(cpuToSiblings))
 	}
 }
