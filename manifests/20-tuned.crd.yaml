@@ -78,7 +78,9 @@ spec:
                     name:
                       description: Name of the Tuned profile to be used in the recommend
                         section.
+                      maxLength: 255
                       minLength: 1
+                      pattern: ^[A-Za-z0-9_][A-Za-z0-9_.-]*$
                       type: string
                   required:
                   - data
@@ -158,7 +160,9 @@ spec:
                       type: integer
                     profile:
                       description: Name of the Tuned profile to recommend.
+                      maxLength: 255
                       minLength: 1
+                      pattern: ^[A-Za-z0-9_][A-Za-z0-9_.-]*$
                       type: string
                   required:
                   - priority
