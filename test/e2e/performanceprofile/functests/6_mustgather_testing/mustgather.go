@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	machineconfigv1 "github.com/openshift/api/machineconfiguration/v1"
+	"github.com/openshift/cluster-node-tuning-operator/pkg/performanceprofile/controller/performanceprofile/components"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	hypershiftutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
@@ -61,16 +62,18 @@ var _ = Describe("[rfe_id: 50649] Performance Addon Operator Must Gather", Label
 			if profile == nil {
 				Skip("No Performance Profile found")
 			}
-			//replace peformance.yaml for profile.Name when data is generated in the node
+			profileName := profile.Name
+			kubeletConfigName := components.GetComponentName(profileName, components.ComponentNamePrefix)
+			tunedName := components.GetComponentName(profileName, components.ProfileNamePerformance)
 			ClusterSpecificFiles := []string{
-				"cluster-scoped-resources/performance.openshift.io/performanceprofiles/performance.yaml",
-				"cluster-scoped-resources/machineconfiguration.openshift.io/kubeletconfigs/performance-performance.yaml",
-				"namespaces/openshift-cluster-node-tuning-operator/tuned.openshift.io/tuneds/openshift-node-performance-performance.yaml",
+				fmt.Sprintf("cluster-scoped-resources/performance.openshift.io/performanceprofiles/%s.yaml", profileName),
+				fmt.Sprintf("cluster-scoped-resources/machineconfiguration.openshift.io/kubeletconfigs/%s.yaml", kubeletConfigName),
+				fmt.Sprintf("namespaces/openshift-cluster-node-tuning-operator/tuned.openshift.io/tuneds/%s.yaml", tunedName),
 			}
 			// On a hypershift env, the tuned file name has an indentifier in the end
 			if hypershiftutils.IsHypershiftCluster() {
 				ClusterSpecificFiles = []string{
-					"namespaces/openshift-cluster-node-tuning-operator/tuned.openshift.io/tuneds/openshift-node-performance-performance-*.yaml",
+					fmt.Sprintf("namespaces/openshift-cluster-node-tuning-operator/tuned.openshift.io/tuneds/%s-*.yaml", tunedName),
 				}
 			}
 			By(fmt.Sprintf("Checking Folder: %q\n", mgContentFolder))
