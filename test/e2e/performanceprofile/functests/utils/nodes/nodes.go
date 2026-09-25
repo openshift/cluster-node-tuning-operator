@@ -375,6 +375,38 @@ func GetTwoSiblingsFromCPUSet(siblings map[int]map[int][]int, cpuSet cpuset.CPUS
 	return cpuset.New(), fmt.Errorf("no two siblings found in the given CPU set")
 }
 
+// GetCPUSiblings returns all CPUs that share the same physical core as the given cpuID.
+// The returned cpuset includes the cpuID itself along with all its HT siblings.
+// Returns an error if the cpuID is not found in the coreSiblings map.
+func GetCPUSiblings(coreSiblings map[int]map[int][]int, cpuID int) (cpuset.CPUSet, error) {
+	for _, coresInNuma := range coreSiblings {
+		for _, siblingList := range coresInNuma {
+			for _, cpu := range siblingList {
+				if cpu == cpuID {
+					return cpuset.New(siblingList...), nil
+				}
+			}
+		}
+	}
+	return cpuset.New(), fmt.Errorf("CPU %d not found in core siblings map", cpuID)
+}
+
+// BuildCPUToSiblingsMap converts the nested coreSiblings map into a flat lookup map
+// for O(1) sibling queries. Each CPU ID maps to a cpuset containing all its siblings
+// (including itself).
+func BuildCPUToSiblingsMap(coreSiblings map[int]map[int][]int) map[int]cpuset.CPUSet {
+	cpuToSiblings := make(map[int]cpuset.CPUSet)
+	for _, coresInNuma := range coreSiblings {
+		for _, siblingList := range coresInNuma {
+			siblingsSet := cpuset.New(siblingList...)
+			for _, cpuID := range siblingList {
+				cpuToSiblings[cpuID] = siblingsSet
+			}
+		}
+	}
+	return cpuToSiblings
+}
+
 // TunedForNode find tuned pod for appropriate node
 func TunedForNode(node *corev1.Node, sno bool) *corev1.Pod {
 	listOptions := &client.ListOptions{

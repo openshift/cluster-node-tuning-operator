@@ -879,15 +879,55 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				getCCX := nodes.GetL3SharedCPUs(targetNode)
 				cpus, err := getCCX(podCpuset.List()[0])
 				Expect(err).ToNot(HaveOccurred())
+				firstCPU := podCpuset.List()[0]
+				l3Group, err := getCCX(firstCPU)
+				Expect(err).ToNot(HaveOccurred())
 				testlog.TaggedInfof("L3 Cache Group", "CPU Group sharing L3 Cache to which %s is allocated: %s", testpod.Name, cpus.String())
 
-				// For odd requests, the allocation should be a subset of one or more uncore cache groups
-				// and should prefer whole cores to reduce SMT misalignment
-				Expect(podCpuset.IsSubsetOf(cpus) || podCpuset.Intersection(cpus).Size() > 0).To(BeTrue(),
-					"Pod CPUs should be aligned to uncore cache boundaries")
+				// All pod CPUs must be within this single L3 cache group
+				Expect(podCpuset.IsSubsetOf(l3Group)).To(BeTrue(), "All %d CPUs should be allocated from a single L3 cache Group. Pod CPUs: %s, L3 group containing CPU %d: %s", firstCPU, l3Group.String())
+
+				// Prefer whole cores for (Minimize SMT fragmentation)
+				coreSiblings, err := nodes.GetCoreSiblings(ctx, targetNode)
+				Expect(err).ToNot(HaveOccurred())
+				cpuToSiblings := nodes.BuildCPUToSiblingsMap(coreSiblings)
+				completeCoreCount := 0
+				coresProcessed := make(map[string]bool)
+				for _, cpuID := range podCpuset.List() {
+					coreSiblings, found := cpuToSiblings[cpuID]
+					Expect(found).To(BeTrue(), "CPU %d should have sibling mapping", cpuID)
+					coreKey := coreSiblings.String()
+					if coresProcessed[coreKey] {
+						continue // Already counted this core
+					}
+					coresProcessed[coreKey] = true
+					// Check if ALL siblings of this core are in the pod's cpuset
+					if coreSiblings.IsSubsetOf(podCpuset) {
+						completeCoreCount++
+						testlog.TaggedInfof("Core Allocation", "Complete core: %s", coreSiblings.String())
+					} else {
+						testlog.TaggedInfof("Core Allocation", "Partial core: %s (pod has %s)",
+							coreSiblings.String(), podCpuset.Intersection(coreSiblings).String())
+					}
+				}
+				fmt.Println("cores Processed = ", coresProcessed)
+				// Determine expected SMT level
+				firstPodCPU := podCpuset.List()[0]
+				smtLevel := cpuToSiblings[firstPodCPU].Size()
+				testlog.TaggedInfof("SMT", "SMT level: %d", smtLevel)
+
+				// For 3-CPU request on SMT-2 (hyperthreading):
+				// We expect at least 1 complete core (2 CPUs) + 1 partial (1 CPU) = 3 total
+				// This is optimal allocation that prefers whole cores
+				if requestedCPUs == 3 && smtLevel == 2 {
+					Expect(completeCoreCount).To(BeNumerically(">=", 1),
+						"3-CPU allocation on SMT-2 should include at least 1 complete core to minimize fragmentation. "+
+							"Got %d complete cores. Pod CPUs: %s", completeCoreCount, podCpuset.String())
+				}
+
 			}
 
-			It("[test_id:87072] Odd integer CPU request: 3 CPUs should prefer whole cores", func(ctx context.Context) {
+			It("[test_id:87072] Odd integer CPU request: 3 CPUs should prefer whole cores", Label("llcbug1"), func(ctx context.Context) {
 				requestedCPUs := 3
 				cpusetCfg := &controller.CpuSet{}
 				podLabel := make(map[string]string)
@@ -970,32 +1010,69 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				Expect(err).ToNot(HaveOccurred())
 				testlog.TaggedInfof("Pod", "CPUs used by %q are: %q (requested: %d)", testpod.Name, podCpuset.String(), requestedCPUs)
 
-				// For large odd requests, it should span multiple uncore cache groups
-				// Take full uncore + partial from another uncore
-				firstCPU := podCpuset.List()[0]
-				firstUncore, err := getCCX(firstCPU)
+				// Verify the pod got the requested number of CPUs
+				Expect(podCpuset.Size()).To(Equal(requestedCPUs),
+					"Pod should have exactly %d CPUs, got %d", requestedCPUs, podCpuset.Size())
+
+				// Should span exactly 2 L3 cache groups
+				// For "one full uncore + partial from another", we expect exactly 2 groups
+				uniqueL3Groups := make(map[string]cpuset.CPUSet)
+
+				for _, cpuID := range podCpuset.List() {
+					l3Group, err := getCCX(cpuID)
+					Expect(err).ToNot(HaveOccurred())
+					uniqueL3Groups[l3Group.String()] = l3Group
+				}
+
+				Expect(len(uniqueL3Groups)).To(Equal(2),
+					"For request of %d CPUs (uncore size %d + 3), allocation should span exactly 2 L3 groups, got %d",
+					requestedCPUs, uncoreCacheSize, len(uniqueL3Groups))
+
+				// One L3 group should be completely filled
+				l3GroupCounts := make(map[string]int)
+				for _, cpuID := range podCpuset.List() {
+					l3Group, _ := getCCX(cpuID)
+					l3GroupCounts[l3Group.String()]++
+				}
+
+				foundFullGroup := false
+				for l3Key, count := range l3GroupCounts {
+					testlog.TaggedInfof("L3 Allocation", "L3 group %s: %d CPUs allocated", l3Key, count)
+					if count == uncoreCacheSize {
+						foundFullGroup = true
+						testlog.TaggedInfof("L3 Full", "L3 group completely filled with %d CPUs", count)
+					}
+				}
+
+				Expect(foundFullGroup).To(BeTrue(),
+					"At least one L3 group should be completely filled with all %d CPUs. Actual allocations: %v",
+					uncoreCacheSize, l3GroupCounts)
+
+				// Verify packing efficiency
+				// Count physical cores used
+				coreSiblings, err := nodes.GetCoreSiblings(ctx, &targetNode)
 				Expect(err).ToNot(HaveOccurred())
-				testlog.TaggedInfof("L3 Cache Group", "First CPU %d is in uncore cache group: %s (size: %d)", firstCPU, firstUncore.String(), firstUncore.Size())
+				cpuToSiblings := nodes.BuildCPUToSiblingsMap(coreSiblings)
 
-				// The allocation should span at least one full uncore cache group plus additional CPUs
-				// Verify that the allocation is aligned to uncore boundaries
-				firstUncoreIntersection := podCpuset.Intersection(firstUncore)
-				Expect(firstUncoreIntersection.Size()).To(BeNumerically(">", 0),
-					"Pod CPUs should intersect with at least one uncore cache group")
+				uniqueCores := make(map[string]bool)
+				for _, cpuID := range podCpuset.List() {
+					siblings := cpuToSiblings[cpuID]
+					uniqueCores[siblings.String()] = true
+				}
 
-				// Verify it spans multiple uncore groups since requestedCPUs > uncoreCacheSize
-				Expect(requestedCPUs).To(BeNumerically(">", uncoreCacheSize),
-					"Requested CPUs (%d) should be larger than uncore cache size (%d)", requestedCPUs, uncoreCacheSize)
-				remainingCPUs := podCpuset.Difference(firstUncore)
-				Expect(remainingCPUs.Size()).To(BeNumerically(">", 0),
-					"For requests larger than uncore size, allocation should span multiple uncore groups")
-				testlog.TaggedInfof("Allocation", "Allocation spans %d CPUs from first uncore (size: %d) and %d CPUs from other uncore(s)",
-					firstUncoreIntersection.Size(), uncoreCacheSize, remainingCPUs.Size())
+				smtLevel := cpuToSiblings[podCpuset.List()[0]].Size()
+				minCoresNeeded := (requestedCPUs + smtLevel - 1) / smtLevel
+				coreCount := len(uniqueCores)
+
+				Expect(coreCount).To(Equal(minCoresNeeded),
+					"Allocation should use minimum number of physical cores. "+
+						"For %d CPUs on SMT-%d, expected %d cores, got %d cores",
+					requestedCPUs, smtLevel, minCoresNeeded, coreCount)
 			})
 
-			It("[test_id:87074] Even integer CPU request should avoid uncore with odd free CPUs when possible", func(ctx context.Context) {
-				// This test verifies that even requests (e.g., 4 CPUs) avoid uncore caches
-				// with odd free CPUs to maintain alignment
+			It("[test_id:87074] Even integer CPU request should allocate complete cores with LLC alignment", func(ctx context.Context) {
+				// This test verifies that even requests (e.g., 4 CPUs) are allocated as
+				// complete physical cores within a single L3 cache group
 				requestedCPUs := 4
 				targetNode := workerRTNodes[0]
 				cpusetCfg := &controller.CpuSet{}
@@ -1033,18 +1110,70 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				testlog.TaggedInfof("Pod", "CPUs used by %q are: %q (requested: %d)", testpod.Name, podCpuset.String(), requestedCPUs)
 
 				// Verify the pod got exactly the requested number of CPUs
-				Expect(podCpuset.Size()).To(Equal(requestedCPUs), "Pod should have exactly %d CPUs, got %d", requestedCPUs, podCpuset.Size())
+				Expect(podCpuset.Size()).To(Equal(requestedCPUs),
+					"Pod should have exactly %d CPUs, got %d", requestedCPUs, podCpuset.Size())
 
-				// Verify CPUs are aligned to uncore cache boundaries
+				// L3 cache alignment (single uncore group)
 				getCCX := nodes.GetL3SharedCPUs(&targetNode)
-				cpus, err := getCCX(podCpuset.List()[0])
+				firstCPU := podCpuset.List()[0]
+				l3Group, err := getCCX(firstCPU)
 				Expect(err).ToNot(HaveOccurred())
-				testlog.TaggedInfof("L3 Cache Group", "CPU Group sharing L3 Cache to which %s is allocated: %s", testpod.Name, cpus.String())
+				testlog.TaggedInfof("L3 Cache Group", "L3 group containing CPU %d: %s", firstCPU, l3Group.String())
 
-				// The allocation should be aligned to uncore cache boundaries
-				// For even requests, the system should prefer uncore caches with even availability
-				Expect(podCpuset.IsSubsetOf(cpus)).To(BeTrue(),
-					"Pod CPUs should be aligned to uncore cache boundaries")
+				Expect(podCpuset.IsSubsetOf(l3Group)).To(BeTrue(),
+					"All %d CPUs should be allocated from a single L3 cache group. Pod CPUs: %s, L3 group: %s",
+					requestedCPUs, podCpuset.String(), l3Group.String())
+
+				// All cores should be complete (no partial cores)
+				// For 4-CPU even request on SMT-2, we expect 2 complete cores (not 4 partial)
+				coreSiblings, err := nodes.GetCoreSiblings(ctx, &targetNode)
+				Expect(err).ToNot(HaveOccurred())
+				cpuToSiblings := nodes.BuildCPUToSiblingsMap(coreSiblings)
+
+				smtLevel := cpuToSiblings[firstCPU].Size()
+				testlog.TaggedInfof("SMT", "SMT level: %d", smtLevel)
+
+				completeCoreCount := 0
+				partialCoreCount := 0
+				coresProcessed := make(map[string]bool)
+
+				for _, cpuID := range podCpuset.List() {
+					siblings := cpuToSiblings[cpuID]
+					coreKey := siblings.String()
+
+					if coresProcessed[coreKey] {
+						continue
+					}
+					coresProcessed[coreKey] = true
+
+					if siblings.IsSubsetOf(podCpuset) {
+						completeCoreCount++
+						testlog.TaggedInfof("Core Allocation", "Complete core: %s", siblings.String())
+					} else {
+						partialCoreCount++
+						testlog.TaggedInfof("Core Allocation", "Partial core: %s (pod has %s)",
+							siblings.String(), podCpuset.Intersection(siblings).String())
+					}
+				}
+
+				// For even-sized requests that are multiples of SMT level, expect all complete cores
+				if requestedCPUs%smtLevel == 0 {
+					expectedCores := requestedCPUs / smtLevel
+					Expect(completeCoreCount).To(Equal(expectedCores),
+						"For %d-CPU request on SMT-%d, all cores should be complete. Expected %d complete cores, got %d complete and %d partial",
+						requestedCPUs, smtLevel, expectedCores, completeCoreCount, partialCoreCount)
+					Expect(partialCoreCount).To(Equal(0),
+						"For even-sized request (%d CPUs), no partial cores expected", requestedCPUs)
+				}
+
+				// Verify packing efficiency
+				coreCount := len(coresProcessed)
+				minCoresNeeded := (requestedCPUs + smtLevel - 1) / smtLevel
+
+				Expect(coreCount).To(Equal(minCoresNeeded),
+					"Allocation should use minimum number of physical cores. "+
+						"For %d CPUs on SMT-%d, expected %d cores, got %d cores",
+					requestedCPUs, smtLevel, minCoresNeeded, coreCount)
 			})
 		})
 	})
