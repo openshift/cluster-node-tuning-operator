@@ -155,7 +155,7 @@ spec:
                       properties:
                         deviceID:
                           description: Network device ID (model) represnted as a 16
-                            bit hexmadecimal number.
+                            bit hexadecimal number.
                           type: string
                         interfaceName:
                           description: Network device name to be matched. It uses
@@ -164,7 +164,7 @@ spec:
                           type: string
                         vendorID:
                           description: Network device vendor ID represnted as a 16
-                            bit Hexmadecimal number.
+                            bit hexadecimal number.
                           type: string
                       type: object
                     type: array
@@ -590,7 +590,7 @@ spec:
                       properties:
                         deviceID:
                           description: Network device ID (model) represnted as a 16
-                            bit hexmadecimal number.
+                            bit hexadecimal number.
                           type: string
                         interfaceName:
                           description: Network device name to be matched. It uses
@@ -599,7 +599,7 @@ spec:
                           type: string
                         vendorID:
                           description: Network device vendor ID represnted as a 16
-                            bit Hexmadecimal number.
+                            bit hexadecimal number.
                           type: string
                       type: object
                     type: array

@@ -203,13 +203,13 @@ spec:
                         type: object
                         properties:
                           deviceID:
-                            description: Network device ID (model) represnted as a 16 bit hexmadecimal number.
+                            description: Network device ID (model) represnted as a 16 bit hexadecimal number.
                             type: string
                           interfaceName:
                             description: Network device name to be matched. It uses a syntax of shell-style wildcards which are either positive or negative.
                             type: string
                           vendorID:
-                            description: Network device vendor ID represnted as a 16 bit Hexmadecimal number.
+                            description: Network device vendor ID represnted as a 16 bit hexadecimal number.
                             type: string
                     userLevelNetworking:
                       description: UserLevelNetworking when enabled - sets either all or specified network devices queue size to the amount of reserved CPUs. Defaults to "false".
@@ -646,13 +646,13 @@ spec:
                         type: object
                         properties:
                           deviceID:
-                            description: Network device ID (model) represnted as a 16 bit hexmadecimal number.
+                            description: Network device ID (model) represnted as a 16 bit hexadecimal number.
                             type: string
                           interfaceName:
                             description: Network device name to be matched. It uses a syntax of shell-style wildcards which are either positive or negative.
                             type: string
                           vendorID:
-                            description: Network device vendor ID represnted as a 16 bit Hexmadecimal number.
+                            description: Network device vendor ID represnted as a 16 bit hexadecimal number.
                             type: string
                     userLevelNetworking:
                       description: UserLevelNetworking when enabled - sets either all or specified network devices queue size to the amount of reserved CPUs. Defaults to "false".
