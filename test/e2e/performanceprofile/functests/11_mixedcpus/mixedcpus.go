@@ -50,13 +50,9 @@ const (
 	kubeletMixedCPUsConfigFile = "/etc/kubernetes/openshift-workload-mixed-cpus"
 	crioRuntimesConfigFile     = "/etc/crio/crio.conf.d/99-runtimes.conf"
 	sharedCpusResource         = "workload.openshift.io/enable-shared-cpus"
-	// the minimal number of cores for running the test is as follows:
-	// reserved = one core, shared = one core, infra workload = one core, test pod = one core - 4 in total
-	// smt alignment won't allow us to run the test pod with a single core, hence we should cancel it.
-	numberOfCoresThatRequiredCancelingSMTAlignment = 4
-	restartCooldownTime                            = 1 * time.Minute
-	isolatedCpusEnv                                = "OPENSHIFT_ISOLATED_CPUS"
-	sharedCpusEnv                                  = "OPENSHIFT_SHARED_CPUS"
+	restartCooldownTime        = 1 * time.Minute
+	isolatedCpusEnv            = "OPENSHIFT_ISOLATED_CPUS"
+	sharedCpusEnv              = "OPENSHIFT_SHARED_CPUS"
 	// DeploymentName contains the name of the deployment
 	DeploymentName = "test-deployment"
 )
@@ -320,8 +316,8 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
 				profilesupdate.WaitForTuningUpdated(context.TODO(), profile)
 
-				Expect(testclient.ControlPlaneClient.Get(ctx, client.ObjectKeyFromObject(profile), profile))
-				testlog.Infof("new isolated CPU set=%q\nnew shared CPU set=%q", string(*profile.Spec.CPU.Isolated), string(*profile.Spec.CPU.Isolated))
+				Expect(testclient.ControlPlaneClient.Get(ctx, client.ObjectKeyFromObject(profile), profile)).To(Succeed())
+				testlog.Infof("new isolated CPU set=%q\nnew shared CPU set=%q", string(*profile.Spec.CPU.Isolated), string(*profile.Spec.CPU.Shared))
 				// we do not bother to revert the profile at the end of the test, since its irrelevant which of the cpus are shared
 			})
 
@@ -502,7 +498,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 				Expect(pod.Status.Phase).To(Equal(corev1.PodPending), "Pod %s is not in the pending state", pod.Name)
 
 				By("Reverting the cluster to previous state")
-				Expect(testclient.ControlPlaneClient.Get(ctx, client.ObjectKeyFromObject(profile), profile))
+				Expect(testclient.ControlPlaneClient.Get(ctx, client.ObjectKeyFromObject(profile), profile)).To(Succeed())
 				profile.Spec.CPU.Shared = cpuSetToPerformanceCPUSet(ppShared)
 				profile.Spec.WorkloadHints.MixedCpus = ptr.To(true)
 				profiles.UpdateWithRetry(profile)
@@ -577,13 +573,15 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 
 					coreSiblings, err := nodes.GetCoreSiblings(ctx, workerRTNode)
 					Expect(err).ToNot(HaveOccurred())
+					// New Shared is taken from Isolated. Put previous Shared back into Isolated so those CPUs are not left in neither set.
+					oldShared := updatedShared
 					updatedShared, err = nodes.GetTwoSiblingsFromCPUSet(coreSiblings, updatedIsolated)
 					if err != nil {
 						testlog.Info("no two siblings found in the given CPU set, looks like the initial profile does not respect hyperthreading; proceed then with this state and pick first two isolated CPUs as the shared CPUs")
 						updatedShared = cpuset.New(updatedIsolated.List()[0], updatedIsolated.List()[1])
 					}
 
-					updatedIsolated = updatedIsolated.Difference(updatedShared)
+					updatedIsolated = updatedIsolated.Difference(updatedShared).Union(oldShared)
 
 					testlog.Infof("CPU update:shared cpu %q isolated cpus %q", updatedShared.String(), updatedIsolated.String())
 					profile.Spec.CPU.Isolated = cpuSetToPerformanceCPUSet(&updatedIsolated)
@@ -822,7 +820,6 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 })
 
 func setup(ctx context.Context) func(ctx2 context.Context) {
-	var updateNeeded bool
 	profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 	Expect(err).ToNot(HaveOccurred())
 	initialProfile := profile.DeepCopy()
@@ -838,30 +835,18 @@ func setup(ctx context.Context) func(ctx2 context.Context) {
 		profile.Spec.CPU.Shared = cpuSetToPerformanceCPUSet(&sharedcpu)
 		profile.Spec.WorkloadHints.MixedCpus = ptr.To(true)
 		testlog.Infof("enable mixed cpus for profile %q", profile.Name)
-		updateNeeded = true
 	} else {
 		testlog.Infof("mixed cpus already enabled for profile %q", profile.Name)
 	}
 
-	workers, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
-	Expect(err).ToNot(HaveOccurred())
-	for _, worker := range workers {
-		//node cpu numbers are integral
-		numOfCores, _ := worker.Status.Capacity.Cpu().AsInt64()
-		if numOfCores <= numberOfCoresThatRequiredCancelingSMTAlignment {
-			profile.Annotations = map[string]string{
-				"kubeletconfig.experimental": "{\"cpuManagerPolicyOptions\": {\"full-pcpus-only\": \"false\"}}",
-			}
-			testlog.Infof("canceling SMT alignment for nodes under profile %q", profile.Name)
-			updateNeeded = true
-		}
+	// CI may have only 4 CPUs - Typical layout: reserved + shared + infra + test pod (4 cores).
+	// Pods request cpu:1; SMT alignment will not schedule that.
+	// Cancel full-pcpus-only. Apply it always so larger nodes are not a different kubelet policy.
+	profile.Annotations = map[string]string{
+		"kubeletconfig.experimental": "{\"cpuManagerPolicyOptions\": {\"full-pcpus-only\": \"false\"}}",
 	}
+	testlog.Infof("canceling SMT alignment for profile %q", profile.Name)
 
-	if !updateNeeded {
-		return func(ctx context.Context) {
-			By(fmt.Sprintf("skipping teardown - no changes to profile %q were applied", profile.Name))
-		}
-	}
 	profiles.UpdateWithRetry(profile)
 	poolName := poolname.GetByProfile(context.TODO(), profile)
 	By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
@@ -872,7 +857,7 @@ func setup(ctx context.Context) func(ctx2 context.Context) {
 
 	teardown := func(ctx2 context.Context) {
 		By(fmt.Sprintf("executing teardown - revert profile %q back to its initial state", profile.Name))
-		Expect(testclient.ControlPlaneClient.Get(ctx2, client.ObjectKeyFromObject(initialProfile), profile))
+		Expect(testclient.ControlPlaneClient.Get(ctx2, client.ObjectKeyFromObject(initialProfile), profile)).To(Succeed())
 		profiles.UpdateWithRetry(initialProfile)
 
 		// do not wait if nothing has changed
