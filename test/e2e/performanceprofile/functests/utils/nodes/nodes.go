@@ -602,7 +602,6 @@ func CpuManagerCpuSet(ctx context.Context, node *corev1.Node) (cpuset.CPUSet, er
 	if err != nil {
 		return cpuset.New(), err
 	}
-	fmt.Println("cpuset = ", nodeCpuSet.String())
 	return nodeCpuSet, err
 }
 
