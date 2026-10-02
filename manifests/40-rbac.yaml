@@ -52,23 +52,20 @@ rules:
 - apiGroups: [""]
   resources: ["nodes","pods"]
   verbs: ["get","list","watch"]
-# Necessary for the implementation of metrics.
-- apiGroups: [""]
-  resources: ["nodes/metrics","nodes/specs"]
-  verbs: ["get"]
 # Needed by every CVO-managed operator.
-# infrastructures needed for the leader election code to get infra topology
 - apiGroups: ["config.openshift.io"]
-  resources: ["clusteroperators", "infrastructures"]
+  resources: ["clusteroperators"]
   verbs: ["create","get","list","watch"]
+# The Infrastructure object is read by two consumers: the leader election
+# defaults read the control plane topology to pick the SNO lock timings
+# ("get", via a direct client), and the performance profile controller reads
+# status.cpuPartitioning through the manager's cache, hence "list","watch".
+- apiGroups: ["config.openshift.io"]
+  resources: ["infrastructures"]
+  verbs: ["get","list","watch"]
 # Needed by every CVO-managed operator.
 - apiGroups: ["config.openshift.io"]
   resources: ["clusteroperators/status","clusteroperators/finalizers"]
-  verbs: ["update"]
-# Needed to support upgrades for SingleNode from 4.12 -> 4.13 for CPUPartitioning
-# TODO: Re-evaluate need after 4.13 when SingleNode clusters will be updated to the new CPUPartitioning method.
-- apiGroups: ["config.openshift.io"]
-  resources: ["infrastructures/status"]
   verbs: ["update"]
 # Needed by the core operator functionality.
 - apiGroups: ["machineconfiguration.openshift.io"]
