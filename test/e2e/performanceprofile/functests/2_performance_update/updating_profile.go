@@ -224,17 +224,31 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 
 	Context("Verify that all performance profile parameters can be updated", Ordered, Label(string(label.Tier2)), func() {
 		var removedKernelArgs string
+		var expectedReserved, expectedIsolated cpuset.CPUSet
 
 		hpSize2M := performancev2.HugePageSize("2M")
 		hpSize1G := performancev2.HugePageSize("1G")
-		isolated := performancev2.CPUSet("1-2")
-		reserved := performancev2.CPUSet("0,3")
 		policy := "best-effort"
 
-		// Modify profile and verify that MCO successfully updated the node
+		// Modify profile and verify that MCO successfully updated the node.
+		// Keep the existing reserved/isolated CPUs from the performance profile;
+		// overriding them with a tiny isolated set on large-CPU nodes inflates
+		// tuned.non_isolcpus / systemd.cpu_affinity and can drop later cmdline
+		// args such as hugepages (see test_id:34081 failures).
 		testutils.CustomBeforeAll(func() {
 			By(fmt.Sprintf("Modifying profile to nodes=%#v MCPs=%#v", profile.Spec.NodeSelector, profile.Spec.MachineConfigPoolSelector))
 			initialProfile = profile.DeepCopy()
+
+			Expect(profile.Spec.CPU).ToNot(BeNil(), "performance profile must define CPU settings")
+			Expect(profile.Spec.CPU.Reserved).ToNot(BeNil(), "performance profile must define reserved CPUs")
+			Expect(profile.Spec.CPU.Isolated).ToNot(BeNil(), "performance profile must define isolated CPUs")
+
+			var err error
+			expectedReserved, err = cpuset.Parse(string(*profile.Spec.CPU.Reserved))
+			Expect(err).ToNot(HaveOccurred(), "failed to parse reserved CPUs from performance profile")
+			expectedIsolated, err = cpuset.Parse(string(*profile.Spec.CPU.Isolated))
+			Expect(err).ToNot(HaveOccurred(), "failed to parse isolated CPUs from performance profile")
+			By(fmt.Sprintf("Preserving existing CPU configuration reserved=%s isolated=%s", expectedReserved.String(), expectedIsolated.String()))
 
 			profile.Spec.HugePages = &performancev2.HugePages{
 				DefaultHugePagesSize: &hpSize2M,
@@ -248,11 +262,6 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 						Size:  hpSize1G,
 					},
 				},
-			}
-			profile.Spec.CPU = &performancev2.CPU{
-				BalanceIsolated: ptr.To(false),
-				Reserved:        &reserved,
-				Isolated:        &isolated,
 			}
 			profile.Spec.NUMA = &performancev2.NUMA{
 				TopologyPolicy: &policy,
@@ -300,10 +309,58 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			Entry("[test_id:28070] verify that hugepages updated (NUMA node unspecified)", context.TODO(), chkCmdLineFn, []string{"hugepagesz=2M"}, true, false),
 			Entry("verify that the right number of hugepages 1G is available on the system", context.TODO(), chkHugepages1GFn, []string{"3"}, true, false),
 			Entry("verify that the right number of hugepages 2M is available on the system", context.TODO(), chkHugepages2MFn, []string{"256"}, true, false),
-			Entry("[test_id:28025] verify that cpu affinity mask was updated", context.TODO(), chkCmdLineFn, []string{"tuned.non_isolcpus=.*9"}, true, true),
-			Entry("[test_id:28071] verify that cpu balancer disabled", context.TODO(), chkCmdLineFn, []string{"isolcpus=domain,managed_irq,1-2"}, true, false),
-			Entry("[test_id:28071] verify that cpu balancer disabled", context.TODO(), chkCmdLineFn, []string{"systemd.cpu_affinity=0,3"}, true, false),
 		)
+
+		It("[test_id:28025] verify that cpu affinity mask matches the performance profile", func() {
+			for _, node := range workerRTNodes {
+				onlineCPUs, err := nodes.GetOnlineCPUsSet(context.TODO(), &node)
+				Expect(err).ToNot(HaveOccurred())
+				expectedNonIsolated := onlineCPUs.Difference(expectedIsolated)
+				expectedMask, err := components.CPUListToMaskList(expectedNonIsolated.String())
+				Expect(err).ToNot(HaveOccurred())
+
+				cmdline, err := chkCmdLineFn(context.TODO(), &node)
+				Expect(err).ToNot(HaveOccurred())
+				val := nodes.FindCmdlineParam(cmdline, "tuned.non_isolcpus")
+				Expect(val).ToNot(BeEmpty(), "tuned.non_isolcpus parameter not found in %q", cmdline)
+				Expect(val).To(Equal(expectedMask),
+					"tuned.non_isolcpus=%s does not match expected non-isolated mask %s", val, expectedMask)
+			}
+		})
+
+		It("[test_id:28071] verify that isolcpus matches the performance profile", func() {
+			Expect(profile.Spec.CPU).ToNot(BeNil())
+			expectedPrefix := "managed_irq,"
+			if profile.Spec.CPU.BalanceIsolated != nil && !*profile.Spec.CPU.BalanceIsolated {
+				expectedPrefix = "domain,managed_irq,"
+			}
+			expectedIsol := expectedPrefix + expectedIsolated.String()
+			for _, node := range workerRTNodes {
+				cmdline, err := chkCmdLineFn(context.TODO(), &node)
+				Expect(err).ToNot(HaveOccurred())
+				val := nodes.FindCmdlineParam(cmdline, "isolcpus")
+				Expect(val).ToNot(BeEmpty(), "isolcpus parameter not found in %q", cmdline)
+				Expect(val).To(Equal(expectedIsol),
+					"isolcpus mismatch: got %s, expected %s", val, expectedIsol)
+			}
+		})
+
+		It("[test_id:28071] verify that systemd.cpu_affinity matches non-isolated CPUs", func() {
+			for _, node := range workerRTNodes {
+				onlineCPUs, err := nodes.GetOnlineCPUsSet(context.TODO(), &node)
+				Expect(err).ToNot(HaveOccurred())
+				expectedNonIsolated := onlineCPUs.Difference(expectedIsolated)
+
+				cmdline, err := chkCmdLineFn(context.TODO(), &node)
+				Expect(err).ToNot(HaveOccurred())
+				val := nodes.FindCmdlineParam(cmdline, "systemd.cpu_affinity")
+				Expect(val).ToNot(BeEmpty(), "systemd.cpu_affinity parameter not found in %q", cmdline)
+				affinitySet, err := cpuset.Parse(val)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(affinitySet.Equals(expectedNonIsolated)).To(BeTrue(),
+					"systemd.cpu_affinity=%s does not match non-isolated CPUs %s", affinitySet.String(), expectedNonIsolated.String())
+			}
+		})
 
 		DescribeTable("Verify that kubelet parameters were updated", func(ctx context.Context, cmdFn checkFunction, getterFn func(kubeletCfg *kubeletconfigv1beta1.KubeletConfiguration) string, wantedValue string) {
 			for _, node := range workerRTNodes {
@@ -317,9 +374,23 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 				Expect(getterFn(kc)).To(Equal(wantedValue))
 			}
 		},
-			Entry("[test_id:28935] verify that reservedSystemCPUs was updated", context.TODO(), chkKubeletConfigFn, func(k *kubeletconfigv1beta1.KubeletConfiguration) string { return k.ReservedSystemCPUs }, "0,3"),
 			Entry("[test_id:28760] verify that topologyManager was updated", context.TODO(), chkKubeletConfigFn, func(k *kubeletconfigv1beta1.KubeletConfiguration) string { return k.TopologyManagerPolicy }, "best-effort"),
 		)
+
+		It("[test_id:28935] verify that reservedSystemCPUs matches the performance profile", func() {
+			for _, node := range workerRTNodes {
+				result, err := chkKubeletConfigFn(context.TODO(), &node)
+				Expect(err).ToNot(HaveOccurred())
+				obj, err := manifestsutil.DeserializeObjectFromData([]byte(result), kubeletconfigv1beta1.AddToScheme)
+				Expect(err).ToNot(HaveOccurred())
+				kc, ok := obj.(*kubeletconfigv1beta1.KubeletConfiguration)
+				Expect(ok).To(BeTrue(), "wrong type %T", obj)
+				got, err := cpuset.Parse(kc.ReservedSystemCPUs)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(got.Equals(expectedReserved)).To(BeTrue(),
+					"ReservedSystemCPUs=%s does not match expected reserved CPUs %s", got.String(), expectedReserved.String())
+			}
+		})
 
 		It("[test_id:27738] should succeed to disable the RT kernel", func() {
 			for _, node := range workerRTNodes {
