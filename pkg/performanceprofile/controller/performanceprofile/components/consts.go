@@ -29,6 +29,8 @@ const (
 	ProfileNameArmAarch64 = "openshift-node-performance-arm-aarch64"
 	// ProfileNameIntelX86 defines the Intel X86 specific tuning parameters
 	ProfileNameIntelX86 = "openshift-node-performance-intel-x86"
+	// ProfileNamePowerPC defines the PowerPC LE specific tuning parameters
+	ProfileNamePowerPC = "openshift-node-performance-power-ppc64le"
 )
 
 const (
