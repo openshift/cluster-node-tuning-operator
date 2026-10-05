@@ -56,6 +56,13 @@ spec:
         path: /usr/local/bin/cpuset-configure.sh
         user: {}
       - contents:
+          source: data:text/plain;charset=utf-8;base64,IyBNYW5hZ2VkIGJ5IHRoZSBOb2RlIFR1bmluZyBPcGVyYXRvci4gRG8gbm90IGVkaXQuCiMKIyBUaGlzIGZpbGUgc2hhZG93cyB0aGUgZGVmYXVsdCByZWFkLW9ubHkgcnVsZSAvdXNyL2xpYi91ZGV2L3J1bGVzLmQvNDAtcmVkaGF0LWhvdHBsdWcucnVsZXMsCiMgd2hpY2ggcmUtb25saW5lcyBDUFVzIG9uIHVkZXYgImFkZCIgZXZlbnRzIGFuZCByYWNlcyBOVE8ncyBzZXQtY3B1cy1vZmZsaW5lCiMgc2VydmljZSwgcmUtb25saW5pbmcgQ1BVcyB0aGUgcHJvZmlsZSBvZmZsaW5lZC4gVGhpcyBlbXB0eSBmaWxlIG92ZXJyaWRlcyB0aGF0CiMgcnVsZSBhbmQga2VlcHMgdGhlIG9mZmxpbmVkIENQVXMgb2ZmbGluZS4gV3JpdHRlbiBvbmx5IHdoZW4gc3BlYy5jcHUub2ZmbGluZWQgaXMgc2V0Lgo=
+          verification: {}
+        group: {}
+        mode: 420
+        path: /etc/udev/rules.d/40-redhat-hotplug.rules
+        user: {}
+      - contents:
           source: data:text/plain;charset=utf-8;base64,W1VuaXRdCkRlc2NyaXB0aW9uPVRvcCBsZXZlbCBzbGljZSB1c2VkIHRvIGdpdmUgb3BlbnZzd2l0Y2ggYWNjZXNzIHRvIGFuIHVucmVzdHJpY3RlZCBzZXQgb2YgY3B1cwoKW1NsaWNlXQo=
           verification: {}
         group: {}
