@@ -18,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/jaypipes/ghw/pkg/cpu"
 	"github.com/jaypipes/ghw/pkg/topology"
@@ -58,7 +59,6 @@ const (
 	defaultIgnitionVersion       = "3.2.0"
 	fileMode                     = 0420
 	restartCooldownTime          = 2 * time.Minute
-	deploymentDeletionTime       = 1 * time.Minute
 )
 
 const (
@@ -895,15 +895,15 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				Expect(err).ToNot(HaveOccurred())
 				cpuToSiblings := nodes.BuildCPUToSiblingsMap(coreSiblings)
 				completeCoreCount := 0
-				coresProcessed := make(map[string]bool)
+				coresProcessed := sets.New[string]()
 				for _, cpuID := range podCpuset.List() {
 					coreSiblings, found := cpuToSiblings[cpuID]
 					Expect(found).To(BeTrue(), "CPU %d should have sibling mapping", cpuID)
 					coreKey := coreSiblings.String()
-					if coresProcessed[coreKey] {
+					if coresProcessed.Has(coreKey) {
 						continue // Already counted this core
 					}
-					coresProcessed[coreKey] = true
+					coresProcessed.Insert(coreKey)
 					// Check if all siblings of this core are in the pod's cpuset
 					if coreSiblings.IsSubsetOf(podCpuset) {
 						completeCoreCount++
@@ -918,13 +918,14 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				smtLevel := cpuToSiblings[firstPodCPU].Size()
 				testlog.TaggedInfof("SMT", "SMT level: %d", smtLevel)
 
-				// For 3-CPU request on SMT-2 (hyperthreading):
-				// We expect at least 1 complete core (2 CPUs) + 1 partial (1 CPU) = 3 total
-				// This is optimal allocation that prefers whole cores
-				if requestedCPUs == 3 && smtLevel == 2 {
+				// For requests that are not a multiple of the SMT level
+				// (e.g. 3 CPUs on SMT-2): we expect at least 1 complete core plus a
+				// partial core. This is the optimal allocation that prefers whole
+				// cores and minimizes SMT fragmentation.
+				if requestedCPUs%smtLevel != 0 {
 					Expect(completeCoreCount).To(BeNumerically(">=", 1),
-						"3-CPU allocation on SMT-2 should include at least 1 complete core to minimize fragmentation. "+
-							"Got %d complete cores. Pod CPUs: %s", completeCoreCount, podCpuset.String())
+						"%d-CPU allocation on SMT-%d should include at least 1 complete core to minimize fragmentation. "+
+							"Got %d complete cores. Pod CPUs: %s", requestedCPUs, smtLevel, completeCoreCount, podCpuset.String())
 				}
 
 			}
@@ -1131,16 +1132,16 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 
 				completeCoreCount := 0
 				partialCoreCount := 0
-				coresProcessed := make(map[string]bool)
+				coresProcessed := sets.New[string]()
 
 				for _, cpuID := range podCpuset.List() {
 					siblings := cpuToSiblings[cpuID]
 					coreKey := siblings.String()
 
-					if coresProcessed[coreKey] {
+					if coresProcessed.Has(coreKey) {
 						continue
 					}
-					coresProcessed[coreKey] = true
+					coresProcessed.Insert(coreKey)
 
 					if siblings.IsSubsetOf(podCpuset) {
 						completeCoreCount++
@@ -1163,7 +1164,7 @@ var _ = Describe("[rfe_id:77446] LLC-aware cpu pinning", Label(string(label.Open
 				}
 
 				// Verify packing efficiency
-				coreCount := len(coresProcessed)
+				coreCount := coresProcessed.Len()
 				minCoresNeeded := (requestedCPUs + smtLevel - 1) / smtLevel
 
 				Expect(coreCount).To(Equal(minCoresNeeded),
