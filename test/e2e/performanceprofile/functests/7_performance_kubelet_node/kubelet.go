@@ -2,7 +2,6 @@ package __performance_kubelet_node_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -24,6 +23,7 @@ import (
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
 	testclient "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/client"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/hypershift"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/infrastructure"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/poolname"
@@ -41,14 +41,13 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 	)
 
 	testutils.CustomBeforeAll(func() {
-		// TODO: The code here is broken as it masks workerRTNodes defined above
-		// and the value of workerRTNodes is never used.  Keep the linter happy for now
-		// and remove the ineffectual assignment of workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes) below.
-		workerRTNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
+		var err error
+		workerRTNodes, err = nodes.GetByLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = nodes.MatchingOptionalSelector(workerRTNodes)
+		workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes)
 		Expect(err).ToNot(HaveOccurred())
+		Expect(workerRTNodes).ToNot(BeEmpty(), "no RT worker nodes found")
 
 		profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
@@ -58,6 +57,12 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 
 	})
 	Context("Additional kubelet arguments", Label(string(label.Tier2)), func() {
+		BeforeEach(func() {
+			var err error
+			profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
 		It("[test_id:45488]Test performance profile annotation for changing multiple kubelet settings", func() {
 			sysctls := "{\"allowedUnsafeSysctls\":[\"net.core.somaxconn\",\"kernel.msg*\"],\"systemReserved\":{\"memory\":\"300Mi\"},\"kubeReserved\":{\"memory\":\"768Mi\"},\"imageMinimumGCAge\":\"3m\"}"
 			profile.Annotations = updateKubeletConfigOverrideAnnotations(profile.Annotations, sysctls)
@@ -72,24 +77,25 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			profilesupdate.WaitForTuningUpdated(ctx, profile)
 
 			for _, node := range workerRTNodes {
-				kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), &node)
+				kubeletConfig, err := nodes.GetKubeletConfig(ctx, &node)
 				Expect(err).ToNot(HaveOccurred())
 				sysctlsValue := kubeletConfig.AllowedUnsafeSysctls
 				Expect(sysctlsValue).Should(ContainElements("net.core.somaxconn", "kernel.msg*"))
 				Expect(kubeletConfig.KubeReserved["memory"]).To(Equal("768Mi"))
-				Expect(kubeletConfig.ImageMinimumGCAge.Seconds()).To(Equal(180))
+				Expect(kubeletConfig.ImageMinimumGCAge.Seconds()).To(BeNumerically("==", 180))
 			}
-			kubeletArguments := []string{"/bin/bash", "-c", "ps -ef | grep kubelet | grep config"}
+
+			autoSizingCmd := []string{"cat", "/rootfs/etc/openshift/kubelet.conf.d/20-auto-sizing.conf"}
 			for _, node := range workerRTNodes {
-				out, err := nodes.ExecCommand(context.TODO(), &node, kubeletArguments)
+				out, err := nodes.ExecCommand(ctx, &node, autoSizingCmd)
 				Expect(err).ToNot(HaveOccurred())
 				stdout := testutils.ToString(out)
-				Expect(strings.Contains(stdout, "300Mi")).To(BeTrue())
+				Expect(stdout).To(ContainSubstring("300Mi"))
 			}
 		})
 		Context("When setting cpu manager related parameters", func() {
 			It("[test_id:45493]Should not override performance-addon-operator values", func() {
-				paoValues := "{\"cpuManagerPolicy\":\"static\",\"cpuManagerReconcilePeriod\":\"5s\"}"
+				paoValues := "{\"cpuManagerPolicy\":\"none\",\"cpuManagerReconcilePeriod\":\"10s\"}"
 				profile.Annotations = updateKubeletConfigOverrideAnnotations(profile.Annotations, paoValues)
 
 				By("updating Performance profile")
@@ -102,10 +108,10 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 				profilesupdate.WaitForTuningUpdated(ctx, profile)
 
 				for _, node := range workerRTNodes {
-					kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), &node)
+					kubeletConfig, err := nodes.GetKubeletConfig(ctx, &node)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(kubeletConfig.CPUManagerPolicy).Should(Equal("static"))
-					Expect(kubeletConfig.CPUManagerReconcilePeriod.Seconds()).To(Equal(5))
+					Expect(kubeletConfig.CPUManagerReconcilePeriod.Seconds()).To(BeNumerically("==", 5))
 				}
 			})
 		})
@@ -133,7 +139,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 					Name:      components.GetComponentName(profile.Name, components.ComponentNamePrefix),
 					Namespace: metav1.NamespaceNone,
 				}
-				err := testclient.ControlPlaneClient.Get(context.TODO(), configKey, &kubeletConfig)
+				err := testclient.ControlPlaneClient.Get(ctx, configKey, &kubeletConfig)
 				if err != nil {
 					klog.Warningf("Failed to get the KubeletConfig %q", configKey.Name)
 				}
@@ -144,10 +150,19 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			Expect(kubeletConfigString).To(ContainSubstring(`"kubeReserved":{"memory":"768Mi"}`))
 			Expect(kubeletConfigString).To(ContainSubstring(`"systemReserved":{"memory":"300Mi"}`))
 
-			for _, node := range workerRTNodes {
-				kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), &node)
+			// Re-fetch nodes to get current allocatable and capacity after
+			// the tuning update, since workerRTNodes was populated before the
+			// annotation was applied and its Status values are stale.
+			updatedNodes, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
+			Expect(err).ToNot(HaveOccurred())
+			updatedNodes, err = nodes.MatchingOptionalSelector(updatedNodes)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updatedNodes).ToNot(BeEmpty(), "no RT worker nodes found after update")
+
+			for _, node := range updatedNodes {
+				kubeletConfig, err := nodes.GetKubeletConfig(ctx, &node)
 				Expect(err).ToNot(HaveOccurred())
-				totalCapactity := node.Status.Capacity.Memory().MilliValue()
+				totalCapacity := node.Status.Capacity.Memory().MilliValue()
 				evictionMemory := kubeletConfig.EvictionHard["memory.available"]
 				kubeReserved := kubeletConfig.KubeReserved["memory"]
 				evictionMemoryInt, err := strconv.ParseInt(strings.TrimSuffix(evictionMemory, "Mi"), 10, 64)
@@ -158,12 +173,32 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 				kubeReservedMemoryResource := resource.NewQuantity(kubeReservedMemoryInt*1024*1024, resource.BinarySI)
 				evictionMemoryResource := resource.NewQuantity(evictionMemoryInt*1024*1024, resource.BinarySI)
 				totalKubeMemory := systemReservedResource.MilliValue() + kubeReservedMemoryResource.MilliValue() + evictionMemoryResource.MilliValue()
-				calculatedAllocatable := totalCapactity - totalKubeMemory
+
+				// Pre-allocated hugepages are subtracted from allocatable memory by the
+				// kubelet but are still included in node capacity. The standard formula
+				// Allocatable = Capacity - kubeReserved - systemReserved - evictionHard
+				// does not account for this, so we must subtract hugepages to match the
+				// actual allocatable reported by the node.
+				var totalHugepages int64
+				for resourceName, quantity := range node.Status.Capacity {
+					if strings.HasPrefix(string(resourceName), corev1.ResourceHugePagesPrefix) {
+						totalHugepages += quantity.MilliValue()
+					}
+				}
+
+				calculatedAllocatable := totalCapacity - totalKubeMemory - totalHugepages
 				currentAllocatable := node.Status.Allocatable.Memory().MilliValue()
 				Expect(calculatedAllocatable).To(Equal(currentAllocatable))
 			}
 		})
+
 		It("[test_id:45495] Test setting PAO managed parameters", func() {
+			isArm, err := infrastructure.IsARM(ctx, &workerRTNodes[0])
+			Expect(err).ToNot(HaveOccurred())
+			if isArm {
+				Skip("Changing topologyManagerPolicy is not supported on ARM architecture")
+			}
+
 			var paoParameters string
 			if *profile.Spec.NUMA.TopologyPolicy == "single-numa-node" {
 				paoParameters = "{\"topologyManagerPolicy\":\"restricted\"}"
@@ -186,7 +221,7 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 				profilesupdate.WaitForTuningUpdated(ctx, profile)
 			}
 			for _, node := range workerRTNodes {
-				kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), &node)
+				kubeletConfig, err := nodes.GetKubeletConfig(ctx, &node)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(kubeletConfig.TopologyManagerPolicy).To(Equal("single-numa-node"))
 			}
@@ -196,19 +231,23 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			By("Reverting the Profile")
 			profiles.UpdateWithRetry(initialProfile)
 
-			kubeletArguments := []string{"/bin/bash", "-c", "ps -ef | grep kubelet | grep config"}
+			By(fmt.Sprintf("Waiting for %s to be updated after revert", poolName))
+			profilesupdate.WaitForTuningUpdated(ctx, initialProfile)
+
 			for _, node := range workerRTNodes {
-				kubeletConfig, err := nodes.GetKubeletConfig(context.TODO(), &node)
+				kubeletConfig, err := nodes.GetKubeletConfig(ctx, &node)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(kubeletConfig.AllowedUnsafeSysctls).To(Equal(nil))
+				Expect(kubeletConfig.AllowedUnsafeSysctls).To(BeEmpty())
 				Expect(kubeletConfig.KubeReserved["memory"]).ToNot(Equal("768Mi"))
 				Expect(kubeletConfig.ImageMinimumGCAge.Seconds()).ToNot(Equal(180))
 			}
+
+			autoSizingCmd := []string{"cat", "/rootfs/etc/openshift/kubelet.conf.d/20-auto-sizing.conf"}
 			for _, node := range workerRTNodes {
-				out, err := nodes.ExecCommand(context.TODO(), &node, kubeletArguments)
+				out, err := nodes.ExecCommand(ctx, &node, autoSizingCmd)
 				Expect(err).ToNot(HaveOccurred())
 				stdout := testutils.ToString(out)
-				Expect(strings.Contains(stdout, "300Mi")).To(BeTrue())
+				Expect(stdout).ToNot(ContainSubstring("300Mi"))
 			}
 
 		})
@@ -216,18 +255,11 @@ var _ = Describe("[ref_id: 45487][performance]additional kubelet arguments", Ord
 			By("Reverting the Profile")
 			profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
-			currentSpec, _ := json.Marshal(profile.Spec)
-			spec, _ := json.Marshal(initialProfile.Spec)
-			// revert only if the profile changes.
-			if !equality.Semantic.DeepEqual(currentSpec, spec) {
+			if !equality.Semantic.DeepEqual(profile.Spec, initialProfile.Spec) || !equality.Semantic.DeepEqual(profile.Annotations, initialProfile.Annotations) {
 				profiles.UpdateWithRetry(initialProfile)
 
-				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-				profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
-
-				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
+				By(fmt.Sprintf("Waiting for %s to be updated after revert", poolName))
 				profilesupdate.WaitForTuningUpdated(ctx, initialProfile)
-
 			}
 		})
 
