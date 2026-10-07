@@ -607,12 +607,11 @@ func ContainerPid(ctx context.Context, node *corev1.Node, containerId string) (s
 	Eventually(func() []byte {
 		cmd := []string{"/usr/sbin/chroot", "/rootfs", "crictl", "inspect", containerId}
 		cridata, err = ExecCommand(ctx, node, cmd)
-		Expect(err).ToNot(HaveOccurred(), "failed to run %s cmd", cmd)
 		return cridata
 	}, 10*time.Second, 5*time.Second).ShouldNot(BeEmpty())
 	err = json.Unmarshal(cridata, &criInfo)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to get container Info after retries: %w", err)
 	}
 	return strconv.Itoa(criInfo.Info.Pid), err
 }
@@ -634,7 +633,6 @@ func CpuManagerCpuSet(ctx context.Context, node *corev1.Node) (cpuset.CPUSet, er
 	if err != nil {
 		return cpuset.New(), err
 	}
-	fmt.Println("cpuset = ", nodeCpuSet.String())
 	return nodeCpuSet, err
 }
 
