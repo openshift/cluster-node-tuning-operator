@@ -589,6 +589,38 @@ func WaitForNotReadyOrFail(tag, nodeName string, timeout, polling time.Duration)
 	testlog.Infof("%s: node %q: reported not ready", tag, nodeName)
 }
 
+// GetBootID returns the node's current boot identifier as reported by kubelet
+// (status.nodeInfo.bootID). It changes on every reboot, so it is a reliable
+// signal that a node has actually restarted.
+func GetBootID(nodeName string) (string, error) {
+	node, err := GetByName(nodeName)
+	if err != nil {
+		return "", err
+	}
+	return node.Status.NodeInfo.BootID, nil
+}
+
+// WaitForRebootedOrFail waits for the node to come back Ready with a boot
+// identifier different from previousBootID, confirming an actual reboot
+// completed.
+//
+// A changed bootID is used instead of observing a Ready->NotReady->Ready
+// transition: the latter races with any leftover NotReady state (for example a
+// previous reboot attempt that was still in progress), and the reboot command
+// itself ("systemctl reboot") severs the connection and returns no usable
+// result, so the only trustworthy confirmation is the kernel reporting a fresh
+// boot.
+func WaitForRebootedOrFail(tag, nodeName, previousBootID string, timeout, polling time.Duration) {
+	testlog.Infof("%s: waiting for node %q to reboot (previous bootID %q)", tag, nodeName, previousBootID)
+	WaitForState(tag, nodeName, timeout, polling, func(node *corev1.Node) bool {
+		bootID := node.Status.NodeInfo.BootID
+		ready := isNodeReady(*node)
+		testlog.Infof("node %q ready=%v bootID=%q", nodeName, ready, bootID)
+		return ready && bootID != "" && bootID != previousBootID
+	})
+	testlog.Infof("%s: node %q: rebooted and ready", tag, nodeName)
+}
+
 func isNodeReady(node corev1.Node) bool {
 	for _, c := range node.Status.Conditions {
 		if c.Type == corev1.NodeReady {
