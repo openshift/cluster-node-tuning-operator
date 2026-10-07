@@ -97,7 +97,7 @@ $(GOBINDATA_BIN):
 	$(GO) build -o $(GOBINDATA_BIN) ./vendor/github.com/kevinburke/go-bindata/go-bindata
 
 test-e2e: $(BINDATA)
-	for d in core basic reboots reboots/sno deferred; do \
+	for d in core basic reboots reboots/sno deferred security; do \
 	  KUBERNETES_CONFIG="$(KUBECONFIG)" $(GO) test -v -timeout 40m ./test/e2e/$$d -ginkgo.v -ginkgo.no-color -ginkgo.fail-fast -ginkgo.label-filter=!flaky || exit; \
 	done
 
