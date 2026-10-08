@@ -35,7 +35,7 @@ const numberOfCoresThatRequiredCancelingSMTAlignment = 4
 const ovsSliceCgroupBase = "/rootfs/sys/fs/cgroup/ovs.slice"
 const crioRuntimesConfigFile = "/rootfs/etc/crio/crio.conf.d/99-runtimes.conf"
 
-var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDpdk), string(label.Slow), string(label.Tier2)), func() {
+var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDpdk), string(label.Slow)), func() {
 	var (
 		workerRTNodes  []corev1.Node
 		initialProfile *performancev2.PerformanceProfile
@@ -121,7 +121,7 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 			Expect(workerRTNodes).ToNot(BeEmpty())
 		})
 
-		It("[test_id:89987] should apply ovsDpdk CPU node configuration", func() {
+		It("[test_id:89987] should apply ovsDpdk CPU node configuration", Label(string(label.Tier1)), func() {
 			ctx := context.TODO()
 			node := &workerRTNodes[0]
 			testlog.Infof("Verifying node %s", node.Name)
@@ -180,11 +180,11 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 			verifyOvsDpdkSlice(ctx, node, ovsDpdkSet, "isolated")
 		})
 
-		It("[test_id:89989] should preserve ovsDpdk CPU IRQ banning across GU pod lifecycle", func() {
+		It("[test_id:89989] should preserve ovsDpdk CPU IRQ banning across GU pod lifecycle", Label(string(label.Tier2)), func() {
 			verifyOvsDpdkIRQBanningAcrossGUPodLifecycle(context.TODO(), &workerRTNodes[0], profile, ovsDpdkSet, smtAlignmentDisabled)
 		})
 
-		It("[test_id:89992] should keep ovsDpdk CPUs outside kernel scheduling domains", func() {
+		It("[test_id:89992] should keep ovsDpdk CPUs outside kernel scheduling domains", Label(string(label.Tier2)), func() {
 			ctx := context.TODO()
 			node := &workerRTNodes[0]
 			testlog.Infof("Verifying node %s", node.Name)
@@ -235,7 +235,7 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 			verifyOvsDpdkOutsideSchedDomains(ctx, node, ovsDpdkSet)
 		})
 
-		It("[test_id:89993] should keep ovsDpdk IRQ ban after node reboot", func() {
+		It("[test_id:89993] should keep ovsDpdk IRQ ban after node reboot", Label(string(label.Tier3)), func() {
 			ctx := context.TODO()
 			node := &workerRTNodes[0]
 			testlog.Infof("Verifying node %s", node.Name)
@@ -249,7 +249,7 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 		})
 
 		// Keep this It last in the Context: it removes ovsDpdk and does not restore it.
-		It("[test_id:89997] should clean up all ovsDpdk artifacts when ovsDpdk is removed", func() {
+		It("[test_id:89997] should clean up all ovsDpdk artifacts when ovsDpdk is removed", Label(string(label.Tier2)), func() {
 			ctx := context.TODO()
 			node := &workerRTNodes[0]
 			testlog.Infof("Verifying node %s", node.Name)
@@ -346,7 +346,7 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 			Expect(workerRTNodes).ToNot(BeEmpty())
 		})
 
-		It("[test_id:89988] should configure ovsdpdk.slice with partition=member", func() {
+		It("[test_id:89988] should configure ovsdpdk.slice with partition=member", Label(string(label.Tier2)), func() {
 			ctx := context.TODO()
 			node := &workerRTNodes[0]
 			testlog.Infof("Verifying node %s", node.Name)
@@ -369,11 +369,11 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 			verifyOvsDpdkSlice(ctx, node, ovsDpdkSet, "member")
 		})
 
-		It("[test_id:89990] should preserve ovsDpdk CPU IRQ banning across GU pod lifecycle", func() {
+		It("[test_id:89990] should preserve ovsDpdk CPU IRQ banning across GU pod lifecycle", Label(string(label.Tier2)), func() {
 			verifyOvsDpdkIRQBanningAcrossGUPodLifecycle(context.TODO(), &workerRTNodes[0], profile, ovsDpdkSet, smtAlignmentDisabled)
 		})
 
-		It("[test_id:89996] should ensure ovsdpdk.slice survives ovs-vswitchd service restart", func() {
+		It("[test_id:89996] should ensure ovsdpdk.slice survives ovs-vswitchd service restart", Label(string(label.Tier3)), func() {
 			ctx := context.TODO()
 			node := &workerRTNodes[0]
 			testlog.Infof("Verifying node %s", node.Name)
@@ -396,7 +396,7 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 			verifyOvsDpdkSlice(ctx, node, ovsDpdkSet, "member")
 		})
 
-		It("[test_id:89994] should update isolation when ovsDpdk CPUs are expanded", func() {
+		It("[test_id:89994] should update isolation when ovsDpdk CPUs are expanded", Label(string(label.Tier2)), func() {
 			ctx := context.TODO()
 			node := &workerRTNodes[0]
 			testlog.Infof("Verifying node %s", node.Name)
@@ -439,7 +439,7 @@ var _ = Describe("[performance] ovsDpdk CPUs", Ordered, Label(string(label.OvsDp
 		})
 
 		// Keep this It last in the Describe: relies on AfterAll to revert mixedCpus/shared (and prior expand); done so to save a reboot.
-		It("[test_id:89995] should coexist with mixed CPUs", Label(string(label.MixedCPUs)), func() {
+		It("[test_id:89995] should coexist with mixed CPUs", Label(string(label.MixedCPUs), string(label.Tier3)), func() {
 			ctx := context.TODO()
 			node := &workerRTNodes[0]
 			testlog.Infof("Verifying node %s", node.Name)
