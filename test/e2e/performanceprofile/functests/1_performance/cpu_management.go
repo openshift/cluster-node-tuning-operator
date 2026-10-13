@@ -174,25 +174,23 @@ var _ = Describe("[rfe_id:27363][performance] CPU Management", Ordered, func() {
 			// infrastructure pods have cpu affinity matching reserved cpu otherwise
 			// it should have affinity of reserved plus available isolated cpus
 			By("Checking CPU Affinity of Infrastructure pods like tuned")
-			tunedPod := nodes.TunedForNode(workerRTNode, false)
-			ctnName, err := pods.GetContainerIDByName(tunedPod, tunedPod.Spec.Containers[0].Name)
-			Expect(err).ToNot(HaveOccurred())
-			pid, err := nodes.ContainerPid(ctx, workerRTNode, ctnName)
-			Expect(err).ToNot(HaveOccurred())
-			taskSetcmd := []string{"taskset", "-pc", pid}
-			taskSetOutput, err := nodes.ExecCommand(ctx, workerRTNode, taskSetcmd)
-			Expect(err).ToNot(HaveOccurred(), "Unable to get taskset output")
-			ctnCpuset, err := parseTasksetOutput(taskSetOutput)
-			Expect(err).ToNot(HaveOccurred(), "Unable to parse taskset output")
-			testlog.Infof("Tuned Pod affinity: %s", ctnCpuset.String())
-			kubeletConfig, err := nodes.GetKubeletConfig(ctx, workerRTNode)
-			Expect(err).ToNot(HaveOccurred(), "Unable to fetch kubelet config")
-			cpuReservationPolicy := kubeletConfig.CPUManagerPolicyOptions["strict-cpu-reservation"]
-			if checkForWorkloadPartitioning(ctx) || (cpuReservationPolicy == "true") {
-				Expect(ctnCpuset).To(Equal(reservedCPUSet))
-			} else {
-				Expect(ctnCpuset).To(Equal(onlineCPUSet))
-			}
+			Eventually(func() error {
+				// 1. Fetch fresh tuned container PID and taskset affinity
+				tunedCtnCpuset, err := getTunedPodAffinity(ctx, workerRTNode)
+				if err != nil {
+					return fmt.Errorf("Unable to fetch tunedPod cpus: %v", err)
+				}
+				testlog.Infof("Tuned Pod affinity: %s", tunedCtnCpuset.String())
+				availableCPUSet, err := expectedInfraPodAffinity(ctx, workerRTNode, reservedCPUSet)
+				if err != nil {
+					return fmt.Errorf("Unable to fetch available cpuset from cpumanager: %v", err)
+				}
+				if !tunedCtnCpuset.Equals(availableCPUSet) {
+					return fmt.Errorf("container CPU affinity (%s) does not match CPU manager available CPUs (%s) yet",
+						tunedCtnCpuset.String(), availableCPUSet.String())
+				}
+				return nil
+			}).WithTimeout(5*time.Minute).WithPolling(10*time.Second).Should(Succeed(), "Infrastructure pod CPU affinity should match available CPUs from CPU manager state")
 		})
 
 		It("[test_id:34358] Verify rcu_nocbs kernel argument on the node", func() {
@@ -1597,4 +1595,49 @@ func parseTasksetOutput(output []byte) (cpuset.CPUSet, error) {
 		return cpuset.CPUSet{}, fmt.Errorf("invalid taskset output format: %s", affinityStr)
 	}
 	return cpuset.Parse(strings.TrimSpace(parts[1]))
+}
+
+func getTunedPodAffinity(ctx context.Context, workerRTNode *corev1.Node) (cpuset.CPUSet, error) {
+	GinkgoHelper()
+	tunedPod := nodes.TunedForNode(workerRTNode, false)
+	if tunedPod == nil || len(tunedPod.Spec.Containers) == 0 {
+		return cpuset.New(), fmt.Errorf("tuned pod or container spec not found on node %s", workerRTNode)
+	}
+	ctnName, err := pods.GetContainerIDByName(tunedPod, tunedPod.Spec.Containers[0].Name)
+	if err != nil {
+		return cpuset.New(), fmt.Errorf("failed to get tuned container: %v", err)
+	}
+	pid, err := nodes.ContainerPid(ctx, workerRTNode, ctnName)
+	if err != nil {
+		return cpuset.New(), fmt.Errorf("failed to get tuned pid: %v", err)
+	}
+	taskSetcmd := []string{"taskset", "-pc", pid}
+	taskSetOutput, err := nodes.ExecCommand(ctx, workerRTNode, taskSetcmd)
+	if err != nil {
+		return cpuset.New(), fmt.Errorf("Unable to get taskset output: %v", err)
+	}
+	ctnCpuset, err := parseTasksetOutput(taskSetOutput)
+	return ctnCpuset, err
+}
+
+func expectedInfraPodAffinity(ctx context.Context, node *corev1.Node, reservedCPUSet cpuset.CPUSet) (cpuset.CPUSet, error) {
+	GinkgoHelper()
+	var strictReservationPolicy string
+	kubeletConfig, err := nodes.GetKubeletConfig(ctx, workerRTNode)
+	if err != nil {
+		return cpuset.New(), fmt.Errorf("Unable to fetch kubelet config: %v", err)
+	}
+	if kubeletConfig != nil && kubeletConfig.CPUManagerPolicyOptions != nil {
+		strictReservationPolicy = kubeletConfig.CPUManagerPolicyOptions["strict-cpu-reservation"]
+	}
+	if checkForWorkloadPartitioning(ctx) || strictReservationPolicy == "true" {
+		testlog.Info("WP or strict-cpu-reservation enabled → expecting reserved CPUs")
+		return reservedCPUSet, nil
+	}
+	availableCPUSet, err := nodes.CpuManagerCpuSet(ctx, node)
+	if err != nil {
+		return cpuset.New(), fmt.Errorf("unable to get CPU manager state: %w", err)
+	}
+	testlog.Infof("Available CPUs from CPU manager: %s", availableCPUSet.String())
+	return availableCPUSet, nil
 }
