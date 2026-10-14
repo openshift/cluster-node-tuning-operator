@@ -156,7 +156,7 @@ type CPUfrequency int
 
 // HardwareTuning defines a set of CPU frequency related features.
 type HardwareTuning struct {
-	// IsolatedCpuFreq defines a minimum frequency to be set across isolated cpus
+	// IsolatedCpuFreq defines a maximum frequency to be set across isolated cpus
 	IsolatedCpuFreq *CPUfrequency `json:"isolatedCpuFreq,omitempty"`
 	// ReservedCpuFreq defines a maximum frequency to be set across reserved cpus
 	ReservedCpuFreq *CPUfrequency `json:"reservedCpuFreq,omitempty"`
