@@ -74,7 +74,7 @@ HardwareTuning defines a set of CPU frequency related features.
 
 | Field | Description | Scheme | Required |
 | ----- | ----------- | ------ | -------- |
-| isolatedCpuFreq | IsolatedCpuFreq defines a minimum frequency to be set across isolated cpus | *[CPUfrequency](#cpufrequency) | false |
+| isolatedCpuFreq | IsolatedCpuFreq defines a maximum frequency to be set across isolated cpus | *[CPUfrequency](#cpufrequency) | false |
 | reservedCpuFreq | ReservedCpuFreq defines a maximum frequency to be set across reserved cpus | *[CPUfrequency](#cpufrequency) | false |
 
 [Back to TOC](#table-of-contents)

@@ -130,7 +130,7 @@ spec:
                   type: object
                   properties:
                     isolatedCpuFreq:
-                      description: IsolatedCpuFreq defines a minimum frequency to be set across isolated cpus
+                      description: IsolatedCpuFreq defines a maximum frequency to be set across isolated cpus
                       type: integer
                     reservedCpuFreq:
                       description: ReservedCpuFreq defines a maximum frequency to be set across reserved cpus
@@ -573,7 +573,7 @@ spec:
                   type: object
                   properties:
                     isolatedCpuFreq:
-                      description: IsolatedCpuFreq defines a minimum frequency to be set across isolated cpus
+                      description: IsolatedCpuFreq defines a maximum frequency to be set across isolated cpus
                       type: integer
                     reservedCpuFreq:
                       description: ReservedCpuFreq defines a maximum frequency to be set across reserved cpus
