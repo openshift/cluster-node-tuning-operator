@@ -83,6 +83,9 @@ spec:
                     tunedProfile:
                       description: TuneD profile to apply
                       type: string
+                      maxLength: 255
+                      minLength: 1
+                      pattern: ^[A-Za-z0-9_][A-Za-z0-9_.-]*$
                     verbosity:
                       description: klog logging verbosity
                       type: integer
@@ -102,7 +105,9 @@ spec:
                       name:
                         description: Name of the Tuned profile to be used in the recommend section.
                         type: string
+                        maxLength: 255
                         minLength: 1
+                        pattern: ^[A-Za-z0-9_][A-Za-z0-9_.-]*$
             status:
               description: |-
                 ProfileStatus is the status for a Profile resource; the status is for internal use only
