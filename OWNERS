@@ -3,6 +3,7 @@ approvers:
   - MarSik
   - ffromani
   - yanirq
+  - Tal-or
 reviewers:
   - jmencak
   - MarSik
@@ -10,5 +11,5 @@ reviewers:
   - ffromani
   - Tal-or
   - swatisehgal
-  - rbaturov
+  - tavital
 component: "Node Tuning Operator"
