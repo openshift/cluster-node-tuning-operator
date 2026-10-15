@@ -3,7 +3,6 @@ package __performance_kubelet_node_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -33,9 +32,7 @@ import (
 	testlog "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/log"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/pods"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/poolname"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/systemd"
 )
 
@@ -58,8 +55,7 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 		isolatedCPUSet                cpuset.CPUSet
 		workerRTNode                  *corev1.Node
 		workerRTNodes                 []corev1.Node
-		profile, initialProfile       *performancev2.PerformanceProfile
-		poolName                      string
+		profile                       *performancev2.PerformanceProfile
 		ovsSliceCgroup                string
 		ctx                           context.Context = context.Background()
 		ovsSystemdServices            []string
@@ -88,8 +84,6 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 
 		profile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
-
-		poolName = poolname.GetByProfile(ctx, profile)
 
 		isCgroupV2, err = cgroup.IsVersion2(ctx, testclient.DataPlaneClient)
 		Expect(err).ToNot(HaveOccurred())
@@ -160,56 +154,19 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 
 		})
 
-		Context("[Performance Profile Modified]", Label(string(label.Tier1)), func() {
-			BeforeEach(func() {
-				initialProfile = profile.DeepCopy()
-			})
+		Context("[Node Reboot]", Label(string(label.Tier1)), func() {
 			It("[test_id:64099] Activation file doesn't get deleted", func() {
-				policy := "best-effort"
-				// Need to make some changes to pp , causing system reboot
-				// and check if activation files is modified or deleted
-				profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-				Expect(err).ToNot(HaveOccurred(), "Unable to fetch latest performance profile")
-				currentPolicy := profile.Spec.NUMA.TopologyPolicy
-				if *currentPolicy == "best-effort" {
-					policy = "restricted"
-				}
-				profile.Spec.NUMA = &performancev2.NUMA{
-					TopologyPolicy: &policy,
-				}
-				By("Updating the performance profile")
-				profiles.UpdateWithRetry(profile)
-
-				By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-				profilesupdate.WaitForTuningUpdating(ctx, profile)
-
-				By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-				profilesupdate.WaitForTuningUpdated(ctx, profile)
+				By(fmt.Sprintf("Rebooting the worker node %q", workerRTNode.Name))
+				_, _ = nodes.ExecCommand(ctx, workerRTNode, []string{"sh", "-c", "chroot /rootfs systemctl reboot"})
+				nodes.WaitForNotReadyOrFail("Reboot", workerRTNode.Name, 10*time.Minute, 30*time.Second)
+				nodes.WaitForReadyOrFail("Reboot", workerRTNode.Name, 10*time.Minute, 30*time.Second)
 
 				By("Checking Activation file")
 				cmd := []string{"ls", activation_file}
-				for _, node := range workerRTNodes {
-					output, err := nodes.ExecCommand(context.TODO(), &node, cmd)
-					Expect(err).ToNot(HaveOccurred(), "file %s doesn't exist ", activation_file)
-					out := testutils.ToString(output)
-					Expect(out).To(Equal(activation_file))
-				}
-			})
-			AfterEach(func() {
-				By("Reverting the Profile")
-				profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
-				Expect(err).ToNot(HaveOccurred())
-				currentSpec, _ := json.Marshal(profile.Spec)
-				spec, _ := json.Marshal(initialProfile.Spec)
-				if !bytes.Equal(currentSpec, spec) {
-					profiles.UpdateWithRetry(initialProfile)
-
-					By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-					profilesupdate.WaitForTuningUpdating(ctx, profile)
-
-					By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-					profilesupdate.WaitForTuningUpdated(ctx, profile)
-				}
+				output, err := nodes.ExecCommand(context.TODO(), workerRTNode, cmd)
+				Expect(err).ToNot(HaveOccurred(), "file %s doesn't exist", activation_file)
+				out := testutils.ToString(output)
+				Expect(out).To(Equal(activation_file))
 			})
 		})
 	})
