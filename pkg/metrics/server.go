@@ -138,9 +138,13 @@ func buildServer(port int, caBundle string) *http.Server {
 	router := http.NewServeMux()
 	router.Handle("/metrics", clientAuthHandler)
 	srv := &http.Server{
-		Addr:      bindAddr,
-		Handler:   router,
-		TLSConfig: tlsConfig,
+		Addr:              bindAddr,
+		Handler:           router,
+		TLSConfig:         tlsConfig,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	return srv

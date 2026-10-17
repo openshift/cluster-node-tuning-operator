@@ -63,22 +63,25 @@ metadata:
   namespace: openshift-cluster-node-tuning-operator
 spec:
   ingress:
-  - ports:
+  - from:
+    # Only access from the openshift-monitoring namespace is needed.
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: openshift-monitoring
+    ports:
     - port: 60000
       protocol: TCP
-    # In theory, only access from the openshift-monitoring namespace is needed.
-    # However, our e2e tests access the server from ns/openshift-cluster-node-tuning-operator.
-    # from:
-    # - namespaceSelector:
-    #     matchLabels:
-    #       name: openshift-monitoring
   podSelector:
     matchLabels:
       name: cluster-node-tuning-operator
   policyTypes:
   - Ingress
 
-# Allow access to the webhook server.
+# Allow access to the webhook server from host-network pods, i.e. the
+# kube-apiserver.  OpenShift SDN and OVN-Kubernetes classify all host-network
+# traffic (from any node) as the "openshift-host-network" namespace; selecting
+# it is the narrowest reliable match for the kube-apiserver, which has no
+# identity of its own.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -93,7 +96,11 @@ metadata:
   namespace: openshift-cluster-node-tuning-operator
 spec:
   ingress:
-  - ports:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          policy-group.network.openshift.io/host-network: ""
+    ports:
     - port: 4343
       protocol: TCP
   podSelector:
