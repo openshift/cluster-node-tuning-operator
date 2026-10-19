@@ -33,8 +33,7 @@ func main() {
 		Name:    "openshift/cluster-node-tuning-operator/conformance/parallel",
 		Parents: []string{"openshift/conformance/parallel"},
 		Qualifiers: []string{
-			`(labels.exists(l, l=="ReleaseGate")) &&
-			!(name.contains("[Serial]") || name.contains("[Slow]") || name.contains("[Disruptive]"))`,
+			`!(name.contains("[Serial]") || name.contains("[Slow]") || name.contains("[Disruptive]")) && !name.contains("[Manual]")`,
 		},
 	})
 
@@ -43,45 +42,53 @@ func main() {
 		Name:    "openshift/cluster-node-tuning-operator/conformance/serial",
 		Parents: []string{"openshift/conformance/serial"},
 		Qualifiers: []string{
-			`(labels.exists(l, l=="ReleaseGate")) &&
-			name.contains("[Serial]") && !name.contains("[Disruptive]")`,
+			`name.contains("[Serial]") && !name.contains("[Disruptive]") && !name.contains("[Manual]")`,
 			// refer to https://github.com/openshift/origin/blob/main/pkg/testsuites/standard_suites.go
 		},
 	})
 
 	// Suite: disruptive
 	// See: https://github.com/openshift/release/blob/508c08ff3d8dbff48604b94484a0ce63983710ba/ci-operator/config/openshift/release/openshift-release-main__nightly-4.22.yaml#L2462
+	// This suite currently doesn't run in any CI jobs.
 	ext.AddSuite(e.Suite{
-		Name:    "openshift/cluster-node-tuning-operator/disruptive",
-		Parents: []string{"openshift/disruptive-longrunning"},
+		Name: "openshift/cluster-node-tuning-operator/disruptive",
+		// Tests running in the "openshift/disruptive-longrunning" parent suite already struggle to complete within 4 hours.
+		// Create a separate openshift/release config for this if it is decided to run these in the CI.
 		Qualifiers: []string{
-			`(labels.exists(l, l=="ReleaseGate")) &&
-			name.contains("[Disruptive]")`,
+			`name.contains("[Disruptive]") && !name.contains("[Manual]")`,
 		},
 	})
 
 	// Suite: optional/slow (long-running tests)
+	// This suite doesn't run in any CI jobs.
 	ext.AddSuite(e.Suite{
-		Name:    "openshift/cluster-node-tuning-operator/optional/slow",
-		Parents: []string{"openshift/optional/slow"},
+		Name: "openshift/cluster-node-tuning-operator/optional/slow",
 		Qualifiers: []string{
-			`(labels.exists(l, l=="ReleaseGate")) &&
-			name.contains("[Slow]") && !name.contains("[Disruptive]")`,
+			`name.contains("[Slow]") && !name.contains("[Disruptive]") && !name.contains("[Manual]")`,
 		},
 	})
 
-	// Suite: all (includes everything)
+	// Suite: all (includes everything except [Manual] tests)
 	ext.AddSuite(e.Suite{
-		Name: "openshift/cluster-node-tuning-operator/all",
-		Qualifiers: []string{
-			`(labels.exists(l, l=="ReleaseGate"))`,
-		},
+		Name:       "openshift/cluster-node-tuning-operator/all",
+		Qualifiers: []string{`!name.contains("[Manual]")`},
 	})
 
 	specs, err := g.BuildExtensionTestSpecsFromOpenShiftGinkgoSuite()
 	if err != nil {
 		panic(fmt.Sprintf("couldn't build extension test specs from ginkgo: %+v", err.Error()))
 	}
+
+	// Ensure [Disruptive] tests are also [Serial]
+	specs = specs.Walk(func(spec *et.ExtensionTestSpec) {
+		if strings.Contains(spec.Name, "[Disruptive]") && !strings.Contains(spec.Name, "[Serial]") {
+			spec.Name = strings.ReplaceAll(
+				spec.Name,
+				"[Disruptive]",
+				"[Serial][Disruptive]",
+			)
+		}
+	})
 
 	// Preserve original-name labels for renamed tests
 	specs = specs.Walk(func(spec *et.ExtensionTestSpec) {
@@ -93,16 +100,6 @@ func main() {
 				}
 			}
 		}
-	})
-
-	// Ignore obsolete tests
-	ext.IgnoreObsoleteTests(
-	// "[sig-node-tuning] <test name here>",
-	)
-
-	// Initialize environment before running any tests
-	specs.AddBeforeAll(func() {
-		// do stuff
 	})
 
 	ext.AddSpecs(specs)
