@@ -218,6 +218,13 @@ var _ = Describe("[performance] Latency Test", Ordered, func() {
 		BeforeEach(func() {
 			maximumLatency, err = getMaximumLatency(testName)
 			Expect(err).ToNot(HaveOccurred())
+
+			if profile.Spec.CPU.Isolated == nil {
+				Skip(fmt.Sprintf("Skip the hwlatdetect test, the profile %q does not have isolated CPUs", profile.Name))
+			}
+			if _, ok := os.LookupEnv("LATENCY_TEST_CPUS"); !ok {
+				Fail("LATENCY_TEST_CPUS must be set for the hwlatdetect test")
+			}
 		})
 
 		It("should succeed", func() {
