@@ -34,6 +34,7 @@ const (
 	hwlatdetecMaxLatency     = "HWLATDETECT_MAXIMUM_LATENCY"
 	cyclictestMaxLatency     = "CYCLICTEST_MAXIMUM_LATENCY"
 	latencyTestCpus          = "LATENCY_TEST_CPUS"
+	hwlatdetectTargetAllCpus = "HWLATDETECT_TARGET_ALL_CPUS"
 	//invalid values error messages
 	unexpectedError = "Unexpected error"
 	//incorrect values error messages
@@ -44,6 +45,7 @@ const (
 	minimumCpuForOslat                 = "2"
 	mustBePositiveInt                  = ".*it must be a positive integer with maximum value of " + maxInt
 	mustBeNonNegativeInt               = ".*it must be a non-negative integer with maximum value of " + maxInt
+	mustBeBool                         = `.*it must be either "true" or "false"`
 	incorrectCpuNumber                 = incorrectMsgPart1 + latencyTestCpus + incorrectMsgPart2 + mustBePositiveInt
 	invalidCpuNumber                   = incorrectMsgPart1 + latencyTestCpus + invalidNumber + mustBePositiveInt
 	incorrectDelay                     = incorrectMsgPart1 + latencyTestDelay + incorrectMsgPart2 + mustBeNonNegativeInt
@@ -60,8 +62,12 @@ const (
 	invalidNumberHwlatdetectMaxLatency = incorrectMsgPart1 + "\"" + hwlatdetecMaxLatency + "\"" + invalidNumber + mustBeNonNegativeInt
 	incorrectRuntime                   = incorrectMsgPart1 + latencyTestRuntime + incorrectMsgPart2 + mustBePositiveInt
 	invalidNumberRuntime               = incorrectMsgPart1 + latencyTestRuntime + invalidNumber + mustBePositiveInt
+	incorrectTargetAllCpus             = incorrectMsgPart1 + hwlatdetectTargetAllCpus + incorrectMsgPart2 + mustBeBool
 	//success messages regex
 	success = `SUCCESS.*1 Passed.*0 Failed.*2 Skipped`
+	//hwlatdetect messages regex
+	hwlatdetectAllCpusMsg = `running hwlatdetect across all possible CPUs`
+	hwlatdetectPodCpusMsg = `CPUs assigned to the pod:`
 	//failure messages regex
 	latencyFail = `The maximum latency measured .* is bigger than the expected one`
 	fail        = `FAIL.*0 Passed.*1 Failed.*2 Skipped`
@@ -82,6 +88,9 @@ const (
 	windowSize              = "1000000"
 	negativeTesting         = false
 	positiveTesting         = true
+	// misspelledBoolValue is an intentionally invalid boolean string used to verify that
+	// HWLATDETECT_TARGET_ALL_CPUS rejects values that are not exactly "true" or "false".
+	misspelledBoolValue = "flase"
 )
 
 // Struct to hold each test parameters
@@ -93,6 +102,7 @@ type latencyTest struct {
 	oslatMaxLatency       string
 	cyclictestMaxLatency  string
 	hwlatdetectMaxLatency string
+	targetAllCpus         string
 	testCpus              string
 	outputMsgs            []string
 	toolToTest            string
@@ -206,6 +216,9 @@ func setEnvAndGetDescription(tst latencyTest) string {
 	if tst.testCpus != "" {
 		setEnvWriteDescription(latencyTestCpus, tst.testCpus, sb, &nonDefaultValues)
 	}
+	if tst.targetAllCpus != "" {
+		setEnvWriteDescription(hwlatdetectTargetAllCpus, tst.targetAllCpus, sb, &nonDefaultValues)
+	}
 	if !nonDefaultValues {
 		fmt.Fprint(sb, "With default values of the environment variables")
 	}
@@ -228,6 +241,7 @@ func clearEnv() {
 	os.Unsetenv(cyclictestMaxLatency)
 	os.Unsetenv(hwlatdetecMaxLatency)
 	os.Unsetenv(latencyTestCpus)
+	os.Unsetenv(hwlatdetectTargetAllCpus)
 }
 
 func getValidValuesTests(toolToTest string) []latencyTest {
@@ -265,6 +279,12 @@ func getValidValuesTests(toolToTest string) []latencyTest {
 		testSet = append(testSet, latencyTest{testRuntime: successRuntime, testMaxLatency: "1", hwlatdetectMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
 		testSet = append(testSet, latencyTest{testRuntime: successRuntime, hwlatdetectMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
 		testSet = append(testSet, latencyTest{testRuntime: successRuntime, testMaxLatency: untunedLatencyThreshold, outputMsgs: []string{success}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
+		// HWLATDETECT_TARGET_ALL_CPUS unset defaults to "false", so the test targets only the CPUs assigned to the pod.
+		testSet = append(testSet, latencyTest{testRuntime: successRuntime, hwlatdetectMaxLatency: untunedLatencyThreshold, testCpus: "4", outputMsgs: []string{success, hwlatdetectPodCpusMsg}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
+		// HWLATDETECT_TARGET_ALL_CPUS explicitly set to "false" behaves the same as unset (target only the pod CPUs).
+		testSet = append(testSet, latencyTest{testRuntime: successRuntime, hwlatdetectMaxLatency: untunedLatencyThreshold, testCpus: "4", targetAllCpus: "false", outputMsgs: []string{success, hwlatdetectPodCpusMsg}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
+		// HWLATDETECT_TARGET_ALL_CPUS set to "true" targets all the online CPUs on the node.
+		testSet = append(testSet, latencyTest{testRuntime: successRuntime, hwlatdetectMaxLatency: untunedLatencyThreshold, testCpus: "4", targetAllCpus: "true", outputMsgs: []string{success, hwlatdetectAllCpusMsg}, toolToTest: toolToTest, ginkgoTimeout: successGinkgoTimeout})
 	}
 	return testSet
 }
@@ -325,6 +345,8 @@ func getNegativeTests(toolToTest string) []latencyTest {
 		testSet = append(testSet, latencyTest{testRuntime: "2", hwlatdetectMaxLatency: "&", outputMsgs: []string{incorrectHwlatdetectMaxLatency, fail}, toolToTest: toolToTest})
 		testSet = append(testSet, latencyTest{testRuntime: "2", hwlatdetectMaxLatency: fmt.Sprint(math.MaxInt32 + 1), outputMsgs: []string{invalidNumberHwlatdetectMaxLatency, fail}, toolToTest: toolToTest})
 		testSet = append(testSet, latencyTest{testRuntime: "2", hwlatdetectMaxLatency: "-3", outputMsgs: []string{invalidNumberHwlatdetectMaxLatency, fail}, toolToTest: toolToTest})
+		// HWLATDETECT_TARGET_ALL_CPUS must be either "true" or "false", reject any other value.
+		testSet = append(testSet, latencyTest{testRuntime: "2", hwlatdetectMaxLatency: untunedLatencyThreshold, testCpus: "4", targetAllCpus: misspelledBoolValue, outputMsgs: []string{incorrectTargetAllCpus, fail}, toolToTest: toolToTest})
 	}
 	return testSet
 }
