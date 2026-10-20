@@ -68,6 +68,8 @@ const (
 	//hwlatdetect messages regex
 	hwlatdetectAllCpusMsg = `running hwlatdetect across all possible CPUs`
 	hwlatdetectPodCpusMsg = `CPUs assigned to the pod:`
+	//hwlatdetect required env message regex
+	hwlatdetectCpusRequired = `LATENCY_TEST_CPUS must be set for the hwlatdetect test`
 	//failure messages regex
 	latencyFail = `The maximum latency measured .* is bigger than the expected one`
 	fail        = `FAIL.*0 Passed.*1 Failed.*2 Skipped`
@@ -345,6 +347,7 @@ func getNegativeTests(toolToTest string) []latencyTest {
 		testSet = append(testSet, latencyTest{testRuntime: "2", hwlatdetectMaxLatency: "&", outputMsgs: []string{incorrectHwlatdetectMaxLatency, fail}, toolToTest: toolToTest})
 		testSet = append(testSet, latencyTest{testRuntime: "2", hwlatdetectMaxLatency: fmt.Sprint(math.MaxInt32 + 1), outputMsgs: []string{invalidNumberHwlatdetectMaxLatency, fail}, toolToTest: toolToTest})
 		testSet = append(testSet, latencyTest{testRuntime: "2", hwlatdetectMaxLatency: "-3", outputMsgs: []string{invalidNumberHwlatdetectMaxLatency, fail}, toolToTest: toolToTest})
+		testSet = append(testSet, latencyTest{testRuntime: "2", hwlatdetectMaxLatency: untunedLatencyThreshold, outputMsgs: []string{hwlatdetectCpusRequired, fail}, toolToTest: toolToTest})
 		// HWLATDETECT_TARGET_ALL_CPUS must be either "true" or "false", reject any other value.
 		testSet = append(testSet, latencyTest{testRuntime: "2", hwlatdetectMaxLatency: untunedLatencyThreshold, testCpus: "4", targetAllCpus: misspelledBoolValue, outputMsgs: []string{incorrectTargetAllCpus, fail}, toolToTest: toolToTest})
 	}
