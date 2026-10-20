@@ -2,7 +2,7 @@ package e2e
 
 import (
 	"context"
-	"net"
+	"fmt"
 	"strings"
 	"time"
 
@@ -35,6 +35,20 @@ var _ = ginkgo.Describe("[basic][metrics] Node Tuning Operator certificate rotat
 			err = rotateTLSCertSecret()
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
+			ginkgo.By("getting a list of worker nodes")
+			nodes, err := util.GetNodesByRole(cs, "worker")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(len(nodes)).NotTo(gomega.BeZero(), "number of worker nodes is 0")
+
+			node := &nodes[0]
+			ginkgo.By(fmt.Sprintf("getting a TuneD Pod running on node %s", node.Name))
+			tunedPod, err := util.GetTunedForNode(cs, node)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			ginkgo.By("getting cluster-node-tuning-operator Pod")
+			operatorPod, err := util.GetNodeTuningOperatorPod(cs)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
 			ginkgo.By("checking if server TLS certificate matches TLS certificate in Secret")
 			err = wait.PollUntilContextTimeout(context.TODO(), pollInterval, waitDuration, true, func(ctx context.Context) (bool, error) {
 				tlsSecret, err := cs.Secrets(ntoconfig.WatchNamespace()).Get(ctx, "node-tuning-operator-tls", metav1.GetOptions{})
@@ -44,29 +58,15 @@ var _ = ginkgo.Describe("[basic][metrics] Node Tuning Operator certificate rotat
 				}
 				secretCertContents := string(tlsSecret.Data["tls.crt"])
 
-				operatorPod, err := util.GetNodeTuningOperatorPod(cs)
-				if err != nil {
-					util.Logf("error getting cluster-node-tuning-operator Pod. Err: %v", err)
-					return false, nil
-				}
-				if len(operatorPod.Status.PodIP) == 0 {
-					util.Logf("cluster-node-tuning-operator Pod %s has no IP yet", operatorPod.Name)
-					return false, nil
-				}
+				operatorPodIP := operatorPod.Status.PodIP
+				// We need chroot because host may be using system libraries incompatible with the container
+				// image system libraries.  Alternatively, use container-shipped openssl.
+				opensslCmd := "/usr/sbin/chroot /host /usr/bin/openssl s_client -connect " + operatorPodIP + ":60000 2>/dev/null </dev/null | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p'"
 
-				opensslCmd := "openssl s_client -connect " + net.JoinHostPort(operatorPod.Status.PodIP, "60000") + " 2>/dev/null </dev/null | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p'"
+				serverCertContents, err := util.ExecCmdInPod(tunedPod, "/bin/bash", "-c", opensslCmd)
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-				serverCertContents, err := util.ExecCmdInPod(operatorPod, "/bin/bash", "-c", opensslCmd)
-				if err != nil {
-					util.Logf("error running openssl in cluster-node-tuning-operator Pod %s. Err: %v", operatorPod.Name, err)
-					return false, nil
-				}
-				if len(serverCertContents) == 0 {
-					util.Logf("openssl returned no certificate from %s:60000 in cluster-node-tuning-operator Pod %s", operatorPod.Status.PodIP, operatorPod.Name)
-					return false, nil
-				}
-
-				if strings.Contains(secretCertContents, serverCertContents) {
+				if len(serverCertContents) > 0 && strings.Contains(secretCertContents, serverCertContents) {
 					return true, nil
 				}
 				return false, nil
