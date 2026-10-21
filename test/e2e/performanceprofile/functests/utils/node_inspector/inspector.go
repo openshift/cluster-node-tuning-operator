@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -28,6 +29,13 @@ import (
 const serviceAccountSuffix = "sa"
 const clusterRoleSuffix = "cr"
 const clusterRoleBindingSuffix = "crb"
+
+// inspectorRecoveryTimeout bounds how long ExecCommand waits for the node
+// inspector DaemonSet to become ready again after node churn: a node
+// rebooting in the middle of a MachineConfigPool rollout leaves its inspector
+// pod unready until the reboot completes, and worker reboots in these suites
+// routinely take several minutes.
+const inspectorRecoveryTimeout = 10 * time.Minute
 
 var initialized bool
 
@@ -98,6 +106,9 @@ func create(ctx context.Context) error {
 }
 
 func Delete(ctx context.Context) error {
+	// Forget the current deployment so that a later ExecCommand can
+	// redeploy the inspector from scratch.
+	initialized = false
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: testutils.NodeInspectorNamespace}}
 	if err := testclient.DataPlaneClient.Delete(ctx, ns); err != nil {
 		if errors.IsNotFound(err) {
@@ -131,6 +142,41 @@ func isRunning(ctx context.Context) (bool, error) {
 	return daemonset.IsRunning(ctx, testclient.DataPlaneClient, testutils.NodeInspectorNamespace, testutils.NodeInspectorName)
 }
 
+// waitForRunning waits for the node inspector DaemonSet to be running.
+//
+// A node rebooting in the middle of a MachineConfigPool rollout leaves its
+// inspector pod unready, which keeps the whole DaemonSet below its ready
+// count (NumberReady < DesiredNumberScheduled) for the duration of the
+// reboot. Nodes reboot routinely in these suites, so recovery is the
+// expected outcome: poll for it instead of failing fast.
+func waitForRunning(ctx context.Context) error {
+	var lastErr error
+	announced := false
+	err := wait.PollUntilContextTimeout(ctx, 30*time.Second, inspectorRecoveryTimeout, true, func(ctx context.Context) (bool, error) {
+		ok, err := isRunning(ctx)
+		if err != nil {
+			// Initialization and API errors are usually transient side
+			// effects of the same node churn (e.g. the one-time DaemonSet
+			// deployment timing out while a node is rebooting); keep
+			// retrying, but remember the error for reporting.
+			lastErr = err
+			ok = false
+		}
+		if !ok && !announced {
+			announced = true
+			testlog.Warningf("node inspector is not running (a node may be rebooting), waiting up to %s for it to recover", inspectorRecoveryTimeout)
+		}
+		return ok, nil
+	})
+	if err == nil {
+		return nil
+	}
+	if lastErr != nil {
+		err = lastErr
+	}
+	return fmt.Errorf("node inspector is not running: %w", err)
+}
+
 // getDaemonPodByNode returns the daemon pod that runs on the specified node
 func getDaemonPodByNode(ctx context.Context, node *corev1.Node) (*corev1.Pod, error) {
 	listOptions := &client.ListOptions{
@@ -152,12 +198,8 @@ func getDaemonPodByNode(ctx context.Context, node *corev1.Node) (*corev1.Pod, er
 // ExecCommand executing the command on a daemon pod of the given node
 func ExecCommand(ctx context.Context, node *corev1.Node, command []string) ([]byte, error) {
 	// Ensure the node inspector is running
-	ok, err := isRunning(ctx)
-	if err != nil {
+	if err := waitForRunning(ctx); err != nil {
 		return nil, err
-	}
-	if !ok {
-		return nil, fmt.Errorf("node inspector is not running")
 	}
 	pod, err := getDaemonPodByNode(ctx, node)
 	if err != nil {
