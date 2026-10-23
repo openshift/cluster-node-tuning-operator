@@ -223,6 +223,7 @@ var _ = Describe("[performance] IRQBalance", Ordered, func() {
 			err = testclient.DataPlaneClient.Create(context.TODO(), testpod)
 			Expect(err).ToNot(HaveOccurred())
 			defer func() {
+				GinkgoHelper()
 				if testpod != nil {
 					testlog.Infof("deleting pod %q", testpod.Name)
 					Expect(pods.DeleteAndSync(context.TODO(), testclient.DataPlaneClient, testpod)).To(Succeed())
@@ -236,6 +237,16 @@ var _ = Describe("[performance] IRQBalance", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred(), "failed to extract the default IRQ affinity from node %q", targetNode.Name)
 
 				testlog.Infof("IRQ Default affinity on %q when test ends: {%s}", targetNode.Name, irqAffBegin)
+
+				// Restart the tuned pod to restore clean CPU affinity.
+				// The tuned pod was restarted earlier while the guaranteed pod
+				// held exclusive CPUs, so its process affinity mask is permanently
+				// narrowed. A fresh start picks up the current (full) default cpuset.
+				By(fmt.Sprintf("restarting tuned pod on %s to restore clean CPU affinity", targetNode.Name))
+				tunedPod := nodes.TunedForNode(targetNode, RunningOnSingleNode)
+				Expect(pods.DeleteAndSync(context.TODO(), testclient.DataPlaneClient, tunedPod)).To(Succeed(), "failed to delete tuned pod on node %q", targetNode.Name)
+				nodes.TunedForNode(targetNode, RunningOnSingleNode)
+				testlog.Infof("tuned pod restarted on node %q with clean CPU affinity", targetNode.Name)
 			}()
 
 			testpod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testpod), corev1.PodReady, corev1.ConditionTrue, 10*time.Minute)
