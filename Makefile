@@ -260,7 +260,7 @@ pao-functests-mixedcpus: $(BINDATA)
 pao-functests-hypershift: $(BINDATA)
 	@echo "Cluster Version"
 	hack/show-cluster-version.sh
-	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/1_performance ./test/e2e/performanceprofile/functests/3_performance_status ./test/e2e/performanceprofile/functests/6_mustgather_testing" -p "-vv -r --label-filter="!openshift" --fail-fast --flake-attempts=2 --timeout=4h --junit-report=report.xml" -m "Running Functional Tests over Hypershift"
+	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/0_config ./test/e2e/performanceprofile/functests/1_performance ./test/e2e/performanceprofile/functests/3_performance_status ./test/e2e/performanceprofile/functests/6_mustgather_testing" -p '-vv -r --label-filter=!(openshift) --fail-fast --flake-attempts=2 --timeout=4h --junit-report=report.xml' -m "Running Functional Tests over Hypershift"
 
 .PHONY: cluster-clean-pao
 cluster-clean-pao:
@@ -273,10 +273,10 @@ build-performance-profile-creator:
 	@echo "Building Performance Profile Creator (PPC)"
 	$(GO) build -v -ldflags "-s -w -X $(PACKAGE)/cmd/performance-profile-creator/version.Version=$(REV)" -o $(OUT_DIR)/performance-profile-creator ./cmd/performance-profile-creator
 
-.PHONY: arm-kernel-pagesize                                                                                                                                                                                                                                      
+.PHONY: arm-kernelpagesize
 arm-kernelpagesize: $(BINDATA)
-	@echo "Running ARM kernel page size tests"                                                                                                                                                                                                                       
-	hack/run-test.sh -t "test/e2e/performanceprofile/14_arm" -p "--v -r --fail-fast --flake-attempts=2" -m "Running Functional Tests" -r "--junit-report=/tmp/artifacts"   
+	@echo "Running ARM kernel page size tests"
+	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/14_arm" -p "--v -r --fail-fast --flake-attempts=2" -m "Running Functional Tests" -r "--junit-report=/tmp/artifacts"
 
 .PHONY: performance-profile-creator-tests
 performance-profile-creator-tests: build-performance-profile-creator
