@@ -262,7 +262,7 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 		return err
 	}
 
-	mc, err := renderMachineConfig(mcp, bootcmdline, mcConfigs, mcp.Spec.MachineConfigSelector.MatchLabels)
+	mc, err := renderMachineConfig(recommendedProfile, bootcmdline, mcConfigs, mcp.Spec.MachineConfigSelector.MatchLabels)
 	if err != nil {
 		klog.Errorf("error while rendering machine config  %v", err)
 		return fmt.Errorf("error while rendering machine config: %w", err)
@@ -314,14 +314,13 @@ func loadDefaultCrTuneD(tuneD *[]*tunedv1.Tuned) error {
 	return nil
 }
 
-func renderMachineConfig(pool *mcfgv1.MachineConfigPool, bootcmdline string, mConfigs []*mcfgv1.MachineConfig, mcLabels map[string]string) (*mcfgv1.MachineConfig, error) {
+func renderMachineConfig(profileName string, bootcmdline string, mConfigs []*mcfgv1.MachineConfig, mcLabels map[string]string) (*mcfgv1.MachineConfig, error) {
 	if len(bootcmdline) == 0 {
 		klog.Info("Empty cmdbootline. Avoid creating MachineConfig")
 		return nil, nil
 	}
 
-	pools := []*mcfgv1.MachineConfigPool{pool}
-	mcName := operator.GetMachineConfigNameForPools(pools)
+	mcName := operator.GetMachineConfigNameForProfile(profileName)
 	kernelArgs := util.SplitKernelArguments(bootcmdline)
 	annotations := map[string]string{operator.GeneratedByControllerVersionAnnotationKey: version.Version}
 
