@@ -148,7 +148,7 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 			Expect(string(*profile.Spec.CPU.Reserved)).To(Equal("0,40"))
 		})
 
-		It("[test_id:41405] Verify PPC fails when splitting of reserved cpus and single numa-node policy is specified", func() {
+		It("[test_id:41405] Verify PPC succeeds when splitting of reserved cpus and single numa-node policy is specified", func() {
 			ppcArgs := []string{
 				fmt.Sprintf("--reserved-cpu-count=%d", 2),
 				fmt.Sprintf("--split-reserved-cpus-across-numa=%t", true),
@@ -156,9 +156,13 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 				"--rt-kernel=false",
 			}
 			cmdArgs := append(defaultArgs, ppcArgs...)
-			_, errData, _ := testutils.ExecAndLogCommandWithStderr(ppcPath, cmdArgs...)
-			ppcErrorString := errorStringParser(errData)
-			Expect(ppcErrorString).To(ContainSubstring("not appropriate to split reserved CPUs in case of topology-manager-policy: single-numa-node"))
+			outData, _, err := testutils.ExecAndLogCommandWithStderr(ppcPath, cmdArgs...)
+			Expect(err).ToNot(HaveOccurred())
+
+			profile := &performancev2.PerformanceProfile{}
+			Expect(yaml.Unmarshal(outData, profile)).ToNot(HaveOccurred())
+			Expect(profile.Spec.CPU).ToNot(BeNil())
+			Expect(profile.Spec.CPU.Reserved).ToNot(BeNil())
 		})
 
 		It("[test_id:41420] Verify PPC fails when reserved cpu count is more than available cpus", func() {
@@ -180,7 +184,7 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 			cmdArgs := append(defaultArgs, ppcArgs...)
 			_, errData, _ := testutils.ExecAndLogCommandWithStderr(ppcPath, cmdArgs...)
 			ppcErrorString := errorStringParser(errData)
-			Expect(ppcErrorString).To(ContainSubstring("can't allocate odd number of CPUs from a NUMA Node"))
+			Expect(ppcErrorString).To(ContainSubstring("can't allocate 5 reserved CPUs from whole cores"))
 		})
 	})
 
@@ -221,7 +225,7 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 	})
 
 	Context("Systems with Hyperthreading disabled", func() {
-		It("[test_id:42035] verify PPC fails when splitting of reserved cpus and single numa-node policy is specified", func() {
+		It("[test_id:42035] verify PPC succeeds when splitting of reserved cpus and single numa-node policy is specified", func() {
 			ppcArgs := []string{
 				fmt.Sprintf("--reserved-cpu-count=%d", 2),
 				fmt.Sprintf("--split-reserved-cpus-across-numa=%t", true),
@@ -229,9 +233,13 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 				"--rt-kernel=false",
 			}
 			cmdArgs := append(defaultArgs, ppcArgs...)
-			_, errData, _ := testutils.ExecAndLogCommandWithStderr(ppcPath, cmdArgs...)
-			ppcErrorString := errorStringParser(errData)
-			Expect(ppcErrorString).To(ContainSubstring("not appropriate to split reserved CPUs in case of topology-manager-policy: single-numa-node"))
+			outData, _, err := testutils.ExecAndLogCommandWithStderr(ppcPath, cmdArgs...)
+			Expect(err).ToNot(HaveOccurred())
+
+			profile := &performancev2.PerformanceProfile{}
+			Expect(yaml.Unmarshal(outData, profile)).ToNot(HaveOccurred())
+			Expect(profile.Spec.CPU).ToNot(BeNil())
+			Expect(profile.Spec.CPU.Reserved).ToNot(BeNil())
 		})
 	})
 
