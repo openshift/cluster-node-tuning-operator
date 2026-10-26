@@ -218,9 +218,6 @@ func validateProfileCreatorFlags(pcArgs *ProfileCreatorArgs) error {
 	if err := validateFlag("topology-manager-policy", pcArgs.TMPolicy, validTMPolicyValues); err != nil {
 		return fmt.Errorf("invalid value for topology-manager-policy flag specified: %w", err)
 	}
-	if pcArgs.TMPolicy == kubeletconfig.SingleNumaNodeTopologyManagerPolicy && pcArgs.SplitReservedCPUsAcrossNUMA {
-		return fmt.Errorf("not appropriate to split reserved CPUs in case of topology-manager-policy: %s", pcArgs.TMPolicy)
-	}
 	if err := validateFlag("power-consumption-mode", pcArgs.PowerConsumptionMode, validPowerConsumptionModes); err != nil {
 		return fmt.Errorf("invalid value for power-consumption-mode flag specified: %w", err)
 	}
@@ -315,6 +312,20 @@ func makeProfileDataFrom(nodeHandler *profilecreator.GHWHandler, args *ProfileCr
 	systemInfo, err := nodeHandler.GatherSystemInfo()
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute get system information: %v", err)
+	}
+	// Warn when --split-reserved-cpus-across-numa=false is set and the system's CPUs span more than one NUMA node.
+	if !args.SplitReservedCPUsAcrossNUMA {
+		numaNodesWithCPUs := 0
+		for _, node := range systemInfo.TopologyInfo.Nodes {
+			if len(node.Cores) > 0 {
+				numaNodesWithCPUs++
+			}
+		}
+		if numaNodesWithCPUs > 1 {
+			Alert("Warning: CPUs span %d NUMA nodes; consider setting --split-reserved-cpus-across-numa=true so reserved CPUs are split across NUMA nodes.", numaNodesWithCPUs)
+		}
+	} else {
+		Alert("Splitting reserved CPUs across NUMA nodes (enabled by default); set --split-reserved-cpus-across-numa=false to disable.")
 	}
 	cpuSets, err := profilecreator.CalculateCPUSets(systemInfo, args.ReservedCPUCount, args.OfflinedCPUCount, args.OvsDpdkCPUCount, args.SplitReservedCPUsAcrossNUMA, args.DisableHT, args.PowerConsumptionMode == ultraLowLatency)
 	if err != nil {
@@ -434,7 +445,7 @@ func (pca *ProfileCreatorArgs) AddFlags(flags *pflag.FlagSet) {
 	flags.IntVar(&pca.ReservedCPUCount, "reserved-cpu-count", 0, "Number of reserved CPUs (required)")
 	flags.IntVar(&pca.OfflinedCPUCount, "offlined-cpu-count", 0, "Number of offlined CPUs")
 	flags.IntVar(&pca.OvsDpdkCPUCount, "ovs-dpdk-cpu-count", 0, "Number of OVS-DPDK CPUs")
-	flags.BoolVar(&pca.SplitReservedCPUsAcrossNUMA, "split-reserved-cpus-across-numa", false, "Split the Reserved CPUs across NUMA nodes")
+	flags.BoolVar(&pca.SplitReservedCPUsAcrossNUMA, "split-reserved-cpus-across-numa", true, "Split the Reserved CPUs across NUMA nodes")
 	flags.StringVar(&pca.MCPName, "mcp-name", "", "MCP name corresponding to the target machines (required)")
 	flags.BoolVar(&pca.DisableHT, "disable-ht", false, "Disable Hyperthreading")
 	flags.BoolVar(&pca.RTKernel, "rt-kernel", false, "Enable Real Time Kernel (required)")
