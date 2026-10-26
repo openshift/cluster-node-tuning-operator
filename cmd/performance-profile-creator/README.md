@@ -76,7 +76,7 @@ Flags:
       --profile-name string               Name of the performance profile to be created (default "performance")
       --reserved-cpu-count int            Number of reserved CPUs (required)
       --rt-kernel                         Enable Real Time Kernel (required)
-      --split-reserved-cpus-across-numa   Split the Reserved CPUs across NUMA nodes
+      --split-reserved-cpus-across-numa   Split the Reserved CPUs across NUMA nodes (default true)
       --topology-manager-policy string    Kubelet Topology Manager Policy of the performance profile to be created. [Valid values: single-numa-node, best-effort, restricted] (default "restricted")
       --user-level-networking             Run with User level Networking(DPDK) enabled
 ```
