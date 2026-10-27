@@ -55,8 +55,10 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 	Context("Group Both Numa Nodes with restricted topology", Ordered, Label(string(label.Tier2)), func() {
 		var numaCoreSiblings map[int]map[int][]int
 		var reserved, isolated cpuset.CPUSet
-		// Number of hugepages of size 2M created on both numa nodes
-		const hpCount = 20
+		// Number of 2Mi hugepages allocated on each NUMA node (pinned via Node).
+		// Without Node, cmdline hugepages=N is system-wide and the kernel may place
+		// all pages on one NUMA node, which breaks TopologyAffinityError expectations.
+		const hpCountPerNuma = 10
 		testutils.CustomBeforeAll(func() {
 			var policy = "restricted"
 			workerRTNodes = getUpdatedNodes()
@@ -96,12 +98,19 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			hpSize1G := performancev2.HugePageSize("1G")
 			hpSize2M := performancev2.HugePageSize("2M")
 
+			// Pin equally so each NUMA has 20Mi of 2Mi pages (10 * 2Mi).
 			requiredHugepages := &performancev2.HugePages{
 				DefaultHugePagesSize: &hpSize1G,
 				Pages: []performancev2.HugePage{
 					{
-						Count: int32(hpCount),
+						Count: int32(hpCountPerNuma),
 						Size:  hpSize2M,
+						Node:  ptr.To(int32(0)),
+					},
+					{
+						Count: int32(hpCountPerNuma),
+						Size:  hpSize2M,
+						Node:  ptr.To(int32(1)),
 					},
 				},
 			}
@@ -136,8 +145,11 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			By("creating test pod")
 			err = testclient.DataPlaneClient.Create(context.TODO(), testPod)
 			Expect(err).ToNot(HaveOccurred(), "Failed to create test pod")
+			DeferCleanup(func() {
+				Expect(mm1.removePod(context.TODO(), testPod)).ToNot(HaveOccurred(), "Failed to remove test pod")
+			})
 			testPod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testPod), corev1.PodConditionType(corev1.PodFailed), corev1.ConditionFalse, 2*time.Minute)
-			// Even though number of hugepage requests can be satisfied by 2 numa nodes together
+			// Each NUMA has only 20Mi of 2Mi hugepages, so 24Mi needs both NUMAs.
 			// Number of cpus are only 2 which only requires 1 numa node , So minimum number of numa nodes needed to satisfy is only 1.
 			// According to Restricted TM policy: only allow allocations from the minimum number of NUMA nodes.
 			// Look at each resource request, see what the minimum number of NUMA nodes are required to
@@ -146,7 +158,6 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			err := checkPodEvent(testPod, "TopologyAffinityError")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(testPod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed), "Test pod does not have QoS class of Guaranteed")
-			Expect(mm1.removePod(context.TODO(), testPod)).ToNot(HaveOccurred(), "Failed to remove test pod")
 		})
 
 		It("[test_id:60694] Accept guaranteed pod requesting resources that can be satisfied by 2 numa nodes together", func() {
@@ -155,11 +166,13 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			targetNode := &workerRTNodes[0]
 			mm2.memory = "200Mi"
 			mm2.cpu = fmt.Sprintf("%d", isolated.Size()-2)
-			// no. of hugepages is 20 * 2 (numazones). 40Mi
-			// we are asking for 30Mi, so it needs 2 numazones combined to
-			// satisfy the requirement
+			// 10 pages * 2Mi per NUMA * 2 NUMAs = 40Mi total; each NUMA has 20Mi.
+			// Asking for 30Mi needs both NUMAs combined.
 			mm2.noOfhpgs = "30Mi"
 			testPod := mm2.createPodTemplate(profile, true, targetNode)
+			DeferCleanup(func() {
+				Expect(mm2.removePod(context.TODO(), testPod)).ToNot(HaveOccurred(), "Failed to remove test pod")
+			})
 			// Initialize test pod, check if the pod uses both numa node  0 and 1
 			err := initializePod(context.TODO(), testPod)
 			Expect(err).ToNot(HaveOccurred(), "unable to initialize Pod")
@@ -167,7 +180,6 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			// Expect both numa nodes to be used by pod
 			Expect(numaZone).To(Equal("0-1"))
 			Expect(err).ToNot(HaveOccurred(), "Pod's numa affinity is %s instead of %s", numaZone, "0-1")
-			Expect(mm2.removePod(context.TODO(), testPod)).ToNot(HaveOccurred(), "Failed to remove test pod")
 		})
 
 		It("[test_id:60695] Allow burstable pod with hugepages", func() {
@@ -178,6 +190,9 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			mm2.cpu = fmt.Sprintf("%d", isolated.Size()-2)
 			mm2.noOfhpgs = "8Mi"
 			testPod := mm2.createPodTemplate(profile, false, targetNode)
+			DeferCleanup(func() {
+				Expect(mm2.removePod(context.TODO(), testPod)).ToNot(HaveOccurred(), "Failed to remove test pod")
+			})
 			// Initialize test pod, check if the pod uses both numa node  0 and 1
 			err := initializePod(context.TODO(), testPod) // "0-1", targetNode)
 			Expect(err).ToNot(HaveOccurred(), "Unable to initialize pod")
@@ -185,7 +200,6 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			Expect(err).ToNot(HaveOccurred(), "Unable to fetch numa zone")
 			// Expect both numa nodes to be used by pod
 			Expect(numaZone).To(Equal("0-1"), "Pod's numa affinity is %s instead of %s", numaZone, "0-1")
-			Expect(mm2.removePod(context.TODO(), testPod)).ToNot(HaveOccurred(), "Failed to remove test pod")
 		})
 
 		AfterAll(func() {
@@ -327,6 +341,9 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			// since numa zone 0 has only 10Mi hugepages
 			mm1.noOfhpgs = "14Mi"
 			testPod := mm1.createPodTemplate(profile, true, targetNode)
+			DeferCleanup(func() {
+				Expect(mm1.removePod(context.TODO(), testPod)).ToNot(HaveOccurred(), "Failed to remove test pod")
+			})
 			// Initialize test pod, check if the pod uses only numa node 1
 			err := initializePod(context.TODO(), testPod)
 			Expect(err).ToNot(HaveOccurred(), "Unable to initialize pod")
@@ -334,8 +351,6 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			// Expect numa node 1 to be used by pod
 			Expect(numaZone).To(Equal("1"))
 			Expect(err).ToNot(HaveOccurred(), "Pod's numa affinity is %s instead of %s", numaZone, "1")
-			// Delete pod
-			Expect(mm1.removePod(context.TODO(), testPod)).ToNot(HaveOccurred(), "Failed to remove test pod")
 		})
 
 		It("[test_id:60697] Verify Pod is rejected when the numa zone doesn't have enough resources", func() {
@@ -356,6 +371,9 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			// since numa zone 0 has only 10Mi hugepages
 			mm1.noOfhpgs = "14Mi"
 			testPod1 := mm1.createPodTemplate(profile, true, targetNode)
+			DeferCleanup(func() {
+				Expect(mm1.removePod(context.TODO(), testPod1)).ToNot(HaveOccurred(), "Failed to remove testpod1")
+			})
 			// Initialize test pod, check if the pod numa affinity is 1
 			err := initializePod(context.TODO(), testPod1)
 			Expect(err).ToNot(HaveOccurred(), "Unable to initialize pod")
@@ -372,13 +390,13 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			By("creating test pod")
 			err = testclient.DataPlaneClient.Create(context.TODO(), testPod2)
 			Expect(err).ToNot(HaveOccurred(), "failed to create testpod2")
+			DeferCleanup(func() {
+				Expect(mm2.removePod(context.TODO(), testPod2)).ToNot(HaveOccurred(), "Failed to remove testpod2")
+			})
 			testPod2, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testPod2), corev1.PodConditionType(corev1.PodFailed), corev1.ConditionTrue, 2*time.Minute)
 			Expect(err).To(HaveOccurred(), "testpod2 did not go in to failed condition")
 			err = checkPodEvent(testPod2, "FailedScheduling")
 			Expect(err).ToNot(HaveOccurred(), "failed to find expected event: failedScheduling")
-			// Delete pods
-			Expect(mm1.removePod(context.TODO(), testPod1)).ToNot(HaveOccurred(), "Failed to remove testpod1")
-			Expect(mm2.removePod(context.TODO(), testPod2)).ToNot(HaveOccurred(), "Failed to remove testpod2")
 		})
 
 		AfterAll(func() {
@@ -405,8 +423,8 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 		var numaCoreSiblings map[int]map[int][]int
 		var reserved, isolated cpuset.CPUSet
 		var err error
-		// Number of hugepages of size 2M
-		const hpCount = 20
+		// Number of 2Mi hugepages allocated on each NUMA node (pinned via Node).
+		const hpCountPerNuma = 10
 		testutils.CustomBeforeAll(func() {
 			var policy = "single-numa-node"
 			workerRTNodes = getUpdatedNodes()
@@ -442,15 +460,21 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			reservedSet := performancev2.CPUSet(reserved.String())
 			isolatedSet := performancev2.CPUSet(isolated.String())
 
-			// Enable Hugepages
+			// Enable Hugepages — pin equally so each NUMA has 20Mi of 2Mi pages.
 			hpSize2M := performancev2.HugePageSize("2M")
 			hpSize1G := performancev2.HugePageSize("1G")
 			profile.Spec.HugePages = &performancev2.HugePages{
 				DefaultHugePagesSize: &hpSize1G,
 				Pages: []performancev2.HugePage{
 					{
-						Count: int32(hpCount),
+						Count: int32(hpCountPerNuma),
 						Size:  hpSize2M,
+						Node:  ptr.To(int32(0)),
+					},
+					{
+						Count: int32(hpCountPerNuma),
+						Size:  hpSize2M,
+						Node:  ptr.To(int32(1)),
 					},
 				},
 			}
@@ -482,11 +506,13 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			By("creating test pod")
 			err = testclient.DataPlaneClient.Create(context.TODO(), testPod)
 			Expect(err).ToNot(HaveOccurred(), "failed to create testpod")
+			DeferCleanup(func() {
+				Expect(mm1.removePod(context.TODO(), testPod)).ToNot(HaveOccurred(), "Failed to remove test pod")
+			})
 			testPod, err = pods.WaitForCondition(context.TODO(), client.ObjectKeyFromObject(testPod), corev1.PodConditionType(corev1.PodFailed), corev1.ConditionFalse, 2*time.Minute)
 			err := checkPodEvent(testPod, "TopologyAffinityError")
 			Expect(err).ToNot(HaveOccurred(), "pod did not fail with TopologyAffinityError")
 			Expect(testPod.Status.QOSClass).To(Equal(corev1.PodQOSGuaranteed), "Test pod does not have QoS class of Guaranteed")
-			Expect(mm1.removePod(context.TODO(), testPod)).ToNot(HaveOccurred(), "Failed to remove test pod")
 		})
 		AfterAll(func() {
 			By("Reverting the Profile")
@@ -614,6 +640,9 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			// we are requesting 8Mi hugepages which again can be satisfied by numa zone 0
 			mm1.noOfhpgs = "8Mi"
 			testPod1 := mm1.createPodTemplate(profile, true, targetNode)
+			DeferCleanup(func() {
+				Expect(mm1.removePod(context.TODO(), testPod1)).ToNot(HaveOccurred(), "Failed to remove test pod")
+			})
 			// Initialize test pod, check if the pod uses Numa node 0
 			err := initializePod(context.TODO(), testPod1)
 			Expect(err).ToNot(HaveOccurred(), "Unable to initialize pod")
@@ -621,7 +650,7 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			// Expect numa node 0 to be used by pod
 			Expect(numaZone).To(Equal("0"))
 			Expect(err).ToNot(HaveOccurred(), "Pod's numa affinity is %s instead of %s", numaZone, "0")
-			// Delete pod
+			// Free NUMA 0 resources before scheduling the second pod
 			Expect(mm1.removePod(context.TODO(), testPod1)).ToNot(HaveOccurred(), "Failed to remove testpod1")
 			// Schedule pod on numa zone 1
 			mm2.noOfhpgs = "4Gi"
@@ -629,6 +658,9 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			mm2.hpgSize = profile.Spec.HugePages.Pages[1].Size
 			mm2.cpu = fmt.Sprintf("%d", available_node1_cpus.Size()-2)
 			testPod2 := mm2.createPodTemplate(profile, true, targetNode)
+			DeferCleanup(func() {
+				Expect(mm2.removePod(context.TODO(), testPod2)).ToNot(HaveOccurred(), "Failed to remove test pod")
+			})
 			// Initialize test pod, check if the pod uses Numa node 1
 			err = initializePod(context.TODO(), testPod2)
 			Expect(err).ToNot(HaveOccurred(), "Unable to initialize pod")
@@ -636,8 +668,6 @@ var _ = Describe("[rfe_id: 43186][memorymanager] Memorymanager feature", Label(s
 			// Expect numa node 1 to be used by pod
 			Expect(numaZone).To(Equal("1"))
 			Expect(err).ToNot(HaveOccurred(), "Pod's numa affinity is %s instead of %s", numaZone, "1")
-			// Delete pod
-			Expect(mm2.removePod(context.TODO(), testPod2)).ToNot(HaveOccurred(), "Failed to remove test pod")
 		})
 
 		AfterAll(func() {
