@@ -157,10 +157,10 @@ func waitForRunning(ctx context.Context) error {
 		if err != nil {
 			// Initialization and API errors are usually transient side
 			// effects of the same node churn (e.g. the one-time DaemonSet
-			// deployment timing out while a node is rebooting); keep
-			// retrying, but remember the error for reporting.
+			// deployment timing out while a node is rebooting); isRunning
+			// never returns ok with an error, so just remember the error
+			// for reporting and keep retrying.
 			lastErr = err
-			ok = false
 		}
 		if !ok && !announced {
 			announced = true
@@ -171,7 +171,10 @@ func waitForRunning(ctx context.Context) error {
 	if err == nil {
 		return nil
 	}
-	if lastErr != nil {
+	// Prefer the concrete failure observed while polling, but only when the
+	// poll ran out of time; if the caller cancelled the context, keep the
+	// cancellation error so errors.Is(err, context.Canceled) still works.
+	if lastErr != nil && ctx.Err() == nil {
 		err = lastErr
 	}
 	return fmt.Errorf("node inspector is not running: %w", err)
