@@ -123,7 +123,7 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 	}
 	klog.V(4).Infof("listed files: %v", filePaths)
 	// Make output dir if not present
-	err = os.MkdirAll(outputDir, os.ModePerm)
+	err = os.MkdirAll(outputDir, 0o755)
 	if err != nil {
 		return fmt.Errorf("Error while creating outputdir %s : %w", outputDir, err)
 	}
@@ -209,16 +209,10 @@ func render(inputDir []string, outputDir string, mcpName string) error {
 			klog.Error(err)
 			return err
 		}
-		if err := os.MkdirAll(d, os.ModePerm); err != nil {
+		if err := os.MkdirAll(d, 0o755); err != nil {
 			klog.Error(err)
 			return err
 		}
-	}
-
-	// Make output dir if not present
-	err = os.MkdirAll("/var/lib/tuned", os.ModePerm)
-	if err != nil {
-		return fmt.Errorf("unable to create  %s : %w", outputDir, err)
 	}
 
 	tuneDrecommended := operator.TunedRecommend(tuneD)

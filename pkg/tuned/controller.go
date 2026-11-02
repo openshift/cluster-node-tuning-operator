@@ -443,7 +443,7 @@ func profilesExtractPathWithDeps(profilesRootDir string, profiles []tunedv1.Tune
 		profileDir := filepath.Join(profilesRootDir, *profile.Name)
 		profileFile := filepath.Join(profileDir, tunedConfFile)
 
-		if err := os.MkdirAll(profileDir, os.ModePerm); err != nil {
+		if err := os.MkdirAll(profileDir, 0o755); err != nil {
 			return ExtractedProfiles{
 				Changed:      change,
 				Names:        extracted,
@@ -649,7 +649,7 @@ func PrepareOpenShiftTunedDir() error {
 		tunedProfilesDirCustomHost,
 	}
 	for _, d := range dirs {
-		if err := os.MkdirAll(d, os.ModePerm); err != nil {
+		if err := os.MkdirAll(d, 0o755); err != nil {
 			return fmt.Errorf("failed to create directory %q: %v", d, err)
 		}
 	}
@@ -682,7 +682,7 @@ func writeOpenShiftTunedImageEnv() error {
 func TunedRecommendFileWritePath(recommendFilePath, profileName string) error {
 	rfDir := filepath.Dir(recommendFilePath)
 	klog.V(2).Infof("tunedRecommendFileWrite(): %s %s", profileName, rfDir)
-	if err := os.MkdirAll(rfDir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(rfDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create directory %q: %v", rfDir, err)
 	}
 	data := []byte(fmt.Sprintf("[%s]\n", profileName))
@@ -1686,7 +1686,7 @@ func RunInCluster(stopCh <-chan struct{}, version string) error {
 		tunedPersistHomeHost,
 	}
 	for _, d := range dirs {
-		if err := os.MkdirAll(d, os.ModePerm); err != nil {
+		if err := os.MkdirAll(d, 0o755); err != nil {
 			return fmt.Errorf("failed to create directory %q: %v", d, err)
 		}
 	}
@@ -1716,7 +1716,7 @@ func RunInCluster(stopCh <-chan struct{}, version string) error {
 		panic(err.Error())
 	}
 
-	if err := os.MkdirAll(ocpTunedRunDir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(ocpTunedRunDir, 0o755); err != nil {
 		panic(err.Error())
 	}
 

@@ -90,7 +90,7 @@ func render(ownerRefMode, inputDir, outputDir string) error {
 	}
 
 	// Make output dir if not present
-	err = os.MkdirAll(outputDir, os.ModePerm)
+	err = os.MkdirAll(outputDir, 0o755)
 	if err != nil {
 		return err
 	}
