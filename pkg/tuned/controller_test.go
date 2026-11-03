@@ -286,6 +286,74 @@ func TestChangeString(t *testing.T) {
 	}
 }
 
+func TestOverridenSysctl(t *testing.T) {
+	testCases := []struct {
+		name     string
+		data     string
+		expected string
+	}{
+		{
+			name:     "no-marker",
+			data:     "2023-02-10 12:57:13,201 INFO     tuned.daemon.daemon: static tuning from profile 'test' applied",
+			expected: "",
+		},
+		{
+			name:     "override",
+			data:     "2023-02-10 12:57:13,201 INFO     tuned.plugins.plugin_sysctl: Overriding sysctl parameter 'fs.inotify.max_user_instances' from '4096' to '8192'",
+			expected: "fs.inotify.max_user_instances",
+		},
+		{
+			name:     "no-override",
+			data:     "2023-02-10 12:57:13,201 INFO     tuned.plugins.plugin_sysctl: Overriding sysctl parameter 'fs.inotify.max_user_instances' from '4096' to '4096'",
+			expected: "",
+		},
+		{
+			// The log line may be truncated, e.g. when TuneD is killed in the middle of writing it.
+			name:     "truncated-after-name",
+			data:     "2023-02-10 12:57:13,201 INFO     tuned.plugins.plugin_sysctl: Overriding sysctl parameter 'fs.inotify.max_user_instances",
+			expected: "",
+		},
+		{
+			// Truncating after the old value.
+			name:     "truncated-after-old-value",
+			data:     "2023-02-10 12:57:13,201 INFO     tuned.plugins.plugin_sysctl: Overriding sysctl parameter 'fs.inotify.max_user_instances' from '4096",
+			expected: "",
+		},
+		{
+			// Truncating after the new value.
+			name:     "truncated-after-new-value",
+			data:     "2023-02-10 12:57:13,201 INFO     tuned.plugins.plugin_sysctl: Overriding sysctl parameter 'fs.inotify.max_user_instances' from '4096' to '8192",
+			expected: "",
+		},
+		{
+			// Extra content after the new value, e.g. if the TuneD log message format changes.
+			name:     "trailing-content",
+			data:     "2023-02-10 12:57:13,201 INFO     tuned.plugins.plugin_sysctl: Overriding sysctl parameter 'fs.inotify.max_user_instances' from '4096' to '8192' (host value)",
+			expected: "",
+		},
+		{
+			// Different wording of the "from" separator, e.g. if the TuneD log message format changes.
+			name:     "wrong-from-separator",
+			data:     "2023-02-10 12:57:13,201 INFO     tuned.plugins.plugin_sysctl: Overriding sysctl parameter 'fs.inotify.max_user_instances' of '4096' to '8192'",
+			expected: "",
+		},
+		{
+			// Different wording of the "to" separator, e.g. if the TuneD log message format changes.
+			name:     "wrong-to-separator",
+			data:     "2023-02-10 12:57:13,201 INFO     tuned.plugins.plugin_sysctl: Overriding sysctl parameter 'fs.inotify.max_user_instances' from '4096' with '8192'",
+			expected: "",
+		},
+	}
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			got := overridenSysctl(tt.data)
+			if got != tt.expected {
+				t.Errorf("got=%q expected=%q", got, tt.expected)
+			}
+		})
+	}
+}
+
 func fullChange() Change {
 	return Change{
 		profile:            true,

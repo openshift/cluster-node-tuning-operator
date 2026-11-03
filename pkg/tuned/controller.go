@@ -728,6 +728,11 @@ func overridenSysctl(data string) string {
 	}
 	i += len(key)
 	slice := strings.Split(data[i:], "'")
+	// The log line may be truncated or formatted differently than expected.
+	if len(slice) != 6 || slice[1] != " from " || slice[3] != " to " || slice[5] != "" {
+		klog.Warningf("unexpected format of the sysctl override log line, ignoring: %q", data)
+		return ""
+	}
 	if slice[2] != slice[4] {
 		overridenSysctl = slice[0]
 	}
