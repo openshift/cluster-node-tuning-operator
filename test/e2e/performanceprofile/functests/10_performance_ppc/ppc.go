@@ -104,7 +104,7 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 			Expect(*pp.Spec.NUMA.TopologyPolicy).To(Equal("restricted"))
 		})
 
-		It("[test_id:41405] Verify PPC script fails when the splitting of reserved cpus and single numa-node policy is specified", func() {
+		It("[test_id:41405] Verify PPC script warns when reserved cpus are not split across numa nodes on a multi-numa host", func() {
 			cmdArgs := []string{
 				fmt.Sprintf("%s:%s:z", mustgatherDir, mustgatherDir),
 				ntoImage,
@@ -112,8 +112,29 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 				"--reserved-cpu-count=2",
 				"--rt-kernel=true",
 				"--power-consumption-mode=low-latency",
-				"--split-reserved-cpus-across-numa=true",
+				"--split-reserved-cpus-across-numa=false",
 				"--topology-manager-policy=single-numa-node",
+				fmt.Sprintf("--must-gather-dir-path=%s", mustgatherDir),
+			}
+			podmanArgs := append(defaultArgs, cmdArgs...)
+			session, err := ppcIntgTest.PodmanAsUserBase(podmanArgs, false, false)
+			Expect(err).ToNot(HaveOccurred(), "Podman command failed")
+			output := session.Wait(20).Err.Contents()
+			Expect(session).Should(gexec.Exit(0))
+
+			warnString := "consider setting --split-reserved-cpus-across-numa=true"
+			Expect(string(output)).To(ContainSubstring(warnString), "expected warning:\n%q\ngot:\n%s", warnString, output)
+		})
+
+		It("[test_id:41406] Verify PPC script does not warn when reserved cpus are split across numa nodes", func() {
+			cmdArgs := []string{
+				fmt.Sprintf("%s:%s:z", mustgatherDir, mustgatherDir),
+				ntoImage,
+				fmt.Sprintf("--mcp-name=%s", mcpName),
+				"--reserved-cpu-count=4",
+				"--rt-kernel=true",
+				"--power-consumption-mode=low-latency",
+				"--split-reserved-cpus-across-numa=true",
 				fmt.Sprintf("--must-gather-dir-path=%s", mustgatherDir),
 			}
 			podmanArgs := append(defaultArgs, cmdArgs...)
@@ -121,10 +142,10 @@ var _ = Describe("[rfe_id: 38968] PerformanceProfile setup helper and platform a
 			Expect(err).ToNot(HaveOccurred(), "Podman command failed")
 
 			output := session.Wait(20).Err.Contents()
-			Expect(session).Should(gexec.Exit(1))
+			Expect(session).Should(gexec.Exit(0))
 
-			errString := "not appropriate to split reserved CPUs in case of topology-manager-policy: single-numa-node"
-			Expect(string(output)).To(ContainSubstring(errString), "expected error:\n%q\ngot:\n%s", errString, output)
+			Expect(string(output)).ToNot(ContainSubstring("consider setting --split-reserved-cpus-across-numa=true"),
+				"did not expect a NUMA split warning, got:\n%s", output)
 		})
 
 		It("[test_id:41419] Verify PPC script fails when reserved cpu count is 2 and requires to split across numa nodes", func() {
