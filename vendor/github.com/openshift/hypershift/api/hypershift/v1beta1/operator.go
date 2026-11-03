@@ -18,7 +18,7 @@ const (
 	KubevirtDefaultV4InternalSubnet = "100.66.0.0/16"
 )
 
-// +kubebuilder:validation:Enum="";Normal;Debug;Trace;TraceAll
+// +kubebuilder:validation:Enum=Normal;Debug;Trace;TraceAll
 type LogLevel string
 
 var (
@@ -39,6 +39,72 @@ var (
 	// of logs. In kube, this is probably glog=8.
 	TraceAll LogLevel = "TraceAll"
 )
+
+// ComponentLogLevelSpec configures the log verbosity for a hosted control plane component.
+// +kubebuilder:validation:MinProperties=1
+type ComponentLogLevelSpec struct {
+	// logLevel sets the log verbosity for the component.
+	// Valid values are: "Normal", "Debug", "Trace", "TraceAll".
+	// When set to Normal, standard operational log messages are produced for auditing and common operations.
+	// When set to Debug, more verbose logging is enabled for diagnosing problems.
+	// When set to Trace, very verbose logging is enabled including function-level tracing.
+	// When set to TraceAll, the most verbose logging is used, including full API body content,
+	// this can cause significant performance impact and produce large volumes of logs.
+	// When omitted, this means the user has no opinion and the platform
+	// chooses a reasonable default, which is subject to change over time.
+	// The current default log level is Normal.
+	// +optional
+	LogLevel LogLevel `json:"logLevel,omitempty"`
+}
+
+// KubeAPIServerOperatorSpec specifies the configuration for the Kube API Server.
+// +kubebuilder:validation:MinProperties=1
+type KubeAPIServerOperatorSpec struct {
+	ComponentLogLevelSpec `json:",inline"`
+}
+
+// EtcdOperatorSpec specifies the configuration for the etcd.
+// +kubebuilder:validation:MinProperties=1
+// +kubebuilder:validation:XValidation:rule="!has(self.logLevel) || self.logLevel in ['Normal', 'Debug']",message="etcd only supports Normal and Debug log levels; Trace and TraceAll are not valid for etcd"
+type EtcdOperatorSpec struct {
+	ComponentLogLevelSpec `json:",inline"`
+}
+
+// KubeControllerManagerOperatorSpec specifies the configuration for the Kube Controller Manager.
+// +kubebuilder:validation:MinProperties=1
+type KubeControllerManagerOperatorSpec struct {
+	ComponentLogLevelSpec `json:",inline"`
+}
+
+// KubeSchedulerOperatorSpec specifies the configuration for the Kube Scheduler.
+// +kubebuilder:validation:MinProperties=1
+type KubeSchedulerOperatorSpec struct {
+	ComponentLogLevelSpec `json:",inline"`
+}
+
+// OpenShiftControllerManagerOperatorSpec specifies the configuration for the OpenShift Controller Manager.
+// +kubebuilder:validation:MinProperties=1
+type OpenShiftControllerManagerOperatorSpec struct {
+	ComponentLogLevelSpec `json:",inline"`
+}
+
+// OpenShiftAPIServerOperatorSpec specifies the configuration for the OpenShift API Server.
+// +kubebuilder:validation:MinProperties=1
+type OpenShiftAPIServerOperatorSpec struct {
+	ComponentLogLevelSpec `json:",inline"`
+}
+
+// OpenShiftOAuthAPIServerOperatorSpec specifies the configuration for the OpenShift OAuth API Server.
+// +kubebuilder:validation:MinProperties=1
+type OpenShiftOAuthAPIServerOperatorSpec struct {
+	ComponentLogLevelSpec `json:",inline"`
+}
+
+// OAuthServerOperatorSpec specifies the configuration for the OAuth Server.
+// +kubebuilder:validation:MinProperties=1
+type OAuthServerOperatorSpec struct {
+	ComponentLogLevelSpec `json:",inline"`
+}
 
 // ClusterVersionOperatorSpec is the specification of the desired behavior of the Cluster Version Operator.
 type ClusterVersionOperatorSpec struct {
@@ -283,4 +349,97 @@ type IngressOperatorSpec struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:Type=object
 	EndpointPublishingStrategy *operatorv1.EndpointPublishingStrategy `json:"endpointPublishingStrategy,omitempty"`
+
+	// defaultCertificate is a reference to a secret in the HostedCluster namespace
+	// that contains the default certificate served by the default ingress controller.
+	// When Routes don't specify their own certificate, defaultCertificate is used.
+	//
+	// The secret must contain the following keys and data:
+	//   tls.crt: certificate file contents
+	//   tls.key: key file contents
+	//
+	// When set, this certificate replaces the auto-generated wildcard certificate
+	// that is normally created by the control plane operator. The secret is synced
+	// from the HostedCluster namespace to the control plane, and then propagated
+	// to the hosted cluster's openshift-ingress namespace.
+	//
+	// When the referenced secret is updated, the new certificate data is
+	// automatically propagated to the hosted cluster.
+	//
+	// When not set, the control plane operator generates a wildcard certificate
+	// signed by the cluster's root CA.
+	//
+	// Note: a cluster-admin in the hosted cluster can override the default ingress
+	// controller's certificate directly. That override takes precedence and the
+	// certificate referenced here is no longer served.
+	//
+	// +optional
+	DefaultCertificate IngressDefaultCertificateReference `json:"defaultCertificate,omitzero"`
+}
+
+// IngressDefaultCertificateReference contains a reference to a TLS Secret
+// in the HostedCluster namespace used as the default serving certificate
+// for the ingress controller.
+type IngressDefaultCertificateReference struct {
+	// name is the name of the Secret containing tls.crt and tls.key.
+	// The Secret must exist in the same namespace as the HostedCluster.
+	// name must be a valid DNS subdomain name (RFC 1123): it must contain only
+	// lowercase alphanumeric characters, '-' or '.', and start and end with an
+	// alphanumeric character.
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:XValidation:rule="self.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*$')",message="name must be a valid DNS subdomain name: contain no more than 253 characters, contain only lowercase alphanumeric characters, '-' or '.', and start and end with an alphanumeric character"
+	Name string `json:"name,omitempty"`
+}
+
+// CSIDriverOperatorSpec specifies configuration for the CSI driver operator
+// running in the control plane. Platform-specific configuration is nested per platform.
+// +kubebuilder:validation:MinProperties=1
+type CSIDriverOperatorSpec struct {
+	// aws configures the AWS EBS CSI driver.
+	// It can only be set when spec.platform.type is AWS.
+	//
+	// When omitted, no AWS-specific CSI driver configuration is applied and the
+	// default StorageClass uses the AWS account's default EBS encryption settings.
+	// +optional
+	AWS AWSCSIDriverConfig `json:"aws,omitzero"`
+}
+
+// AWSCSIDriverConfig specifies configuration for the AWS EBS CSI driver.
+// +kubebuilder:validation:MinProperties=1
+type AWSCSIDriverConfig struct {
+	// initialKMSKeyARN is the ARN of an AWS KMS key used to encrypt volumes
+	// created by the default StorageClass. When set, new PersistentVolumes
+	// provisioned by the default StorageClass are encrypted with this key
+	// instead of the AWS account's default EBS encryption key.
+	//
+	// When omitted, no KMS key is configured on the default StorageClass and
+	// EBS volumes are encrypted with the AWS account's default EBS encryption
+	// key.
+	//
+	// The value may be either the ARN or Alias ARN of a KMS key and must follow
+	// the format arn:<partition>:kms:<region>:<account-id>:(key|alias)/<key-id-or-alias>,
+	// where <partition> is one of aws, aws-cn, aws-us-gov, aws-iso, aws-iso-b,
+	// aws-iso-e, or aws-iso-f; <region> is the AWS region; <account-id> is the
+	// 12-digit AWS account identifier; and <key-id-or-alias> is the KMS key ID
+	// or alias name. The key must be in the same region as the cluster
+	// (spec.platform.aws.region).
+	//
+	// When set, must be between 1 and 2048 characters.
+	//
+	// This field can only be set when the HostedCluster is created and is
+	// immutable afterwards. Day-2 changes to storage encryption must be made
+	// directly on the ClusterCSIDriver resource in the hosted cluster.
+	//
+	// The IAM role in spec.platform.aws.rolesRef.storageARN must have
+	// kms:Decrypt, kms:GenerateDataKeyWithoutPlaintext, and kms:CreateGrant
+	// permissions on the specified key.
+	//
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=2048
+	// +kubebuilder:validation:XValidation:rule="self.matches('^arn:(aws|aws-cn|aws-us-gov|aws-iso|aws-iso-b|aws-iso-e|aws-iso-f):kms:[a-z]([a-z0-9]|-[a-z0-9])*:[0-9]{12}:(key|alias)/.+$')",message="initialKMSKeyARN must be a valid AWS KMS key ARN in the format: arn:<partition>:kms:<region>:<account-id>:(key|alias)/<key-id-or-alias>"
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="initialKMSKeyARN is immutable"
+	InitialKMSKeyARN string `json:"initialKMSKeyARN,omitempty"`
 }

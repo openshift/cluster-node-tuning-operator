@@ -142,13 +142,7 @@ func BuildExtensionTestSpecsFromOpenShiftGinkgoSuite(selectFns ...ext.SelectFunc
 				return result
 			},
 		}
-		testCase.RunParallel = func(ctx context.Context) *ext.ExtensionTestResult {
-			timeout := 90 * time.Minute
-			if testCase.Timeout > 0 {
-				timeout = testCase.Timeout
-			}
-			return SpawnProcessToRunTest(ctx, name, timeout)
-		}
+		testCase.RunParallel = runParallelWithSpecEnv(testCase, name)
 		specs = append(specs, testCase)
 	})
 
@@ -198,6 +192,20 @@ func MustLifecycle(l string) ext.Lifecycle {
 		return ext.Lifecycle(l)
 	default:
 		panic(fmt.Sprintf("unknown test lifecycle: %s", l))
+	}
+}
+
+// runParallelWithSpecEnv returns a RunParallel func that reads the spec's Env and
+// Timeout at invocation time, so BeforeSpawn mutations are visible to the child.
+func runParallelWithSpecEnv(testCase *ext.ExtensionTestSpec, name string) func(ctx context.Context) *ext.ExtensionTestResult {
+	// Reads testCase.Env at call time so BeforeSpawn mutations are visible.
+	// NewScheduler rejects duplicate spec pointers, so this spec has one execution.
+	return func(ctx context.Context) *ext.ExtensionTestResult {
+		timeout := 90 * time.Minute
+		if testCase.Timeout > 0 {
+			timeout = testCase.Timeout
+		}
+		return SpawnProcessToRunTestWithEnv(ctx, name, timeout, testCase.Env)
 	}
 }
 

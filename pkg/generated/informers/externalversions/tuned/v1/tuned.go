@@ -27,16 +27,45 @@ import (
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/generated/listers/tuned/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
+	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	watch "k8s.io/apimachinery/pkg/watch"
 	cache "k8s.io/client-go/tools/cache"
 )
 
 // TunedInformer provides access to a shared informer and lister for
-// Tuneds.
+// Tuneds. Prefer using the type-safe variant (see [TypedTunedInformer]).
 type TunedInformer interface {
 	Informer() cache.SharedIndexInformer
 	Lister() tunedv1.TunedLister
 }
+
+// TypedTunedInformer provides access to a shared informer and lister for
+// Tuneds, including the type-safe TypedInformer variant.
+// It is a superset of TunedInformer.
+type TypedTunedInformer interface {
+	Informer() cache.SharedIndexInformer
+	TypedInformer() TunedIndexInformer
+	Lister() tunedv1.TunedLister
+}
+
+// TunedIndexInformer is a wrapper around the underlying [cache.SharedIndexInformer]
+// with type-safe variants of several methods.
+type TunedIndexInformer cache.TypedSharedIndexInformer[*apistunedv1.Tuned]
+
+// TunedHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerFuncs] for Tuned.
+type TunedHandlerFuncs = cache.TypedResourceEventHandlerFuncs[*apistunedv1.Tuned]
+
+// TunedDetailedHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerDetailedFuncs] for Tuned.
+type TunedDetailedHandlerFuncs = cache.TypedResourceEventHandlerDetailedFuncs[*apistunedv1.Tuned]
+
+// TunedFilteringHandler is a specialization of [cache.TypedFilteringResourceEventHandler] for Tuned.
+type TunedFilteringHandler = cache.TypedFilteringResourceEventHandler[*apistunedv1.Tuned]
+
+// TunedIndexers is a specialization of [cache.TypedIndexers] for Tuned.
+type TunedIndexers = cache.TypedIndexers[*apistunedv1.Tuned]
+
+// DeletedTuned is a specialization of [cache.DeletedObject] for Tuned.
+type DeletedTuned = cache.DeletedObject[*apistunedv1.Tuned]
 
 type tunedInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
@@ -47,55 +76,132 @@ type tunedInformer struct {
 // NewTunedInformer constructs a new informer for Tuned type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedTunedInformer]).
 func NewTunedInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return NewFilteredTunedInformer(client, namespace, resyncPeriod, indexers, nil)
+	return NewTunedInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers})
+}
+
+// NewTypedTunedInformer constructs a new informer for Tuned type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedTunedInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers TunedIndexers) TunedIndexInformer {
+	return NewTypedTunedInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers)})
 }
 
 // NewFilteredTunedInformer constructs a new informer for Tuned type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedFilteredTunedInformer]).
 func NewFilteredTunedInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	return cache.NewSharedIndexInformer(
+	return NewTypedTunedInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+}
+
+// NewTypedFilteredTunedInformer constructs a new informer for Tuned type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedFilteredTunedInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers TunedIndexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) TunedIndexInformer {
+	return NewTypedTunedInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers), TweakListOptions: tweakListOptions})
+}
+
+// NewTunedInformerWithOptions constructs a new informer for Tuned type with additional options.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedTunedInformerWithOptions]).
+func NewTunedInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) cache.SharedIndexInformer {
+	return NewTypedTunedInformerWithOptions(client, namespace, options)
+}
+
+// NewTypedTunedInformerWithOptions constructs a new informer for Tuned type with additional options.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedTunedInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) TunedIndexInformer {
+	gvr := schema.GroupVersionResource{Group: "tuned.openshift.io", Version: "v1", Resource: "tuneds"}
+	identifier := options.InformerName.WithResource(gvr)
+	tweakListOptions := options.TweakListOptions
+	return cache.NewTypedSharedIndexInformer[*apistunedv1.Tuned](cache.NewSharedIndexInformerWithOptions(
 		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
-			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+			ListFunc: func(opts metav1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
-					tweakListOptions(&options)
+					tweakListOptions(&opts)
 				}
-				return client.TunedV1().Tuneds(namespace).List(context.Background(), options)
+				return client.TunedV1().Tuneds(namespace).List(context.Background(), opts)
 			},
-			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+			WatchFunc: func(opts metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
-					tweakListOptions(&options)
+					tweakListOptions(&opts)
 				}
-				return client.TunedV1().Tuneds(namespace).Watch(context.Background(), options)
+				return client.TunedV1().Tuneds(namespace).Watch(context.Background(), opts)
 			},
-			ListWithContextFunc: func(ctx context.Context, options metav1.ListOptions) (runtime.Object, error) {
+			ListWithContextFunc: func(ctx context.Context, opts metav1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
-					tweakListOptions(&options)
+					tweakListOptions(&opts)
 				}
-				return client.TunedV1().Tuneds(namespace).List(ctx, options)
+				return client.TunedV1().Tuneds(namespace).List(ctx, opts)
 			},
-			WatchFuncWithContext: func(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
+			WatchFuncWithContext: func(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
-					tweakListOptions(&options)
+					tweakListOptions(&opts)
 				}
-				return client.TunedV1().Tuneds(namespace).Watch(ctx, options)
+				return client.TunedV1().Tuneds(namespace).Watch(ctx, opts)
 			},
 		}, client),
 		&apistunedv1.Tuned{},
-		resyncPeriod,
-		indexers,
-	)
+		cache.SharedIndexInformerOptions{
+			ResyncPeriod: options.ResyncPeriod,
+			Indexers:     options.Indexers,
+			Identifier:   identifier,
+		},
+	))
 }
 
 func (f *tunedInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewFilteredTunedInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
+	return NewTypedTunedInformerWithOptions(client, f.namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
 }
 
 func (f *tunedInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apistunedv1.Tuned{}, f.defaultInformer)
+	return f.TypedInformer()
+}
+
+func (f *tunedInformer) TypedInformer() TunedIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apistunedv1.Tuned](f.factory.InformerFor(&apistunedv1.Tuned{}, f.defaultInformer))
 }
 
 func (f *tunedInformer) Lister() tunedv1.TunedLister {
 	return tunedv1.NewTunedLister(f.Informer().GetIndexer())
+}
+
+// ToTypedTunedInformer converts an untyped informer into a TypedTunedInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *Tuned. If that is not the case, calling type-safe methods of the returned
+// TypedTunedInformer leads to runtime panics. A safer alternative is to pass
+// around a TypedTunedInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToTypedTunedInformer(informer TunedInformer) TypedTunedInformer {
+	if informer, ok := informer.(TypedTunedInformer); ok {
+		return informer
+	}
+	return &tunedTypedInformerAdapter{informer}
+}
+
+type tunedTypedInformerAdapter struct {
+	TunedInformer
+}
+
+func (a *tunedTypedInformerAdapter) TypedInformer() TunedIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apistunedv1.Tuned](a.Informer())
+}
+
+// ToTunedIndexInformer converts an untyped informer into a TunedIndexInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *Tuned. If that is not the case, calling type-safe methods of the returned
+// TunedIndexInformer leads to runtime panics. A safer alternative is to pass
+// around a TunedIndexInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToTunedIndexInformer(informer cache.SharedIndexInformer) TunedIndexInformer {
+	if informer, ok := informer.(TunedIndexInformer); ok {
+		return informer
+	}
+	return cache.NewTypedSharedIndexInformer[*apistunedv1.Tuned](informer)
 }

@@ -125,7 +125,7 @@ var _ = ginkgo.Describe("[basic][netdev_set_channels] Node Tuning Operator adjus
 			// Try to lower the number of multi-purpose channels first.
 			ginkgo.By(fmt.Sprintf("ensuring the number of multi-purpose channels is set to 1 for %s on node %s", phyDev, node.Name))
 			const errUnableToLowerChannels = "unable to lower the number of multi-purpose channels to 1 for device %s on node %s; skipping test: %v"
-			out, err = util.ExecCmdInPod(pod, "bash", "-c", fmt.Sprintf("ethtool -L %s combined 1", phyDev))
+			_, err = util.ExecCmdInPod(pod, "bash", "-c", fmt.Sprintf("ethtool -L %s combined 1", phyDev))
 			if err != nil {
 				util.Logf(errUnableToLowerChannels, phyDev, node.Name, err)
 				return

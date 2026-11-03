@@ -35,6 +35,8 @@ type KubernetesReporter struct {
 	reportPath     string
 	namespaceToLog NamespaceFilter
 	crs            []CRData
+	// Timestamps prefixes each dumped pod log line with an RFC3339 timestamp.
+	Timestamps bool
 }
 
 // CRData represents a cr to dump
@@ -164,14 +166,14 @@ func (r *KubernetesReporter) logLogs(since time.Time, dirName string) {
 		containersToLog = append(containersToLog, pod.Spec.InitContainers...)
 		for _, container := range containersToLog {
 			logStart := metav1.NewTime(since)
-			logs, err := r.clients.Pods(pod.Namespace).GetLogs(pod.Name, &v1.PodLogOptions{Container: container.Name, SinceTime: &logStart}).DoRaw(context.Background())
+			logs, err := r.clients.Pods(pod.Namespace).GetLogs(pod.Name, &v1.PodLogOptions{Container: container.Name, SinceTime: &logStart, Timestamps: r.Timestamps}).DoRaw(context.Background())
 			if err == nil {
 				fmt.Fprintf(f, fileSeparator)
 				fmt.Fprintf(f, "Dumping logs for pod %s-%s-%s\n", pod.Namespace, pod.Name, container.Name)
 				fmt.Fprintln(f, string(logs))
 			}
 
-			logs, err = r.clients.Pods(pod.Namespace).GetLogs(pod.Name, &v1.PodLogOptions{Container: container.Name, SinceTime: &logStart, Previous: true}).DoRaw(context.Background())
+			logs, err = r.clients.Pods(pod.Namespace).GetLogs(pod.Name, &v1.PodLogOptions{Container: container.Name, SinceTime: &logStart, Previous: true, Timestamps: r.Timestamps}).DoRaw(context.Background())
 			if err == nil {
 				fmt.Fprintf(f, fileSeparator)
 				fmt.Fprintf(f, "Dumping previous logs for pod %s-%s-%s\n", pod.Namespace, pod.Name, container.Name)

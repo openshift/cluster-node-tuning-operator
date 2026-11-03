@@ -24,9 +24,9 @@ import (
 // Interface provides access to all the informers in this group version.
 type Interface interface {
 	// Profiles returns a ProfileInformer.
-	Profiles() ProfileInformer
+	Profiles() TypedProfileInformer
 	// Tuneds returns a TunedInformer.
-	Tuneds() TunedInformer
+	Tuneds() TypedTunedInformer
 }
 
 type version struct {
@@ -40,12 +40,12 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
-// Profiles returns a ProfileInformer.
-func (v *version) Profiles() ProfileInformer {
+// Profiles returns a TypedProfileInformer.
+func (v *version) Profiles() TypedProfileInformer {
 	return &profileInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
-// Tuneds returns a TunedInformer.
-func (v *version) Tuneds() TunedInformer {
+// Tuneds returns a TypedTunedInformer.
+func (v *version) Tuneds() TypedTunedInformer {
 	return &tunedInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }

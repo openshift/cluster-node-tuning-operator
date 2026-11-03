@@ -43,7 +43,7 @@ linters:
       # Technical debt, ReportViaDeprecatedReporter() will be removed in future ginkgo versions.
       - linters:
           - staticcheck
-        text: "SA1019: reporters.ReportViaDeprecatedReporter is deprecated"
+        text: 'SA1019: .*reporters\.ReportViaDeprecatedReporter is deprecated'
       # Dot imports shouldn't be used, unfortunately they are.
       - linters:
           - staticcheck

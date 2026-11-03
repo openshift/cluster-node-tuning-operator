@@ -134,7 +134,11 @@ func operatorRun() {
 	}
 	restConfig := ctrl.GetConfigOrDie()
 
-	tlsSecurityProfileSpec, tlsConfig := getInitialTLSProfile(restConfig)
+	tlsSecurityProfileSpec, tlsConfig, err := getInitialTLSProfile(restConfig)
+	if err != nil {
+		// Fail closed rather than serving a weaker TLS profile than the cluster asks for.
+		klog.Exitf("unable to get initial TLS profile: %v", err)
+	}
 	tlsOpts := []func(*tls.Config){
 		func(c *tls.Config) {
 			// CVE-2023-44487
@@ -316,7 +320,11 @@ func setupFeatureGates(ctx context.Context, config *rest.Config, operatorNamespa
 }
 
 // Try to fetch the TLS profile from the APIServer resource.
-// Fall back to the default (intermediate) profile in case of errors.
+// Fall back to the default (intermediate) profile if the profile cannot be fetched.
+// If the fetched profile cannot be converted to a TLS configuration, an error is
+// returned so that the caller can fail closed instead of silently downgrading the
+// TLS settings (which would also look like a profile change to the watcher and
+// cause a restart loop).
 // In HyperShift mode, the restConfig will point to the hosted cluster,
 // so this function will fetch the TLS profile from the hosted cluster's APIServer.
 //
@@ -326,7 +334,7 @@ func setupFeatureGates(ctx context.Context, config *rest.Config, operatorNamespa
 // would make the implementation less readable.  Reconsider fetching the HostedCluster
 // object and getting the TLSProfile from there once there are official libraries supporting
 // this.
-func getInitialTLSProfile(restConfig *rest.Config) (apiconfigv1.TLSProfileSpec, func(*tls.Config)) {
+func getInitialTLSProfile(restConfig *rest.Config) (apiconfigv1.TLSProfileSpec, func(*tls.Config), error) {
 	// Helper function to get the default TLS profile.
 	getDefaultTLSProfile := func() apiconfigv1.TLSProfileSpec {
 		tlsSecurityProfileSpec, err := tlspkg.GetTLSProfileSpec(nil)
@@ -353,14 +361,22 @@ func getInitialTLSProfile(restConfig *rest.Config) (apiconfigv1.TLSProfileSpec, 
 	}
 
 	// Create the TLS configuration function for the webhook and metrics servers.
-	tlsConfig, unsupportedCiphers := tlspkg.NewTLSConfigFromProfile(tlsSecurityProfileSpec)
+	tlsConfig, unsupportedCiphers, err := tlspkg.NewTLSConfigFromProfile(tlsSecurityProfileSpec)
+	if err != nil {
+		// NewTLSConfigFromProfile only returns an error when the minimum TLS version is invalid.
+		// Do not fall back to the default profile here: the profile is cluster configuration and
+		// silently serving a weaker one would both weaken security and, because the watcher would
+		// keep comparing the fallback against the configured profile, cause a restart loop.
+		return apiconfigv1.TLSProfileSpec{}, nil,
+			fmt.Errorf("unable to create TLS configuration from the effective TLS profile (minTLSVersion=%q): %w", tlsSecurityProfileSpec.MinTLSVersion, err)
+	}
 	if len(unsupportedCiphers) > 0 {
 		klog.Warningf("TLS configuration contains unsupported ciphers that will be ignored: %v", unsupportedCiphers)
 	}
 
 	klog.Infof("TLS security profile: MinTLSVersion=%s, Ciphers=%v", tlsSecurityProfileSpec.MinTLSVersion, tlsSecurityProfileSpec.Ciphers)
 
-	return tlsSecurityProfileSpec, tlsConfig
+	return tlsSecurityProfileSpec, tlsConfig, nil
 }
 
 func setupTLSProfileWatcher(mgr ctrl.Manager, cancel context.CancelFunc, tlsSecurityProfileSpec apiconfigv1.TLSProfileSpec) error {
