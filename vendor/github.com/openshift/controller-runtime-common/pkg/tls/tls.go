@@ -118,13 +118,17 @@ func GetTLSProfileSpec(profile *configv1.TLSSecurityProfile) (configv1.TLSProfil
 
 // NewTLSConfigFromProfile returns a function that configures a tls.Config based on the provided TLSProfileSpec,
 // along with any cipher names from the profile that are not supported by the library-go crypto package.
+// It returns an error when the minimum TLS version is invalid.
 // The returned function is intended to be used with controller-runtime's TLSOpts.
 //
 // Note: CipherSuites are only set when MinVersion is below TLS 1.3, as Go's TLS 1.3 implementation
 // does not allow configuring cipher suites - all TLS 1.3 ciphers are always enabled.
 // See: https://github.com/golang/go/issues/29349
-func NewTLSConfigFromProfile(profile configv1.TLSProfileSpec) (tlsConfig func(*tls.Config), unsupported []string) {
-	minVersion := libgocrypto.TLSVersionOrDie(string(profile.MinTLSVersion))
+func NewTLSConfigFromProfile(profile configv1.TLSProfileSpec) (tlsConfig func(*tls.Config), unsupported []string, err error) {
+	minVersion, err := libgocrypto.TLSVersion(string(profile.MinTLSVersion))
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid minimum TLS version %q: %w", profile.MinTLSVersion, err)
+	}
 	cipherSuites, unsupportedCiphers := cipherCodes(profile.Ciphers)
 	curvePrefs, unsupportedGroups := libgocrypto.TLSGroupsToCurveIDs(profile.Groups)
 
@@ -145,7 +149,7 @@ func NewTLSConfigFromProfile(profile configv1.TLSProfileSpec) (tlsConfig func(*t
 		if minVersion != tls.VersionTLS13 {
 			tlsConf.CipherSuites = cipherSuites
 		}
-	}, unsupported
+	}, unsupported, nil
 }
 
 // SetNextProtos returns a TLS configuration function that sets the ALPN

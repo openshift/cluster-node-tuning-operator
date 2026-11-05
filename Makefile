@@ -59,9 +59,10 @@ PAO_CRD_APIS :=$(addprefix ./$(API_TYPES_DIR)/performanceprofile/,v2 v1 v1alpha1
 PAO_E2E_SUITES := $(shell hack/list-test-bin.sh)
 
 # golangci-lint variables
-GOLANGCI_LINT_VERSION=2.11.4
+GOLANGCI_LINT_VERSION=2.15.0
 GOLANGCI_LINT_BIN=$(OUT_DIR)/golangci-lint
 GOLANGCI_LINT_VERSION_TAG=v${GOLANGCI_LINT_VERSION}
+GOLANGCI_LINT_INSTALL_URL=https://raw.githubusercontent.com/golangci/golangci-lint/$(GOLANGCI_LINT_VERSION_TAG)/install.sh
 
 all: build
 
@@ -135,14 +136,14 @@ ifdef GOLANGCI_LINT
 	@echo "Found golangci-lint, version: $(GOLANGCI_LINT_LOCAL_VERSION)"
 ifneq ($(GOLANGCI_LINT_LOCAL_VERSION),$(GOLANGCI_LINT_VERSION))
 		@echo "Mismatch version,local: $(GOLANGCI_LINT_LOCAL_VERSION), expected: $(GOLANGCI_LINT_VERSION). Installing golangci-lint $(GOLANGCI_LINT_VERSION)"
-		curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b $(OUT_DIR) $(GOLANGCI_LINT_VERSION_TAG)
+		curl -sfL $(GOLANGCI_LINT_INSTALL_URL)| sh -s -- -b $(OUT_DIR) $(GOLANGCI_LINT_VERSION_TAG)
 endif
 else
 	@echo "Installing golangci-lint"
-	curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b $(OUT_DIR) $(GOLANGCI_LINT_VERSION_TAG)
+	curl -sfL $(GOLANGCI_LINT_INSTALL_URL)| sh -s -- -b $(OUT_DIR) $(GOLANGCI_LINT_VERSION_TAG)
 	$(GOLANGCI_LINT_BIN) --version
 endif
-	$(GOLANGCI_LINT_BIN) run --verbose --print-resources-usage -c .golangci.yaml
+	$(GOLANGCI_LINT_BIN) run --verbose -c .golangci.yaml
 
 vet: $(BINDATA)
 	$(GO) vet ./...

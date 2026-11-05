@@ -18,6 +18,16 @@ func (t *TestResultTask) Run(result *ExtensionTestResult) {
 	t.fn(result)
 }
 
+// BeforeSpawnTask wraps a function that can configure a parallel test process
+// immediately before it is spawned.
+type BeforeSpawnTask struct {
+	fn func(name string, options *SpawnOptions)
+}
+
+func (t *BeforeSpawnTask) Run(name string, options *SpawnOptions) {
+	t.fn(name, options)
+}
+
 type OneTimeTask struct {
 	fn       func()
 	executed int32 // Atomic boolean to indicate whether the function has been run

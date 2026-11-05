@@ -29,14 +29,14 @@ func newClient(kubeconfig string, crScheme *runtime.Scheme) (*clientSet, error) 
 	}
 
 	if kubeconfig != "" {
-		fmt.Println("Loading kube client config from path %q", kubeconfig)
+		fmt.Printf("Loading kube client config from path %q\n", kubeconfig)
 		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
 	} else {
 		fmt.Println("Using in-cluster kube client config")
 		config, err = rest.InClusterConfig()
 	}
 	if err != nil {
-		return nil, fmt.Errorf("Failed to init client")
+		return nil, fmt.Errorf("failed to init client, err: %w", err)
 	}
 
 	clientSet := &clientSet{}
@@ -46,5 +46,8 @@ func newClient(kubeconfig string, crScheme *runtime.Scheme) (*clientSet, error) 
 	clientSet.Client, err = runtimeclient.New(config, client.Options{
 		Scheme: crScheme,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to init runtimeclient, err: %w", err)
+	}
 	return clientSet, nil
 }

@@ -27,16 +27,45 @@ import (
 	tunedv1 "github.com/openshift/cluster-node-tuning-operator/pkg/generated/listers/tuned/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
+	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	watch "k8s.io/apimachinery/pkg/watch"
 	cache "k8s.io/client-go/tools/cache"
 )
 
 // ProfileInformer provides access to a shared informer and lister for
-// Profiles.
+// Profiles. Prefer using the type-safe variant (see [TypedProfileInformer]).
 type ProfileInformer interface {
 	Informer() cache.SharedIndexInformer
 	Lister() tunedv1.ProfileLister
 }
+
+// TypedProfileInformer provides access to a shared informer and lister for
+// Profiles, including the type-safe TypedInformer variant.
+// It is a superset of ProfileInformer.
+type TypedProfileInformer interface {
+	Informer() cache.SharedIndexInformer
+	TypedInformer() ProfileIndexInformer
+	Lister() tunedv1.ProfileLister
+}
+
+// ProfileIndexInformer is a wrapper around the underlying [cache.SharedIndexInformer]
+// with type-safe variants of several methods.
+type ProfileIndexInformer cache.TypedSharedIndexInformer[*apistunedv1.Profile]
+
+// ProfileHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerFuncs] for Profile.
+type ProfileHandlerFuncs = cache.TypedResourceEventHandlerFuncs[*apistunedv1.Profile]
+
+// ProfileDetailedHandlerFuncs is a specialization of [cache.TypedResourceEventHandlerDetailedFuncs] for Profile.
+type ProfileDetailedHandlerFuncs = cache.TypedResourceEventHandlerDetailedFuncs[*apistunedv1.Profile]
+
+// ProfileFilteringHandler is a specialization of [cache.TypedFilteringResourceEventHandler] for Profile.
+type ProfileFilteringHandler = cache.TypedFilteringResourceEventHandler[*apistunedv1.Profile]
+
+// ProfileIndexers is a specialization of [cache.TypedIndexers] for Profile.
+type ProfileIndexers = cache.TypedIndexers[*apistunedv1.Profile]
+
+// DeletedProfile is a specialization of [cache.DeletedObject] for Profile.
+type DeletedProfile = cache.DeletedObject[*apistunedv1.Profile]
 
 type profileInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
@@ -47,55 +76,132 @@ type profileInformer struct {
 // NewProfileInformer constructs a new informer for Profile type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedProfileInformer]).
 func NewProfileInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return NewFilteredProfileInformer(client, namespace, resyncPeriod, indexers, nil)
+	return NewProfileInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers})
+}
+
+// NewTypedProfileInformer constructs a new informer for Profile type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedProfileInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers ProfileIndexers) ProfileIndexInformer {
+	return NewTypedProfileInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers)})
 }
 
 // NewFilteredProfileInformer constructs a new informer for Profile type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedFilteredProfileInformer]).
 func NewFilteredProfileInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	return cache.NewSharedIndexInformer(
+	return NewTypedProfileInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
+}
+
+// NewTypedFilteredProfileInformer constructs a new informer for Profile type.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedFilteredProfileInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers ProfileIndexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) ProfileIndexInformer {
+	return NewTypedProfileInformerWithOptions(client, namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.TypedIndexersToIndexers(indexers), TweakListOptions: tweakListOptions})
+}
+
+// NewProfileInformerWithOptions constructs a new informer for Profile type with additional options.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+// If you really need an independent one, prefer using the type-safe variant (see [NewTypedProfileInformerWithOptions]).
+func NewProfileInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) cache.SharedIndexInformer {
+	return NewTypedProfileInformerWithOptions(client, namespace, options)
+}
+
+// NewTypedProfileInformerWithOptions constructs a new informer for Profile type with additional options.
+// Always prefer using an informer factory to get a shared informer instead of getting an independent
+// one. This reduces memory footprint and number of connections to the server.
+func NewTypedProfileInformerWithOptions(client versioned.Interface, namespace string, options internalinterfaces.InformerOptions) ProfileIndexInformer {
+	gvr := schema.GroupVersionResource{Group: "tuned.openshift.io", Version: "v1", Resource: "profiles"}
+	identifier := options.InformerName.WithResource(gvr)
+	tweakListOptions := options.TweakListOptions
+	return cache.NewTypedSharedIndexInformer[*apistunedv1.Profile](cache.NewSharedIndexInformerWithOptions(
 		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
-			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+			ListFunc: func(opts metav1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
-					tweakListOptions(&options)
+					tweakListOptions(&opts)
 				}
-				return client.TunedV1().Profiles(namespace).List(context.Background(), options)
+				return client.TunedV1().Profiles(namespace).List(context.Background(), opts)
 			},
-			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+			WatchFunc: func(opts metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
-					tweakListOptions(&options)
+					tweakListOptions(&opts)
 				}
-				return client.TunedV1().Profiles(namespace).Watch(context.Background(), options)
+				return client.TunedV1().Profiles(namespace).Watch(context.Background(), opts)
 			},
-			ListWithContextFunc: func(ctx context.Context, options metav1.ListOptions) (runtime.Object, error) {
+			ListWithContextFunc: func(ctx context.Context, opts metav1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
-					tweakListOptions(&options)
+					tweakListOptions(&opts)
 				}
-				return client.TunedV1().Profiles(namespace).List(ctx, options)
+				return client.TunedV1().Profiles(namespace).List(ctx, opts)
 			},
-			WatchFuncWithContext: func(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
+			WatchFuncWithContext: func(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
-					tweakListOptions(&options)
+					tweakListOptions(&opts)
 				}
-				return client.TunedV1().Profiles(namespace).Watch(ctx, options)
+				return client.TunedV1().Profiles(namespace).Watch(ctx, opts)
 			},
 		}, client),
 		&apistunedv1.Profile{},
-		resyncPeriod,
-		indexers,
-	)
+		cache.SharedIndexInformerOptions{
+			ResyncPeriod: options.ResyncPeriod,
+			Indexers:     options.Indexers,
+			Identifier:   identifier,
+		},
+	))
 }
 
 func (f *profileInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewFilteredProfileInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
+	return NewTypedProfileInformerWithOptions(client, f.namespace, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
 }
 
 func (f *profileInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apistunedv1.Profile{}, f.defaultInformer)
+	return f.TypedInformer()
+}
+
+func (f *profileInformer) TypedInformer() ProfileIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apistunedv1.Profile](f.factory.InformerFor(&apistunedv1.Profile{}, f.defaultInformer))
 }
 
 func (f *profileInformer) Lister() tunedv1.ProfileLister {
 	return tunedv1.NewProfileLister(f.Informer().GetIndexer())
+}
+
+// ToTypedProfileInformer converts an untyped informer into a TypedProfileInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *Profile. If that is not the case, calling type-safe methods of the returned
+// TypedProfileInformer leads to runtime panics. A safer alternative is to pass
+// around a TypedProfileInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToTypedProfileInformer(informer ProfileInformer) TypedProfileInformer {
+	if informer, ok := informer.(TypedProfileInformer); ok {
+		return informer
+	}
+	return &profileTypedInformerAdapter{informer}
+}
+
+type profileTypedInformerAdapter struct {
+	ProfileInformer
+}
+
+func (a *profileTypedInformerAdapter) TypedInformer() ProfileIndexInformer {
+	return cache.NewTypedSharedIndexInformer[*apistunedv1.Profile](a.Informer())
+}
+
+// ToProfileIndexInformer converts an untyped informer into a ProfileIndexInformer.
+//
+// WARNING: this conversion is only safe if the informer handles objects of type
+// *Profile. If that is not the case, calling type-safe methods of the returned
+// ProfileIndexInformer leads to runtime panics. A safer alternative is to pass
+// around a ProfileIndexInformer instances that was obtained from a
+// SharedInformerFactory.
+func ToProfileIndexInformer(informer cache.SharedIndexInformer) ProfileIndexInformer {
+	if informer, ok := informer.(ProfileIndexInformer); ok {
+		return informer
+	}
+	return cache.NewTypedSharedIndexInformer[*apistunedv1.Profile](informer)
 }

@@ -84,6 +84,10 @@ func NewRunSuiteCommand(registry *extension.Registry) *cobra.Command {
 				}
 			}()
 
+			if prefix := os.Getenv("JUNIT_SUITE_NAME_PREFIX"); prefix != "" {
+				suite.Name = prefix + suite.Name
+			}
+
 			// JUnit writer if needed
 			if opts.junitPath != "" {
 				junitWriter, err := extensiontests.NewJUnitResultWriter(opts.junitPath, suite.Name)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"slices"
 	"sync"
 
 	"github.com/openshift-eng/openshift-tests-extension/pkg/util/sets"
@@ -38,12 +39,12 @@ func WithSchedulerAccessor(fn func(Scheduler)) SchedulerOption {
 
 // SchedulerSnapshot is a point-in-time view of scheduler state for diagnostics.
 type SchedulerSnapshot struct {
-	QueueLength          int
-	QueueFront           string
+	QueueLength             int
+	QueueFront              string
 	QueueFrontResourcePools map[string]int
 	ResourcePoolCapacity    map[string]int
 	ResourcePoolAvailable   map[string]int
-	ActiveCount          int
+	ActiveCount             int
 }
 
 // Scheduler defines the interface for test scheduling.
@@ -52,7 +53,8 @@ type SchedulerSnapshot struct {
 //
 // Callers must follow a get-once, complete-once protocol: every non-nil spec returned by
 // GetNextTestToRun must eventually be passed to MarkTestComplete exactly once, including
-// when test execution panics.
+// when test execution panics. NewScheduler rejects duplicate spec pointers because a
+// pointer cannot identify two concurrent executions independently.
 type Scheduler interface {
 	// GetNextTestToRun blocks until a test is available, then returns it.
 	// Returns nil when all tests have been distributed (queue is empty) or context is cancelled.
@@ -60,8 +62,10 @@ type Scheduler interface {
 	// This method can be safely called from multiple goroutines concurrently.
 	GetNextTestToRun(ctx context.Context) *ExtensionTestSpec
 
-	// MarkTestComplete marks a test as complete, cleaning up its conflicts, taints, and
-	// pool reservations. This may unblock other tests that were waiting.
+	// MarkTestComplete marks a test as complete, releasing the conflicts, taints, and
+	// pool reservations captured when GetNextTestToRun dispatched the spec. Later
+	// mutation of the spec (for example by a BeforeSpawn hook) does not change what is
+	// released. This may unblock other tests that were waiting.
 	// This method can be safely called from multiple goroutines concurrently.
 	MarkTestComplete(spec *ExtensionTestSpec)
 }
@@ -79,26 +83,50 @@ type SchedulerDiagnostics interface {
 // provides thread-safe scheduling operations.
 type testScheduler struct {
 	mu               sync.Mutex
-	cond             *sync.Cond                 // condition variable to signal when tests complete
+	cond             *sync.Cond // condition variable to signal when tests complete
 	tests            []*ExtensionTestSpec
-	runningConflicts map[string]sets.Set[string] // tracks which conflicts are running per group: group -> set of conflicts
-	activeTaints     map[string]int              // tracks how many tests are currently applying each taint
-	poolCapacity     map[string]int              // total capacity per pool (nil if no pools configured)
-	poolAvailable    map[string]int              // currently available per pool
-	activeCount      int                         // tests dispatched but not yet completed
+	runningConflicts map[string]sets.Set[string]            // tracks which conflicts are running per group: group -> set of conflicts
+	activeTaints     map[string]int                         // tracks how many tests are currently applying each taint
+	poolCapacity     map[string]int                         // total capacity per pool (nil if no pools configured)
+	poolAvailable    map[string]int                         // currently available per pool
+	reservations     map[*ExtensionTestSpec]specReservation // dispatch-time snapshots keyed by the unique spec pointer
+	activeCount      int                                    // tests dispatched but not yet completed
 	accessor         func(Scheduler)
+}
+
+// specReservation is the isolation and pool state recorded when a spec is
+// dispatched. MarkTestComplete releases this snapshot rather than the live spec,
+// so BeforeSpawn (or any other mutation) cannot strand queued tests.
+type specReservation struct {
+	conflictGroup string
+	conflicts     []string
+	taints        []string
+	pools         map[string]int
 }
 
 // NewScheduler creates a test scheduler. It accepts tests in any order and schedules
 // them based on isolation requirements (conflicts, taints, tolerations) and optional
 // pool capacity constraints. When pool capacity is configured via WithResourcePoolCapacity,
 // the constructor validates that no test demands more than the total pool capacity,
-// references only defined pools, and has non-negative demand.
+// references only defined pools, and has non-negative demand. Nil specs and duplicate
+// spec pointers are rejected.
 func NewScheduler(tests []*ExtensionTestSpec, opts ...SchedulerOption) (Scheduler, error) {
+	seen := make(map[*ExtensionTestSpec]struct{}, len(tests))
+	for _, test := range tests {
+		if test == nil {
+			return nil, fmt.Errorf("test spec must not be nil")
+		}
+		if _, exists := seen[test]; exists {
+			return nil, fmt.Errorf("test %q uses the same spec pointer more than once", test.Name)
+		}
+		seen[test] = struct{}{}
+	}
+
 	ts := &testScheduler{
 		tests:            append([]*ExtensionTestSpec(nil), tests...),
 		runningConflicts: make(map[string]sets.Set[string]),
 		activeTaints:     make(map[string]int),
+		reservations:     make(map[*ExtensionTestSpec]specReservation),
 	}
 	ts.cond = sync.NewCond(&ts.mu)
 
@@ -244,13 +272,17 @@ func (ts *testScheduler) GetNextTestToRun(ctx context.Context) *ExtensionTestSpe
 					}
 				}
 
-				// 4. Track active count
+				// 4. Snapshot the reservation so completion releases what was
+				// actually reserved, even if the spec is mutated afterward.
+				ts.reservations[spec] = snapshotReservation(spec, conflictGroup)
+
+				// 5. Track active count
 				ts.activeCount++
 
-				// 5. Remove test from queue
+				// 6. Remove test from queue
 				ts.tests = append(ts.tests[:i], ts.tests[i+1:]...)
 
-				// 6. Return the test (now safe to run)
+				// 7. Return the test (now safe to run)
 				return spec
 			}
 		}
@@ -262,6 +294,15 @@ func (ts *testScheduler) GetNextTestToRun(ctx context.Context) *ExtensionTestSpe
 
 func getConflictGroup(_ *ExtensionTestSpec) string {
 	return defaultConflictGroup
+}
+
+func snapshotReservation(spec *ExtensionTestSpec, conflictGroup string) specReservation {
+	return specReservation{
+		conflictGroup: conflictGroup,
+		conflicts:     slices.Clone(spec.Resources.Isolation.Conflict),
+		taints:        slices.Clone(spec.Resources.Isolation.Taint),
+		pools:         maps.Clone(spec.Resources.ResourcePools),
+	}
 }
 
 // hasActiveConflict checks if the spec has any conflicts with currently running tests.
@@ -311,9 +352,9 @@ func (ts *testScheduler) hasPoolCapacity(spec *ExtensionTestSpec) bool {
 	return true
 }
 
-// MarkTestComplete marks all conflicts, taints, and pool reservations of a spec as
-// no longer running/active and signals waiting workers that blocked tests may now be runnable.
-// This should be called after a test completes execution.
+// MarkTestComplete releases the conflicts, taints, and pool units reserved when the spec
+// was dispatched, then signals waiting workers. Cleanup uses the dispatch-time snapshot,
+// not the spec's current Isolation/ResourcePools.
 func (ts *testScheduler) MarkTestComplete(spec *ExtensionTestSpec) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
@@ -323,18 +364,24 @@ func (ts *testScheduler) MarkTestComplete(spec *ExtensionTestSpec) {
 		return
 	}
 
-	isolation := &spec.Resources.Isolation
-	conflictGroup := getConflictGroup(spec)
+	res, exists := ts.reservations[spec]
+	if !exists {
+		// Never dispatched, or already completed. Do not reread the live spec:
+		// Isolation/ResourcePools may have been mutated since dispatch.
+		ts.cond.Broadcast()
+		return
+	}
+	delete(ts.reservations, spec)
 
 	// Clean up conflicts within this group
-	if groupConflicts, exists := ts.runningConflicts[conflictGroup]; exists {
-		for _, conflict := range isolation.Conflict {
+	if groupConflicts, exists := ts.runningConflicts[res.conflictGroup]; exists {
+		for _, conflict := range res.conflicts {
 			groupConflicts.Delete(conflict)
 		}
 	}
 
 	// Clean up taints with reference counting
-	for _, taint := range isolation.Taint {
+	for _, taint := range res.taints {
 		ts.activeTaints[taint]--
 		if ts.activeTaints[taint] <= 0 {
 			delete(ts.activeTaints, taint)
@@ -343,7 +390,7 @@ func (ts *testScheduler) MarkTestComplete(spec *ExtensionTestSpec) {
 
 	// Return pool units and log transitions
 	if ts.poolCapacity != nil {
-		for pool, demand := range spec.Resources.ResourcePools {
+		for pool, demand := range res.pools {
 			before := ts.poolAvailable[pool]
 			ts.poolAvailable[pool] += demand
 			if ts.poolAvailable[pool] > ts.poolCapacity[pool] {

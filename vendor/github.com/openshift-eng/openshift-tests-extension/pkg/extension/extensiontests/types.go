@@ -13,6 +13,11 @@ type Lifecycle string
 var LifecycleInforming Lifecycle = "informing"
 var LifecycleBlocking Lifecycle = "blocking"
 
+// SpawnedChildEnv is set to "1" on processes created by SpawnProcessToRunTest.
+// Custom RunParallel implementations that start a child process which may execute
+// multiple specs must also set it so BeforeSpawn runs only in the parent.
+const SpawnedChildEnv = "OTE_SPAWNED_CHILD"
+
 // IsTerminal returns true if failures in tests with this lifecycle should cause
 // the test run to exit with a non-zero exit code.
 func (l Lifecycle) IsTerminal() bool {
@@ -20,6 +25,12 @@ func (l Lifecycle) IsTerminal() bool {
 }
 
 type ExtensionTestSpecs []*ExtensionTestSpec
+
+// SpawnOptions contains the per-dispatch settings a BeforeSpawn hook may change.
+type SpawnOptions struct {
+	Env     map[string]string
+	Timeout time.Duration
+}
 
 type ExtensionTestSpec struct {
 	Name string `json:"name"`
@@ -56,27 +67,35 @@ type ExtensionTestSpec struct {
 	// cause an infinite recursion.
 	Run func(ctx context.Context) *ExtensionTestResult `json:"-"`
 
-	// RunParallel invokes a test in parallel with other tests.  This is usually done by exec-ing out
-	// to the `ote-binary run-test "test name"` commmand and interpretting the result.
+	// RunParallel invokes a test in parallel with other tests. This is usually done by exec-ing out
+	// to the `ote-binary run-test "test name"` command and interpreting the result. Custom runners
+	// that start a child process which may execute multiple specs must set SpawnedChildEnv to "1"
+	// in the child's environment.
 	RunParallel func(ctx context.Context) *ExtensionTestResult `json:"-"`
 
 	// Timeout is the maximum duration for this test. If set, it overrides the default 90-minute
 	// timeout used by SpawnProcessToRunTest. This is typically populated from Suite.TestTimeout.
 	Timeout time.Duration `json:"-"`
 
+	// Env holds extra environment variables for the RunParallel path; it has no
+	// effect on in-process Run. Populate via BeforeSpawn. Ginkgo-generated runners
+	// merge it into the child process; custom runners must consume it themselves.
+	Env map[string]string `json:"-"`
+
 	// Hook functions
-	afterAll   []*OneTimeTask
-	beforeAll  []*OneTimeTask
-	afterEach  []*TestResultTask
-	beforeEach []*SpecTask
+	afterAll    []*OneTimeTask
+	beforeAll   []*OneTimeTask
+	afterEach   []*TestResultTask
+	beforeEach  []*SpecTask
+	beforeSpawn []*BeforeSpawnTask
 }
 
 type Resources struct {
-	Isolation Isolation      `json:"isolation"`
+	Isolation     Isolation      `json:"isolation"`
 	ResourcePools map[string]int `json:"resourcePools,omitempty"`
-	Memory    string         `json:"memory,omitempty"`
-	Duration  string         `json:"duration,omitempty"`
-	Timeout   string         `json:"timeout,omitempty"`
+	Memory        string         `json:"memory,omitempty"`
+	Duration      string         `json:"duration,omitempty"`
+	Timeout       string         `json:"timeout,omitempty"`
 }
 
 type Isolation struct {

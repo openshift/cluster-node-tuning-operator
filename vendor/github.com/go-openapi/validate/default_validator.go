@@ -1,23 +1,9 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package validate
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/go-openapi/spec"
 )
 
@@ -25,58 +11,14 @@ import (
 // According to Swagger spec, default values MUST validate their schema.
 type defaultValidator struct {
 	SpecValidator  *SpecValidator
-	visitedSchemas map[string]bool
+	visitedSchemas map[string]struct{}
+	schemaOptions  *SchemaValidatorOptions
 }
 
-// resetVisited resets the internal state of visited schemas
-func (d *defaultValidator) resetVisited() {
-	d.visitedSchemas = map[string]bool{}
-}
+// Validate validates the default values declared in the swagger spec.
+func (d *defaultValidator) Validate() *Result {
+	errs := validatorPools.results.Borrow() // will redeem when merged
 
-func isVisited(path string, visitedSchemas map[string]bool) bool {
-	found := visitedSchemas[path]
-	if !found {
-		// search for overlapping paths
-		frags := strings.Split(path, ".")
-		if len(frags) < 2 {
-			// shortcut exit on smaller paths
-			return found
-		}
-		last := len(frags) - 1
-		var currentFragStr, parent string
-		for i := range frags {
-			if i == 0 {
-				currentFragStr = frags[last]
-			} else {
-				currentFragStr = strings.Join([]string{frags[last-i], currentFragStr}, ".")
-			}
-			if i < last {
-				parent = strings.Join(frags[0:last-i], ".")
-			} else {
-				parent = ""
-			}
-			if strings.HasSuffix(parent, currentFragStr) {
-				found = true
-				break
-			}
-		}
-	}
-	return found
-}
-
-// beingVisited asserts a schema is being visited
-func (d *defaultValidator) beingVisited(path string) {
-	d.visitedSchemas[path] = true
-}
-
-// isVisited tells if a path has already been visited
-func (d *defaultValidator) isVisited(path string) bool {
-	return isVisited(path, d.visitedSchemas)
-}
-
-// Validate validates the default values declared in the swagger spec
-func (d *defaultValidator) Validate() (errs *Result) {
-	errs = new(Result)
 	if d == nil || d.SpecValidator == nil {
 		return errs
 	}
@@ -85,19 +27,64 @@ func (d *defaultValidator) Validate() (errs *Result) {
 	return errs
 }
 
+// resetVisited resets the internal state of visited schemas.
+func (d *defaultValidator) resetVisited() {
+	if d.visitedSchemas == nil {
+		d.visitedSchemas = make(map[string]struct{})
+
+		return
+	}
+
+	// NOTE(go1.21): clear(ex.visitedSchemas)
+	for k := range d.visitedSchemas {
+		delete(d.visitedSchemas, k)
+	}
+}
+
+func isVisited(path pathSegments, visitedSchemas map[string]struct{}) bool {
+	_, found := visitedSchemas[path.pointer()]
+	if found {
+		return true
+	}
+
+	// search for overlapping paths: a trailing run of tokens that already
+	// appears at the end of what leads to it means we are going in circles.
+	for i := 1; i < len(path); i++ {
+		if path[:i].hasSuffix(path[i:]) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// beingVisited asserts a schema is being visited.
+func (d *defaultValidator) beingVisited(path pathSegments) {
+	d.visitedSchemas[path.pointer()] = struct{}{}
+}
+
+// isVisited tells if a path has already been visited.
+func (d *defaultValidator) isVisited(path pathSegments) bool {
+	return isVisited(path, d.visitedSchemas)
+}
+
+//nolint:gocognit // refactor in a forthcoming PR
 func (d *defaultValidator) validateDefaultValueValidAgainstSchema() *Result {
 	// every default value that is specified must validate against the schema for that property
 	// headers, items, parameters, schema
 
-	res := new(Result)
+	res := validatorPools.results.Borrow() // will redeem when merged
 	s := d.SpecValidator
 
-	for method, pathItem := range s.expandedAnalyzer().Operations() {
-		for path, op := range pathItem {
+	operations := s.expandedAnalyzer().Operations()
+	for _, method := range sortedKeys(operations) {
+		pathItem := operations[method]
+		for _, path := range sortedKeys(pathItem) {
+			op := pathItem[path]
 			// parameters
 			for _, param := range paramHelp.safeExpandedParamsFor(path, method, op.ID, res, s) {
 				if param.Default != nil && param.Required {
-					res.AddWarnings(requiredHasDefaultMsg(param.Name, param.In))
+					res.addWarningsAt(s.parameterPath(path, method, param.In, param.Name), requiredHasDefaultMsg(param.Name, param.In))
 				}
 
 				// reset explored schemas to get depth-first recursive-proof exploration
@@ -107,28 +94,35 @@ func (d *defaultValidator) validateDefaultValueValidAgainstSchema() *Result {
 				// default values provided must validate against their inline definition (no explicit schema)
 				if param.Default != nil && param.Schema == nil {
 					// check param default value is valid
-					red := NewParamValidator(&param, s.KnownFormats).Validate(param.Default) //#nosec
+					red := newParamValidator(&param, s.KnownFormats, d.schemaOptions).Validate(param.Default) //#nosec
+					red.relocate(s.parameterPath(path, method, param.In, param.Name).child(jsonDefault))
 					if red.HasErrorsOrWarnings() {
-						res.AddErrors(defaultValueDoesNotValidateMsg(param.Name, param.In))
+						res.addErrorsAt(s.parameterPath(path, method, param.In, param.Name), defaultValueDoesNotValidateMsg(param.Name, param.In))
 						res.Merge(red)
+					} else if red.wantsRedeemOnMerge {
+						redeemResult(red)
 					}
 				}
 
 				// Recursively follows Items and Schemas
 				if param.Items != nil {
-					red := d.validateDefaultValueItemsAgainstSchema(param.Name, param.In, &param, param.Items) //#nosec
+					red := d.validateDefaultValueItemsAgainstSchema(s.parameterPath(path, method, param.In, param.Name), param.In, &param, param.Items) //#nosec
 					if red.HasErrorsOrWarnings() {
-						res.AddErrors(defaultValueItemsDoesNotValidateMsg(param.Name, param.In))
+						res.addErrorsAt(s.parameterPath(path, method, param.In, param.Name), defaultValueItemsDoesNotValidateMsg(param.Name, param.In))
 						res.Merge(red)
+					} else if red.wantsRedeemOnMerge {
+						redeemResult(red)
 					}
 				}
 
 				if param.Schema != nil {
 					// Validate default value against schema
-					red := d.validateDefaultValueSchemaAgainstSchema(param.Name, param.In, param.Schema)
+					red := d.validateDefaultValueSchemaAgainstSchema(s.parameterPath(path, method, param.In, param.Name).structuralChild(jsonSchema), param.In, param.Schema)
 					if red.HasErrorsOrWarnings() {
-						res.AddErrors(defaultValueDoesNotValidateMsg(param.Name, param.In))
+						res.addErrorsAt(s.parameterPath(path, method, param.In, param.Name), defaultValueDoesNotValidateMsg(param.Name, param.In))
 						res.Merge(red)
+					} else if red.wantsRedeemOnMerge {
+						redeemResult(red)
 					}
 				}
 			}
@@ -136,65 +130,74 @@ func (d *defaultValidator) validateDefaultValueValidAgainstSchema() *Result {
 			if op.Responses != nil {
 				if op.Responses.Default != nil {
 					// Same constraint on default Response
-					res.Merge(d.validateDefaultInResponse(op.Responses.Default, jsonDefault, path, 0, op.ID))
+					res.Merge(d.validateDefaultInResponse(op.Responses.Default, jsonDefault, path, method, 0, op.ID))
 				}
 				// Same constraint on regular Responses
 				if op.Responses.StatusCodeResponses != nil { // Safeguard
-					for code, r := range op.Responses.StatusCodeResponses {
-						res.Merge(d.validateDefaultInResponse(&r, "response", path, code, op.ID)) //#nosec
+					for _, code := range sortedKeys(op.Responses.StatusCodeResponses) {
+						r := op.Responses.StatusCodeResponses[code]
+						res.Merge(d.validateDefaultInResponse(&r, "response", path, method, code, op.ID))
 					}
 				}
 			} else if op.ID != "" {
 				// Empty op.ID means there is no meaningful operation: no need to report a specific message
-				res.AddErrors(noValidResponseMsg(op.ID))
+				res.addErrorsAt(operationPath(path, method), noValidResponseMsg(op.ID))
 			}
 		}
 	}
 	if s.spec.Spec().Definitions != nil { // Safeguard
 		// reset explored schemas to get depth-first recursive-proof exploration
 		d.resetVisited()
-		for nm, sch := range s.spec.Spec().Definitions {
-			res.Merge(d.validateDefaultValueSchemaAgainstSchema(fmt.Sprintf("definitions.%s", nm), "body", &sch)) //#nosec
+		definitions := s.spec.Spec().Definitions
+		for _, nm := range sortedKeys(definitions) {
+			sch := definitions[nm]
+			res.Merge(d.validateDefaultValueSchemaAgainstSchema(newPathSegments(swaggerDefinitions, nm), "body", &sch))
 		}
 	}
 	return res
 }
 
-func (d *defaultValidator) validateDefaultInResponse(resp *spec.Response, responseType, path string, responseCode int, operationID string) *Result {
+func (d *defaultValidator) validateDefaultInResponse(
+	resp *spec.Response, responseType, path, method string, responseCode int, operationID string,
+) *Result {
 	s := d.SpecValidator
 
-	response, res := responseHelp.expandResponseRef(resp, path, s)
+	responseName, responseCodeAsStr := responseHelp.responseMsgVariants(responseType, responseCode)
+	response, res := responseHelp.expandResponseRef(resp, path, responsePath(path, method, responseCodeAsStr), s)
 	if !res.IsValid() {
 		return res
 	}
 
-	responseName, responseCodeAsStr := responseHelp.responseMsgVariants(responseType, responseCode)
-
-	// nolint: dupl
 	if response.Headers != nil { // Safeguard
-		for nm, h := range response.Headers {
+		for _, nm := range sortedKeys(response.Headers) {
+			h := response.Headers[nm]
 			// reset explored schemas to get depth-first recursive-proof exploration
 			d.resetVisited()
 
 			if h.Default != nil {
-				red := NewHeaderValidator(nm, &h, s.KnownFormats).Validate(h.Default) //#nosec
+				red := newHeaderValidator(nm, &h, s.KnownFormats, d.schemaOptions).Validate(h.Default) //#nosec
+				red.relocate(responseHeaderPath(path, method, responseCodeAsStr, nm).child(jsonDefault))
 				if red.HasErrorsOrWarnings() {
-					res.AddErrors(defaultValueHeaderDoesNotValidateMsg(operationID, nm, responseName))
+					res.addErrorsAt(responseHeaderPath(path, method, responseCodeAsStr, nm), defaultValueHeaderDoesNotValidateMsg(operationID, nm, responseName))
 					res.Merge(red)
+				} else if red.wantsRedeemOnMerge {
+					redeemResult(red)
 				}
 			}
 
 			// Headers have inline definition, like params
 			if h.Items != nil {
-				red := d.validateDefaultValueItemsAgainstSchema(nm, "header", &h, h.Items) //#nosec
+				red := d.validateDefaultValueItemsAgainstSchema(responseHeaderPath(path, method, responseCodeAsStr, nm), "header", &h, h.Items) //#nosec
 				if red.HasErrorsOrWarnings() {
-					res.AddErrors(defaultValueHeaderItemsDoesNotValidateMsg(operationID, nm, responseName))
+					res.addErrorsAt(responseHeaderPath(path, method, responseCodeAsStr, nm), defaultValueHeaderItemsDoesNotValidateMsg(operationID, nm, responseName))
 					res.Merge(red)
+				} else if red.wantsRedeemOnMerge {
+					redeemResult(red)
 				}
 			}
 
 			if _, err := compileRegexp(h.Pattern); err != nil {
-				res.AddErrors(invalidPatternInHeaderMsg(operationID, nm, responseName, h.Pattern, err))
+				res.addErrorsAt(responseHeaderPath(path, method, responseCodeAsStr, nm), invalidPatternInHeaderMsg(operationID, nm, responseName, h.Pattern, err))
 			}
 
 			// Headers don't have schema
@@ -204,77 +207,84 @@ func (d *defaultValidator) validateDefaultInResponse(resp *spec.Response, respon
 		// reset explored schemas to get depth-first recursive-proof exploration
 		d.resetVisited()
 
-		red := d.validateDefaultValueSchemaAgainstSchema(responseCodeAsStr, "response", response.Schema)
+		red := d.validateDefaultValueSchemaAgainstSchema(
+			responsePath(path, method, responseCodeAsStr).structuralChild(jsonSchema), "response", response.Schema)
 		if red.HasErrorsOrWarnings() {
 			// Additional message to make sure the context of the error is not lost
-			res.AddErrors(defaultValueInDoesNotValidateMsg(operationID, responseName))
+			res.addErrorsAt(responsePath(path, method, responseCodeAsStr), defaultValueInDoesNotValidateMsg(operationID, responseName))
 			res.Merge(red)
+		} else if red.wantsRedeemOnMerge {
+			redeemResult(red)
 		}
 	}
 	return res
 }
 
-func (d *defaultValidator) validateDefaultValueSchemaAgainstSchema(path, in string, schema *spec.Schema) *Result {
+func (d *defaultValidator) validateDefaultValueSchemaAgainstSchema(path pathSegments, in string, schema *spec.Schema) *Result {
 	if schema == nil || d.isVisited(path) {
 		// Avoids recursing if we are already done with that check
 		return nil
 	}
 	d.beingVisited(path)
-	res := new(Result)
+	res := validatorPools.results.Borrow()
 	s := d.SpecValidator
 
 	if schema.Default != nil {
-		res.Merge(NewSchemaValidator(schema, s.spec.Spec(), path+".default", s.KnownFormats, SwaggerSchema(true)).Validate(schema.Default))
+		res.Merge(s.validateValueAgainstSchema(schema, path.child(jsonDefault), schema.Default, d.schemaOptions))
 	}
 	if schema.Items != nil {
 		if schema.Items.Schema != nil {
-			res.Merge(d.validateDefaultValueSchemaAgainstSchema(path+".items.default", in, schema.Items.Schema))
+			res.Merge(d.validateDefaultValueSchemaAgainstSchema(path.child(jsonItems), in, schema.Items.Schema))
 		}
 		// Multiple schemas in items
 		if schema.Items.Schemas != nil { // Safeguard
 			for i, sch := range schema.Items.Schemas {
-				res.Merge(d.validateDefaultValueSchemaAgainstSchema(fmt.Sprintf("%s.items[%d].default", path, i), in, &sch)) //#nosec
+				res.Merge(d.validateDefaultValueSchemaAgainstSchema(path.child(jsonItems).item(i), in, &sch)) //#nosec
 			}
 		}
 	}
 	if _, err := compileRegexp(schema.Pattern); err != nil {
-		res.AddErrors(invalidPatternInMsg(path, in, schema.Pattern))
+		res.addErrorsAt(path, invalidPatternInMsg(path.dotted(), in, schema.Pattern))
 	}
 	if schema.AdditionalItems != nil && schema.AdditionalItems.Schema != nil {
 		// NOTE: we keep validating values, even though additionalItems is not supported by Swagger 2.0 (and 3.0 as well)
-		res.Merge(d.validateDefaultValueSchemaAgainstSchema(fmt.Sprintf("%s.additionalItems", path), in, schema.AdditionalItems.Schema))
+		res.Merge(d.validateDefaultValueSchemaAgainstSchema(path.child(jsonAdditionalItems), in, schema.AdditionalItems.Schema))
 	}
-	for propName, prop := range schema.Properties {
-		res.Merge(d.validateDefaultValueSchemaAgainstSchema(path+"."+propName, in, &prop)) //#nosec
+	for _, propName := range sortedKeys(schema.Properties) {
+		prop := schema.Properties[propName]
+		res.Merge(d.validateDefaultValueSchemaAgainstSchema(path.structuralChild(jsonProperties).child(propName), in, &prop))
 	}
-	for propName, prop := range schema.PatternProperties {
-		res.Merge(d.validateDefaultValueSchemaAgainstSchema(path+"."+propName, in, &prop)) //#nosec
+	for _, propName := range sortedKeys(schema.PatternProperties) {
+		prop := schema.PatternProperties[propName]
+		res.Merge(d.validateDefaultValueSchemaAgainstSchema(path.structuralChild(jsonPatternProperties).child(propName), in, &prop))
 	}
 	if schema.AdditionalProperties != nil && schema.AdditionalProperties.Schema != nil {
-		res.Merge(d.validateDefaultValueSchemaAgainstSchema(fmt.Sprintf("%s.additionalProperties", path), in, schema.AdditionalProperties.Schema))
+		res.Merge(d.validateDefaultValueSchemaAgainstSchema(path.child(jsonAdditionalProperties), in, schema.AdditionalProperties.Schema))
 	}
 	if schema.AllOf != nil {
 		for i, aoSch := range schema.AllOf {
-			res.Merge(d.validateDefaultValueSchemaAgainstSchema(fmt.Sprintf("%s.allOf[%d]", path, i), in, &aoSch)) //#nosec
+			res.Merge(d.validateDefaultValueSchemaAgainstSchema(path.child(jsonAllOf).item(i), in, &aoSch)) //#nosec
 		}
 	}
 	return res
 }
 
-// TODO: Temporary duplicated code. Need to refactor with examples
-// nolint: dupl
-func (d *defaultValidator) validateDefaultValueItemsAgainstSchema(path, in string, root interface{}, items *spec.Items) *Result {
-	res := new(Result)
+// NOTE: Temporary duplicated code. Need to refactor with examples
+
+func (d *defaultValidator) validateDefaultValueItemsAgainstSchema(path pathSegments, in string, root any, items *spec.Items) *Result {
+	res := validatorPools.results.Borrow()
 	s := d.SpecValidator
 	if items != nil {
 		if items.Default != nil {
-			res.Merge(newItemsValidator(path, in, items, root, s.KnownFormats).Validate(0, items.Default))
+			res.Merge(
+				newItemsValidator(path, in, items, root, s.KnownFormats, d.schemaOptions).Validate(0, items.Default),
+			)
 		}
 		if items.Items != nil {
-			res.Merge(d.validateDefaultValueItemsAgainstSchema(path+"[0].default", in, root, items.Items))
+			res.Merge(d.validateDefaultValueItemsAgainstSchema(path.item(0), in, root, items.Items))
 		}
 		if _, err := compileRegexp(items.Pattern); err != nil {
-			res.AddErrors(invalidPatternInMsg(path, in, items.Pattern))
+			res.addErrorsAt(path, invalidPatternInMsg(path.dotted(), in, items.Pattern))
 		}
 	}
 	return res

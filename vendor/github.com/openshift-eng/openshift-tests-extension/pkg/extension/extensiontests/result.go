@@ -43,6 +43,11 @@ func (result ExtensionTestResult) ToJUnit() *junit.TestCase {
 		}
 	case ResultPassed:
 		tc.SystemOut = result.Output
+	default:
+		tc.FailureOutput = &junit.FailureOutput{
+			Message: fmt.Sprintf("unknown result type %q; check subprocess stdout for JSON pollution", result.Result),
+			Output:  result.Output,
+		}
 	}
 
 	return tc
@@ -63,7 +68,8 @@ func (results ExtensionTestResults) ToJUnit(suiteName string) junit.TestSuite {
 		case ResultPassed:
 			// do nothing
 		default:
-			panic(fmt.Sprintf("unknown result type: %s", result.Result))
+			// treat unknown/empty result as a failure so JUnit output is preserved
+			suite.NumFailed++
 		}
 
 		suite.TestCases = append(suite.TestCases, result.ToJUnit())
