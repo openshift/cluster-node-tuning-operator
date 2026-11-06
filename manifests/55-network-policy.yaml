@@ -77,11 +77,17 @@ spec:
   policyTypes:
   - Ingress
 
-# Allow access to the webhook server from host-network pods, i.e. the
-# kube-apiserver.  OpenShift SDN and OVN-Kubernetes classify all host-network
-# traffic (from any node) as the "openshift-host-network" namespace; selecting
-# it is the narrowest reliable match for the kube-apiserver, which has no
-# identity of its own.
+# Allow access to the webhook server from:
+# 1. host-network pods, i.e. the kube-apiserver serving the actual conversion
+#    and admission requests.  OpenShift SDN and OVN-Kubernetes classify all
+#    host-network traffic (from any node) as the "openshift-host-network"
+#    namespace; selecting it is the narrowest reliable match for the
+#    kube-apiserver, which has no identity of its own.
+# 2. the kube-apiserver-operator, which periodically probes CRD conversion
+#    webhook connectivity but does NOT use host networking.  Without this rule
+#    the operator cannot reach the webhook and reports
+#    CRDConversionWebhookConfigurationError=True for
+#    performanceprofiles.performance.openshift.io.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -100,6 +106,12 @@ spec:
     - namespaceSelector:
         matchLabels:
           policy-group.network.openshift.io/host-network: ""
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: openshift-kube-apiserver-operator
+      podSelector:
+        matchLabels:
+          app: kube-apiserver-operator
     ports:
     - port: 4343
       protocol: TCP
