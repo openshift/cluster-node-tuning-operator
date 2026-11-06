@@ -274,10 +274,15 @@ build-performance-profile-creator:
 	@echo "Building Performance Profile Creator (PPC)"
 	$(GO) build -v -ldflags "-s -w -X $(PACKAGE)/cmd/performance-profile-creator/version.Version=$(REV)" -o $(OUT_DIR)/performance-profile-creator ./cmd/performance-profile-creator
 
+# ARM-labelled specs under 2_performance_update
+.PHONY: arm-performance-update-tests
+arm-performance-update-tests: $(BINDATA)
+	@echo "Running ARM performance-update tests"
+	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/2_performance_update" -p "--v -r --fail-fast --flake-attempts=2 --label-filter=arm" -m "Running Functional Tests" -r "--junit-report=/tmp/artifacts"
+
+# TODO: Deprecated alias prefer arm-performance-update-tests.
 .PHONY: arm-kernelpagesize
-arm-kernelpagesize: $(BINDATA)
-	@echo "Running ARM kernel page size tests"
-	hack/run-test.sh -t "./test/e2e/performanceprofile/functests/14_arm" -p "--v -r --fail-fast --flake-attempts=2" -m "Running Functional Tests" -r "--junit-report=/tmp/artifacts"
+arm-kernelpagesize: arm-performance-update-tests
 
 .PHONY: performance-profile-creator-tests
 performance-profile-creator-tests: build-performance-profile-creator
