@@ -1,0 +1,83 @@
+# Note:
+# ~~~~~
+# - The schedule only governs version updates.  Security updates are opened when
+#   a GitHub Security Advisory (GHSA) is published, independently of "weekly".
+# - Dependabot skips modules covered by a `replace` directive.
+# - `ignore` only filters Dependabot's proposed update roots; it does not pin
+#   Go modules.  An allowed update may still move ignored modules through MVS
+#   when `go get`/`go mod tidy` resolves the module graph.  Use `replace` for
+#   modules that must be hard-pinned.
+# - The configuration below does not block any security updates.  Even for dependencies
+#   that we intend to keep version locked.  If such a case arises, the issue will be
+#   resolved manually.  This holds because every ignore rule below is scoped with
+#   update-types only.  Keep it that way: unlike update-types, `versions:`-range rules
+#   also filter security update PRs.
+
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "00:42"
+      timezone: "Europe/Prague"
+    allow:
+      - dependency-type: "all"
+    ignore:
+      - dependency-name: "k8s.io/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "sigs.k8s.io/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # Move github.com/openshift/* modules with the OpenShift payload.  Block
+      # all three update-types.  Note: dependabot can only propose tagged releases
+      # and picks the highest tag by semver.  The pseudo-versioned modules carry
+      # ancient tags -- openshift/api and openshift/client-go have v0.0.1 and
+      # v3.9.0+incompatible from 2017, which compare > than a v0.0.0-<date>-<hash>
+      # pseudo-version.
+      # Known collateral: github.com/openshift/custom-resource-status is a
+      # normally tagged library that is not payload-coupled, so the blanket
+      # rule freezes its routine updates too.  Accepted for now -- security
+      # updates are unaffected since update-types rules never filter the
+      # security path.
+      - dependency-name: "github.com/openshift/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      # openshift-tests-extension must move together with the ginkgo replace
+      # in go.mod, so never update automatically either; same treatment for
+      # the whole openshift-eng org.
+      - dependency-name: "github.com/openshift-eng/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      # gomega and qe-tools are test-framework deps released against ginkgo.
+      # ginkgo itself is hard-pinned by the replace directive in go.mod
+      # (OpenShift fork), so a minor bump of either can require ginkgo APIs
+      # the pinned fork does not provide and break the build.
+      - dependency-name: "github.com/onsi/gomega"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "kubevirt.io/qe-tools"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # openshift-kni modules are independently tagged and not payload-coupled,
+      # so patches are allowed.
+      - dependency-name: "github.com/openshift-kni/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    # PR-aggregation filter.  Group updates to reduce PR noise.
+    groups:
+      # Kubernetes/OpenShift updates.
+      kubernetes-ecosystem:
+        patterns:
+          - "k8s.io/*"
+          - "sigs.k8s.io/*"
+          - "github.com/openshift/*"
+          - "github.com/openshift-eng/*"
+          - "github.com/openshift-kni/*"
+      # Everything else: minor and patch updates batched into one PR.
+      catch-all:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 2
+    # Reviewers are auto-assigned by Prow.  Set "jmencak" as assignee for tracking.
+    assignees:
+      - "jmencak"
+    commit-message:
+      prefix: "chore(deps)"
