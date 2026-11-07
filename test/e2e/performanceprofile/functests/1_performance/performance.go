@@ -318,6 +318,28 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 				}
 			}
 		})
+
+		// OCPBUGS-58402 / CNF-22593: PerformanceProfile must not inject iommu.passthrough on aarch64.
+		It("should not have iommu.passthrough in the kernel cmdline on aarch64 workers", Label(string(label.Tier0), string(label.ARM)), func() {
+			ctx := context.TODO()
+			var armNodes []corev1.Node
+			for i := range workerRTNodes {
+				isArm, err := infrastructure.IsARM(ctx, &workerRTNodes[i])
+				Expect(err).ToNot(HaveOccurred())
+				if isArm {
+					armNodes = append(armNodes, workerRTNodes[i])
+				}
+			}
+			if len(armNodes) == 0 {
+				Skip("No aarch64 worker nodes with this performance profile")
+			}
+			for _, node := range armNodes {
+				cmdline, err := nodes.ExecCommand(ctx, &node, []string{"cat", "/proc/cmdline"})
+				Expect(err).ToNot(HaveOccurred(), "failed to read /proc/cmdline on node %s", node.Name)
+				Expect(string(cmdline)).NotTo(ContainSubstring("iommu.passthrough"),
+					"node %s must not have iommu.passthrough in kernel cmdline (OCPBUGS-58402)", node.Name)
+			}
+		})
 	})
 
 	Context("Using performance profile", Label(string(label.Tier0)), func() {
