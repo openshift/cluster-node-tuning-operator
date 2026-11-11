@@ -158,8 +158,12 @@ func waitForRunning(ctx context.Context) error {
 			// Initialization and API errors are usually transient side
 			// effects of the same node churn (e.g. the one-time DaemonSet
 			// deployment timing out while a node is rebooting); isRunning
-			// never returns ok with an error, so just remember the error
-			// for reporting and keep retrying.
+			// never returns ok with an error, so keep retrying. Log new
+			// errors so they are visible while the wait is in progress,
+			// and remember the last one for reporting if the wait fails.
+			if lastErr == nil || err.Error() != lastErr.Error() {
+				testlog.Warningf("node inspector check failed, will retry: %v", err)
+			}
 			lastErr = err
 		}
 		if !ok && !announced {
