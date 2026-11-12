@@ -1,4 +1,4 @@
-FROM registry.ci.openshift.org/openshift/release:rhel-9-release-golang-1.26-openshift-5.0 AS builder
+FROM registry.ci.openshift.org/openshift/release:rhel-9-release-golang-1.26-openshift-5.1 AS builder
 WORKDIR /go/src/github.com/openshift/cluster-node-tuning-operator
 COPY . .
 
