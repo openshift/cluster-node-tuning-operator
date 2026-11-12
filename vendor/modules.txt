@@ -1,7 +1,7 @@
-# cel.dev/expr v0.25.3
+# cel.dev/expr v0.26.0
 ## explicit; go 1.23.0
 cel.dev/expr
-# github.com/Masterminds/semver/v3 v3.4.0
+# github.com/Masterminds/semver/v3 v3.5.0
 ## explicit; go 1.21
 github.com/Masterminds/semver/v3
 # github.com/RHsyseng/operator-utils v1.4.13
@@ -229,7 +229,7 @@ github.com/imdario/mergo
 # github.com/inconshreveable/mousetrap v1.1.0
 ## explicit; go 1.18
 github.com/inconshreveable/mousetrap
-# github.com/jaypipes/ghw v0.26.0
+# github.com/jaypipes/ghw v0.27.0
 ## explicit; go 1.21
 github.com/jaypipes/ghw
 github.com/jaypipes/ghw/internal/config
@@ -570,7 +570,7 @@ github.com/robfig/cron
 # github.com/spf13/cobra v1.10.2
 ## explicit; go 1.15
 github.com/spf13/cobra
-# github.com/spf13/pflag v1.0.10
+# github.com/spf13/pflag v1.1.0
 ## explicit; go 1.12
 github.com/spf13/pflag
 # github.com/vincent-petithory/dataurl v1.0.0
@@ -638,14 +638,14 @@ golang.org/x/net/internal/timeseries
 golang.org/x/net/proxy
 golang.org/x/net/trace
 golang.org/x/net/websocket
-# golang.org/x/oauth2 v0.37.0
+# golang.org/x/oauth2 v0.38.0
 ## explicit; go 1.26.0
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sync v0.24.0
+# golang.org/x/sync v0.25.0
 ## explicit; go 1.26.0
 golang.org/x/sync/errgroup
-# golang.org/x/sys v0.49.0
+# golang.org/x/sys v0.50.0
 ## explicit; go 1.26.0
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
