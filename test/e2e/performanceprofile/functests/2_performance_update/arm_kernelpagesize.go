@@ -1,4 +1,4 @@
-package __arm
+package __performance_update
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/infrastructure"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
@@ -22,10 +23,10 @@ import (
 )
 
 const (
-	kernelPageSize4k       = "4k"
-	kernelPageSize64k      = "64k"
-	kernelPageSizeBytes4k  = "4096"
-	kernelPageSizeBytes64k = "65536"
+	armKernelPageSize4k       = "4k"
+	armKernelPageSize64k      = "64k"
+	armKernelPageSizeBytes4k  = "4096"
+	armKernelPageSizeBytes64k = "65536"
 )
 
 var _ = Describe("[rfe_id:80342] kernelPageSize configuration validation on aarch64", Ordered, Label(string(label.OpenShift), string(label.KernelPageSize), string(label.SpecializedHardware), string(label.ARM)), func() {
@@ -38,12 +39,15 @@ var _ = Describe("[rfe_id:80342] kernelPageSize configuration validation on aarc
 		workerRTNode                corev1.Node
 	)
 
-	BeforeAll(func() {
-		workerRTNodes, err = nodes.GetByLabels(testutils.NodeSelectorLabels)
-		Expect(err).ToNot(HaveOccurred())
+	BeforeEach(func() {
+		if discovery.Enabled() && testutils.ProfileNotFound {
+			Skip("Discovery mode enabled, performance profile not found")
+		}
+	})
 
-		workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes)
-		Expect(err).ToNot(HaveOccurred())
+	BeforeAll(func() {
+		workerRTNodes = getUpdatedNodes()
+
 		workerRTNode = workerRTNodes[0]
 
 		perfProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
@@ -58,7 +62,7 @@ var _ = Describe("[rfe_id:80342] kernelPageSize configuration validation on aarc
 
 		By("Ensuring profile baseline: kernelPageSize=4k, no hugepages, RT disabled")
 		perfProfile.Spec.HugePages = nil
-		perfProfile.Spec.KernelPageSize = ptr.To(performancev2.KernelPageSize(kernelPageSize4k))
+		perfProfile.Spec.KernelPageSize = ptr.To(performancev2.KernelPageSize(armKernelPageSize4k))
 		perfProfile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
 			Enabled: ptr.To(false),
 		}
@@ -88,18 +92,18 @@ var _ = Describe("[rfe_id:80342] kernelPageSize configuration validation on aarc
 					profilesupdate.ApplyProfileAndWait(ctx, perfProfile)
 
 					By(fmt.Sprintf("Verifying the kernelPageSize has changed to %s on the affected node", expectedKernelPageSize))
-					kernelPageSize, err := getKernelPageSizeFromNode(ctx, workerRTNode)
+					kernelPageSize, err := getARMKernelPageSizeFromNode(ctx, workerRTNode)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(kernelPageSize).To(Equal(expectedKernelPageSize), "kernel page size mismatch on node")
 				},
-				Entry("[test_id:80459] should accept 64k kernelPageSize", kernelPageSize64k, kernelPageSizeBytes64k),
-				Entry("[test_id:80461] should accept 4k kernelPageSize", kernelPageSize4k, kernelPageSizeBytes4k),
+				Entry("[test_id:80459] should accept 64k kernelPageSize", armKernelPageSize64k, armKernelPageSizeBytes64k),
+				Entry("[test_id:80461] should accept 4k kernelPageSize", armKernelPageSize4k, armKernelPageSizeBytes4k),
 			)
 		})
 	})
 })
 
-func getKernelPageSizeFromNode(ctx context.Context, node corev1.Node) (string, error) {
+func getARMKernelPageSizeFromNode(ctx context.Context, node corev1.Node) (string, error) {
 	GinkgoHelper()
 	nodeCmd := []string{"getconf", "PAGE_SIZE"}
 	out, err := nodes.ExecCommand(ctx, &node, nodeCmd)

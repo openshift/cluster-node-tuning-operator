@@ -1,8 +1,7 @@
-package __arm
+package __performance_update
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -17,10 +16,10 @@ import (
 
 	performancev2 "github.com/openshift/cluster-node-tuning-operator/pkg/apis/performanceprofile/v2"
 	testutils "github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils"
+	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/discovery"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/infrastructure"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/label"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/nodes"
-	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/poolname"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profiles"
 	"github.com/openshift/cluster-node-tuning-operator/test/e2e/performanceprofile/functests/utils/profilesupdate"
 )
@@ -28,46 +27,46 @@ import (
 const (
 	// reference for the supported hugepages sizes through the performance profile for aarch64
 	// https://github.com/openshift/cluster-node-tuning-operator/blob/main/docs/performanceprofile/performance_profile.md#hugepagesize
-	hugepageSize64k  = "64k"
-	hugepageSize2M   = "2M"
-	hugepageSize32M  = "32M"
-	hugepageSize1G   = "1G"
-	hugepageSize512M = "512M"
-	hugepageSize16G  = "16G"
+	armHugepageSize64k  = "64k"
+	armHugepageSize2M   = "2M"
+	armHugepageSize32M  = "32M"
+	armHugepageSize1G   = "1G"
+	armHugepageSize512M = "512M"
+	armHugepageSize16G  = "16G"
 )
 
 var _ = Describe("hugepage configuration validation on aarch64", Ordered, Label(string(label.OpenShift), string(label.SpecializedHardware), string(label.KernelPageSize), string(label.ARM)), func() {
 	var (
 		workerRTNodes               []corev1.Node
 		perfProfile, initialProfile *performancev2.PerformanceProfile
-		poolName                    string
 		err                         error
 		ctx                         context.Context
 		isArm                       bool
 		workerRTNode                corev1.Node
 	)
 
+	BeforeEach(func() {
+		if discovery.Enabled() && testutils.ProfileNotFound {
+			Skip("Discovery mode enabled, performance profile not found")
+		}
+	})
+
 	BeforeAll(func() {
 		ctx = context.Background()
-		workerRTNodes, err = nodes.GetByLabels(testutils.NodeSelectorLabels)
-		Expect(err).ToNot(HaveOccurred())
+		workerRTNodes = getUpdatedNodes()
 
-		workerRTNodes, err = nodes.MatchingOptionalSelector(workerRTNodes)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(workerRTNodes).ToNot(BeEmpty())
-		workerRTNode = workerRTNodes[0]
-
-		isArm, err = infrastructure.IsARM(ctx, &workerRTNode)
+		isArm, err = infrastructure.IsARM(ctx, &workerRTNodes[0])
 		Expect(err).ToNot(HaveOccurred())
 		if !isArm {
 			Skip("This test requires an aarch64 arm CPU")
 		}
 
+		workerRTNode = workerRTNodes[0]
+
 		perfProfile, err = profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 
 		initialProfile = perfProfile.DeepCopy()
-		poolName = poolname.GetByProfile(ctx, perfProfile)
 
 		By("Make sure that the performance profile starts the test suite with real time kernel disabled")
 		var realTimeKernelEnabled bool
@@ -79,11 +78,7 @@ var _ = Describe("hugepage configuration validation on aarch64", Ordered, Label(
 			perfProfile.Spec.RealTimeKernel = &performancev2.RealTimeKernel{
 				Enabled: ptr.To(false),
 			}
-			profiles.UpdateWithRetry(perfProfile)
-			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-			profilesupdate.WaitForTuningUpdating(ctx, perfProfile)
-			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-			profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
+			profilesupdate.ApplyProfileAndWait(ctx, perfProfile)
 		}
 	})
 
@@ -92,18 +87,8 @@ var _ = Describe("hugepage configuration validation on aarch64", Ordered, Label(
 		profile, err := profiles.GetByNodeLabels(testutils.NodeSelectorLabels)
 		Expect(err).ToNot(HaveOccurred())
 
-		currentSpec, _ := json.Marshal(profile.Spec)
-		spec, _ := json.Marshal(initialProfile.Spec)
-
-		// revert only if the profile changes
-		if !equality.Semantic.DeepEqual(currentSpec, spec) {
-			profiles.UpdateWithRetry(initialProfile)
-
-			By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-			profilesupdate.WaitForTuningUpdating(ctx, initialProfile)
-
-			By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-			profilesupdate.WaitForTuningUpdated(ctx, initialProfile)
+		if !equality.Semantic.DeepEqual(profile.Spec, initialProfile.Spec) {
+			profilesupdate.ApplyProfileAndWait(ctx, initialProfile)
 		}
 	})
 
@@ -113,19 +98,13 @@ var _ = Describe("hugepage configuration validation on aarch64", Ordered, Label(
 			When("when kernel page size is set to 4k", func() {
 				BeforeAll(func() {
 					By("make sure that the kernelPageSize is set to 4k and hugepages are not configured")
-					currentKernelPageSize, err := getKernelPageSizeFromNode(ctx, workerRTNode)
+					currentKernelPageSize, err := getARMKernelPageSizeFromNode(ctx, workerRTNode)
 					Expect(err).ToNot(HaveOccurred())
 
-					if currentKernelPageSize != kernelPageSizeBytes4k || perfProfile.Spec.HugePages != nil {
-						*perfProfile.Spec.KernelPageSize = kernelPageSize4k
+					if currentKernelPageSize != armKernelPageSizeBytes4k || perfProfile.Spec.HugePages != nil {
+						*perfProfile.Spec.KernelPageSize = performancev2.KernelPageSize(armKernelPageSize4k)
 						perfProfile.Spec.HugePages = nil
-						profiles.UpdateWithRetry(perfProfile)
-
-						By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-						profilesupdate.WaitForTuningUpdating(ctx, perfProfile)
-
-						By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-						profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
+						profilesupdate.ApplyProfileAndWait(ctx, perfProfile)
 					}
 				})
 
@@ -141,23 +120,17 @@ var _ = Describe("hugepage configuration validation on aarch64", Ordered, Label(
 								},
 							},
 						}
-						profiles.UpdateWithRetry(perfProfile)
-
-						By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-						profilesupdate.WaitForTuningUpdating(ctx, perfProfile)
-
-						By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-						profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
+						profilesupdate.ApplyProfileAndWait(ctx, perfProfile)
 
 						By(fmt.Sprintf("Verifying that hugepages of size %s are properly configured", hugepageSize))
-						hugepageSizeFromNode, err := getCurrentHugepageSizeFromNode(ctx, workerRTNode)
+						hugepageSizeFromNode, err := getCurrentARMHugepageSizeFromNode(ctx, workerRTNode)
 						Expect(err).ToNot(HaveOccurred())
 						Expect(hugepageSizeFromNode).To(Equal(string(hugepageSize)), "hugepageSizeFromNode: %s, hugepageSize: %s", hugepageSizeFromNode, hugepageSize)
 					},
-					Entry("[test_id:83651] should support 64k hugepages size", performancev2.HugePageSize(hugepageSize64k)),
-					Entry("[test_id:83652] should support 2M hugepages size", performancev2.HugePageSize(hugepageSize2M)),
-					Entry("[test_id:83653] should support 32M hugepages size", performancev2.HugePageSize(hugepageSize32M)),
-					Entry("[test_id:83654] should support 1G hugepages size", performancev2.HugePageSize(hugepageSize1G)),
+					Entry("[test_id:83651] should support 64k hugepages size", performancev2.HugePageSize(armHugepageSize64k)),
+					Entry("[test_id:83652] should support 2M hugepages size", performancev2.HugePageSize(armHugepageSize2M)),
+					Entry("[test_id:83653] should support 32M hugepages size", performancev2.HugePageSize(armHugepageSize32M)),
+					Entry("[test_id:83654] should support 1G hugepages size", performancev2.HugePageSize(armHugepageSize1G)),
 				)
 			})
 
@@ -165,19 +138,13 @@ var _ = Describe("hugepage configuration validation on aarch64", Ordered, Label(
 			When("kernel page size is set to 64k", func() {
 				BeforeAll(func() {
 					By("Make sure that the kernelPageSize is set to 64k and hugepages are not configured")
-					currentKernelPageSize, err := getKernelPageSizeFromNode(ctx, workerRTNode)
+					currentKernelPageSize, err := getARMKernelPageSizeFromNode(ctx, workerRTNode)
 					Expect(err).ToNot(HaveOccurred())
 
-					if currentKernelPageSize != kernelPageSizeBytes64k || perfProfile.Spec.HugePages != nil {
-						*perfProfile.Spec.KernelPageSize = kernelPageSize64k
+					if currentKernelPageSize != armKernelPageSizeBytes64k || perfProfile.Spec.HugePages != nil {
+						*perfProfile.Spec.KernelPageSize = performancev2.KernelPageSize(armKernelPageSize64k)
 						perfProfile.Spec.HugePages = nil
-						profiles.UpdateWithRetry(perfProfile)
-
-						By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-						profilesupdate.WaitForTuningUpdating(ctx, perfProfile)
-
-						By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-						profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
+						profilesupdate.ApplyProfileAndWait(ctx, perfProfile)
 					}
 				})
 
@@ -193,29 +160,23 @@ var _ = Describe("hugepage configuration validation on aarch64", Ordered, Label(
 								},
 							},
 						}
-						profiles.UpdateWithRetry(perfProfile)
-
-						By(fmt.Sprintf("Applying changes in performance profile and waiting until %s will start updating", poolName))
-						profilesupdate.WaitForTuningUpdating(ctx, perfProfile)
-
-						By(fmt.Sprintf("Waiting when %s finishes updates", poolName))
-						profilesupdate.WaitForTuningUpdated(ctx, perfProfile)
+						profilesupdate.ApplyProfileAndWait(ctx, perfProfile)
 
 						By(fmt.Sprintf("Verifying that hugepages of size %s are properly configured", hugepageSize))
-						hugepageSizeFromNode, err := getCurrentHugepageSizeFromNode(ctx, workerRTNode)
+						hugepageSizeFromNode, err := getCurrentARMHugepageSizeFromNode(ctx, workerRTNode)
 						Expect(err).ToNot(HaveOccurred())
 						Expect(hugepageSizeFromNode).To(Equal(string(hugepageSize)), "hugepageSizeFromNode: %s, hugepageSize: %s", hugepageSizeFromNode, hugepageSize)
 					},
-					Entry("[test_id:83655] should support 2M hugepages size", performancev2.HugePageSize(hugepageSize2M)),
-					Entry("[test_id:83656] should support 512M hugepages size", performancev2.HugePageSize(hugepageSize512M)),
-					Entry("[test_id:83657] should support 16G hugepages size", performancev2.HugePageSize(hugepageSize16G)),
+					Entry("[test_id:83655] should support 2M hugepages size", performancev2.HugePageSize(armHugepageSize2M)),
+					Entry("[test_id:83656] should support 512M hugepages size", performancev2.HugePageSize(armHugepageSize512M)),
+					Entry("[test_id:83657] should support 16G hugepages size", performancev2.HugePageSize(armHugepageSize16G)),
 				)
 			})
 		})
 	})
 })
 
-func getCurrentHugepageSizeFromNode(ctx context.Context, node corev1.Node) (string, error) {
+func getCurrentARMHugepageSizeFromNode(ctx context.Context, node corev1.Node) (string, error) {
 	GinkgoHelper()
 	nodeCmd := []string{"grep", "Hugepagesize:", "/proc/meminfo"}
 	out, err := nodes.ExecCommand(ctx, &node, nodeCmd)
@@ -234,12 +195,12 @@ func getCurrentHugepageSizeFromNode(ctx context.Context, node corev1.Node) (stri
 		return "", fmt.Errorf("invalid Hugepagesize format")
 	}
 
-	hugepagesSize, err := convertHugepageSizeKBToString(parts[1])
+	hugepagesSize, err := convertARMHugepageSizeKBToString(parts[1])
 	Expect(err).ToNot(HaveOccurred(), "failed to convert hugepage size: %s", err)
 	return hugepagesSize, nil
 }
 
-func convertHugepageSizeKBToString(kbStr string) (string, error) {
+func convertARMHugepageSizeKBToString(kbStr string) (string, error) {
 	kb, err := strconv.Atoi(kbStr)
 	if err != nil {
 		return "", fmt.Errorf("invalid KB value: %s", kbStr)
