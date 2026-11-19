@@ -131,16 +131,21 @@ var _ = Describe("[rfe_id:OCP-38968][ppc] Performance Profile Creator", func() {
 		}
 	})
 	Context("Systems with Hyperthreading enabled", func() {
-		It("[test_id:41419] Verify PPC script fails when reserved cpu count is 2 and requires to split across numa nodes", func() {
+		It("[test_id:41419] Verify PPC script splits reserved cpu count of 2 across numa nodes by reserving a whole core", func() {
 			ppcArgs := []string{
 				"--reserved-cpu-count=2",
 				"--split-reserved-cpus-across-numa=true",
 				"--rt-kernel=false",
 			}
 			cmdArgs := append(defaultArgs, ppcArgs...)
-			_, errData, _ := testutils.ExecAndLogCommandWithStderr(ppcPath, cmdArgs...)
-			ppcErrorString := errorStringParser(errData)
-			Expect(ppcErrorString).To(ContainSubstring("can't allocate odd number of CPUs from a NUMA Node"))
+			outData, _, err := testutils.ExecAndLogCommandWithStderr(ppcPath, cmdArgs...)
+			Expect(err).ToNot(HaveOccurred())
+
+			profile := &performancev2.PerformanceProfile{}
+			Expect(yaml.Unmarshal(outData, profile)).ToNot(HaveOccurred())
+			Expect(profile.Spec.CPU).ToNot(BeNil())
+			Expect(profile.Spec.CPU.Reserved).ToNot(BeNil())
+			Expect(string(*profile.Spec.CPU.Reserved)).To(Equal("0,40"))
 		})
 
 		It("[test_id:41405] Verify PPC fails when splitting of reserved cpus and single numa-node policy is specified", func() {
