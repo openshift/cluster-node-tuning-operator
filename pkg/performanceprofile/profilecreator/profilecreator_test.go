@@ -1606,6 +1606,107 @@ var _ = Describe("PerformanceProfileCreator: Test Helper Functions getCPUsSplitA
 			_, err := getCPUsSplitAcrossNUMA(reservedCPUCount, htEnabled, topologyInfoNodes)
 			Expect(err).ToNot(HaveOccurred())
 		})
+		It("Splits whole cores round-robin when hyperthreading is enabled and the reserved CPUs cannot be shared equally across NUMA nodes", func() {
+			reservedCPUCount = 22 // 11 whole cores that cannot be shared equally across 2 NUMA nodes; the earlier node gets the extra core (12 + 10)
+			offlinedCPUs := cpuset.CPUSet{}
+			htEnabled = true
+
+			reservedCPUSet, err := getCPUsSplitAcrossNUMA(reservedCPUCount, htEnabled, topologyInfoNodes)
+			Expect(err).ToNot(HaveOccurred())
+			// NUMA 0 gets 6 cores (0,2,4,6,8,10 + siblings 40,42,44,46,48,50) and NUMA 1 gets 5 cores (1,3,5,7,9 + siblings 41,43,45,47,49)
+			Expect(reservedCPUSet.String()).To(Equal("0-10,40-50"))
+
+			isolatedCPUSet, err := getIsolatedCPUs(topologyInfoNodes, reservedCPUSet, offlinedCPUs)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(isolatedCPUSet.String()).To(Equal("11-39,51-79"))
+		})
+		It("Skips memory-only NUMA nodes when splitting whole cores round-robin with hyperthreading enabled", func() {
+			reservedCPUCount = 4
+			offlinedCPUs := cpuset.CPUSet{}
+			htEnabled = true
+			ramOnlyTopologyInfoNodes := []*topology.Node{
+				{
+					ID: 0,
+					Cores: []*cpu.ProcessorCore{
+						{ID: 0, NumThreads: 2, LogicalProcessors: []int{0, 4}},
+						{ID: 1, NumThreads: 2, LogicalProcessors: []int{1, 5}},
+					},
+				},
+				{
+					ID:    1,
+					Cores: []*cpu.ProcessorCore{}, // memory-only NUMA node, must be skipped
+				},
+				{
+					ID: 2,
+					Cores: []*cpu.ProcessorCore{
+						{ID: 0, NumThreads: 2, LogicalProcessors: []int{2, 6}},
+						{ID: 1, NumThreads: 2, LogicalProcessors: []int{3, 7}},
+					},
+				},
+			}
+
+			reservedCPUSet, err := getCPUsSplitAcrossNUMA(reservedCPUCount, htEnabled, ramOnlyTopologyInfoNodes)
+			Expect(err).ToNot(HaveOccurred())
+			// One core from NUMA 0 (0,4) and one core from NUMA 2 (2,6); the memory-only NUMA 1 is skipped
+			Expect(reservedCPUSet.String()).To(Equal("0,2,4,6"))
+
+			isolatedCPUSet, err := getIsolatedCPUs(ramOnlyTopologyInfoNodes, reservedCPUSet, offlinedCPUs)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(isolatedCPUSet.String()).To(Equal("1,3,5,7"))
+		})
+		It("Splits whole SMT cores round-robin when cores expose more than two logical processors", func() {
+			reservedCPUCount = 12 // 3 whole 4-thread cores, shared unevenly across 2 NUMA nodes (2 + 1)
+			offlinedCPUs := cpuset.CPUSet{}
+			htEnabled = true
+			smt4TopologyInfoNodes := []*topology.Node{
+				{
+					ID: 0,
+					Cores: []*cpu.ProcessorCore{
+						{ID: 0, NumThreads: 4, LogicalProcessors: []int{0, 1, 2, 3}},
+						{ID: 1, NumThreads: 4, LogicalProcessors: []int{8, 9, 10, 11}},
+					},
+				},
+				{
+					ID: 1,
+					Cores: []*cpu.ProcessorCore{
+						{ID: 0, NumThreads: 4, LogicalProcessors: []int{4, 5, 6, 7}},
+						{ID: 1, NumThreads: 4, LogicalProcessors: []int{12, 13, 14, 15}},
+					},
+				},
+			}
+
+			reservedCPUSet, err := getCPUsSplitAcrossNUMA(reservedCPUCount, htEnabled, smt4TopologyInfoNodes)
+			Expect(err).ToNot(HaveOccurred())
+			// 2 whole cores from NUMA 0 (0-3,8-11) and 1 whole core from NUMA 1 (4-7)
+			Expect(reservedCPUSet.String()).To(Equal("0-11"))
+
+			isolatedCPUSet, err := getIsolatedCPUs(smt4TopologyInfoNodes, reservedCPUSet, offlinedCPUs)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(isolatedCPUSet.String()).To(Equal("12-15"))
+		})
+		It("Errors out when hyperthreading is enabled and the reserved CPU count is not a multiple of the core size", func() {
+			reservedCPUCount = 6 // even, but not a multiple of the 4 logical processors per core
+			htEnabled = true
+			smt4TopologyInfoNodes := []*topology.Node{
+				{
+					ID: 0,
+					Cores: []*cpu.ProcessorCore{
+						{ID: 0, NumThreads: 4, LogicalProcessors: []int{0, 1, 2, 3}},
+						{ID: 1, NumThreads: 4, LogicalProcessors: []int{8, 9, 10, 11}},
+					},
+				},
+				{
+					ID: 1,
+					Cores: []*cpu.ProcessorCore{
+						{ID: 0, NumThreads: 4, LogicalProcessors: []int{4, 5, 6, 7}},
+						{ID: 1, NumThreads: 4, LogicalProcessors: []int{12, 13, 14, 15}},
+					},
+				},
+			}
+
+			_, err := getCPUsSplitAcrossNUMA(reservedCPUCount, htEnabled, smt4TopologyInfoNodes)
+			Expect(err).To(HaveOccurred())
+		})
 		It("Ensure reserved and isolated CPUs populated are correctly by getCPUsSequentially when splitReservedCPUsAcrossNUMA is disabled", func() {
 			reservedCPUCount = 20 // random number, no special meaning
 			offlinedCPUs := cpuset.CPUSet{}

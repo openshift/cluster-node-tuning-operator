@@ -403,6 +403,18 @@ func (ca *cpuAccumulator) AddCoresWithFilter(max int, cores []*cpu.ProcessorCore
 	return ca.count - initialCount, nil
 }
 
+// AddWholeCore adds all the logical processors of a single physical core to the CPUSet, keeping
+// hyperthread siblings together so a physical core is never partially reserved. Unlike AddCores
+// it has no count cap and never adds a partial core.
+func (ca *cpuAccumulator) AddWholeCore(core *cpu.ProcessorCore) {
+	for _, logicalProcessorId := range core.LogicalProcessors {
+		if _, found := ca.elems[logicalProcessorId]; !found {
+			ca.elems[logicalProcessorId] = struct{}{}
+			ca.count++
+		}
+	}
+}
+
 func (ca *cpuAccumulator) Result() cpuset.CPUSet {
 	ca.done = true
 
@@ -414,38 +426,58 @@ func (ca *cpuAccumulator) Result() cpuset.CPUSet {
 	return cpuset.New(keys...)
 }
 
-// getCPUsSplitAcrossNUMA returns Reserved and Isolated CPUs split across NUMA nodes
-// We identify the right number of CPUs that need to be allocated per NUMA node, meaning reservedPerNuma + (the additional number based on the remainder and the NUMA node)
-// E.g. If the user requests 15 reserved cpus and we have 4 numa nodes, we find reservedPerNuma in this case is 3 and remainder = 3.
-// For each numa node we find a max which keeps track of the cumulative resources that should be allocated for each NUMA node:
-// max = (numaID+1)*reservedPerNuma + (numaNodeNum - remainder)
-// For NUMA node 0 max = (0+1)*3 + 4-3 = 4 remainder is decremented => remainder is 2
-// For NUMA node 1 max = (1+1)*3 + 4-2 = 8 remainder is decremented => remainder is 1
-// For NUMA node 2 max = (2+1)*3 + 4-2 = 12 remainder is decremented => remainder is 0
-// For NUMA Node 3 remainder = 0 so max = 12 + 3 = 15.
+// getCPUsSplitAcrossNUMA returns reserved CPUs split across NUMA nodes: with hyperthreading
+// enabled it distributes whole physical cores round-robin so HT siblings are never split,
+// otherwise it splits the reserved CPUs evenly across the NUMA nodes.
 func getCPUsSplitAcrossNUMA(reservedCPUCount int, htEnabled bool, topologyInfoNodes []*topology.Node) (cpuset.CPUSet, error) {
 	reservedCPUs := newCPUAccumulator()
 
-	numaNodeNum := len(topologyInfoNodes)
+	if htEnabled {
+		// Reserve whole cores round-robin: each pass takes the core at coreIdx from every NUMA
+		// node, stopping once reservedCPUCount is reached.
+		for coreIdx := 0; reservedCPUs.count < reservedCPUCount; coreIdx++ {
+			for _, node := range topologyInfoNodes {
+				// coreIdx < len(node.Cores) skips memory-only (0-core) NUMA nodes and nodes that
+				// have run out of cores, so they take no turn in the round-robin.
+				if reservedCPUs.count < reservedCPUCount && coreIdx < len(node.Cores) {
+					reservedCPUs.AddWholeCore(node.Cores[coreIdx])
+				}
+			}
+		}
 
-	max := 0
-	reservedPerNuma := reservedCPUCount / numaNodeNum
-	remainder := reservedCPUCount % numaNodeNum
-	if remainder != 0 {
-		Alert("The reserved CPUs cannot be split equally across NUMA Nodes")
-	}
-	for numaID, node := range topologyInfoNodes {
+		// A core's logical processors (HT siblings) are reserved together, so a request that is
+		// not a multiple of the core size overshoots and cannot be satisfied exactly.
+		if reservedCPUs.count != reservedCPUCount {
+			return reservedCPUs.Result(), fmt.Errorf("can't allocate %d reserved CPUs from whole cores", reservedCPUCount)
+		}
+	} else {
+		// Hyperthreading disabled: split the reserved CPUs evenly across the NUMA nodes.
+		// We identify the right number of CPUs that need to be allocated per NUMA node, meaning reservedPerNuma + (the additional number based on the remainder and the NUMA node)
+		// E.g. If the user requests 15 reserved cpus and we have 4 numa nodes, we find reservedPerNuma in this case is 3 and remainder = 3.
+		// For each numa node we find a max which keeps track of the cumulative resources that should be allocated for each NUMA node:
+		// max = (numaID+1)*reservedPerNuma + (numaNodeNum - remainder)
+		// For NUMA node 0 max = (0+1)*3 + 4-3 = 4 remainder is decremented => remainder is 2
+		// For NUMA node 1 max = (1+1)*3 + 4-2 = 8 remainder is decremented => remainder is 1
+		// For NUMA node 2 max = (2+1)*3 + 4-2 = 12 remainder is decremented => remainder is 0
+		// For NUMA Node 3 remainder = 0 so max = 12 + 3 = 15.
+		numaNodeNum := len(topologyInfoNodes)
+
+		max := 0
+		reservedPerNuma := reservedCPUCount / numaNodeNum
+		remainder := reservedCPUCount % numaNodeNum
 		if remainder != 0 {
-			max = (numaID+1)*reservedPerNuma + (numaNodeNum - remainder)
-			remainder--
-		} else {
-			max = max + reservedPerNuma
+			Alert("The reserved CPUs cannot be split equally across NUMA Nodes")
 		}
-		if max%2 != 0 && htEnabled {
-			return reservedCPUs.Result(), fmt.Errorf("can't allocate odd number of CPUs from a NUMA Node")
-		}
-		if _, err := reservedCPUs.AddCores(max, node.Cores); err != nil {
-			return cpuset.CPUSet{}, err
+		for numaID, node := range topologyInfoNodes {
+			if remainder != 0 {
+				max = (numaID+1)*reservedPerNuma + (numaNodeNum - remainder)
+				remainder--
+			} else {
+				max = max + reservedPerNuma
+			}
+			if _, err := reservedCPUs.AddCores(max, node.Cores); err != nil {
+				return cpuset.CPUSet{}, err
+			}
 		}
 	}
 
