@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -316,6 +317,35 @@ var _ = Describe("[rfe_id:27368][performance]", Ordered, func() {
 						Expect(string(cmdline)).To(ContainSubstring(arg))
 					}
 				}
+			}
+		})
+
+		// OCPBUGS-58402 / CNF-22593: PerformanceProfile must not inject iommu.passthrough on aarch64.
+		It("should not have iommu.passthrough in the kernel cmdline on aarch64 workers", Label(string(label.Tier0), string(label.ARM)), func() {
+			if profile.Spec.AdditionalKernelArgs != nil &&
+				slices.ContainsFunc(profile.Spec.AdditionalKernelArgs, func(arg string) bool {
+					return strings.HasPrefix(arg, "iommu.passthrough")
+				}) {
+				Skip("profile explicitly requests iommu.passthrough via AdditionalKernelArgs")
+			}
+
+			ctx := context.TODO()
+			var armNodes []corev1.Node
+			for i := range workerRTNodes {
+				isArm, err := infrastructure.IsARM(ctx, &workerRTNodes[i])
+				Expect(err).ToNot(HaveOccurred())
+				if isArm {
+					armNodes = append(armNodes, workerRTNodes[i])
+				}
+			}
+			if len(armNodes) == 0 {
+				Skip("No aarch64 worker nodes with this performance profile")
+			}
+			for _, node := range armNodes {
+				cmdline, err := nodes.ExecCommand(ctx, &node, []string{"cat", "/proc/cmdline"})
+				Expect(err).ToNot(HaveOccurred(), "failed to read /proc/cmdline on node %s", node.Name)
+				Expect(nodes.FindCmdlineParam(string(cmdline), "iommu.passthrough")).To(BeEmpty(),
+					"node %s must not have iommu.passthrough in kernel cmdline (OCPBUGS-58402)", node.Name)
 			}
 		})
 	})
