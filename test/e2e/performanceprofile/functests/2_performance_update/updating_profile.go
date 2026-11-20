@@ -345,7 +345,7 @@ var _ = Describe("[rfe_id:28761][performance] Updating parameters in performance
 			}
 		})
 
-		It("[test_id:28071] verify that systemd.cpu_affinity matches non-isolated CPUs", func() {
+		It("[test_id:91132] verify that systemd.cpu_affinity matches non-isolated CPUs", func() {
 			for _, node := range workerRTNodes {
 				onlineCPUs, err := nodes.GetOnlineCPUsSet(context.TODO(), &node)
 				Expect(err).ToNot(HaveOccurred())
