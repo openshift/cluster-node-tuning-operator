@@ -286,7 +286,7 @@ var _ = Describe("PerformanceProfile", func() {
 			Expect(errors[0].Error()).To(Or(ContainSubstring("isolated and offlined cpus overlap"), ContainSubstring("offlined and isolated cpus overlap")))
 		})
 
-		It("should reject cpus allocation with overlapping sets between isolated and shared", func() {
+		It("[test_id:64026] should reject cpus allocation with overlapping sets between isolated and shared", func() {
 			reservedCPUs := CPUSet("0-6")
 			isolatedCPUs := CPUSet("8-11")
 			sharedCPUs := CPUSet("10-15")
@@ -345,7 +345,7 @@ var _ = Describe("PerformanceProfile", func() {
 			},
 			Entry("reserved CPUs", func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Reserved = &input }, "reserved CPUs"),
 			Entry("isolated CPUs", func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Isolated = &input }, "isolated CPUs"),
-			Entry("shared CPUs", func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Shared = &input }, "shared CPUs"),
+			Entry("[test_id:64025] shared CPUs", func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Shared = &input }, "shared CPUs"),
 			Entry("offline CPUs", func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.Offlined = &input }, "offline CPUs"),
 			Entry("ovs dpdk CPUs", func(p *PerformanceProfile, input CPUSet) { p.Spec.CPU.OvsDpdk = &input }, "ovsDpdk CPUs"),
 		)
@@ -973,7 +973,7 @@ var _ = Describe("PerformanceProfile", func() {
 				})
 			})
 			When("MixedCPUs hint is enabled but no shared CPUs are specified", func() {
-				It("should raise validation error", func() {
+				It("[test_id:64025] should raise validation error", func() {
 					profile.Spec.WorkloadHints = &WorkloadHints{
 						MixedCpus: ptr.To(true),
 					}
