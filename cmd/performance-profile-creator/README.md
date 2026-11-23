@@ -76,7 +76,7 @@ Flags:
       --profile-name string               Name of the performance profile to be created (default "performance")
       --reserved-cpu-count int            Number of reserved CPUs (required)
       --rt-kernel                         Enable Real Time Kernel (required)
-      --split-reserved-cpus-across-numa   Split the Reserved CPUs across NUMA nodes
+      --split-reserved-cpus-across-numa   Split the Reserved CPUs across NUMA nodes (default true)
       --topology-manager-policy string    Kubelet Topology Manager Policy of the performance profile to be created. [Valid values: single-numa-node, best-effort, restricted] (default "restricted")
       --user-level-networking             Run with User level Networking(DPDK) enabled
 ```
@@ -106,6 +106,14 @@ Flags:
    --rt-kernel=false --split-reserved-cpus-across-numa=true --topology-manager-policy=restricted \
    --power-consumption-mode=low-latency > performace-profile.yaml
    ```
+
+## Reserved CPU allocation across NUMA nodes
+
+By default (`--split-reserved-cpus-across-numa=true`) the reserved CPUs are distributed across the NUMA nodes instead of being concentrated on a single node. Pass `--split-reserved-cpus-across-numa=false` to concentrate them on a single NUMA node.
+
+When the reserved CPUs are split across the NUMA nodes and hyperthreading is enabled, they are allocated as whole physical cores handed out round-robin across the NUMA nodes that have CPUs. This keeps the hyperthread siblings of a core together and does not require every NUMA node to hold the same number of reserved CPUs, so the per-node counts may differ by a core when the request does not divide evenly. NUMA nodes without CPUs (memory-only nodes) are skipped.
+
+Because whole cores are reserved, `--reserved-cpu-count` must be a multiple of the number of logical processors per core when hyperthreading is enabled (for example, a multiple of two on a typical 2-way SMT system); otherwise the tool exits with an error.
 
 ## Discovery mode
 
