@@ -76,7 +76,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 
 		})
 
-		It("should deploy kubelet configuration file", func() {
+		It("[test_id:64019] should deploy kubelet configuration file", func() {
 			workers, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
 			// test arbitrary one should be good enough
@@ -88,7 +88,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 			Expect(found).To(Equal("true"), "file not found; file=%q", kubeletMixedCPUsConfigFile)
 		})
 
-		It("should add Kubelet systemReservedCPUs the shared cpuset", func() {
+		It("[test_id:64016] should add Kubelet systemReservedCPUs the shared cpuset", func() {
 			name := components.GetComponentName(profile.Name, components.ComponentNamePrefix)
 			key := client.ObjectKey{Name: name}
 			kc := &machineconfigv1.KubeletConfig{}
@@ -102,7 +102,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 				reservedSystemCpus.String(), reserved.String(), shared.String())
 		})
 
-		It("should update CRI-O configuration with the given shared cpuset", func() {
+		It("[test_id:64021] should update CRI-O configuration with the given shared cpuset", func() {
 			workers, err := nodes.GetByLabels(testutils.NodeSelectorLabels)
 			Expect(err).ToNot(HaveOccurred())
 			// test arbitrary one should be good enough
@@ -197,7 +197,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 				Expect(cgroupCpuSet.Intersection(*shared).List()).ToNot(BeEmpty(), "shared cpus are not in the pod cgroups; pod=%q, cgroupscpuset=%q sharedcpuset=%q",
 					fmt.Sprintf("%s/%s", p.Namespace, p.Name), cgroupCpuSet.String(), shared.String())
 			})
-			It("should be able to disable cfs_quota", func() {
+			It("[test_id:64020] should be able to disable cfs_quota", func() {
 				rl := &corev1.ResourceList{
 					corev1.ResourceCPU:    resource.MustParse("1"),
 					corev1.ResourceMemory: resource.MustParse("100Mi"),
@@ -214,7 +214,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(cfg.Quota).To(Or(Equal("max"), Equal("-1")))
 			})
-			It("should have OPENSHIFT_ISOLATED_CPUS and OPENSHIFT_SHARED_CPUS env variables under the container", func() {
+			It("[test_id:64015] should have OPENSHIFT_ISOLATED_CPUS and OPENSHIFT_SHARED_CPUS env variables under the container", func() {
 				rl := &corev1.ResourceList{
 					corev1.ResourceCPU:    resource.MustParse("1"),
 					corev1.ResourceMemory: resource.MustParse("100Mi"),
@@ -245,7 +245,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 				// we don't need to check the shared and isolated values again, we only want to make sure they appear
 				// in the child processes
 			})
-			It("should contains the shared cpus after Kubelet restarts", func() {
+			It("[test_id:64017] should contains the shared cpus after Kubelet restarts", func() {
 				rl := &corev1.ResourceList{
 					corev1.ResourceCPU:    resource.MustParse("1"),
 					corev1.ResourceMemory: resource.MustParse("100Mi"),
@@ -321,7 +321,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 				// we do not bother to revert the profile at the end of the test, since its irrelevant which of the cpus are shared
 			})
 
-			It("should contains the updated values under the container", func() {
+			It("[test_id:64018] should contains the updated values under the container", func() {
 				rl := &corev1.ResourceList{
 					corev1.ResourceCPU:    resource.MustParse("1"),
 					corev1.ResourceMemory: resource.MustParse("100Mi"),
@@ -360,7 +360,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 			})
 		})
 		When("trying to deploy a burstable pod", func() {
-			It("should cause the burstable pod to fail", func() {
+			It("[test_id:64022] should cause the burstable pod to fail", func() {
 				By("creating a burstable pod")
 				rl := &corev1.ResourceList{
 					corev1.ResourceCPU: resource.MustParse("1"),
@@ -374,7 +374,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 			})
 		})
 		When("trying to deploy a best effort pod", func() {
-			It("should cause the best effort pod to fail", func() {
+			It("[test_id:64022] should cause the best effort pod to fail", func() {
 				By("creating a best effort pod")
 				rl := &corev1.ResourceList{
 					sharedCpusResource: resource.MustParse("1"),
@@ -767,7 +767,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 					}
 				}
 			},
-				Entry("guaranteed pod with mixed containers: exec process on container with whole CPUs should be pinned to the first shared CPU; and on container with fractional CPUs should be pinned to any CPU even if shared is specified",
+				Entry("[test_id:64024] guaranteed pod with mixed containers: exec process on container with whole CPUs should be pinned to the first shared CPU; and on container with fractional CPUs should be pinned to any CPU even if shared is specified",
 					corev1.PodQOSGuaranteed,
 					[]corev1.ResourceList{
 						{ // cnt1 resources
@@ -781,7 +781,7 @@ var _ = Describe("Mixedcpus", Ordered, Label(string(label.MixedCPUs)), func() {
 							sharedCpusResource:    resource.MustParse("1"),
 						},
 					}),
-				Entry("guaranteed pod with mixed containers: with shared CPU and without shared CPU",
+				Entry("[test_id:64024] guaranteed pod with mixed containers: with shared CPU and without shared CPU",
 					corev1.PodQOSGuaranteed,
 					[]corev1.ResourceList{
 						{ // cnt1 resources
