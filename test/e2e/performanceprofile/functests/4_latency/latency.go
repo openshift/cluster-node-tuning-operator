@@ -218,6 +218,13 @@ var _ = Describe("[performance] Latency Test", Ordered, func() {
 		BeforeEach(func() {
 			maximumLatency, err = getMaximumLatency(testName)
 			Expect(err).ToNot(HaveOccurred())
+
+			if profile.Spec.CPU.Isolated == nil {
+				Skip(fmt.Sprintf("Skip the hwlatdetect test, the profile %q does not have isolated CPUs", profile.Name))
+			}
+			if _, ok := os.LookupEnv("LATENCY_TEST_CPUS"); !ok {
+				Fail("LATENCY_TEST_CPUS must be set for the hwlatdetect test")
+			}
 		})
 
 		It("should succeed", func() {
@@ -414,6 +421,19 @@ func getLatencyTestPod(profile *performancev2.PerformanceProfile, node *corev1.N
 		latencyTestRunnerArgs = append(latencyTestRunnerArgs, fmt.Sprintf("-%s-start-delay=%d", testName, latencyTestDelay))
 	}
 
+	// Inject HWLATDETECT_TARGET_ALL_CPUS to runner environment.
+	// Defaults to "false" when the variable is not set, so the runner always
+	// receives an explicit value.
+	var runnerEnv []corev1.EnvVar
+	if testName == hwlatdetectTestName {
+		val, ok := os.LookupEnv("HWLATDETECT_TARGET_ALL_CPUS")
+		if !ok {
+			val = "false"
+		}
+		Expect(val).To(Or(Equal("true"), Equal("false")), "the environment variable HWLATDETECT_TARGET_ALL_CPUS has incorrect value %q, it must be either \"true\" or \"false\"", val)
+		runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "HWLATDETECT_TARGET_ALL_CPUS", Value: val})
+	}
+
 	volumeTypeDirectory := corev1.HostPathDirectory
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -436,6 +456,7 @@ func getLatencyTestPod(profile *performancev2.PerformanceProfile, node *corev1.N
 						runnerPath,
 					},
 					Args: latencyTestRunnerArgs,
+					Env:  runnerEnv,
 					Resources: corev1.ResourceRequirements{
 						Limits: corev1.ResourceList{
 							corev1.ResourceCPU:    resource.MustParse(strconv.Itoa(latencyTestCpus)),

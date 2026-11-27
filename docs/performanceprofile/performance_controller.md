@@ -119,8 +119,9 @@ You can run the container with different ENV variables, but the bare minimum is 
 - `LATENCY_TEST_RUNTIME` the amount of time in seconds that the latency test should run.
 - `LATENCY_TEST_TIMEOUT_BUFFER` overhead seconds (not per-tool runtime) for in-pod CPU setup/init and for the pod to reach Succeeded after the tool finishes.
 - `LATENCY_TEST_IMAGE` the image that used under the latency test.
-- `LATECNY_TEST_CPUS` the amount of CPUs the pod which run the latency test should request
+- `LATENCY_TEST_CPUS` the amount of CPUs the pod which run the latency test should request
 - `OSLAT_MAXIMUM_LATENCY` the expected maximum latency for all buckets in us in the oslat test.
 - `CYCLICTEST_MAXIMUM_LATENCY` the expected maximum latency for the cyclictest test.
 - `HWLATDETECT_MAXIMUM_LATENCY` the expected maximum latency for the hwlatdetect test.
+- `HWLATDETECT_TARGET_ALL_CPUS` selects which CPUs the hwlatdetect test monitors. When set to `true`, it monitors all CPUs that are possible on the node (as listed in `/sys/devices/system/cpu/possible`). When set to `false`, it monitors only the CPUs assigned to the test pod. Accepted values are `true` and `false`; the default is `false`.
 - `MAXIMUM_LATENCY` a unified value for the expected maximum latency for all tests (In case both provided, the specific variables will have precedence over the unified one).
