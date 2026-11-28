@@ -623,3 +623,16 @@ func GetL3SharedCPUs(node *corev1.Node) func(cpuId int) (cpuset.CPUSet, error) {
 		return cpuSet, err
 	}
 }
+
+// FindCmdlineParam splits a /proc/cmdline string by whitespace and
+// returns the value for the given key (the part after '='). Returns
+// an empty string if the key is not found.
+func FindCmdlineParam(cmdline, key string) string {
+	prefix := key + "="
+	for _, field := range strings.Fields(cmdline) {
+		if strings.HasPrefix(field, prefix) {
+			return strings.TrimPrefix(field, prefix)
+		}
+	}
+	return ""
+}
