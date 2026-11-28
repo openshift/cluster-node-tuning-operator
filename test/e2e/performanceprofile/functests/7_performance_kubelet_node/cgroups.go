@@ -163,9 +163,19 @@ var _ = Describe("[performance] Cgroups and affinity", Ordered, Label(string(lab
 		Context("[Node Reboot]", Label(string(label.Tier1)), func() {
 			It("[test_id:64099] Activation file doesn't get deleted", func() {
 				By(fmt.Sprintf("Rebooting the worker node %q", workerRTNode.Name))
+				bootID, err := nodes.GetBootID(workerRTNode.Name)
+				Expect(err).ToNot(HaveOccurred(), "unable to read bootID before reboot")
+				// A valid baseline is required: if bootID were empty, any later
+				// populated bootID would satisfy WaitForRebootedOrFail without
+				// proving a reboot actually happened.
+				Expect(bootID).ToNot(BeEmpty(), "bootID should not be empty before reboot")
+				// "systemctl reboot" tears the node down mid-command, so the exec
+				// returns no usable output or error; the reboot is confirmed below
+				// via a bootID change rather than from this command's result.
 				_, _ = nodes.ExecCommand(ctx, workerRTNode, []string{"sh", "-c", "chroot /rootfs systemctl reboot"})
-				nodes.WaitForNotReadyOrFail("Reboot", workerRTNode.Name, 10*time.Minute, 30*time.Second)
-				nodes.WaitForReadyOrFail("Reboot", workerRTNode.Name, 10*time.Minute, 30*time.Second)
+				// RT-kernel nodes with hugepages can take well over 10 minutes to
+				// boot in CI, so allow a generous timeout to avoid a boundary flake.
+				nodes.WaitForRebootedOrFail("Reboot", workerRTNode.Name, bootID, 20*time.Minute, 30*time.Second)
 
 				By("Checking Activation file")
 				cmd := []string{"ls", activation_file}
